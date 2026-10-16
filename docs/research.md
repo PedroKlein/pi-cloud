@@ -127,4 +127,4 @@ Several open-source systems create one Job or pod for a bounded Claude task. The
 
 ## Research conclusion
 
-No reviewed project combines Pi-native Session fidelity, Claude-style Projects and Threads, portable Environments, strong Kubernetes execution, and future collaboration. PI WEB may be a useful foundation or prototype host, but whether Pi Cloud can remain an external plugin layer is still an open decision.
+No reviewed project combines Pi-native Session fidelity, Claude-style Projects and Threads, portable Environments, strong Kubernetes execution, and future collaboration. PI WEB is the closest reference; Pi Cloud owns its own control plane and UI rather than building on it ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)).

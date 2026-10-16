@@ -17,8 +17,8 @@
 
 ### Product and repository boundary
 
-- Is Pi Cloud built on top of an existing Pi-native web host, particularly PI WEB, or does it own its control plane and UI from the start?
-- If it begins as PI WEB plugins, which contracts are stable enough and which Pi Cloud semantics require a separate service?
+- Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
+- Which JavaScript runtime, package manager, and monorepo layout?
 - Is the first supported deployment native, containerized, Kubernetes-only, or several modes from the beginning?
 
 ### First end-to-end experience
