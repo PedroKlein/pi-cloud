@@ -25,6 +25,7 @@ The design is still exploratory. The repository currently records the agreed dir
 - [Existing Pi ecosystem](docs/pi-ecosystem.md): boundaries and reuse opportunities across Pi and current extensions.
 - [Open questions](docs/open-questions.md): decisions that remain unresolved.
 - [Research](docs/research.md): facts learned from Claude Projects, cloud environments, and related open-source systems.
+- [Decisions](docs/adr/): accepted architecture decision records.
 
 Future discussions should treat these documents as a checkpoint, not as frozen requirements. When a decision is made, record it separately as an ADR rather than silently turning a working assumption into fact.
 

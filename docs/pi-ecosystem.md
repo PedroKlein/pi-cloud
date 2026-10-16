@@ -100,7 +100,7 @@ The reviewed PI WEB implementations show that Pi can be hosted through a browser
 - browser and server plugins;
 - hosted-session dispatch and messaging.
 
-Its trust model is personal and explicitly not a multi-tenant sandbox. Pi Cloud may begin as PI WEB plugins and a companion Pi extension, fork or extend PI WEB, or own a new control plane. That repository boundary remains an open decision.
+Its trust model is personal and explicitly not a multi-tenant sandbox. Pi Cloud owns its control plane and UI and treats PI WEB as a reference ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)).
 
 ## Likely integration boundaries
 

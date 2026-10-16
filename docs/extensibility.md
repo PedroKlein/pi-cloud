@@ -267,7 +267,7 @@ pi-cloud/
   docs/
 ```
 
-The repository boundary and PI WEB relationship remain open. This map exists so later discussion can place responsibilities without turning one package into a control-plane, runtime, UI, and Kubernetes god module.
+Pi Cloud owns this repository boundary ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)), but the package layout is still open. This map exists so later discussion can place responsibilities without turning one package into a control-plane, runtime, UI, and Kubernetes god module.
 
 ## Federation direction
 
