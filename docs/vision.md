@@ -1,0 +1,87 @@
+# Pi Cloud vision
+
+> Status: directional foundation. This explains what Pi Cloud is trying to become. It is not an implementation specification.
+
+## Goal
+
+Pi Cloud should make full Pi sessions available from a browser, phone, terminal, or editor while the work runs in the environment best suited to it.
+
+One personal installation should be able to manage:
+
+- ordinary independent Pi sessions;
+- multiple long-running Projects;
+- multiple full thread sessions inside each Project;
+- reusable execution Environments backed by a laptop, VM, or Kubernetes namespace;
+- the user's complete Pi personalization;
+- extension-provided capabilities.
+
+A later team product may federate personal installations or introduce shared control-plane resources, but the first product is a control plane for one user.
+
+## Product model
+
+A Project is one ongoing goal and coordinating conversation. Its workers are threads, and each thread is a full Pi session. Threads are not renamed subagents: a thread can use its own subagents, workflows, tools, context window, workspace, and model configuration.
+
+Independent sessions remain first-class. A user does not need to create a Project for work that fits one conversation.
+
+An Environment is a reusable execution definition. A session binds to an Environment revision; a scheduler assigns it to a compatible Runtime supplied by a Runtime Provider. This allows the same control plane to dispatch work locally, to an always-on VM, or to Kubernetes.
+
+## Principles
+
+### Pi remains Pi
+
+Hosted sessions must use Pi's normal runtime and session model. Pi Cloud should orchestrate Pi, not replace its agent loop with a reduced cloud-specific implementation.
+
+### Personalization is portable
+
+The user's required packages, extensions, skills, prompts, instructions, models, MCP servers, and preferences must be available to hosted sessions. This configuration belongs in a versioned Profile so a session can record exactly which personalization it used.
+
+A small mandatory session bridge may be loaded to connect a Pi session to the control plane. It should provide hosting protocol functions only. Projects and automations should remain control-plane capabilities exposed through narrow tools.
+
+### Sessions are the execution primitive
+
+An independent conversation, a Project coordinator, and a Project thread are all full Pi sessions. Their relationships differ; their runtime capabilities do not.
+
+### Projects are logical, not infrastructure boundaries
+
+A Project connects one coordinator session, thread sessions, repositories, instructions, memory, artifacts, and status. It should not imply one pod, one VM, or one shared writable checkout.
+
+### Environment and workspace are separate
+
+An Environment answers what can run and under which policy. A Workspace answers which files and repository state a session owns. Compute may be replaced while the Workspace and transcript remain durable.
+
+### One authoritative personal control plane
+
+A personal Pi Cloud Cell should have one logical control plane. Provider Agents on laptops, VMs, and clusters connect outbound to it and execute assigned sessions. Independent control planes on every provider would require distributed conflict resolution before the product has earned that complexity.
+
+### Extension seams are product architecture
+
+First-party Kubernetes, Git, scheduling, notifications, and future automation capabilities should use the same public interfaces available to third-party extensions. Trusted in-process extensions are acceptable for the personal product; external process or service adapters should remain possible for stronger isolation.
+
+### State and execution are honest
+
+Conversation history, Project state, Workspace state, and live processes have different durability. A reconstructed session may continue from persisted state, but a killed shell command or subagent has not been resumed. Runtime attempts and interruptions should remain visible.
+
+## Expected evolution
+
+The architecture should leave room for, without initially implementing:
+
+- schedules and event triggers;
+- reusable automation flows;
+- GitHub, GitLab, issue tracker, and chat integrations;
+- artifact and document libraries;
+- push notifications;
+- shared organization Environments and Profiles;
+- multiplayer Projects, presence, handoffs, and approvals;
+- usage policy, quotas, and audit trails;
+- stronger per-session isolation profiles.
+
+These should start ordinary session turns through a common execution interface rather than introduce separate agent runtimes.
+
+## Initial non-goals
+
+- Building a general Kubernetes platform before the session and Project model is proven.
+- Implementing organizations, invitations, or billing in the first personal product.
+- Treating Kubernetes CRDs as the primary application database.
+- Guaranteeing transparent migration of running processes between providers.
+- Automatically promoting every thread observation into shared Project memory.
+- Replacing Pi packages or project-local configuration with a Pi Cloud-only plugin format.
