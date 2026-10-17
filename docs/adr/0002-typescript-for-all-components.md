@@ -28,4 +28,4 @@ All components are written in TypeScript. Protocol types are defined once and sh
 
 - One toolchain, one test setup, and no duplicated protocol definitions across languages.
 - The Kubernetes provider uses a TypeScript Kubernetes client. If that proves inadequate for controller work, a Go component behind the same protocol can be reconsidered in a new ADR.
-- Runtime (Node or Bun), package manager, and monorepo layout are still open.
+- Runtime and package manager are decided in [ADR 0003](0003-bun-runtime-and-workspaces.md).

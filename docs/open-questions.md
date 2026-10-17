@@ -18,7 +18,8 @@
 ### Product and repository boundary
 
 - Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
-- Which JavaScript runtime, package manager, and monorepo layout?
+- Resolved: Bun runtime, Bun workspaces monorepo ([ADR 0003](adr/0003-bun-runtime-and-workspaces.md)).
+- Which packages does the monorepo start with?
 - Is the first supported deployment native, containerized, Kubernetes-only, or several modes from the beginning?
 
 ### First end-to-end experience
