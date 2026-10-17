@@ -24,9 +24,7 @@
 
 ### First end-to-end experience
 
-- Should the first proof cover independent remote Sessions, Projects and peer Threads, or Environment dispatch?
-- What is the smallest flow that proves the architecture rather than only the UI?
-- Which provider should come first: local process, VM agent, or Kubernetes namespace?
+- Resolved: one independent Session end to end on a local provider with a minimal web UI, then VM, then Kubernetes ([ADR 0004](adr/0004-first-slice-and-provider-order.md)).
 
 ### Runtime and isolation
 
