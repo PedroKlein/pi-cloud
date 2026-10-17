@@ -58,7 +58,7 @@
 ### Control plane and protocol
 
 - Where does the first control plane run?
-- Resolved: one WebSocket per agent; the provider's JSONL stays authoritative and every new entry is copied to the server, which serves browser replay ([ADR 0006](adr/0006-provider-protocol.md)).
+- Resolved: the agent long-polls for work and each Session streams on its own over HTTPS and SSE, as Claude Code does; the provider's JSONL stays authoritative and every new entry is copied to the server, which serves browser replay ([ADR 0006](adr/0006-provider-protocol.md)).
 - Which operations are synchronous commands versus desired state reconciled asynchronously?
 
 ### Projects and shared state
