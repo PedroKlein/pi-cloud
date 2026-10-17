@@ -180,6 +180,31 @@ No default isolation policy has been selected. It may be an Environment choice r
 
 ## Deployment topologies
 
+### v1 topology
+
+v1 is a VM-hosted Cell with one laptop provider ([vision](vision.md#scope), [ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
+
+```mermaid
+flowchart LR
+    BROWSER[Browser or phone] -->|SSH tunnel| SERVER
+    subgraph VM[Always-on VM]
+        SERVER[pi-cloud server: Control Plane, web UI, SQLite]
+        VMP[Built-in VM Provider]
+        SERVER --- VMP
+    end
+    subgraph LAPTOP[Laptop]
+        AGENT[pi-cloud agent: Laptop Provider]
+    end
+    AGENT -->|outbound over SSH tunnel| SERVER
+```
+
+- `pi-cloud server` runs on the VM. It serves the UI, stores Sessions, Projects, Threads, and attempts in SQLite, assigns Sessions to providers, and relays input and output.
+- The same process embeds a VM Provider, which uses the same provider interface as a remote agent.
+- `pi-cloud agent` runs on the laptop and connects to the server through the tunnel. Its Sessions pause while the laptop sleeps; VM Sessions keep running.
+- A Project can place its coordinator on the VM and individual Threads on the laptop.
+
+v2 moves `pi-cloud server` into Kubernetes and adds a Kubernetes provider without changing these roles.
+
 ### Local Cell
 
 The Control Plane and Provider Agent run on the same machine. Sessions use local processes and worktrees. If the machine sleeps, the Cell is unavailable.
