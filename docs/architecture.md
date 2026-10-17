@@ -91,7 +91,7 @@ The same flow applies to independent Sessions, Project coordinators, and Project
 
 A Session may have several Runtime attempts over its life. Each assignment needs a lease and monotonically increasing generation so only one Runtime may execute the Session.
 
-If a provider disconnects, the Control Plane waits for lease expiry, marks the attempt interrupted, and decides whether the Session can be reconstructed. Late events from an old generation are rejected. Without fencing, a network partition could allow two Runtimes to continue the same Session and Workspace.
+If a provider disconnects, the Control Plane waits for lease expiry, marks the attempt interrupted, and decides whether the Session can be reconstructed. In v1 a Session can't leave its provider, so a disconnect only marks the provider offline and its Sessions keep running ([ADR 0006](adr/0006-provider-protocol.md)). Late events from an old generation are rejected. Without fencing, a network partition could allow two Runtimes to continue the same Session and Workspace.
 
 Reconstruction restores persisted conversation and files. It does not restore a running shell command, subagent, test process, terminal, or in-memory turn. Interruptions remain visible in Session history.
 
