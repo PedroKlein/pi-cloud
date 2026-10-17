@@ -17,8 +17,7 @@
 
 ### Blocking the first slice
 
-- How does the user authenticate to the web UI, and how does a Provider Agent enroll with the Control Plane?
-- Where do model credentials for hosted Sessions live: on the Control Plane, on each provider, or brokered?
+- Resolved: no auth in v1 behind localhost or an SSH tunnel, and each provider keeps its own Pi model auth ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
 - How does a Provider Agent that loses its lease fence itself, so an old process stops changing the Workspace?
 
 ### Product and repository boundary
