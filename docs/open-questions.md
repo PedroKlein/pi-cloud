@@ -82,7 +82,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Runtime and isolation
 
-- When a Session can be rescheduled onto another machine, how long is its lease, and how does a provider that loses it stop its own Sessions?
+- When Sessions can move between machines, do they follow Claude Code cloud sessions (resume on fresh compute from the server transcript and a fresh clone), and how does a provider that loses its lease stop its own Sessions?
 - What is the default Environment isolation mode for a personal Cell?
 - Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod?
 - Where do subagents run when the parent Session has a dedicated pod?
