@@ -17,6 +17,38 @@ One personal installation should be able to manage:
 
 A later team product may federate personal installations or introduce shared control-plane resources, but the first product is a control plane for one user.
 
+## Use cases
+
+These scenarios are the yardstick for scope. A feature that serves none of them waits. They are a first draft and should be edited as real use shows what matters.
+
+1. **Work from anywhere.** Start a refactor on the always-on VM from a phone, close the app, and check the result later from a laptop browser with the full transcript and terminal intact.
+2. **Use the machine the work needs.** A Session that needs a local simulator, keychain, or database runs on the laptop, while the rest of the Project keeps running on the VM.
+3. **Run a Project.** One coordinator Session splits a goal into three Thread Sessions across two repositories, each on its own branch, and summarizes their reports without reading every transcript.
+4. **Survive interruptions.** A laptop sleeps or a provider crashes mid-turn. The Session shows the interrupted attempt and continues from its persisted transcript and Workspace once the provider is back.
+5. **Keep personalization.** Hosted Sessions use the same Pi packages, extensions, skills, prompts, and models as the user's local Pi.
+
+## Scope
+
+### v1: personal sessions and Projects on your own machines
+
+- Independent Sessions and Projects with full Thread Sessions.
+- Local and VM Runtime Providers, connected outbound to one Control Plane.
+- One trusted shared-process isolation mode. An Environment means which provider and which directory or worktree.
+- A Session stays on the provider it started on. Moving to another provider is an explicit fork.
+- Authentication for the web UI and Provider Agent enrollment.
+- A minimal web UI.
+
+### v2: execution platform
+
+- Kubernetes provider, dedicated Session pods, and batch Jobs.
+- Enforced network policy, brokered secrets, and hardened runtimes.
+- Fully versioned, portable Profiles for fresh runtimes.
+- A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
+
+### Later
+
+Everything under "Expected evolution" below.
+
 ## Product model
 
 A Project is one ongoing goal and coordinating conversation. Its workers are threads, and each thread is a full Pi session. Threads are not renamed subagents: a thread can use its own subagents, workflows, tools, context window, workspace, and model configuration.

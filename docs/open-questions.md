@@ -15,6 +15,12 @@
 
 ## Decisions needed before an implementation plan
 
+### Blocking the first slice
+
+- How does the user authenticate to the web UI, and how does a Provider Agent enroll with the Control Plane?
+- Where do model credentials for hosted Sessions live: on the Control Plane, on each provider, or brokered?
+- How does a Provider Agent that loses its lease fence itself, so an old process stops changing the Workspace?
+
 ### Product and repository boundary
 
 - Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
@@ -25,13 +31,6 @@
 ### First end-to-end experience
 
 - Resolved: one independent Session end to end on a local provider with a minimal web UI, then VM, then Kubernetes ([ADR 0004](adr/0004-first-slice-and-provider-order.md)).
-
-### Runtime and isolation
-
-- What is the default Environment isolation mode for a personal Cell?
-- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod?
-- Where do subagents run when the parent Session has a dedicated pod?
-- What resource and concurrency limits prevent nested work from starving other Sessions?
 
 ### Session lifecycle
 
@@ -58,15 +57,6 @@
 - How are extension compatibility and native dependencies validated against an Environment?
 - What is the exact configuration precedence and merge behavior?
 
-### Environments
-
-- Is an Environment tied to one Runtime Provider, or can equivalent providers serve one Environment pool?
-- How are Environment revisions built and cached?
-- Do initial Kubernetes Environments use immutable OCI images, setup volumes, or both?
-- Which network-policy claims can be strongly enforced on each provider?
-- How are readable secrets distinguished from future brokered network credentials?
-- May Project coordinators and worker Threads use different default Environments?
-
 ### Control plane and protocol
 
 - Where does the first control plane run?
@@ -84,6 +74,33 @@
 - Are Library artifacts immutable publications, versioned files, or a writable shared space?
 - How are overlapping repository or file claims detected before work begins?
 
+### Future compatibility without premature implementation
+
+- Which ownership and actor fields should exist now to avoid a single-user data-model dead end?
+- What common RunRequest can later serve humans, schedules, webhooks, Projects, and automation flows?
+- Which domain events should exist from the beginning?
+- How should personal Cells later federate into a Team Hub without merging their local trust boundaries?
+
+## Deferred to v2
+
+These depend on the Kubernetes provider or the public extension SDK, which [vision.md](vision.md#scope) places in v2. v1 uses one trusted shared-process mode and one provider per Environment.
+
+### Runtime and isolation
+
+- What is the default Environment isolation mode for a personal Cell?
+- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod?
+- Where do subagents run when the parent Session has a dedicated pod?
+- What resource and concurrency limits prevent nested work from starving other Sessions?
+
+### Environments
+
+- Is an Environment tied to one Runtime Provider, or can equivalent providers serve one Environment pool?
+- How are Environment revisions built and cached?
+- Do initial Kubernetes Environments use immutable OCI images, setup volumes, or both?
+- Which network-policy claims can be strongly enforced on each provider?
+- How are readable secrets distinguished from future brokered network credentials?
+- May Project coordinators and worker Threads use different default Environments?
+
 ### Extension system
 
 - What is the smallest stable Pi Cloud extension interface?
@@ -91,13 +108,6 @@
 - What capabilities must an extension declare?
 - Which first-party features must prove the public extension surface?
 - How are blocking or faulty trusted extensions diagnosed and disabled safely?
-
-### Future compatibility without premature implementation
-
-- Which ownership and actor fields should exist now to avoid a single-user data-model dead end?
-- What common RunRequest can later serve humans, schedules, webhooks, Projects, and automation flows?
-- Which domain events should exist from the beginning?
-- How should personal Cells later federate into a Team Hub without merging their local trust boundaries?
 
 ## Explicitly postponed
 
