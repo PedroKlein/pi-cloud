@@ -18,7 +18,7 @@
 ### Blocking the first slice
 
 - Resolved: no auth in v1 behind localhost or an SSH tunnel, and each provider keeps its own Pi model auth ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
-- How does a Provider Agent that loses its lease fence itself, so an old process stops changing the Workspace?
+- Resolved: a v1 Session only runs on its own provider, so the agent never starts a second attempt while the first is alive, and the server drops messages from old generations ([ADR 0006](adr/0006-provider-protocol.md)).
 
 ### Product and repository boundary
 
@@ -36,8 +36,7 @@
 - When may an idle Session unload or stop?
 - Does the first version keep active Session processes warm indefinitely?
 - Which state must be persisted before a Runtime can release a Session?
-- How are interrupted attempts shown and recovered?
-- What lease and fencing protocol prevents duplicate execution after partitions?
+- Resolved: Sessions keep running while their provider is offline; an attempt is interrupted only when its process dies, and the agent reloads it idle on restart ([ADR 0006](adr/0006-provider-protocol.md)).
 
 ### Workspace durability
 
@@ -59,10 +58,7 @@
 ### Control plane and protocol
 
 - Where does the first control plane run?
-- What protocol connects Provider Agents and hosted Sessions to it?
-- How are live events buffered and replayed after reconnects?
-- Which component owns the authoritative Pi transcript while a Session runs?
-- How frequently is transcript state replicated away from a provider?
+- Resolved: one WebSocket per agent; the provider's JSONL stays authoritative and every new entry is copied to the server, which serves browser replay ([ADR 0006](adr/0006-provider-protocol.md)).
 - Which operations are synchronous commands versus desired state reconciled asynchronously?
 
 ### Projects and shared state
@@ -86,6 +82,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Runtime and isolation
 
+- When a Session can be rescheduled onto another machine, how long is its lease, and how does a provider that loses it stop its own Sessions?
 - What is the default Environment isolation mode for a personal Cell?
 - Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod?
 - Where do subagents run when the parent Session has a dedicated pod?
