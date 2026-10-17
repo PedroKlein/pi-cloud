@@ -11,13 +11,18 @@ The protocol has to cover three things: how the agent and server talk, who may r
 
 The architecture review flagged two gaps here: a provider that loses its lease must stop touching the Workspace, and the transcript lives only on the provider while a Session runs.
 
+Claude Code is the main reference ([research](../research.md)). Its two remote modes map onto the v1 providers:
+
+- The laptop matches [Remote Control](https://code.claude.com/docs/en/remote-control): the session runs on your machine, connects outbound, and the server stores the transcript to sync devices. If the laptop sleeps or the network drops, the session keeps running and reconnects on its own.
+- The VM matches a [self-hosted cloud runner](https://code.claude.com/docs/en/self-hosted-environments): the runner polls outbound, each poll renews a lease of about 60 seconds, and the control plane stores the transcript. A lapsed lease requeues the Session on another runner, which works because each runner clones the repository fresh. v1 has one VM and keeps Workspaces on it, so it has nowhere to requeue to.
+
 Because v1 Sessions are pinned to one provider, only that provider's agent can ever start an attempt for them. Two copies of a Session can't run on two machines in v1. The remaining duplicate risk is inside one machine: an old Pi process still running when the agent starts a new attempt.
 
 ## Decision
 
 ### Connection
 
-- The agent opens one WebSocket to the server and keeps it open, reconnecting with backoff. Everything goes over it: assignments, commands, transcript entries, live events, and terminal bytes.
+- The agent opens one WebSocket to the server and keeps it open, reconnecting with backoff. Claude Code uses HTTPS polling plus server-sent events instead; one socket is simpler when both ends are ours. Everything goes over it: assignments, commands, transcript entries, live events, and terminal bytes.
 - Messages are JSON, typed in the shared `protocol` package. The first message is a `hello` carrying the protocol version and the provider's configured name. The server rejects a version it doesn't support.
 - The built-in VM provider implements the same interface in process, without a socket.
 
