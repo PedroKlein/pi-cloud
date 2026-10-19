@@ -1,0 +1,378 @@
+import { randomUUID } from "node:crypto";
+import type {
+  Assignment,
+  Attempt,
+  Command,
+  CreateSession,
+  LivePost,
+  Session,
+  SessionEvent,
+  SessionStatus,
+  StartFailure,
+  TranscriptAck,
+  TranscriptBatch,
+} from "@pi-cloud/protocol";
+
+export type StoredSession = Omit<Session, "online">;
+
+export interface SessionStore {
+  insert: (session: StoredSession) => void;
+  update: (session: StoredSession) => void;
+  get: (id: string) => StoredSession | undefined;
+  list: () => readonly StoredSession[];
+  byProvider: (
+    provider: string,
+    statuses: readonly SessionStatus[],
+  ) => readonly StoredSession[];
+  transcriptLength: (id: string) => number;
+  appendTranscript: (
+    id: string,
+    start: number,
+    lines: readonly string[],
+  ) => void;
+  transcript: (id: string, from: number) => readonly string[];
+}
+
+export type Rejection = "not_found" | "stale_generation" | "offline";
+
+export type Result<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly reason: Rejection };
+
+export interface SessionsOptions {
+  readonly pollWaitMs?: number;
+  readonly offlineAfterMs?: number;
+}
+
+export interface Claim {
+  readonly start: readonly Assignment[];
+  readonly interrupted: readonly Attempt[];
+}
+
+type Listener<T> = (value: T) => void;
+
+interface ProviderState {
+  polling: number;
+  lastPoll: number;
+  offlineTimer: ReturnType<typeof setTimeout> | undefined;
+}
+
+const claimable: readonly SessionStatus[] = ["queued", "interrupted"];
+const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
+
+export class Sessions {
+  readonly #store: SessionStore;
+  readonly #pollWaitMs: number;
+  readonly #offlineAfterMs: number;
+  readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
+  readonly #hosts = new Map<
+    string,
+    { readonly send: Listener<Command>; readonly end: () => void }
+  >();
+  readonly #pollers = new Map<string, Set<() => void>>();
+  readonly #providers = new Map<string, ProviderState>();
+
+  constructor(store: SessionStore, options: SessionsOptions = {}) {
+    this.#store = store;
+    this.#pollWaitMs = options.pollWaitMs ?? 10_000;
+    this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
+  }
+
+  create(request: CreateSession): Session {
+    const session: StoredSession = {
+      id: randomUUID(),
+      provider: request.provider,
+      cwd: request.cwd,
+      status: "queued",
+      generation: 0,
+      createdAt: new Date().toISOString(),
+      interruptedAt: null,
+      error: null,
+    };
+    this.#store.insert(session);
+    for (const wake of this.#pollers.get(session.provider) ?? []) {
+      wake();
+    }
+    return this.#view(session);
+  }
+
+  list(): readonly Session[] {
+    return this.#store.list().map((session) => this.#view(session));
+  }
+
+  get(id: string): Session | undefined {
+    const session = this.#store.get(id);
+    return session && this.#view(session);
+  }
+
+  async claim(
+    provider: string,
+    running: readonly Attempt[],
+    signal: AbortSignal,
+  ): Promise<Claim> {
+    const state = this.#pollStarted(provider);
+    try {
+      const interrupted = this.#interruptMissing(provider, running);
+      const start = this.#claimNext(provider);
+      if (start.length > 0 || signal.aborted) {
+        return { start, interrupted };
+      }
+      await this.#waitForWork(provider, signal);
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
+        start: signal.aborted ? [] : this.#claimNext(provider),
+        interrupted,
+      };
+    } finally {
+      this.#pollEnded(provider, state);
+    }
+  }
+
+  fail(id: string, failure: StartFailure): Result<undefined> {
+    const current = this.#current(id, failure.generation);
+    if (!current.ok) {
+      return current;
+    }
+    this.#update({ ...current.value, status: "failed", error: failure.error });
+    return { ok: true, value: undefined };
+  }
+
+  appendTranscript(id: string, batch: TranscriptBatch): Result<TranscriptAck> {
+    const current = this.#current(id, batch.generation);
+    if (!current.ok) {
+      return current;
+    }
+    const length = this.#store.transcriptLength(id);
+    if (batch.start <= length) {
+      const fresh = batch.lines.slice(length - batch.start);
+      if (fresh.length > 0) {
+        this.#store.appendTranscript(id, length, fresh);
+        fresh.forEach((entry, i) => {
+          this.#emit(id, { type: "entry", line: length + i, entry });
+        });
+      }
+    }
+    return {
+      ok: true,
+      value: { acked: this.#store.transcriptLength(id) },
+    };
+  }
+
+  publish(id: string, post: LivePost): Result<undefined> {
+    const current = this.#current(id, post.generation);
+    if (!current.ok) {
+      return current;
+    }
+    let session = current.value;
+    for (const event of post.events) {
+      if (event.type === "status") {
+        session = { ...session, status: event.status };
+        this.#update(session);
+      }
+      this.#emit(id, { type: "live", event });
+    }
+    return { ok: true, value: undefined };
+  }
+
+  watch(
+    id: string,
+    listener: Listener<SessionEvent>,
+  ): Result<{
+    readonly replay: readonly SessionEvent[];
+    readonly stop: () => void;
+  }> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+    const watchers = this.#watchers.get(id) ?? new Set();
+    this.#watchers.set(id, watchers);
+    watchers.add(listener);
+    const replay: SessionEvent[] = [
+      { type: "session", session: this.#view(session) },
+      ...this.#store
+        .transcript(id, 0)
+        .map((entry, line): SessionEvent => ({ type: "entry", line, entry })),
+    ];
+    return {
+      ok: true,
+      value: {
+        replay,
+        stop: () => {
+          watchers.delete(listener);
+        },
+      },
+    };
+  }
+
+  send(id: string, command: Command): Result<undefined> {
+    if (!this.#store.get(id)) {
+      return { ok: false, reason: "not_found" };
+    }
+    const host = this.#hosts.get(id);
+    if (!host) {
+      return { ok: false, reason: "offline" };
+    }
+    host.send(command);
+    return { ok: true, value: undefined };
+  }
+
+  attach(
+    id: string,
+    generation: number,
+    send: Listener<Command>,
+    end: () => void,
+  ): Result<() => void> {
+    const current = this.#current(id, generation);
+    if (!current.ok) {
+      return current;
+    }
+    const host = { send, end };
+    this.#hosts.get(id)?.end();
+    this.#hosts.set(id, host);
+    return {
+      ok: true,
+      value: () => {
+        if (this.#hosts.get(id) === host) {
+          this.#hosts.delete(id);
+        }
+      },
+    };
+  }
+
+  close(): void {
+    for (const state of this.#providers.values()) {
+      clearTimeout(state.offlineTimer);
+    }
+  }
+
+  #interruptMissing(
+    provider: string,
+    running: readonly Attempt[],
+  ): readonly Attempt[] {
+    const now = new Date().toISOString();
+    const interrupted: Attempt[] = [];
+    for (const session of this.#store.byProvider(provider, attempting)) {
+      const alive = running.some(
+        (attempt) =>
+          attempt.sessionId === session.id &&
+          attempt.generation === session.generation,
+      );
+      if (!alive) {
+        this.#hosts.get(session.id)?.end();
+        this.#update({ ...session, status: "interrupted", interruptedAt: now });
+        interrupted.push({
+          sessionId: session.id,
+          generation: session.generation,
+        });
+      }
+    }
+    return interrupted;
+  }
+
+  #claimNext(provider: string): Assignment[] {
+    return this.#store.byProvider(provider, claimable).map((next) => {
+      const session: StoredSession = {
+        ...next,
+        status: "starting",
+        generation: next.generation + 1,
+        error: null,
+      };
+      this.#update(session);
+      return {
+        sessionId: session.id,
+        generation: session.generation,
+        cwd: session.cwd,
+      };
+    });
+  }
+
+  async #waitForWork(provider: string, signal: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const pollers = this.#pollers.get(provider) ?? new Set();
+      this.#pollers.set(provider, pollers);
+      const done = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", done);
+        pollers.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, this.#pollWaitMs);
+      signal.addEventListener("abort", done);
+      pollers.add(done);
+    });
+  }
+
+  #pollStarted(provider: string): ProviderState {
+    const state = this.#providers.get(provider) ?? {
+      polling: 0,
+      lastPoll: 0,
+      offlineTimer: undefined,
+    };
+    this.#providers.set(provider, state);
+    const wasOnline = this.#online(provider);
+    state.polling++;
+    clearTimeout(state.offlineTimer);
+    if (!wasOnline) {
+      this.#emitProvider(provider);
+    }
+    return state;
+  }
+
+  #pollEnded(provider: string, state: ProviderState): void {
+    state.polling--;
+    state.lastPoll = Date.now();
+    if (state.polling > 0) {
+      return;
+    }
+    state.offlineTimer = setTimeout(() => {
+      this.#emitProvider(provider);
+    }, this.#offlineAfterMs);
+  }
+
+  #online(provider: string): boolean {
+    const state = this.#providers.get(provider);
+    return (
+      state !== undefined &&
+      (state.polling > 0 || Date.now() - state.lastPoll < this.#offlineAfterMs)
+    );
+  }
+
+  #emitProvider(provider: string): void {
+    const sessions = this.#store
+      .list()
+      .filter((session) => session.provider === provider);
+    for (const session of sessions) {
+      this.#emit(session.id, { type: "session", session: this.#view(session) });
+    }
+  }
+
+  #current(id: string, generation: number): Result<StoredSession> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+    if (
+      session.generation !== generation ||
+      !attempting.includes(session.status)
+    ) {
+      return { ok: false, reason: "stale_generation" };
+    }
+    return { ok: true, value: session };
+  }
+
+  #update(session: StoredSession): void {
+    this.#store.update(session);
+    this.#emit(session.id, { type: "session", session: this.#view(session) });
+  }
+
+  #view(session: StoredSession): Session {
+    return { ...session, online: this.#online(session.provider) };
+  }
+
+  #emit(id: string, event: SessionEvent): void {
+    for (const listener of this.#watchers.get(id) ?? []) {
+      listener(event);
+    }
+  }
+}

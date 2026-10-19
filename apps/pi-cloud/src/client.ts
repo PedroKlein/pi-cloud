@@ -1,0 +1,171 @@
+import { setTimeout as sleep } from "node:timers/promises";
+import {
+  type Assignment,
+  type Command,
+  type LivePost,
+  type StartFailure,
+  protocolVersion,
+  providerHeader,
+  type TranscriptAck,
+  type TranscriptBatch,
+  versionHeader,
+  type Work,
+} from "@pi-cloud/protocol";
+import type { ControlPlane, Log } from "@pi-cloud/providers";
+import type { SessionStream } from "@pi-cloud/sessionhost";
+import { readSse } from "./sse";
+
+const reconnectMs = { initial: 500, max: 20_000 };
+const pollTimeoutMs = 30_000;
+
+class HttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+interface Agent {
+  readonly server: string;
+  readonly provider: string;
+}
+
+async function call(
+  agent: Agent,
+  path: string,
+  init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<Response> {
+  const response = await fetch(new URL(path, agent.server), {
+    method: init.method ?? "GET",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      [providerHeader]: agent.provider,
+      ...(init.body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
+    ...(init.signal && { signal: init.signal }),
+  });
+  if (!response.ok) {
+    throw new HttpError(
+      response.status,
+      `${init.method ?? "GET"} ${path}: ${String(response.status)} ${await response.text()}`,
+    );
+  }
+  return response;
+}
+
+export function httpControlPlane(agent: Agent): ControlPlane {
+  return {
+    work: async (poll, signal) =>
+      (await (
+        await call(agent, "/agent/work", {
+          method: "POST",
+          body: poll,
+          signal: AbortSignal.any([signal, AbortSignal.timeout(pollTimeoutMs)]),
+        })
+      ).json()) as Work,
+  };
+}
+
+export async function reportStartFailure(
+  agent: Agent,
+  sessionId: string,
+  failure: StartFailure,
+): Promise<void> {
+  await call(agent, `/agent/sessions/${sessionId}/failed`, {
+    method: "POST",
+    body: failure,
+  });
+}
+
+export function httpSessionStream(
+  agent: Agent,
+  assignment: Assignment,
+  log: Log,
+  fenced: () => void,
+): SessionStream {
+  const { sessionId, generation } = assignment;
+  const base = `/agent/sessions/${sessionId}`;
+  const post = async (path: string, body: unknown): Promise<Response> => {
+    try {
+      return await call(agent, `${base}/${path}`, { method: "POST", body });
+    } catch (error) {
+      if (rejected(error)) {
+        fenced();
+      }
+      throw error;
+    }
+  };
+  return {
+    uploadTranscript: async (start, lines) => {
+      const batch: TranscriptBatch = { generation, start, lines };
+      const response = await post("transcript", batch);
+      return ((await response.json()) as TranscriptAck).acked;
+    },
+    publish: async (events) => {
+      const live: LivePost = { generation, events };
+      await post("live", live);
+    },
+    commands: (listener) => {
+      const controller = new AbortController();
+      void followCommands(
+        agent,
+        `${base}/commands?generation=${String(generation)}`,
+        listener,
+        log,
+        controller.signal,
+      ).then((stoppedByServer) => {
+        if (stoppedByServer) {
+          fenced();
+        }
+      });
+      return () => {
+        controller.abort();
+      };
+    },
+  };
+}
+
+function rejected(error: unknown): boolean {
+  return (
+    error instanceof HttpError && (error.status === 404 || error.status === 409)
+  );
+}
+
+async function followCommands(
+  agent: Agent,
+  path: string,
+  listener: (command: Command) => void,
+  log: Log,
+  signal: AbortSignal,
+): Promise<boolean> {
+  let delayMs = reconnectMs.initial;
+  while (!signal.aborted) {
+    try {
+      const response = await call(agent, path, { signal });
+      delayMs = reconnectMs.initial;
+      for await (const command of readSse(response)) {
+        listener(command as Command);
+      }
+    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the await above is pending
+      if (signal.aborted) {
+        return false;
+      }
+      if (rejected(error)) {
+        log("command stream rejected", { path, error: String(error) });
+        return true;
+      }
+      log("command stream failed", {
+        path,
+        error: String(error),
+        retryInMs: delayMs,
+      });
+    }
+    await sleep(delayMs, undefined, { signal }).catch(() => undefined);
+    delayMs = Math.min(delayMs * 2, reconnectMs.max);
+  }
+  return false;
+}

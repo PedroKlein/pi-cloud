@@ -1,0 +1,497 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxText,
+} from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import { runAgent } from "./agent";
+import { serve } from "./serve";
+import { readSse } from "./sse";
+
+let root: string;
+let server: ReturnType<typeof serve>;
+let faux: ReturnType<typeof fauxProvider>;
+let runtime: ModelRuntime;
+let agents: (() => Promise<void>)[];
+let laptop: () => Promise<void>;
+
+const quiet = (): void => undefined;
+
+function startAgent(
+  provider: string,
+  extensionPaths: readonly string[] = [],
+): () => Promise<void> {
+  const controller = new AbortController();
+  const done = runAgent({
+    server: server.url.href,
+    provider,
+    dataDir: join(root, provider),
+    agentDir: join(root, "pi"),
+    extensionPaths,
+    models: { runtime, model: faux.getModel() },
+    log: quiet,
+    signal: controller.signal,
+  });
+  const stop = async (): Promise<void> => {
+    controller.abort();
+    await done;
+  };
+  agents.push(stop);
+  return stop;
+}
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
+  server = serve({
+    port: 0,
+    database: ":memory:",
+    sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
+    log: quiet,
+  });
+  faux = fauxProvider();
+  runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+  runtime.registerNativeProvider(faux.provider);
+  agents = [];
+  laptop = startAgent("laptop");
+});
+
+afterEach(async () => {
+  await Promise.all(agents.map(async (stop) => stop()));
+  await server.stop();
+  await rm(root, { recursive: true, force: true });
+});
+
+async function api(path: string, body?: unknown): Promise<Response> {
+  return fetch(new URL(path, server.url), {
+    method: body === undefined ? "GET" : "POST",
+    ...(body !== undefined && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
+}
+
+async function createSession(provider: string): Promise<Session> {
+  return (await (
+    await api("/api/sessions", { provider, cwd: root })
+  ).json()) as Session;
+}
+
+async function watch(
+  sessionId: string,
+): Promise<
+  (
+    until: (events: readonly SessionEvent[]) => boolean,
+  ) => Promise<SessionEvent[]>
+> {
+  const controller = new AbortController();
+  const response = await fetch(
+    new URL(`/api/sessions/${sessionId}/events`, server.url),
+    { signal: controller.signal },
+  );
+  return async (until) => {
+    const events: SessionEvent[] = [];
+    for await (const event of readSse(response)) {
+      events.push(event as SessionEvent);
+      if (until(events)) {
+        break;
+      }
+    }
+    controller.abort();
+    return events;
+  };
+}
+
+async function follow(
+  sessionId: string,
+  until: (events: readonly SessionEvent[]) => boolean,
+): Promise<SessionEvent[]> {
+  return (await watch(sessionId))(until);
+}
+
+const status =
+  (wanted: Session["status"]) =>
+  (events: readonly SessionEvent[]): boolean =>
+    events.at(-1)?.type === "session" &&
+    events.some((e) => e.type === "session" && e.session.status === wanted);
+
+function roles(events: readonly SessionEvent[]): string[] {
+  return events.flatMap((event) => {
+    if (event.type !== "entry") {
+      return [];
+    }
+    const entry = JSON.parse(event.entry) as { message?: { role: string } };
+    return entry.message?.role ?? [];
+  });
+}
+
+test("chats with a session on an agent and replays it later", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello from pi")])]);
+  const session = await createSession("laptop");
+  expect(session.status).toBe("queued");
+
+  await follow(session.id, status("idle"));
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+  expect(sent.status).toBe(202);
+  const live = await follow(session.id, (events) =>
+    roles(events).includes("assistant"),
+  );
+  const replay = await follow(
+    session.id,
+    (events) => roles(events).length === roles(live).length,
+  );
+
+  expect(roles(replay).slice(-2)).toEqual(["user", "assistant"]);
+  expect(replay.filter((e) => e.type === "entry")).toEqual(
+    live.filter((e) => e.type === "entry"),
+  );
+});
+
+test("streams text as it is generated", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("streamed reply")])]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  const watching = await watch(session.id);
+  const done = watching(
+    (events) =>
+      events.some(
+        (e) =>
+          e.type === "live" &&
+          e.event.type === "status" &&
+          e.event.status === "idle",
+      ) && roles(events).includes("assistant"),
+  );
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+  const events = await done;
+
+  const text = events
+    .flatMap((e) =>
+      e.type === "live" && e.event.type === "text" ? e.event.delta : [],
+    )
+    .join("");
+  expect(text).toBe("streamed reply");
+});
+
+test("rejects commands for a session whose provider is not connected", async () => {
+  const session = await createSession("vm");
+
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  expect(sent.status).toBe(409);
+  expect(await sent.json()).toEqual({ error: "offline" });
+});
+
+async function asAgent(
+  provider: string,
+  path: string,
+  body?: unknown,
+  version = "1",
+): Promise<Response> {
+  return fetch(new URL(path, server.url), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      "pi-cloud-protocol": version,
+      "pi-cloud-provider": provider,
+      "content-type": "application/json",
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+}
+
+test("keeps transcript lines once and in order across resends", async () => {
+  const session = await createSession("vm");
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+  const generation = work.start[0]?.generation;
+  const path = `/agent/sessions/${session.id}/transcript`;
+
+  const first = await asAgent("vm", path, {
+    generation,
+    start: 0,
+    lines: ["a", "b"],
+  });
+  const overlap = await asAgent("vm", path, {
+    generation,
+    start: 1,
+    lines: ["b", "c"],
+  });
+  const gap = await asAgent("vm", path, { generation, start: 5, lines: ["f"] });
+  const replay = await follow(
+    session.id,
+    (events) => events.filter((e) => e.type === "entry").length === 3,
+  );
+
+  expect(await first.json()).toEqual({ acked: 2 });
+  expect(await overlap.json()).toEqual({ acked: 3 });
+  expect(await gap.json()).toEqual({ acked: 3 });
+  expect(replay.flatMap((e) => (e.type === "entry" ? e.entry : []))).toEqual([
+    "a",
+    "b",
+    "c",
+  ]);
+});
+
+test("drops messages from an older generation", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+
+  const stale = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/transcript`,
+    {
+      generation: 0,
+      start: 0,
+      lines: ["old"],
+    },
+  );
+
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toEqual({ error: "stale_generation" });
+});
+
+test("rejects agent requests with another protocol version or provider", async () => {
+  const session = await createSession("vm");
+
+  const version = await asAgent("vm", "/agent/work", { running: [] }, "99");
+  const provider = await asAgent(
+    "laptop-2",
+    `/agent/sessions/${session.id}/live`,
+    {
+      generation: 0,
+      events: [],
+    },
+  );
+
+  expect(version.status).toBe(400);
+  expect(provider.status).toBe(404);
+});
+
+test("rejects malformed requests with 400", async () => {
+  const session = await createSession("vm");
+  const malformed = await fetch(new URL("/api/sessions", server.url), {
+    method: "POST",
+    body: "{not json",
+  });
+  const noGeneration = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/commands`,
+  );
+  const negativeStart = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/transcript`,
+    {
+      generation: 0,
+      start: -1,
+      lines: ["x"],
+    },
+  );
+
+  expect(malformed.status).toBe(400);
+  expect(noGeneration.status).toBe(400);
+  expect(negativeStart.status).toBe(400);
+});
+
+test("aborts a running turn and stores the session as idle", async () => {
+  faux.setResponses([
+    async (_context, options) => {
+      await new Promise((resolve) => {
+        options?.signal?.addEventListener("abort", resolve);
+      });
+      return fauxAssistantMessage([fauxText("too late")]);
+    },
+  ]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const watching = await watch(session.id);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+  await watching(status("running"));
+  const aborted = await api(`/api/sessions/${session.id}/commands`, {
+    type: "abort",
+  });
+  await follow(session.id, status("idle"));
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(aborted.status).toBe(202);
+  expect(stored.status).toBe("idle");
+});
+
+test("rejects commands once the agent stops", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await laptop();
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  expect(sent.status).toBe(409);
+});
+
+test("restarts an interrupted session as a new attempt with its transcript", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes('"one"')
+            ? "remembers one"
+            : "forgot",
+        ),
+      ]),
+  ]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "one",
+  });
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+
+  await laptop();
+  await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+  startAgent("laptop");
+  await follow(
+    session.id,
+    (events) =>
+      events.at(-1)?.type === "session" &&
+      events.some(
+        (e) =>
+          e.type === "session" &&
+          e.session.generation === 2 &&
+          e.session.status === "idle",
+      ),
+  );
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "two",
+  });
+  const replay = await follow(
+    session.id,
+    (events) => roles(events).filter((r) => r === "assistant").length === 2,
+  );
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(roles(replay).filter((r) => r !== "system")).toEqual([
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+  ]);
+  expect(
+    replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
+  ).toBe(true);
+  expect(stored.interruptedAt).not.toBeNull();
+  expect(stored.online).toBe(true);
+});
+
+test("marks a session failed when its host cannot start", async () => {
+  startAgent("broken", [join(root, "missing-extension.ts")]);
+  const session = await createSession("broken");
+
+  await follow(session.id, status("failed"));
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored).toMatchObject({ status: "failed", generation: 1 });
+  expect(stored.error).toContain("missing-extension.ts");
+});
+
+test("keeps a session running through a provider outage", async () => {
+  const session = await createSession("vm");
+  const running = [{ sessionId: session.id, generation: 1 }];
+  await asAgent("vm", "/agent/work", { running: [] });
+
+  const offline = await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+  await asAgent("vm", "/agent/work", { running });
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(offline.at(-1)).toMatchObject({
+    type: "session",
+    session: { status: "starting", online: false },
+  });
+  expect(stored).toMatchObject({
+    status: "starting",
+    generation: 1,
+    online: true,
+    interruptedAt: null,
+  });
+});
+
+test("takes a session back when another poll claims it", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await asAgent("laptop", "/agent/work", { running: [] });
+  const events = await follow(
+    session.id,
+    (seen) =>
+      seen.at(-1)?.type === "session" &&
+      seen.some(
+        (e) =>
+          e.type === "session" &&
+          e.session.generation === 3 &&
+          e.session.status === "idle",
+      ),
+  );
+
+  expect(events.at(-1)).toMatchObject({
+    type: "session",
+    session: { status: "idle", generation: 3 },
+  });
+});
+
+test("closes the command stream of an interrupted attempt", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+  const commands = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/commands?generation=1`,
+  );
+
+  await asAgent("vm", "/agent/work", { running: [] });
+  const received: unknown[] = [];
+  for await (const command of readSse(commands)) {
+    received.push(command);
+  }
+
+  expect(commands.status).toBe(200);
+  expect(received).toEqual([]);
+});

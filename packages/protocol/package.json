@@ -1,0 +1,6 @@
+{
+  "name": "@pi-cloud/protocol",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts"
+}

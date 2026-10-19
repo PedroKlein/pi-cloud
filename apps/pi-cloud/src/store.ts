@@ -1,0 +1,121 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { SessionStatus } from "@pi-cloud/protocol";
+import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
+
+interface SessionRow {
+  id: string;
+  provider: string;
+  cwd: string;
+  status: SessionStatus;
+  generation: number;
+  created_at: string;
+  interrupted_at: string | null;
+  error: string | null;
+}
+
+const schema = `
+create table if not exists sessions (
+  id text primary key,
+  provider text not null,
+  cwd text not null,
+  status text not null,
+  generation integer not null,
+  created_at text not null,
+  interrupted_at text,
+  error text
+);
+create table if not exists transcript (
+  session_id text not null references sessions (id),
+  line integer not null,
+  entry text not null,
+  primary key (session_id, line)
+);
+`;
+
+export function openStore(path: string): SessionStore & { close: () => void } {
+  if (path !== ":memory:") {
+    mkdirSync(dirname(path), { recursive: true });
+  }
+  const db = new DatabaseSync(path);
+  db.exec("pragma journal_mode = wal");
+  db.exec(schema);
+
+  const toSession = (row: SessionRow): StoredSession => ({
+    id: row.id,
+    provider: row.provider,
+    cwd: row.cwd,
+    status: row.status,
+    generation: row.generation,
+    createdAt: row.created_at,
+    interruptedAt: row.interrupted_at,
+    error: row.error,
+  });
+  const insert = db.prepare(
+    "insert into sessions (id, provider, cwd, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const update = db.prepare(
+    "update sessions set status = ?, generation = ?, interrupted_at = ?, error = ? where id = ?",
+  );
+  const get = db.prepare("select * from sessions where id = ?");
+  const list = db.prepare("select * from sessions order by created_at desc");
+  const byProvider = db.prepare(
+    "select * from sessions where provider = ? and status in (select value from json_each(?)) order by created_at",
+  );
+  const length = db.prepare(
+    "select count(*) as n from transcript where session_id = ?",
+  );
+  const appendLine = db.prepare(
+    "insert into transcript (session_id, line, entry) values (?, ?, ?)",
+  );
+  const transcript = db.prepare(
+    "select entry from transcript where session_id = ? and line >= ? order by line",
+  );
+
+  return {
+    insert: (s) => {
+      insert.run(
+        s.id,
+        s.provider,
+        s.cwd,
+        s.status,
+        s.generation,
+        s.createdAt,
+        s.interruptedAt,
+        s.error,
+      );
+    },
+    update: (s) => {
+      update.run(s.status, s.generation, s.interruptedAt, s.error, s.id);
+    },
+    get: (id) => {
+      const row = get.get(id) as SessionRow | undefined;
+      return row && toSession(row);
+    },
+    list: () => (list.all() as unknown as SessionRow[]).map(toSession),
+    byProvider: (provider, statuses) =>
+      (
+        byProvider.all(
+          provider,
+          JSON.stringify(statuses),
+        ) as unknown as SessionRow[]
+      ).map(toSession),
+    transcriptLength: (id) => (length.get(id) as { n: number }).n,
+    appendTranscript: (id, start, lines) => {
+      db.exec("begin");
+      try {
+        lines.forEach((entry, i) => appendLine.run(id, start + i, entry));
+        db.exec("commit");
+      } catch (error) {
+        db.exec("rollback");
+        throw error;
+      }
+    },
+    transcript: (id, from) =>
+      (transcript.all(id, from) as { entry: string }[]).map((r) => r.entry),
+    close: () => {
+      db.close();
+    },
+  };
+}
