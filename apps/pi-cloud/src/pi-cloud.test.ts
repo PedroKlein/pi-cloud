@@ -15,38 +15,57 @@ import { readSse } from "./sse";
 
 let root: string;
 let server: ReturnType<typeof serve>;
-let stopAgent: AbortController;
-let agentDone: Promise<void>;
 let faux: ReturnType<typeof fauxProvider>;
+let runtime: ModelRuntime;
+let agents: (() => Promise<void>)[];
+let laptop: () => Promise<void>;
 
 const quiet = (): void => undefined;
 
+function startAgent(
+  provider: string,
+  extensionPaths: readonly string[] = [],
+): () => Promise<void> {
+  const controller = new AbortController();
+  const done = runAgent({
+    server: server.url.href,
+    provider,
+    dataDir: join(root, provider),
+    agentDir: join(root, "pi"),
+    extensionPaths,
+    models: { runtime, model: faux.getModel() },
+    log: quiet,
+    signal: controller.signal,
+  });
+  const stop = async (): Promise<void> => {
+    controller.abort();
+    await done;
+  };
+  agents.push(stop);
+  return stop;
+}
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
-  server = serve({ port: 0, database: ":memory:", log: quiet });
+  server = serve({
+    port: 0,
+    database: ":memory:",
+    sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
+    log: quiet,
+  });
   faux = fauxProvider();
-  const runtime = await ModelRuntime.create({
+  runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
   });
   runtime.registerNativeProvider(faux.provider);
-  stopAgent = new AbortController();
-  agentDone = runAgent({
-    server: server.url.href,
-    provider: "laptop",
-    dataDir: join(root, "agent"),
-    agentDir: join(root, "pi"),
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-    log: quiet,
-    signal: stopAgent.signal,
-  });
+  agents = [];
+  laptop = startAgent("laptop");
 });
 
 afterEach(async () => {
-  stopAgent.abort();
-  await agentDone;
+  await Promise.all(agents.map(async (stop) => stop()));
   await server.stop();
   await rm(root, { recursive: true, force: true });
 });
@@ -200,7 +219,9 @@ async function asAgent(
 
 test("keeps transcript lines once and in order across resends", async () => {
   const session = await createSession("vm");
-  const work = (await (await asAgent("vm", "/agent/work")).json()) as {
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [] })
+  ).json()) as {
     start: { generation: number }[];
   };
   const generation = work.start[0]?.generation;
@@ -234,7 +255,7 @@ test("keeps transcript lines once and in order across resends", async () => {
 
 test("drops messages from an older generation", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work");
+  await asAgent("vm", "/agent/work", { running: [] });
 
   const stale = await asAgent(
     "vm",
@@ -253,7 +274,7 @@ test("drops messages from an older generation", async () => {
 test("rejects agent requests with another protocol version or provider", async () => {
   const session = await createSession("vm");
 
-  const version = await asAgent("vm", "/agent/work", undefined, "99");
+  const version = await asAgent("vm", "/agent/work", { running: [] }, "99");
   const provider = await asAgent(
     "laptop-2",
     `/agent/sessions/${session.id}/live`,
@@ -326,12 +347,111 @@ test("rejects commands once the agent stops", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
 
-  stopAgent.abort();
-  await agentDone;
+  await laptop();
   const sent = await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "hi",
   });
 
   expect(sent.status).toBe(409);
+});
+
+test("restarts an interrupted session as a new attempt with its transcript", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes('"one"')
+            ? "remembers one"
+            : "forgot",
+        ),
+      ]),
+  ]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "one",
+  });
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+
+  await laptop();
+  await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+  startAgent("laptop");
+  await follow(
+    session.id,
+    (events) =>
+      events.at(-1)?.type === "session" &&
+      events.some(
+        (e) =>
+          e.type === "session" &&
+          e.session.generation === 2 &&
+          e.session.status === "idle",
+      ),
+  );
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "two",
+  });
+  const replay = await follow(
+    session.id,
+    (events) => roles(events).filter((r) => r === "assistant").length === 2,
+  );
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(roles(replay).filter((r) => r !== "system")).toEqual([
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+  ]);
+  expect(
+    replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
+  ).toBe(true);
+  expect(stored.interruptedAt).not.toBeNull();
+  expect(stored.online).toBe(true);
+});
+
+test("marks a session failed when its host cannot start", async () => {
+  startAgent("broken", [join(root, "missing-extension.ts")]);
+  const session = await createSession("broken");
+
+  const events = await follow(session.id, status("failed"));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(events.length).toBeGreaterThan(0);
+  expect(stored.status).toBe("failed");
+  expect(stored.generation).toBe(1);
+  expect(stored.error).toContain("missing-extension.ts");
+});
+
+test("takes a session back when another poll claims it", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await asAgent("laptop", "/agent/work", { running: [] });
+  const events = await follow(
+    session.id,
+    (seen) =>
+      seen.at(-1)?.type === "session" &&
+      seen.some(
+        (e) =>
+          e.type === "session" &&
+          e.session.generation === 3 &&
+          e.session.status === "idle",
+      ),
+  );
+
+  expect(events.at(-1)).toMatchObject({
+    type: "session",
+    session: { status: "idle", generation: 3 },
+  });
 });

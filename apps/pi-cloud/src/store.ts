@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { Session, SessionStatus } from "@pi-cloud/protocol";
-import type { SessionStore } from "@pi-cloud/sessions";
+import type { SessionStatus } from "@pi-cloud/protocol";
+import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
 
 interface SessionRow {
   id: string;
@@ -11,6 +11,8 @@ interface SessionRow {
   status: SessionStatus;
   generation: number;
   created_at: string;
+  interrupted_at: string | null;
+  error: string | null;
 }
 
 const schema = `
@@ -20,7 +22,9 @@ create table if not exists sessions (
   cwd text not null,
   status text not null,
   generation integer not null,
-  created_at text not null
+  created_at text not null,
+  interrupted_at text,
+  error text
 );
 create table if not exists transcript (
   session_id text not null references sessions (id),
@@ -38,24 +42,26 @@ export function openStore(path: string): SessionStore & { close: () => void } {
   db.exec("pragma journal_mode = wal");
   db.exec(schema);
 
-  const toSession = (row: SessionRow): Session => ({
+  const toSession = (row: SessionRow): StoredSession => ({
     id: row.id,
     provider: row.provider,
     cwd: row.cwd,
     status: row.status,
     generation: row.generation,
     createdAt: row.created_at,
+    interruptedAt: row.interrupted_at,
+    error: row.error,
   });
   const insert = db.prepare(
-    "insert into sessions (id, provider, cwd, status, generation, created_at) values (?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, provider, cwd, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const update = db.prepare(
-    "update sessions set status = ?, generation = ? where id = ?",
+    "update sessions set status = ?, generation = ?, interrupted_at = ?, error = ? where id = ?",
   );
   const get = db.prepare("select * from sessions where id = ?");
   const list = db.prepare("select * from sessions order by created_at desc");
-  const queued = db.prepare(
-    "select * from sessions where provider = ? and status = 'queued' order by created_at",
+  const byProvider = db.prepare(
+    "select * from sessions where provider = ? and status in (select value from json_each(?)) order by created_at",
   );
   const length = db.prepare(
     "select count(*) as n from transcript where session_id = ?",
@@ -69,18 +75,32 @@ export function openStore(path: string): SessionStore & { close: () => void } {
 
   return {
     insert: (s) => {
-      insert.run(s.id, s.provider, s.cwd, s.status, s.generation, s.createdAt);
+      insert.run(
+        s.id,
+        s.provider,
+        s.cwd,
+        s.status,
+        s.generation,
+        s.createdAt,
+        s.interruptedAt,
+        s.error,
+      );
     },
     update: (s) => {
-      update.run(s.status, s.generation, s.id);
+      update.run(s.status, s.generation, s.interruptedAt, s.error, s.id);
     },
     get: (id) => {
       const row = get.get(id) as SessionRow | undefined;
       return row && toSession(row);
     },
     list: () => (list.all() as unknown as SessionRow[]).map(toSession),
-    queued: (provider) =>
-      (queued.all(provider) as unknown as SessionRow[]).map(toSession),
+    byProvider: (provider, statuses) =>
+      (
+        byProvider.all(
+          provider,
+          JSON.stringify(statuses),
+        ) as unknown as SessionRow[]
+      ).map(toSession),
     transcriptLength: (id) => (length.get(id) as { n: number }).n,
     appendTranscript: (id, start, lines) => {
       db.exec("begin");

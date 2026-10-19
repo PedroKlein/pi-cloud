@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Assignment, Work } from "@pi-cloud/protocol";
+import type { Assignment, Attempt, Work, WorkPoll } from "@pi-cloud/protocol";
 
 export interface ControlPlane {
-  work: (signal: AbortSignal) => Promise<Work>;
+  work: (poll: WorkPoll, signal: AbortSignal) => Promise<Work>;
 }
 
 export type Log = (
@@ -13,13 +13,14 @@ export type Log = (
 export interface ProviderOptions {
   readonly controlPlane: ControlPlane;
   readonly start: (assignment: Assignment) => void;
+  readonly running: () => readonly Attempt[];
   readonly log: Log;
   readonly signal: AbortSignal;
   readonly retry?: { readonly initialMs: number; readonly maxMs: number };
 }
 
 export async function runProvider(options: ProviderOptions): Promise<void> {
-  const { controlPlane, start, log, signal } = options;
+  const { controlPlane, start, running, log, signal } = options;
   const { initialMs, maxMs } = options.retry ?? {
     initialMs: 1000,
     maxMs: 20_000,
@@ -30,7 +31,7 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
   log("provider polling for work");
   while (!signal.aborted) {
     try {
-      const work = await controlPlane.work(signal);
+      const work = await controlPlane.work({ running: running() }, signal);
       polls++;
       delayMs = initialMs;
       for (const assignment of work.start) {

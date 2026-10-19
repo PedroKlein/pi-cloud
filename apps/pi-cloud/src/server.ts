@@ -3,16 +3,16 @@ import {
   type CreateSession,
   type LivePost,
   type SessionEvent,
+  type StartFailure,
   protocolVersion,
   providerHeader,
   type TranscriptBatch,
   versionHeader,
+  type WorkPoll,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
 import { sseResponse } from "./sse";
-
-const pollWaitMs = 10_000;
 
 const rejectionStatus = {
   not_found: 404,
@@ -102,15 +102,12 @@ export function createHandler(
         reply(sessions.send(id, await readJson<Command>(request)), 202),
     ],
     [
-      "GET",
+      "POST",
       /^\/agent\/work$/,
       agent(async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
-        const start = await sessions.claim(
-          provider,
-          pollWaitMs,
-          request.signal,
-        );
+        const { running } = await readJson<WorkPoll>(request);
+        const start = await sessions.claim(provider, running, request.signal);
         for (const assignment of start) {
           log("session assigned", { provider, ...assignment });
         }
@@ -126,6 +123,15 @@ export function createHandler(
           throw new BadRequest("start must be a non-negative integer");
         }
         return reply(sessions.appendTranscript(id, batch), 200);
+      }),
+    ],
+    [
+      "POST",
+      /^\/agent\/sessions\/([^/]+)\/failed$/,
+      agent(async (request, [id = ""]) => {
+        const failure = await readJson<StartFailure>(request);
+        log("session failed to start", { sessionId: id, ...failure });
+        return reply(sessions.fail(id, failure), 204);
       }),
     ],
     [

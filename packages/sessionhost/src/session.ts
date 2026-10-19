@@ -39,7 +39,7 @@ export async function startSession(
     cwd,
     agentDir,
     resourceLoader,
-    sessionManager: SessionManager.create(cwd, options.sessionDir),
+    sessionManager: SessionManager.continueRecent(cwd, options.sessionDir),
     ...(options.models && {
       modelRuntime: options.models.runtime,
       model: options.models.model,

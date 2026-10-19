@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Assignment, Work } from "@pi-cloud/protocol";
+import type { Assignment, Work, WorkPoll } from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
 const assignment: Assignment = { sessionId: "s1", generation: 1, cwd: "/w" };
@@ -31,6 +31,7 @@ test("starts assigned sessions and retries failed polls", async () => {
     start: (a) => {
       started.push(a);
     },
+    running: () => [],
     log: (message) => logs.push(message),
     signal: controller.signal,
     retry: { initialMs: 1, maxMs: 1 },
@@ -49,6 +50,7 @@ test("stops while waiting to retry", async () => {
       work: async () => Promise.reject(new Error("down")),
     },
     start: () => undefined,
+    running: () => [],
     log: (message) => {
       logs.push(message);
     },
@@ -60,4 +62,29 @@ test("stops while waiting to retry", async () => {
   await stopped;
 
   expect(logs.at(-1)).toBe("provider stopped");
+});
+
+test("reports the running attempts with every poll", async () => {
+  const controller = new AbortController();
+  const polls: WorkPoll[] = [];
+  const running = [{ sessionId: "s1", generation: 2 }];
+
+  await runProvider({
+    controlPlane: {
+      work: async (poll) => {
+        await Promise.resolve();
+        polls.push(poll);
+        if (polls.length === 2) {
+          controller.abort();
+        }
+        return { start: [] };
+      },
+    },
+    start: () => undefined,
+    running: () => running,
+    log: () => undefined,
+    signal: controller.signal,
+  });
+
+  expect(polls).toEqual([{ running }, { running }]);
 });

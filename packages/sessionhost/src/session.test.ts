@@ -119,3 +119,31 @@ test("fails when an extension does not load", async () => {
   expect(error).toBeInstanceOf(Error);
   expect(String(error)).toContain(broken);
 });
+
+test("continues the session already in the session directory", async () => {
+  const { faux, runtime } = await fauxModels();
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    fauxAssistantMessage([fauxText("second")]),
+  ]);
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models: { runtime, model: faux.getModel() },
+  };
+
+  const first = await startSession(options);
+  await first.prompt("one");
+  first.dispose();
+  const second = await startSession(options);
+  await second.prompt("two");
+  second.dispose();
+
+  expect(second.sessionFile).toBe(first.sessionFile);
+  expect(
+    second.messages.map((m) => m.role).filter((role) => role !== "system"),
+  ).toEqual(["user", "assistant", "user", "assistant"]);
+  expect(await readdir(join(root, "sessions"))).toHaveLength(1);
+});

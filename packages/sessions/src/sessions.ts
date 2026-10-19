@@ -1,21 +1,29 @@
 import { randomUUID } from "node:crypto";
 import type {
   Assignment,
+  Attempt,
   Command,
   CreateSession,
   LivePost,
   Session,
   SessionEvent,
+  SessionStatus,
+  StartFailure,
   TranscriptAck,
   TranscriptBatch,
 } from "@pi-cloud/protocol";
 
+export type StoredSession = Omit<Session, "online">;
+
 export interface SessionStore {
-  insert: (session: Session) => void;
-  update: (session: Session) => void;
-  get: (id: string) => Session | undefined;
-  list: () => readonly Session[];
-  queued: (provider: string) => readonly Session[];
+  insert: (session: StoredSession) => void;
+  update: (session: StoredSession) => void;
+  get: (id: string) => StoredSession | undefined;
+  list: () => readonly StoredSession[];
+  byProvider: (
+    provider: string,
+    statuses: readonly SessionStatus[],
+  ) => readonly StoredSession[];
   transcriptLength: (id: string) => number;
   appendTranscript: (
     id: string,
@@ -31,66 +39,91 @@ export type Result<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly reason: Rejection };
 
+export interface SessionsOptions {
+  readonly pollWaitMs?: number;
+  readonly offlineAfterMs?: number;
+}
+
 type Listener<T> = (value: T) => void;
+
+interface ProviderState {
+  polling: number;
+  lastPoll: number;
+  offlineTimer: ReturnType<typeof setTimeout> | undefined;
+}
+
+const claimable: readonly SessionStatus[] = ["queued", "interrupted"];
+const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
 
 export class Sessions {
   readonly #store: SessionStore;
+  readonly #pollWaitMs: number;
+  readonly #offlineAfterMs: number;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<string, Listener<Command>>();
   readonly #pollers = new Map<string, Set<() => void>>();
+  readonly #providers = new Map<string, ProviderState>();
 
-  constructor(store: SessionStore) {
+  constructor(store: SessionStore, options: SessionsOptions = {}) {
     this.#store = store;
+    this.#pollWaitMs = options.pollWaitMs ?? 10_000;
+    this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
   }
 
   create(request: CreateSession): Session {
-    const session: Session = {
+    const session: StoredSession = {
       id: randomUUID(),
       provider: request.provider,
       cwd: request.cwd,
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),
+      interruptedAt: null,
+      error: null,
     };
     this.#store.insert(session);
     for (const wake of this.#pollers.get(session.provider) ?? []) {
       wake();
     }
-    return session;
+    return this.#view(session);
   }
 
   list(): readonly Session[] {
-    return this.#store.list();
+    return this.#store.list().map((session) => this.#view(session));
   }
 
   get(id: string): Session | undefined {
-    return this.#store.get(id);
+    const session = this.#store.get(id);
+    return session && this.#view(session);
   }
 
   async claim(
     provider: string,
-    waitMs: number,
+    running: readonly Attempt[],
     signal: AbortSignal,
   ): Promise<readonly Assignment[]> {
-    const claimed = this.#claimQueued(provider);
-    if (claimed.length > 0 || signal.aborted) {
-      return claimed;
+    const state = this.#pollStarted(provider);
+    try {
+      this.#interruptMissing(provider, running);
+      const claimed = this.#claimNext(provider);
+      if (claimed.length > 0 || signal.aborted) {
+        return claimed;
+      }
+      await this.#waitForWork(provider, signal);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
+      return signal.aborted ? [] : this.#claimNext(provider);
+    } finally {
+      this.#pollEnded(provider, state);
     }
-    await new Promise<void>((resolve) => {
-      const pollers = this.#pollers.get(provider) ?? new Set();
-      this.#pollers.set(provider, pollers);
-      const done = (): void => {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", done);
-        pollers.delete(done);
-        resolve();
-      };
-      const timer = setTimeout(done, waitMs);
-      signal.addEventListener("abort", done);
-      pollers.add(done);
-    });
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
-    return signal.aborted ? [] : this.#claimQueued(provider);
+  }
+
+  fail(id: string, failure: StartFailure): Result<undefined> {
+    const current = this.#current(id, failure.generation);
+    if (!current.ok) {
+      return current;
+    }
+    this.#update({ ...current.value, status: "failed", error: failure.error });
+    return { ok: true, value: undefined };
   }
 
   appendTranscript(id: string, batch: TranscriptBatch): Result<TranscriptAck> {
@@ -123,8 +156,7 @@ export class Sessions {
     for (const event of post.events) {
       if (event.type === "status") {
         session = { ...session, status: event.status };
-        this.#store.update(session);
-        this.#emit(id, { type: "session", session });
+        this.#update(session);
       }
       this.#emit(id, { type: "live", event });
     }
@@ -146,7 +178,7 @@ export class Sessions {
     this.#watchers.set(id, watchers);
     watchers.add(listener);
     const replay: SessionEvent[] = [
-      { type: "session", session },
+      { type: "session", session: this.#view(session) },
       ...this.#store
         .transcript(id, 0)
         .map((entry, line): SessionEvent => ({ type: "entry", line, entry })),
@@ -194,15 +226,36 @@ export class Sessions {
     };
   }
 
-  #claimQueued(provider: string): Assignment[] {
-    return this.#store.queued(provider).map((queued) => {
-      const session: Session = {
-        ...queued,
+  close(): void {
+    for (const state of this.#providers.values()) {
+      clearTimeout(state.offlineTimer);
+    }
+  }
+
+  #interruptMissing(provider: string, running: readonly Attempt[]): void {
+    const now = new Date().toISOString();
+    for (const session of this.#store.byProvider(provider, attempting)) {
+      const alive = running.some(
+        (attempt) =>
+          attempt.sessionId === session.id &&
+          attempt.generation === session.generation,
+      );
+      if (!alive) {
+        this.#hosts.delete(session.id);
+        this.#update({ ...session, status: "interrupted", interruptedAt: now });
+      }
+    }
+  }
+
+  #claimNext(provider: string): Assignment[] {
+    return this.#store.byProvider(provider, claimable).map((next) => {
+      const session: StoredSession = {
+        ...next,
         status: "starting",
-        generation: queued.generation + 1,
+        generation: next.generation + 1,
+        error: null,
       };
-      this.#store.update(session);
-      this.#emit(session.id, { type: "session", session });
+      this.#update(session);
       return {
         sessionId: session.id,
         generation: session.generation,
@@ -211,15 +264,84 @@ export class Sessions {
     });
   }
 
-  #current(id: string, generation: number): Result<Session> {
+  async #waitForWork(provider: string, signal: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve) => {
+      const pollers = this.#pollers.get(provider) ?? new Set();
+      this.#pollers.set(provider, pollers);
+      const done = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", done);
+        pollers.delete(done);
+        resolve();
+      };
+      const timer = setTimeout(done, this.#pollWaitMs);
+      signal.addEventListener("abort", done);
+      pollers.add(done);
+    });
+  }
+
+  #pollStarted(provider: string): ProviderState {
+    const state = this.#providers.get(provider) ?? {
+      polling: 0,
+      lastPoll: 0,
+      offlineTimer: undefined,
+    };
+    this.#providers.set(provider, state);
+    const wasOnline = this.#online(provider);
+    state.polling++;
+    clearTimeout(state.offlineTimer);
+    if (!wasOnline) {
+      this.#emitProvider(provider);
+    }
+    return state;
+  }
+
+  #pollEnded(provider: string, state: ProviderState): void {
+    state.polling--;
+    state.lastPoll = Date.now();
+    if (state.polling > 0) {
+      return;
+    }
+    state.offlineTimer = setTimeout(() => {
+      this.#emitProvider(provider);
+    }, this.#offlineAfterMs);
+  }
+
+  #online(provider: string): boolean {
+    const state = this.#providers.get(provider);
+    return (
+      state !== undefined &&
+      (state.polling > 0 || Date.now() - state.lastPoll < this.#offlineAfterMs)
+    );
+  }
+
+  #emitProvider(provider: string): void {
+    for (const session of this.#store.byProvider(provider, attempting)) {
+      this.#emit(session.id, { type: "session", session: this.#view(session) });
+    }
+  }
+
+  #current(id: string, generation: number): Result<StoredSession> {
     const session = this.#store.get(id);
     if (!session) {
       return { ok: false, reason: "not_found" };
     }
-    if (session.generation !== generation) {
+    if (
+      session.generation !== generation ||
+      !attempting.includes(session.status)
+    ) {
       return { ok: false, reason: "stale_generation" };
     }
     return { ok: true, value: session };
+  }
+
+  #update(session: StoredSession): void {
+    this.#store.update(session);
+    this.#emit(session.id, { type: "session", session: this.#view(session) });
+  }
+
+  #view(session: StoredSession): Session {
+    return { ...session, online: this.#online(session.provider) };
   }
 
   #emit(id: string, event: SessionEvent): void {

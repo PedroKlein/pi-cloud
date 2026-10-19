@@ -8,8 +8,22 @@ export interface Assignment {
   readonly cwd: string;
 }
 
+export interface Attempt {
+  readonly sessionId: string;
+  readonly generation: number;
+}
+
+export interface WorkPoll {
+  readonly running: readonly Attempt[];
+}
+
 export interface Work {
   readonly start: readonly Assignment[];
+}
+
+export interface StartFailure {
+  readonly generation: number;
+  readonly error: string;
 }
 
 export interface TranscriptBatch {
@@ -47,7 +61,8 @@ export type Command =
   | { readonly type: "message"; readonly text: string }
   | { readonly type: "abort" };
 
-export type SessionStatus = "queued" | "starting" | ActivityStatus;
+export type SessionStatus =
+  "queued" | "starting" | ActivityStatus | "interrupted" | "failed";
 
 export interface Session {
   readonly id: string;
@@ -56,6 +71,9 @@ export interface Session {
   readonly status: SessionStatus;
   readonly generation: number;
   readonly createdAt: string;
+  readonly interruptedAt: string | null;
+  readonly error: string | null;
+  readonly online: boolean;
 }
 
 export interface CreateSession {
