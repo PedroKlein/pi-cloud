@@ -52,7 +52,17 @@ export async function hostSession(
     live.push(event);
   });
 
-  const session = await startSession(options, prompts.ui);
+  const session = await startSession(options, {
+    ui: prompts.ui,
+    onError: (error) => {
+      log("extension error", {
+        extension: error.extensionPath,
+        event: error.event,
+        error: error.error,
+      });
+    },
+  });
+
   const transcript = transcriptSync(session, stream, log);
 
   const unsubscribe = session.subscribe((event) => {

@@ -6,6 +6,7 @@ import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
+  type ExtensionError,
   initTheme,
   type ModelRuntime,
   SessionManager,
@@ -23,9 +24,14 @@ export interface SessionOptions {
   };
 }
 
+export interface SessionHost {
+  readonly ui: PromptUI;
+  readonly onError: (error: ExtensionError) => void;
+}
+
 export async function startSession(
   options: SessionOptions,
-  ui?: PromptUI,
+  host?: SessionHost,
 ): Promise<AgentSession> {
   const { agentDir } = options;
   const cwd = await workingDirectory(options.cwd);
@@ -60,10 +66,11 @@ export async function startSession(
   });
 
   await session.bindExtensions(
-    ui
+    host
       ? {
-          uiContext: { ...session.extensionRunner.getUIContext(), ...ui },
+          uiContext: { ...session.extensionRunner.getUIContext(), ...host.ui },
           mode: "rpc",
+          onError: host.onError,
         }
       : {},
   );
