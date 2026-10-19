@@ -86,20 +86,27 @@ export function createHandler(
     [
       "GET",
       /^\/api\/sessions\/([^/]+)\/events$/,
-      (_request, [id = ""]) => {
+      (request, [id = ""]) => {
         let send: (event: SessionEvent) => void = () => undefined;
 
-        const watch = sessions.watch(id, (event) => {
-          send(event);
-        });
+        const watch = sessions.watch(
+          id,
+          (event) => {
+            send(event);
+          },
+          lineAfter(request.headers.get("last-event-id")),
+        );
 
         if (!watch.ok) {
           return reply(watch, 200);
         }
 
         return sseResponse((s) => {
-          send = s;
-          watch.value.replay.forEach(s);
+          send = (event) => {
+            s(event, event.type === "entry" ? String(event.line) : undefined);
+          };
+
+          watch.value.replay.forEach(send);
 
           return watch.value.stop;
         });
@@ -252,4 +259,12 @@ async function readJson<T>(request: Request): Promise<T> {
   } catch {
     throw new BadRequest("body must be JSON");
   }
+}
+
+function lineAfter(lastEventId: string | null): number {
+  const line = Number(lastEventId ?? "");
+
+  return lastEventId !== null && Number.isSafeInteger(line) && line >= 0
+    ? line + 1
+    : 0;
 }
