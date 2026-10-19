@@ -2,8 +2,14 @@
   "name": "pi-cloud",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*", "pi-extensions/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "pi-extensions/*"
+  ],
   "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -11,6 +17,7 @@
     "@eslint/js": "^10.0.1",
     "@types/bun": "^1.4.3",
     "eslint": "^10.13.0",
+    "prettier": "3",
     "typescript": "~6.0",
     "typescript-eslint": "^8.71.2"
   }

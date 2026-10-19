@@ -17,6 +17,8 @@
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
     "isolatedModules": true,
+    "erasableSyntaxOnly": true,
+    "noUncheckedSideEffectImports": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,

@@ -42,6 +42,8 @@ pi-extensions/   Pi packages loaded into hosted sessions, such as cloud-bridge
 - Write simple, direct code. Prefer plain functions and data over clever abstractions.
 - Almost no comments. Comment only non-obvious reasons, external constraints or spec links. If a comment explains what the code does, rewrite the code.
 - Lint and type rules are strict on purpose: see `eslint.config.js` (typescript-eslint strict and stylistic type-checked rules) and `tsconfig.base.json`. Read them first.
+- Use TypeScript's own tools for modeling: discriminated unions, `as const`, `satisfies` and `readonly` types. No enums, namespaces or default exports; the configs enforce this.
+- Prettier formats everything with its defaults. Don't add options to it.
 - TypeScript stays on 6.x until typescript-eslint supports 7.
 - Fix the code instead of suppressing warnings. An inline suppression needs a reason, and blanket exclusions are not allowed.
 - Long-running processes log timestamped progress (items scanned and processed, errors with identifiers, final counts), so a stuck job can be debugged from its log alone.
@@ -56,7 +58,7 @@ pi-extensions/   Pi packages loaded into hosted sessions, such as cloud-bridge
 ## Done means evidence
 
 - A claim that something works isn't evidence. Before calling work done, show output a reviewer can check against the current commit: test results with their assertions, a command transcript, or a screenshot of running behavior.
-- Run format, build, `bun run lint` (zero warnings), `bun run typecheck` and `bun test` before calling work done.
+- Run `bun run format`, build, `bun run lint` (zero warnings), `bun run typecheck` and `bun test` before calling work done.
 - When you claim a metric passed, pair it with one that's harder to game. For example, tests pass and no test changed in the same commit as the code it tests.
 
 ## Docs

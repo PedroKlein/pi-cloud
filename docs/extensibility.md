@@ -107,20 +107,20 @@ First-party versions of those features should use public kernel interfaces.
 
 A Pi Cloud package may eventually contribute one or more of these capabilities.
 
-| Category | Examples |
-|---|---|
-| Runtime Provider | Local process, remote VM agent, Kubernetes namespace |
-| Workspace Provider | Git worktree, PVC, devcontainer, remote checkout |
-| Source Control Provider | GitHub, GitLab, internal Git hosting |
-| Environment Builder | OCI image, setup cache, Nix, devcontainer |
-| Secret Provider | Kubernetes Secrets, Vault, brokered HTTP credentials |
-| Artifact Store | Local filesystem, S3, MinIO |
-| Trigger Source | Cron, webhook, issue tracker, chat event |
-| Automation Engine | Durable script, DAG, approval workflow |
-| Notification Provider | Browser push, email, Slack, ntfy |
-| Policy Provider | Models, resources, network, approvals, retention |
-| Web Contribution | Settings forms, Project tabs, status indicators |
-| Pi Companion | Pi tools and hooks loaded into hosted Sessions |
+| Category                | Examples                                             |
+| ----------------------- | ---------------------------------------------------- |
+| Runtime Provider        | Local process, remote VM agent, Kubernetes namespace |
+| Workspace Provider      | Git worktree, PVC, devcontainer, remote checkout     |
+| Source Control Provider | GitHub, GitLab, internal Git hosting                 |
+| Environment Builder     | OCI image, setup cache, Nix, devcontainer            |
+| Secret Provider         | Kubernetes Secrets, Vault, brokered HTTP credentials |
+| Artifact Store          | Local filesystem, S3, MinIO                          |
+| Trigger Source          | Cron, webhook, issue tracker, chat event             |
+| Automation Engine       | Durable script, DAG, approval workflow               |
+| Notification Provider   | Browser push, email, Slack, ntfy                     |
+| Policy Provider         | Models, resources, network, approvals, retention     |
+| Web Contribution        | Settings forms, Project tabs, status indicators      |
+| Pi Companion            | Pi tools and hooks loaded into hosted Sessions       |
 
 The first-party local and Kubernetes providers should use the same provider interface available to third parties. Built-in scheduling or Git integration should not have privileged private paths that extensions cannot use.
 

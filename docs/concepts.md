@@ -133,12 +133,12 @@ A Project may eventually select different defaults for its coordinator and worke
 
 Environment policy may support several modes behind one Session interface:
 
-| Mode | Likely implementation | Intended use |
-|---|---|---|
-| Shared process | Several Pi session processes in one trusted Runtime | Personal fast path |
-| Dedicated pod | One full Session per pod, with subagents inside it | Isolation and resource accounting |
-| Batch Job | Fresh bounded execution that publishes outcomes before exit | Schedules and verification |
-| Hardened | Dedicated sandboxed pod or microVM | Untrusted code or stronger tenancy |
+| Mode           | Likely implementation                                       | Intended use                       |
+| -------------- | ----------------------------------------------------------- | ---------------------------------- |
+| Shared process | Several Pi session processes in one trusted Runtime         | Personal fast path                 |
+| Dedicated pod  | One full Session per pod, with subagents inside it          | Isolation and resource accounting  |
+| Batch Job      | Fresh bounded execution that publishes outcomes before exit | Schedules and verification         |
+| Hardened       | Dedicated sandboxed pod or microVM                          | Untrusted code or stronger tenancy |
 
 No default mode has been chosen. See [Environments](environments.md) for setup, revision, network, secret, capability, and Workspace policy.
 

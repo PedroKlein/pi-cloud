@@ -7,14 +7,14 @@
 
 Pi Cloud has six components:
 
-| Component | Runs where |
-|---|---|
-| Control Plane | One per Cell: VM, Kubernetes namespace, or laptop |
-| Web UI | Browser, served by the Control Plane |
-| Provider Agent | One per laptop, VM, or Kubernetes namespace |
-| Session host | Wherever Pi runs: in the Provider Agent process, or in a Session pod |
-| Session bridge | Inside every Pi Session, as a Pi extension |
-| Protocol | Shared library used by the four runtime components |
+| Component      | Runs where                                                           |
+| -------------- | -------------------------------------------------------------------- |
+| Control Plane  | One per Cell: VM, Kubernetes namespace, or laptop                    |
+| Web UI         | Browser, served by the Control Plane                                 |
+| Provider Agent | One per laptop, VM, or Kubernetes namespace                          |
+| Session host   | Wherever Pi runs: in the Provider Agent process, or in a Session pod |
+| Session bridge | Inside every Pi Session, as a Pi extension                           |
+| Protocol       | Shared library used by the four runtime components                   |
 
 Pi is written in TypeScript. The Session bridge is a Pi extension and must be TypeScript. The Session host should embed Pi through its SDK, which exposes far more than RPC mode, so it is TypeScript too. The browser UI is effectively TypeScript.
 

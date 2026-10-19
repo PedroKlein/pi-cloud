@@ -6,12 +6,12 @@
 
 Pi Cloud separates deterministic control from model-driven coordination.
 
-| Part | Responsibility |
-|---|---|
-| Control Plane | Stores desired state, assigns work, enforces leases, routes messages and approvals, and serves clients |
+| Part                | Responsibility                                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Control Plane       | Stores desired state, assigns work, enforces leases, routes messages and approvals, and serves clients     |
 | Project coordinator | A full Pi Session that interprets a Project goal, creates or reuses Threads, and synthesizes their reports |
-| Provider Agent | Connects an execution location to the Control Plane and manages provider-local Runtimes and Workspaces |
-| Pi Session | Runs one independent conversation, including tools, extensions, subagents, and workflows |
+| Provider Agent      | Connects an execution location to the Control Plane and manages provider-local Runtimes and Workspaces     |
+| Pi Session          | Runs one independent conversation, including tools, extensions, subagents, and workflows                   |
 
 The Control Plane does not reason about product or code decisions. The Project coordinator does not own infrastructure state or bypass scheduling policy.
 
