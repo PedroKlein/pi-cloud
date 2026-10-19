@@ -161,3 +161,27 @@ test("keeps the latest status when a live post fails", async () => {
   expect(logs).toContain("live events dropped");
   expect(fake.events).toEqual([{ type: "status", status: "idle" }]);
 });
+
+test("uploads lines the server is missing as soon as it starts", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models,
+  };
+  const first = fakeStream();
+  const before = await hostSession(options, first.stream, () => undefined);
+  first.send({ type: "message", text: "hello" });
+  await first.waitFor(() => roles(first.lines).includes("assistant"));
+  await before.stop();
+
+  const second = fakeStream();
+  const after = await hostSession(options, second.stream, () => undefined);
+  await second.waitFor(() => second.lines.length === first.lines.length);
+  await after.stop();
+
+  expect(second.lines).toEqual(first.lines);
+});

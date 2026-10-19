@@ -421,16 +421,38 @@ test("marks a session failed when its host cannot start", async () => {
   startAgent("broken", [join(root, "missing-extension.ts")]);
   const session = await createSession("broken");
 
-  const events = await follow(session.id, status("failed"));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await follow(session.id, status("failed"));
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
 
-  expect(events.length).toBeGreaterThan(0);
-  expect(stored.status).toBe("failed");
-  expect(stored.generation).toBe(1);
+  expect(stored).toMatchObject({ status: "failed", generation: 1 });
   expect(stored.error).toContain("missing-extension.ts");
+});
+
+test("keeps a session running through a provider outage", async () => {
+  const session = await createSession("vm");
+  const running = [{ sessionId: session.id, generation: 1 }];
+  await asAgent("vm", "/agent/work", { running: [] });
+
+  const offline = await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+  await asAgent("vm", "/agent/work", { running });
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(offline.at(-1)).toMatchObject({
+    type: "session",
+    session: { status: "starting", online: false },
+  });
+  expect(stored).toMatchObject({
+    status: "starting",
+    generation: 1,
+    online: true,
+    interruptedAt: null,
+  });
 });
 
 test("takes a session back when another poll claims it", async () => {
@@ -454,4 +476,22 @@ test("takes a session back when another poll claims it", async () => {
     type: "session",
     session: { status: "idle", generation: 3 },
   });
+});
+
+test("closes the command stream of an interrupted attempt", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+  const commands = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/commands?generation=1`,
+  );
+
+  await asAgent("vm", "/agent/work", { running: [] });
+  const received: unknown[] = [];
+  for await (const command of readSse(commands)) {
+    received.push(command);
+  }
+
+  expect(commands.status).toBe(200);
+  expect(received).toEqual([]);
 });

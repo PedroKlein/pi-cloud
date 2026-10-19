@@ -107,7 +107,14 @@ export function createHandler(
       agent(async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
         const { running } = await readJson<WorkPoll>(request);
-        const start = await sessions.claim(provider, running, request.signal);
+        const { start, interrupted } = await sessions.claim(
+          provider,
+          running,
+          request.signal,
+        );
+        for (const attempt of interrupted) {
+          log("session interrupted", { provider, ...attempt });
+        }
         for (const assignment of start) {
           log("session assigned", { provider, ...assignment });
         }
@@ -152,14 +159,23 @@ export function createHandler(
           throw new BadRequest("generation must be an integer");
         }
         let send: (command: Command) => void = () => undefined;
-        const attached = sessions.attach(id, generation, (command) => {
-          send(command);
-        });
+        let end = (): void => undefined;
+        const attached = sessions.attach(
+          id,
+          generation,
+          (command) => {
+            send(command);
+          },
+          () => {
+            end();
+          },
+        );
         if (!attached.ok) {
           return reply(attached, 200);
         }
-        return sseResponse((s) => {
-          send = s;
+        return sseResponse((sendEvent, endStream) => {
+          send = sendEvent;
+          end = endStream;
           return attached.value;
         });
       }),

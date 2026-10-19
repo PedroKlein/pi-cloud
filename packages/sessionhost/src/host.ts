@@ -54,6 +54,7 @@ export async function hostSession(
     });
   });
   live.push({ type: "status", status: "idle" });
+  transcript.sync();
 
   return {
     stop: async () => {
@@ -176,6 +177,13 @@ function transcriptSync(
     const lines = text.split("\n").slice(0, -1);
     if (lines.length > acked) {
       acked = await stream.uploadTranscript(acked, lines.slice(acked));
+    }
+    if (acked > lines.length) {
+      log("server transcript is longer than the local file", {
+        file,
+        acked,
+        lines: lines.length,
+      });
     }
   };
   const loop = async (): Promise<void> => {

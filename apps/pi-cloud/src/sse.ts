@@ -1,7 +1,7 @@
 const heartbeatMs = 15_000;
 
 export function sseResponse(
-  open: (send: (data: unknown) => void) => () => void,
+  open: (send: (data: unknown) => void, end: () => void) => () => void,
 ): Response {
   const encoder = new TextEncoder();
   let close = (): void => undefined;
@@ -10,16 +10,24 @@ export function sseResponse(
       const write = (text: string): void => {
         controller.enqueue(encoder.encode(text));
       };
+      write(": open\n\n");
       const heartbeat = setInterval(() => {
         write(": ping\n\n");
       }, heartbeatMs);
-      const stop = open((data) => {
-        write(`data: ${JSON.stringify(data)}\n\n`);
-      });
+      let stop = (): void => undefined;
       close = () => {
         clearInterval(heartbeat);
         stop();
       };
+      stop = open(
+        (data) => {
+          write(`data: ${JSON.stringify(data)}\n\n`);
+        },
+        () => {
+          close();
+          controller.close();
+        },
+      );
     },
     cancel() {
       close();

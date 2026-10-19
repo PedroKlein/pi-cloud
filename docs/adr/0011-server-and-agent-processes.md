@@ -18,6 +18,8 @@ The server needs HTTP, server-sent events and, for terminals, WebSockets. Node's
 - The server serves HTTP with `Bun.serve`. Routes are a plain `fetch` handler from `Request` to `Response`, so they don't depend on Bun.
 - The server stores Sessions and transcripts with `node:sqlite`.
 - Each server and agent process logs one JSON line per event to stderr, with a timestamp.
+- A Session whose host fails to start, for example because an extension doesn't load, is marked failed with the error. It is not retried, because the next attempt would fail the same way. ADR 0006's interrupted attempts are retried.
+- An interrupted Session keeps the time of its last interruption, so the UI can show it after the Session is running again.
 
 ## Consequences
 

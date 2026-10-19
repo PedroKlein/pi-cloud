@@ -44,6 +44,11 @@ export interface SessionsOptions {
   readonly offlineAfterMs?: number;
 }
 
+export interface Claim {
+  readonly start: readonly Assignment[];
+  readonly interrupted: readonly Attempt[];
+}
+
 type Listener<T> = (value: T) => void;
 
 interface ProviderState {
@@ -60,7 +65,10 @@ export class Sessions {
   readonly #pollWaitMs: number;
   readonly #offlineAfterMs: number;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
-  readonly #hosts = new Map<string, Listener<Command>>();
+  readonly #hosts = new Map<
+    string,
+    { readonly send: Listener<Command>; readonly end: () => void }
+  >();
   readonly #pollers = new Map<string, Set<() => void>>();
   readonly #providers = new Map<string, ProviderState>();
 
@@ -101,17 +109,20 @@ export class Sessions {
     provider: string,
     running: readonly Attempt[],
     signal: AbortSignal,
-  ): Promise<readonly Assignment[]> {
+  ): Promise<Claim> {
     const state = this.#pollStarted(provider);
     try {
-      this.#interruptMissing(provider, running);
-      const claimed = this.#claimNext(provider);
-      if (claimed.length > 0 || signal.aborted) {
-        return claimed;
+      const interrupted = this.#interruptMissing(provider, running);
+      const start = this.#claimNext(provider);
+      if (start.length > 0 || signal.aborted) {
+        return { start, interrupted };
       }
       await this.#waitForWork(provider, signal);
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
-      return signal.aborted ? [] : this.#claimNext(provider);
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
+        start: signal.aborted ? [] : this.#claimNext(provider),
+        interrupted,
+      };
     } finally {
       this.#pollEnded(provider, state);
     }
@@ -202,24 +213,27 @@ export class Sessions {
     if (!host) {
       return { ok: false, reason: "offline" };
     }
-    host(command);
+    host.send(command);
     return { ok: true, value: undefined };
   }
 
   attach(
     id: string,
     generation: number,
-    listener: Listener<Command>,
+    send: Listener<Command>,
+    end: () => void,
   ): Result<() => void> {
     const current = this.#current(id, generation);
     if (!current.ok) {
       return current;
     }
-    this.#hosts.set(id, listener);
+    const host = { send, end };
+    this.#hosts.get(id)?.end();
+    this.#hosts.set(id, host);
     return {
       ok: true,
       value: () => {
-        if (this.#hosts.get(id) === listener) {
+        if (this.#hosts.get(id) === host) {
           this.#hosts.delete(id);
         }
       },
@@ -232,8 +246,12 @@ export class Sessions {
     }
   }
 
-  #interruptMissing(provider: string, running: readonly Attempt[]): void {
+  #interruptMissing(
+    provider: string,
+    running: readonly Attempt[],
+  ): readonly Attempt[] {
     const now = new Date().toISOString();
+    const interrupted: Attempt[] = [];
     for (const session of this.#store.byProvider(provider, attempting)) {
       const alive = running.some(
         (attempt) =>
@@ -241,10 +259,15 @@ export class Sessions {
           attempt.generation === session.generation,
       );
       if (!alive) {
-        this.#hosts.delete(session.id);
+        this.#hosts.get(session.id)?.end();
         this.#update({ ...session, status: "interrupted", interruptedAt: now });
+        interrupted.push({
+          sessionId: session.id,
+          generation: session.generation,
+        });
       }
     }
+    return interrupted;
   }
 
   #claimNext(provider: string): Assignment[] {
@@ -316,7 +339,10 @@ export class Sessions {
   }
 
   #emitProvider(provider: string): void {
-    for (const session of this.#store.byProvider(provider, attempting)) {
+    const sessions = this.#store
+      .list()
+      .filter((session) => session.provider === provider);
+    for (const session of sessions) {
       this.#emit(session.id, { type: "session", session: this.#view(session) });
     }
   }

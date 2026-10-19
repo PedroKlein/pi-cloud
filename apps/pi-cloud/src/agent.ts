@@ -32,25 +32,39 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const { log } = options;
   const agent = { server: options.server, provider: options.provider };
   const hosted = new Map<string, Hosted>();
-  const stop = async (entry: Hosted | undefined): Promise<void> => {
-    await (await entry?.session)?.stop();
+  const stopping = new Map<string, Promise<void>>();
+
+  const retire = async (sessionId: string, entry: Hosted): Promise<void> => {
+    const stopped = (stopping.get(sessionId) ?? Promise.resolve())
+      .then(async () => (await entry.session)?.stop())
+      .catch((error: unknown) => {
+        log("session failed to stop", { sessionId, error: String(error) });
+      })
+      .finally(() => {
+        if (stopping.get(sessionId) === stopped) {
+          stopping.delete(sessionId);
+        }
+      });
+    stopping.set(sessionId, stopped);
+    await stopped;
   };
 
   const start = async (
     assignment: Assignment,
-    previous: Hosted | undefined,
     sessionLog: Log,
   ): Promise<HostedSession | undefined> => {
     const { sessionId, generation } = assignment;
+    const current = (): boolean =>
+      hosted.get(sessionId)?.generation === generation;
     const fenced = (): void => {
       const entry = hosted.get(sessionId);
       if (entry?.generation === generation) {
         sessionLog("session fenced", { generation });
         hosted.delete(sessionId);
-        void stop(entry);
+        void retire(sessionId, entry);
       }
     };
-    await stop(previous);
+    await stopping.get(sessionId);
     try {
       return await hostSession(
         {
@@ -65,9 +79,6 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       );
     } catch (error) {
       sessionLog("session failed to start", { error: String(error) });
-      if (hosted.get(sessionId)?.generation === generation) {
-        hosted.delete(sessionId);
-      }
       await reportStartFailure(agent, sessionId, {
         generation,
         error: String(error),
@@ -76,6 +87,9 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           error: String(reportError),
         });
       });
+      if (current()) {
+        hosted.delete(sessionId);
+      }
       return undefined;
     }
   };
@@ -90,17 +104,24 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         generation,
       })),
     start: (assignment) => {
+      const { sessionId } = assignment;
       const sessionLog: Log = (message, fields) => {
-        log(message, { sessionId: assignment.sessionId, ...fields });
+        log(message, { sessionId, ...fields });
       };
-      const previous = hosted.get(assignment.sessionId);
-      hosted.set(assignment.sessionId, {
+      const previous = hosted.get(sessionId);
+      if (previous) {
+        void retire(sessionId, previous);
+      }
+      hosted.set(sessionId, {
         generation: assignment.generation,
-        session: start(assignment, previous, sessionLog),
+        session: start(assignment, sessionLog),
       });
     },
   });
 
   log("stopping sessions", { count: hosted.size });
-  await Promise.all([...hosted.values()].map(stop));
+  await Promise.all(
+    [...hosted].map(async ([sessionId, entry]) => retire(sessionId, entry)),
+  );
+  await Promise.all(stopping.values());
 }
