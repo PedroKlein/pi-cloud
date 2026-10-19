@@ -4,8 +4,8 @@ import { isAbsolute, join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
-  createAgentSession,
-  DefaultResourceLoader,
+  createAgentSessionFromServices,
+  createAgentSessionServices,
   type ExtensionError,
   initTheme,
   type ModelRuntime,
@@ -40,29 +40,27 @@ export async function startSession(
   // status text with it even when no terminal renders it.
   initTheme();
 
-  const resourceLoader = new DefaultResourceLoader({
+  // Services register the providers extensions add before the default model
+  // is resolved, as Pi's CLI does.
+  const services = await createAgentSessionServices({
     cwd,
     agentDir,
-    additionalExtensionPaths: [...options.extensionPaths],
+    resourceLoaderOptions: {
+      additionalExtensionPaths: [...options.extensionPaths],
+    },
+    ...(options.models && { modelRuntime: options.models.runtime }),
   });
 
-  await resourceLoader.reload();
-
-  const { errors } = resourceLoader.getExtensions();
+  const { errors } = services.resourceLoader.getExtensions();
   if (errors.length > 0) {
     const details = errors.map((e) => `${e.path}: ${e.error}`).join("; ");
     throw new Error(`extensions failed to load: ${details}`);
   }
 
-  const { session } = await createAgentSession({
-    cwd,
-    agentDir,
-    resourceLoader,
+  const { session } = await createAgentSessionFromServices({
+    services,
     sessionManager: SessionManager.continueRecent(cwd, options.sessionDir),
-    ...(options.models && {
-      modelRuntime: options.models.runtime,
-      model: options.models.model,
-    }),
+    ...(options.models && { model: options.models.model }),
   });
 
   await session.bindExtensions(

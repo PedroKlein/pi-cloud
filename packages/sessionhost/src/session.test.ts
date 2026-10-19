@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,4 +201,51 @@ export default (pi) => {
   expect(await readFile(marker, "utf8").catch(() => "")).toBe(
     "start:startup stop:quit",
   );
+});
+
+test("uses a default model from a provider an extension registers", async () => {
+  const agentDir = join(root, "agent");
+  const extension = join(root, "proxy.ts");
+  await mkdir(agentDir);
+
+  await writeFile(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
+  );
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.registerProvider("proxy", {
+    baseUrl: "http://127.0.0.1:9/v1",
+    apiKey: "test-key",
+    api: "openai-completions",
+    models: [
+      {
+        id: "proxy-small",
+        name: "Proxy small",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 1000,
+        maxTokens: 100,
+      },
+    ],
+  });
+};
+`,
+  );
+
+  const session = await startSession({
+    cwd: root,
+    agentDir,
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [extension],
+  });
+
+  await stopSession(session);
+
+  expect(
+    `${String(session.model?.provider)}/${String(session.model?.id)}`,
+  ).toBe("proxy/proxy-small");
 });
