@@ -100,6 +100,7 @@ async function createSession(provider: string): Promise<Session> {
 
 async function watch(
   sessionId: string,
+  headers: Record<string, string> = {},
 ): Promise<
   (
     until: (events: readonly SessionEvent[]) => boolean,
@@ -109,7 +110,7 @@ async function watch(
 
   const response = await fetch(
     new URL(`/api/sessions/${sessionId}/events`, server.url),
-    { signal: controller.signal },
+    { signal: controller.signal, headers },
   );
 
   return async (until) => {
@@ -180,6 +181,66 @@ test("chats with a session on an agent and replays it later", async () => {
   expect(replay.filter((e) => e.type === "entry")).toEqual(
     live.filter((e) => e.type === "entry"),
   );
+});
+
+test("resumes the event stream after the last received line", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello again")])]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  const live = await follow(session.id, (events) =>
+    roles(events).includes("assistant"),
+  );
+
+  const entries = live.filter((e) => e.type === "entry");
+  const seen = entries.at(-2);
+  if (seen?.type !== "entry") {
+    throw new Error("expected at least two entries");
+  }
+
+  const resumed = await (
+    await watch(session.id, { "last-event-id": String(seen.line) })
+  )((events) => events.some((e) => e.type === "entry"));
+
+  expect(resumed[0]?.type).toBe("session");
+  expect(resumed.filter((e) => e.type === "entry")).toEqual(entries.slice(-1));
+});
+
+test("labels transcript events with their line", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("labelled")])]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+
+  const response = await api(`/api/sessions/${session.id}/events`);
+
+  const reader = response.body
+    ?.pipeThrough(new TextDecoderStream())
+    .getReader();
+
+  let text = "";
+  while (reader && !text.includes("id: 0\n")) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    text += value;
+  }
+
+  await reader?.cancel();
+  expect(text).toContain('id: 0\ndata: {"type":"entry","line":0');
 });
 
 test("streams text as it is generated", async () => {
