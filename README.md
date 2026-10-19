@@ -8,14 +8,22 @@ The design is still exploratory. The first slice runs one independent Session on
 
 ## Run it
 
+For development, run the server and a local agent from source:
+
 ```sh
 bun install
+bun run dev
+```
+
+Open http://127.0.0.1:7420, create a session with provider `local` and a directory on this machine, and chat. Both processes restart when a file under `apps/` or `packages/` changes, and their data lives in `~/.pi-cloud/dev`. The agent uses the models and logins of your own Pi setup.
+
+To run the compiled binary instead:
+
+```sh
 bun run build
 apps/pi-cloud/dist/pi-cloud server
 apps/pi-cloud/dist/pi-cloud agent --name laptop
 ```
-
-Open http://127.0.0.1:7420, create a session with provider `laptop` and a directory on this machine, and chat. The agent uses the models and logins of your own Pi setup.
 
 ## Current direction
 
