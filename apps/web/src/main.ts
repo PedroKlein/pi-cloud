@@ -27,6 +27,7 @@ const promptForm = element("prompt", HTMLFormElement);
 let selected: string | undefined;
 let closeEvents = (): void => undefined;
 let closeTerminal: (() => void) | undefined;
+let terminalLive = false;
 
 async function api(path: string, body?: unknown): Promise<Response> {
   const response = await fetch(path, {
@@ -67,15 +68,21 @@ async function refreshSessions(): Promise<void> {
   );
 }
 
+function keepScrolled(change: () => void): void {
+  const atBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
+  change();
+  if (atBottom) {
+    chat.scrollTop = chat.scrollHeight;
+  }
+}
+
 function addItem(item: ChatItem): HTMLLIElement {
   const entry = document.createElement("li");
   entry.dataset["role"] = item.role;
   entry.textContent = item.text;
-  const atBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
-  chat.append(entry);
-  if (atBottom) {
-    chat.scrollTop = chat.scrollHeight;
-  }
+  keepScrolled(() => {
+    chat.append(entry);
+  });
   return entry;
 }
 
@@ -99,10 +106,14 @@ function follow(sessionId: string): () => void {
           clearLive();
         }
         return;
-      case "text":
+      case "text": {
         streaming ??= addItem({ role: "assistant", text: "" });
-        streaming.textContent += event.delta;
+        const bubble = streaming;
+        keepScrolled(() => {
+          bubble.textContent += event.delta;
+        });
         return;
+      }
       case "tool_start":
         tools.set(
           event.toolCallId,
@@ -119,7 +130,7 @@ function follow(sessionId: string): () => void {
           return;
         }
         const box = renderPrompt(event.prompt, (value) => {
-          api(`/api/sessions/${sessionId}/commands`, {
+          api(`/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
             type: "answer",
             id,
             value,
@@ -142,7 +153,14 @@ function follow(sessionId: string): () => void {
         return;
     }
   };
-  const events = new EventSource(`/api/sessions/${sessionId}/events`);
+  const events = new EventSource(
+    `/api/sessions/${encodeURIComponent(sessionId)}/events`,
+  );
+  events.addEventListener("error", () => {
+    if (events.readyState === EventSource.CLOSED) {
+      statusLabel.textContent = "session not found";
+    }
+  });
   events.addEventListener("open", () => {
     prompts.forEach((prompt) => {
       prompt.remove();
@@ -175,23 +193,26 @@ function follow(sessionId: string): () => void {
 }
 
 function toggleTerminal(): void {
-  if (closeTerminal) {
-    closeTerminal();
-    closeTerminal = undefined;
-    terminalBox.hidden = true;
+  const wasLive = terminalLive;
+  closeTerminal?.();
+  closeTerminal = undefined;
+  terminalLive = false;
+  terminalBox.replaceChildren();
+  terminalBox.hidden = wasLive || selected === undefined;
+  if (terminalBox.hidden || selected === undefined) {
     return;
   }
-  if (selected === undefined) {
-    return;
-  }
-  terminalBox.hidden = false;
-  closeTerminal = openTerminal(selected, terminalBox);
+  terminalLive = true;
+  closeTerminal = openTerminal(selected, terminalBox, () => {
+    terminalLive = false;
+  });
 }
 
 function select(sessionId: string | undefined): void {
   closeEvents();
   closeTerminal?.();
   closeTerminal = undefined;
+  terminalLive = false;
   terminalBox.hidden = true;
   terminalBox.replaceChildren();
   chat.replaceChildren();
@@ -232,9 +253,10 @@ promptForm.addEventListener("submit", (event) => {
     return;
   }
   field.value = "";
-  api(`/api/sessions/${selected}/commands`, { type: "message", text }).catch(
-    report,
-  );
+  api(`/api/sessions/${encodeURIComponent(selected)}/commands`, {
+    type: "message",
+    text,
+  }).catch(report);
 });
 
 promptForm.addEventListener("keydown", (event) => {
@@ -246,7 +268,9 @@ promptForm.addEventListener("keydown", (event) => {
 
 abortButton.addEventListener("click", () => {
   if (selected !== undefined) {
-    api(`/api/sessions/${selected}/commands`, { type: "abort" }).catch(report);
+    api(`/api/sessions/${encodeURIComponent(selected)}/commands`, {
+      type: "abort",
+    }).catch(report);
   }
 });
 
