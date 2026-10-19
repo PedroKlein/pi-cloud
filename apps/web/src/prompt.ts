@@ -7,6 +7,7 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
   element.type = "button";
   element.textContent = label;
   element.addEventListener("click", onClick);
+
   return element;
 }
 
@@ -25,6 +26,7 @@ export function renderPrompt(
       const message = document.createElement("p");
       message.textContent = prompt.message;
       box.append(message);
+
       actions.append(
         button("Yes", () => {
           answer(true);
@@ -33,8 +35,10 @@ export function renderPrompt(
           answer(false);
         }),
       );
+
       break;
     }
+
     case "select":
       actions.append(
         ...prompt.options.map((option) =>
@@ -46,6 +50,7 @@ export function renderPrompt(
           answer(null);
         }),
       );
+
       break;
     case "input":
     case "editor": {
@@ -56,7 +61,9 @@ export function renderPrompt(
       } else {
         field.value = prompt.prefill ?? "";
       }
+
       box.append(field);
+
       actions.append(
         button("Submit", () => {
           answer(field.value);
@@ -65,9 +72,12 @@ export function renderPrompt(
           answer(null);
         }),
       );
+
       break;
     }
   }
+
   box.append(actions);
+
   return box;
 }

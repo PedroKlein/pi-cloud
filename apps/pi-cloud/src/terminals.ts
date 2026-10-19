@@ -43,6 +43,7 @@ export function terminalBroker(
     if (!pair) {
       return;
     }
+
     pairs.delete(terminalId);
     clearTimeout(pair.timeout);
     pair.browser?.close(1000, reason);
@@ -58,20 +59,24 @@ export function terminalBroker(
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return Response.json({ error: "expected a websocket" }, { status: 400 });
     }
+
     const url = new URL(request.url);
     const terminalId = randomUUID();
+
     const sent = sessions.send(sessionId, {
       type: "terminal",
       terminalId,
       cols: size(url.searchParams.get("cols"), 80),
       rows: size(url.searchParams.get("rows"), 24),
     });
+
     if (!sent.ok) {
       return Response.json(
         { error: sent.reason },
         { status: sent.reason === "not_found" ? 404 : 409 },
       );
     }
+
     pairs.set(terminalId, {
       sessionId,
       pending: [],
@@ -79,11 +84,14 @@ export function terminalBroker(
         end(terminalId, "session host did not open the terminal");
       }, hostTimeoutMs),
     });
+
     log("terminal requested", { sessionId, terminalId });
     if (server.upgrade(request, { data: { role: "browser", terminalId } })) {
       return "upgraded";
     }
+
     end(terminalId, "browser upgrade failed");
+
     return Response.json({ error: "expected a websocket" }, { status: 400 });
   };
 
@@ -96,6 +104,7 @@ export function terminalBroker(
     const generation = Number(
       new URL(request.url).searchParams.get("generation"),
     );
+
     const provider = request.headers.get(providerHeader);
     const pair = pairs.get(terminalId);
     if (
@@ -107,6 +116,7 @@ export function terminalBroker(
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });
     }
+
     return server.upgrade(request, { data: { role: "host", terminalId } })
       ? "upgraded"
       : Response.json({ error: "expected a websocket" }, { status: 400 });
@@ -119,10 +129,12 @@ export function terminalBroker(
       if (browser) {
         return openBrowser(request, server, browser[1] ?? "");
       }
+
       const host = hostPath.exec(pathname);
       if (host) {
         return openHost(request, server, host[1] ?? "", host[2] ?? "");
       }
+
       return undefined;
     },
     websocket: {
@@ -130,12 +142,16 @@ export function terminalBroker(
         const pair = pairs.get(ws.data.terminalId);
         if (!pair) {
           ws.close(1000, "terminal closed");
+
           return;
         }
+
         if (ws.data.role === "browser") {
           pair.browser = ws;
+
           return;
         }
+
         pair.host = ws;
         clearTimeout(pair.timeout);
         for (const message of pair.pending.splice(0)) {
@@ -147,14 +163,18 @@ export function terminalBroker(
         if (!pair) {
           return;
         }
+
         if (ws.data.role === "host") {
           pair.browser?.send(message);
+
           return;
         }
+
         const forward = typeof message === "string" ? resize(message) : message;
         if (forward === undefined) {
           return;
         }
+
         if (pair.host) {
           pair.host.send(forward);
         } else {
@@ -178,6 +198,7 @@ function validSize(value: unknown): value is number {
 
 function size(value: string | null, fallback: number): number {
   const parsed = Number(value ?? fallback);
+
   return validSize(parsed) ? parsed : fallback;
 }
 
@@ -188,9 +209,11 @@ function resize(message: string): string | undefined {
   } catch {
     return undefined;
   }
+
   const { type, cols, rows } = (parsed ?? {}) as Record<string, unknown>;
   if (type !== "resize" || !validSize(cols) || !validSize(rows)) {
     return undefined;
   }
+
   return JSON.stringify({ type, cols, rows } satisfies TerminalResize);
 }

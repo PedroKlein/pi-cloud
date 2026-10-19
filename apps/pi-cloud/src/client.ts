@@ -52,12 +52,14 @@ async function call(
     ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
     ...(init.signal && { signal: init.signal }),
   });
+
   if (!response.ok) {
     throw new HttpError(
       response.status,
       `${init.method ?? "GET"} ${path}: ${String(response.status)} ${await response.text()}`,
     );
   }
+
   return response;
 }
 
@@ -93,6 +95,7 @@ export function httpSessionStream(
 ): SessionStream {
   const { sessionId, generation } = assignment;
   const base = `/agent/sessions/${sessionId}`;
+
   const post = async (path: string, body: unknown): Promise<Response> => {
     try {
       return await call(agent, `${base}/${path}`, { method: "POST", body });
@@ -100,13 +103,16 @@ export function httpSessionStream(
       if (rejected(error)) {
         fenced();
       }
+
       throw error;
     }
   };
+
   return {
     uploadTranscript: async (start, lines) => {
       const batch: TranscriptBatch = { generation, start, lines };
       const response = await post("transcript", batch);
+
       return ((await response.json()) as TranscriptAck).acked;
     },
     publish: async (events) => {
@@ -115,6 +121,7 @@ export function httpSessionStream(
     },
     commands: (listener) => {
       const controller = new AbortController();
+
       void followCommands(
         agent,
         `${base}/commands?generation=${String(generation)}`,
@@ -126,6 +133,7 @@ export function httpSessionStream(
           fenced();
         }
       });
+
       return () => {
         controller.abort();
       };
@@ -148,35 +156,44 @@ function openTerminalSocket(
 ): TerminalChannel {
   const url = new URL(path, agent.server);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
   const socket = new WebSocket(url, {
     headers: {
       [versionHeader]: String(protocolVersion),
       [providerHeader]: agent.provider,
     },
   });
+
   socket.binaryType = "arraybuffer";
   const pending: Uint8Array[] = [];
+
   socket.addEventListener("open", () => {
     for (const data of pending.splice(0)) {
       socket.send(data);
     }
   });
+
   socket.addEventListener("message", (event: MessageEvent) => {
     if (event.data instanceof ArrayBuffer) {
       peer.input(new Uint8Array(event.data));
+
       return;
     }
+
     const resize = JSON.parse(String(event.data)) as TerminalResize;
     peer.resize(resize.cols, resize.rows);
   });
+
   socket.addEventListener("close", (event) => {
     log("terminal socket closed", {
       path,
       code: event.code,
       reason: event.reason,
     });
+
     peer.closed();
   });
+
   return {
     send: (data) => {
       if (socket.readyState === WebSocket.CONNECTING) {
@@ -217,18 +234,23 @@ async function followCommands(
       if (signal.aborted) {
         return false;
       }
+
       if (rejected(error)) {
         log("command stream rejected", { path, error: String(error) });
+
         return true;
       }
+
       log("command stream failed", {
         path,
         error: String(error),
         retryInMs: delayMs,
       });
     }
+
     await sleep(delayMs, undefined, { signal }).catch(() => undefined);
     delayMs = Math.min(delayMs * 2, reconnectMs.max);
   }
+
   return false;
 }

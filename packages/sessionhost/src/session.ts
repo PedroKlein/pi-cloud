@@ -24,11 +24,13 @@ export async function startSession(
   ui?: PromptUI,
 ): Promise<AgentSession> {
   const { cwd, agentDir } = options;
+
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
     additionalExtensionPaths: [...options.extensionPaths],
   });
+
   await resourceLoader.reload();
 
   const { errors } = resourceLoader.getExtensions();
@@ -47,6 +49,7 @@ export async function startSession(
       model: options.models.model,
     }),
   });
+
   await session.bindExtensions(
     ui
       ? {
@@ -55,14 +58,17 @@ export async function startSession(
         }
       : {},
   );
+
   return session;
 }
 
 export async function stopSession(session: AgentSession): Promise<void> {
   await session.abort();
+
   await session.extensionRunner.emit({
     type: "session_shutdown",
     reason: "quit",
   });
+
   session.dispose();
 }

@@ -27,13 +27,16 @@ export function chatItems(line: string): readonly ChatItem[] {
   if (entry.type !== "message" || !message) {
     return [];
   }
+
   const parts =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
       : message.content;
+
   const text = parts
     .flatMap((part) => (part.type === "text" ? (part.text ?? []) : []))
     .join("");
+
   switch (message.role) {
     case "user":
       return [{ role: "user", text }];

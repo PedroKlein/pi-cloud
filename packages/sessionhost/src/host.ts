@@ -47,9 +47,11 @@ export async function hostSession(
   log: Log,
 ): Promise<HostedSession> {
   const live = liveQueue(stream, log);
+
   const prompts = remotePrompts((event) => {
     live.push(event);
   });
+
   const session = await startSession(options, prompts.ui);
   const transcript = transcriptSync(session, stream, log);
 
@@ -58,6 +60,7 @@ export async function hostSession(
     if (liveEvent) {
       live.push(liveEvent);
     }
+
     if (
       event.type !== "message_update" &&
       event.type !== "tool_execution_update"
@@ -65,12 +68,16 @@ export async function hostSession(
       transcript.sync();
     }
   });
+
   const terminals = new Map<string, () => void>();
+
   const detach = stream.commands((command) => {
     if (command.type === "answer") {
       prompts.answer(command.id, command.value);
+
       return;
     }
+
     if (command.type === "terminal") {
       try {
         terminals.set(
@@ -84,14 +91,18 @@ export async function hostSession(
           terminalId: command.terminalId,
           error: String(error),
         });
+
         stream.terminal(command.terminalId, ignoredPeer).close();
       }
+
       return;
     }
+
     run(session, command).catch((error: unknown) => {
       log("command failed", { command: command.type, error: String(error) });
     });
   });
+
   live.push({ type: "status", status: "idle" });
   transcript.sync();
 
@@ -101,6 +112,7 @@ export async function hostSession(
       for (const close of terminals.values()) {
         close();
       }
+
       prompts.cancelAll();
       await stopSession(session);
       unsubscribe();
@@ -125,12 +137,15 @@ function attachTerminal(
 ): () => void {
   const { terminalId, cols, rows } = command;
   const pending: Uint8Array[] = [];
+
   let output = (data: Uint8Array): void => {
     pending.push(data);
   };
+
   const terminal = openTerminal({ cwd, cols, rows }, (data) => {
     output(data);
   });
+
   const channel = stream.terminal(terminalId, {
     input: (data) => {
       terminal.write(data);
@@ -142,14 +157,17 @@ function attachTerminal(
       terminal.close();
     },
   });
+
   pending.forEach(channel.send);
   output = channel.send;
   log("terminal opened", { terminalId });
+
   void terminal.exited.then((code) => {
     log("terminal exited", { terminalId, code });
     channel.close();
     exited();
   });
+
   return () => {
     terminal.close();
   };
@@ -162,9 +180,11 @@ async function run(
   switch (command.type) {
     case "message":
       await session.prompt(command.text, { streamingBehavior: "steer" });
+
       return;
     case "abort":
       await session.abort();
+
       return;
   }
 }
@@ -173,15 +193,18 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
   if (event.type === "agent_start") {
     return { type: "status", status: "running" };
   }
+
   if (event.type === "agent_settled") {
     return { type: "status", status: "idle" };
   }
+
   if (
     event.type === "message_update" &&
     event.assistantMessageEvent.type === "text_delta"
   ) {
     return { type: "text", delta: event.assistantMessageEvent.delta };
   }
+
   if (event.type === "tool_execution_start") {
     return {
       type: "tool_start",
@@ -189,6 +212,7 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
       toolName: event.toolName,
     };
   }
+
   if (event.type === "tool_execution_end") {
     return {
       type: "tool_end",
@@ -196,6 +220,7 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
       isError: event.isError,
     };
   }
+
   return undefined;
 }
 
@@ -207,12 +232,14 @@ function liveQueue(
   let sending = Promise.resolve();
   let scheduled = false;
   let closed = false;
+
   const schedule = (): void => {
     if (!scheduled) {
       scheduled = true;
       sending = sending.then(send);
     }
   };
+
   const send = async (): Promise<void> => {
     scheduled = false;
     const events = pending;
@@ -223,17 +250,20 @@ function liveQueue(
       const status = pending.some((event) => event.type === "status")
         ? undefined
         : events.findLast((event) => event.type === "status");
+
       const retry = [
         ...(status ? [status] : []),
         ...events.filter(
           (event) => event.type === "prompt" || event.type === "prompt_end",
         ),
       ];
+
       log("live events dropped", {
         count: events.length - retry.length,
         error: String(error),
         retryInMs: retry.length > 0 ? retryMs : undefined,
       });
+
       if (retry.length > 0 && !closed) {
         pending.unshift(...retry);
         await sleep(retryMs);
@@ -241,6 +271,7 @@ function liveQueue(
       }
     }
   };
+
   return {
     push: (event) => {
       pending.push(event);
@@ -269,11 +300,13 @@ function transcriptSync(
     if (file === undefined) {
       return;
     }
+
     const text = await readFile(file, "utf8").catch(() => "");
     const lines = text.split("\n").slice(0, -1);
     if (lines.length > acked) {
       acked = await stream.uploadTranscript(acked, lines.slice(acked));
     }
+
     if (acked > lines.length) {
       log("server transcript is longer than the local file", {
         file,
@@ -282,6 +315,7 @@ function transcriptSync(
       });
     }
   };
+
   const loop = async (): Promise<void> => {
     while (dirty) {
       dirty = false;
@@ -293,23 +327,29 @@ function transcriptSync(
           error: String(error),
           retryInMs: retryMs,
         });
+
         if (closed) {
           return;
         }
+
         retry ??= setTimeout(() => {
           retry = undefined;
           sync();
         }, retryMs);
+
         return;
       }
     }
   };
+
   const sync = (): void => {
     dirty = true;
+
     running ??= loop().finally(() => {
       running = undefined;
     });
   };
+
   return {
     sync,
     close: async () => {

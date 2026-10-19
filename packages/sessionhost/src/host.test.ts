@@ -39,12 +39,14 @@ function fakeStream(
     string,
     { peer: TerminalPeer; output: string[]; closed: boolean }
   >();
+
   let failures = options.failUploads ?? 0;
   let publishFailures = options.failPublishes ?? 0;
   let listener: ((command: Command) => void) | undefined;
   const events: LiveEvent[] = [];
   const lines: string[] = [];
   const uploads: number[] = [];
+
   const stream: SessionStream = {
     uploadTranscript: async (start, batch) => {
       await Promise.resolve();
@@ -53,7 +55,9 @@ function fakeStream(
         failures--;
         throw new Error("server unavailable");
       }
+
       lines.splice(start, batch.length, ...batch);
+
       return lines.length;
     },
     publish: async (batch) => {
@@ -62,10 +66,12 @@ function fakeStream(
         publishFailures--;
         throw new Error("server unavailable");
       }
+
       events.push(...batch);
     },
     commands: (l) => {
       listener = l;
+
       return () => {
         listener = undefined;
       };
@@ -74,6 +80,7 @@ function fakeStream(
       const terminal = { peer, output: [] as string[], closed: false };
       terminals.set(terminalId, terminal);
       const decoder = new TextDecoder();
+
       return {
         send: (data) => {
           terminal.output.push(decoder.decode(data));
@@ -84,6 +91,7 @@ function fakeStream(
       };
     },
   };
+
   return {
     stream,
     send: (command) => listener?.(command),
@@ -102,6 +110,7 @@ function fakeStream(
 function roles(lines: readonly string[]): string[] {
   return lines.flatMap((line) => {
     const entry = JSON.parse(line) as { message?: { role: string } };
+
     return entry.message?.role ?? [];
   });
 }
@@ -122,6 +131,7 @@ test("streams a turn as live events and transcript lines", async () => {
     fake.stream,
     () => undefined,
   );
+
   fake.send({ type: "message", text: "hello" });
   await fake.waitFor(() => roles(fake.lines).includes("assistant"));
   await hosted.stop();
@@ -129,12 +139,15 @@ test("streams a turn as live events and transcript lines", async () => {
   const text = fake.events
     .flatMap((e) => (e.type === "text" ? e.delta : []))
     .join("");
+
   expect(text).toBe("hello back");
+
   expect(fake.events.filter((e) => e.type === "status")).toEqual([
     { type: "status", status: "idle" },
     { type: "status", status: "running" },
     { type: "status", status: "idle" },
   ]);
+
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
 });
 
@@ -155,6 +168,7 @@ test("resends the transcript from the last acknowledged line after a failure", a
     fake.stream,
     (message) => logs.push(message),
   );
+
   fake.send({ type: "message", text: "hello" });
   await fake.waitFor(() => roles(fake.lines).includes("assistant"));
   await hosted.stop();
@@ -181,6 +195,7 @@ test("keeps the latest status when a live post fails", async () => {
     fake.stream,
     (message) => logs.push(message),
   );
+
   await fake.waitFor(() => fake.events.length > 0);
   await hosted.stop();
 
@@ -191,6 +206,7 @@ test("keeps the latest status when a live post fails", async () => {
 test("uploads lines the server is missing as soon as it starts", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
   const options = {
     cwd: root,
     agentDir: join(root, "agent"),
@@ -198,6 +214,7 @@ test("uploads lines the server is missing as soon as it starts", async () => {
     extensionPaths: [],
     models,
   };
+
   const first = fakeStream();
   const before = await hostSession(options, first.stream, () => undefined);
   first.send({ type: "message", text: "hello" });
@@ -215,6 +232,7 @@ test("uploads lines the server is missing as soon as it starts", async () => {
 test("opens a terminal in the session directory on command", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
+
   const hosted = await hostSession(
     {
       cwd: root,
@@ -238,6 +256,7 @@ test("opens a terminal in the session directory on command", async () => {
 
 async function confirmTool(): Promise<string> {
   const path = join(root, "confirm-tool.ts");
+
   await writeFile(
     path,
     `import { Type } from "typebox";
@@ -255,18 +274,22 @@ export default (pi) => {
 };
 `,
   );
+
   return path;
 }
 
 test("asks the user through prompt events and waits for the answer", async () => {
   const { faux, models } = await fauxModels(root);
+
   faux.setResponses([
     fauxAssistantMessage([fauxToolCall("deploy", {})], {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage([fauxText("deployed")]),
   ]);
+
   const fake = fakeStream();
+
   const hosted = await hostSession(
     {
       cwd: root,
@@ -296,19 +319,23 @@ test("asks the user through prompt events and waits for the answer", async () =>
       message: "This ships to production",
     },
   });
+
   expect(fake.events).toContainEqual({ type: "prompt_end", id });
   expect(fake.lines.join()).toContain("confirmed: true");
 });
 
 test("cancels open prompts when the session stops", async () => {
   const { faux, models } = await fauxModels(root);
+
   faux.setResponses([
     fauxAssistantMessage([fauxToolCall("deploy", {})], {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage([fauxText("not deployed")]),
   ]);
+
   const fake = fakeStream();
+
   const hosted = await hostSession(
     {
       cwd: root,
@@ -335,6 +362,7 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
   const logs: string[] = [];
   const cwd = join(root, "work");
   await mkdir(cwd);
+
   const hosted = await hostSession(
     {
       cwd,
@@ -346,6 +374,7 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
     fake.stream,
     (message) => logs.push(message),
   );
+
   await rm(cwd, { recursive: true });
 
   fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });

@@ -31,17 +31,21 @@ async function fauxModels(): Promise<{
   runtime: ModelRuntime;
 }> {
   const faux = fauxProvider();
+
   const runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
   });
+
   runtime.registerNativeProvider(faux.provider);
+
   return { faux, runtime };
 }
 
 test("runs a turn with a tool call and a third-party extension loaded", async () => {
   const { faux, runtime } = await fauxModels();
+
   faux.setResponses([
     fauxAssistantMessage(
       [fauxToolCall("bash", { command: "echo hello from bash" })],
@@ -57,7 +61,9 @@ test("runs a turn with a tool call and a third-party extension loaded", async ()
     extensionPaths: [subagentsPath],
     models: { runtime, model: faux.getModel() },
   });
+
   const toolOutputs: string[] = [];
+
   session.subscribe((event) => {
     if (event.type === "tool_execution_end") {
       toolOutputs.push(JSON.stringify(event.result));
@@ -84,11 +90,13 @@ test("writes the transcript as JSONL in the session directory", async () => {
     extensionPaths: [],
     models: { runtime, model: faux.getModel() },
   });
+
   await session.prompt("hello");
   await stopSession(session);
 
   const files = await readdir(sessionDir);
   expect(files).toHaveLength(1);
+
   const lines = (await readFile(join(sessionDir, String(files[0])), "utf8"))
     .trim()
     .split("\n")
@@ -96,7 +104,9 @@ test("writes the transcript as JSONL in the session directory", async () => {
       (line) =>
         JSON.parse(line) as { type: string; message?: { role: string } },
     );
+
   expect(lines[0]?.type).toBe("session");
+
   expect(lines.flatMap((line) => line.message?.role ?? []).slice(-2)).toEqual([
     "user",
     "assistant",
@@ -122,10 +132,12 @@ test("fails when an extension does not load", async () => {
 
 test("continues the session already in the session directory", async () => {
   const { faux, runtime } = await fauxModels();
+
   faux.setResponses([
     fauxAssistantMessage([fauxText("first")]),
     fauxAssistantMessage([fauxText("second")]),
   ]);
+
   const options = {
     cwd: root,
     agentDir: join(root, "agent"),
@@ -142,9 +154,11 @@ test("continues the session already in the session directory", async () => {
   await stopSession(second);
 
   expect(second.sessionFile).toBe(first.sessionFile);
+
   expect(
     second.messages.map((m) => m.role).filter((role) => role !== "system"),
   ).toEqual(["user", "assistant", "user", "assistant"]);
+
   expect(await readdir(join(root, "sessions"))).toHaveLength(1);
 });
 
@@ -152,6 +166,7 @@ test("starts and stops extensions with session events", async () => {
   const { faux, runtime } = await fauxModels();
   const marker = join(root, "started");
   const extension = join(root, "on-start.ts");
+
   await writeFile(
     extension,
     `import { appendFileSync } from "node:fs";
@@ -173,6 +188,7 @@ export default (pi) => {
     extensionPaths: [extension],
     models: { runtime, model: faux.getModel() },
   });
+
   await stopSession(session);
 
   expect(await readFile(marker, "utf8").catch(() => "")).toBe(

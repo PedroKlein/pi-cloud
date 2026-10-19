@@ -5,20 +5,26 @@ export function sseResponse(
 ): Response {
   const encoder = new TextEncoder();
   let close = (): void => undefined;
+
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       const write = (text: string): void => {
         controller.enqueue(encoder.encode(text));
       };
+
       write(": open\n\n");
+
       const heartbeat = setInterval(() => {
         write(": ping\n\n");
       }, heartbeatMs);
+
       let stop = (): void => undefined;
+
       close = () => {
         clearInterval(heartbeat);
         stop();
       };
+
       stop = open(
         (data) => {
           write(`data: ${JSON.stringify(data)}\n\n`);
@@ -33,6 +39,7 @@ export function sseResponse(
       close();
     },
   });
+
   return new Response(body, {
     headers: {
       "content-type": "text/event-stream",
@@ -48,11 +55,14 @@ export async function* readSse(
   if (!response.body) {
     return;
   }
+
   let buffer = "";
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+
   const idle = (): void => {
     void reader.cancel(new Error("event stream went quiet"));
   };
+
   let watchdog = setTimeout(idle, idleMs);
   try {
     for (;;) {
@@ -60,6 +70,7 @@ export async function* readSse(
       if (done) {
         return;
       }
+
       clearTimeout(watchdog);
       watchdog = setTimeout(idle, idleMs);
       buffer += value;
@@ -71,10 +82,12 @@ export async function* readSse(
           .filter((line) => line.startsWith("data: "))
           .map((line) => line.slice("data: ".length))
           .join("\n");
+
         buffer = buffer.slice(end + 2);
         if (data !== "") {
           yield JSON.parse(data);
         }
+
         end = buffer.indexOf("\n\n");
       }
     }

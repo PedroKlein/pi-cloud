@@ -14,11 +14,13 @@ if (root === undefined) {
 
 const faux = fauxProvider();
 faux.setResponses([fauxAssistantMessage([fauxText("compiled ok")])]);
+
 const runtime = await ModelRuntime.create({
   authPath: join(root, "auth.json"),
   modelsPath: null,
   allowModelNetwork: false,
 });
+
 runtime.registerNativeProvider(faux.provider);
 
 const session = await startSession({
@@ -28,8 +30,10 @@ const session = await startSession({
   extensionPaths,
   models: { runtime, model: faux.getModel() },
 });
+
 await session.prompt("hello");
 await stopSession(session);
+
 process.stdout.write(
   JSON.stringify({
     tools: session.getActiveToolNames(),

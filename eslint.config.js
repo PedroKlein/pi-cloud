@@ -1,4 +1,5 @@
 import js from "@eslint/js";
+import stylistic from "@stylistic/eslint-plugin";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -13,10 +14,27 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: { "@stylistic": stylistic },
     linterOptions: {
       reportUnusedDisableDirectives: "error",
     },
     rules: {
+      "@stylistic/padding-line-between-statements": [
+        "error",
+        { blankLine: "always", prev: "*", next: "return" },
+        { blankLine: "always", prev: "block-like", next: "*" },
+        {
+          blankLine: "always",
+          prev: ["multiline-const", "multiline-let", "multiline-expression"],
+          next: "*",
+        },
+        {
+          blankLine: "always",
+          prev: "*",
+          next: ["multiline-const", "multiline-let", "multiline-expression"],
+        },
+        { blankLine: "always", prev: "*", next: ["function", "class"] },
+      ],
       curly: "error",
       eqeqeq: "error",
       "no-else-return": ["error", { allowElseIf: false }],

@@ -44,6 +44,7 @@ pi-extensions/   Pi packages loaded into hosted sessions, such as cloud-bridge
 - Lint and type rules are strict on purpose: see `eslint.config.js` (typescript-eslint strict and stylistic type-checked rules) and `tsconfig.base.json`. Read them first.
 - Use TypeScript's own tools for modeling: discriminated unions, `as const`, `satisfies` and `readonly` types. No enums, namespaces or default exports; the configs enforce this.
 - Prettier formats everything with its defaults. Don't add options to it.
+- Separate logical steps with blank lines. Lint requires them before `return`, after blocks and around multi-line statements, and `eslint --fix` adds them.
 - TypeScript stays on 6.x until typescript-eslint supports 7.
 - Fix the code instead of suppressing warnings. An inline suppression needs a reason, and blanket exclusions are not allowed.
 - Long-running processes log timestamped progress (items scanned and processed, errors with identifiers, final counts), so a stuck job can be debugged from its log alone.
