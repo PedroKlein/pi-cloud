@@ -24,6 +24,7 @@
 
 - Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
 - Resolved: Bun runtime, Bun workspaces monorepo ([ADR 0003](adr/0003-bun-runtime-and-workspaces.md)).
+- Resolved: the session host runs Pi, a third-party extension and a PTY terminal on Bun, also from a compiled binary ([ADR 0010](adr/0010-session-host-on-bun.md)).
 - Resolved: apps for entry points, domain-named packages, and a separate folder for Pi extensions ([ADR 0008](adr/0008-monorepo-layout.md)).
 - Resolved: the server runs natively on the VM as a compiled Bun binary under systemd, with no container image in v1 ([ADR 0009](adr/0009-vm-deployment-and-testing.md)).
 
