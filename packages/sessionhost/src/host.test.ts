@@ -17,7 +17,9 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function fakeStream(options: { failUploads?: number } = {}): {
+function fakeStream(
+  options: { failUploads?: number; failPublishes?: number } = {},
+): {
   stream: SessionStream;
   send: (command: Command) => void;
   events: LiveEvent[];
@@ -26,6 +28,7 @@ function fakeStream(options: { failUploads?: number } = {}): {
   waitFor: (predicate: () => boolean) => Promise<void>;
 } {
   let failures = options.failUploads ?? 0;
+  let publishFailures = options.failPublishes ?? 0;
   let listener: ((command: Command) => void) | undefined;
   const events: LiveEvent[] = [];
   const lines: string[] = [];
@@ -43,6 +46,10 @@ function fakeStream(options: { failUploads?: number } = {}): {
     },
     publish: async (batch) => {
       await Promise.resolve();
+      if (publishFailures > 0) {
+        publishFailures--;
+        throw new Error("server unavailable");
+      }
       events.push(...batch);
     },
     commands: (l) => {
@@ -130,4 +137,27 @@ test("resends the transcript from the last acknowledged line after a failure", a
   expect(fake.uploads[0]).toBe(0);
   expect(fake.uploads[1]).toBe(0);
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
+});
+
+test("keeps the latest status when a live post fails", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 1 });
+  const logs: string[] = [];
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    (message) => logs.push(message),
+  );
+  await fake.waitFor(() => fake.events.length > 0);
+  await hosted.stop();
+
+  expect(logs).toContain("live events dropped");
+  expect(fake.events).toEqual([{ type: "status", status: "idle" }]);
 });

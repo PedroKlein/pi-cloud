@@ -1,6 +1,1 @@
-export {
-  runProvider,
-  type ControlPlane,
-  type Log,
-  type ProviderOptions,
-} from "./provider";
+export { runProvider, type ControlPlane, type Log } from "./provider";

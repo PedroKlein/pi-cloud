@@ -266,3 +266,72 @@ test("rejects agent requests with another protocol version or provider", async (
   expect(version.status).toBe(400);
   expect(provider.status).toBe(404);
 });
+
+test("rejects malformed requests with 400", async () => {
+  const session = await createSession("vm");
+  const malformed = await fetch(new URL("/api/sessions", server.url), {
+    method: "POST",
+    body: "{not json",
+  });
+  const noGeneration = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/commands`,
+  );
+  const negativeStart = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/transcript`,
+    {
+      generation: 0,
+      start: -1,
+      lines: ["x"],
+    },
+  );
+
+  expect(malformed.status).toBe(400);
+  expect(noGeneration.status).toBe(400);
+  expect(negativeStart.status).toBe(400);
+});
+
+test("aborts a running turn and stores the session as idle", async () => {
+  faux.setResponses([
+    async (_context, options) => {
+      await new Promise((resolve) => {
+        options?.signal?.addEventListener("abort", resolve);
+      });
+      return fauxAssistantMessage([fauxText("too late")]);
+    },
+  ]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const watching = await watch(session.id);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+  await watching(status("running"));
+  const aborted = await api(`/api/sessions/${session.id}/commands`, {
+    type: "abort",
+  });
+  await follow(session.id, status("idle"));
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(aborted.status).toBe(202);
+  expect(stored.status).toBe("idle");
+});
+
+test("rejects commands once the agent stops", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  stopAgent.abort();
+  await agentDone;
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  expect(sent.status).toBe(409);
+});

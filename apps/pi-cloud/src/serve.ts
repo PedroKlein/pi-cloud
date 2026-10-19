@@ -26,6 +26,7 @@ export function serve(options: ServeOptions): {
     stop: async () => {
       await server.stop(true);
       store.close();
+      options.log("server stopped");
     },
   };
 }

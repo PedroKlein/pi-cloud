@@ -15,6 +15,16 @@ import type { SessionStream } from "@pi-cloud/sessionhost";
 import { readSse } from "./sse";
 
 const reconnectMs = { initial: 500, max: 20_000 };
+const pollTimeoutMs = 30_000;
+
+class HttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
 
 interface Agent {
   readonly server: string;
@@ -37,7 +47,8 @@ async function call(
     ...(init.signal && { signal: init.signal }),
   });
   if (!response.ok) {
-    throw new Error(
+    throw new HttpError(
+      response.status,
       `${init.method ?? "GET"} ${path}: ${String(response.status)} ${await response.text()}`,
     );
   }
@@ -47,7 +58,11 @@ async function call(
 export function httpControlPlane(agent: Agent): ControlPlane {
   return {
     work: async (signal) =>
-      (await (await call(agent, "/agent/work", { signal })).json()) as Work,
+      (await (
+        await call(agent, "/agent/work", {
+          signal: AbortSignal.any([signal, AbortSignal.timeout(pollTimeoutMs)]),
+        })
+      ).json()) as Work,
   };
 }
 
@@ -105,6 +120,10 @@ async function followCommands(
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the await above is pending
       if (signal.aborted) {
+        return;
+      }
+      if (error instanceof HttpError && error.status < 500) {
+        log("command stream rejected", { path, error: error.message });
         return;
       }
       log("command stream failed", {

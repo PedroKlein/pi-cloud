@@ -120,15 +120,13 @@ export function createHandler(
     [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/transcript$/,
-      agent(async (request, [id = ""]) =>
-        reply(
-          sessions.appendTranscript(
-            id,
-            await readJson<TranscriptBatch>(request),
-          ),
-          200,
-        ),
-      ),
+      agent(async (request, [id = ""]) => {
+        const batch = await readJson<TranscriptBatch>(request);
+        if (!Number.isSafeInteger(batch.start) || batch.start < 0) {
+          throw new BadRequest("start must be a non-negative integer");
+        }
+        return reply(sessions.appendTranscript(id, batch), 200);
+      }),
     ],
     [
       "POST",
@@ -142,8 +140,11 @@ export function createHandler(
       /^\/agent\/sessions\/([^/]+)\/commands$/,
       agent((request, [id = ""]) => {
         const generation = Number(
-          new URL(request.url).searchParams.get("generation"),
+          new URL(request.url).searchParams.get("generation") ?? NaN,
         );
+        if (!Number.isSafeInteger(generation)) {
+          throw new BadRequest("generation must be an integer");
+        }
         let send: (command: Command) => void = () => undefined;
         const attached = sessions.attach(id, generation, (command) => {
           send(command);
@@ -167,6 +168,9 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
+          if (error instanceof BadRequest) {
+            return Response.json({ error: error.message }, { status: 400 });
+          }
           log("request failed", {
             method,
             path: pathname,
@@ -192,6 +196,12 @@ function reply(result: Result<unknown>, status: number): Response {
     : Response.json(result.value, { status });
 }
 
+class BadRequest extends Error {}
+
 async function readJson<T>(request: Request): Promise<T> {
-  return (await request.json()) as T;
+  try {
+    return (await request.json()) as T;
+  } catch {
+    throw new BadRequest("body must be JSON");
+  }
 }

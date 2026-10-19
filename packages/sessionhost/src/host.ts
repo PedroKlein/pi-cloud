@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -60,7 +61,7 @@ export async function hostSession(
       await session.abort();
       unsubscribe();
       transcript.sync();
-      await Promise.all([transcript.close(), live.flushed()]);
+      await Promise.all([transcript.close(), live.close()]);
       session.dispose();
     },
   };
@@ -110,30 +111,48 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
 function liveQueue(
   stream: SessionStream,
   log: Log,
-): { push: (event: LiveEvent) => void; flushed: () => Promise<void> } {
+): { push: (event: LiveEvent) => void; close: () => Promise<void> } {
   let pending: LiveEvent[] = [];
   let sending = Promise.resolve();
   let scheduled = false;
+  let closed = false;
+  const schedule = (): void => {
+    if (!scheduled) {
+      scheduled = true;
+      sending = sending.then(send);
+    }
+  };
   const send = async (): Promise<void> => {
     scheduled = false;
     const events = pending;
     pending = [];
-    await stream.publish(events).catch((error: unknown) => {
+    try {
+      await stream.publish(events);
+    } catch (error) {
+      const status = events.findLast((event) => event.type === "status");
       log("live events dropped", {
         count: events.length,
         error: String(error),
+        retryStatusInMs: status && retryMs,
       });
-    });
+      if (status && !closed) {
+        if (!pending.some((event) => event.type === "status")) {
+          pending.unshift(status);
+        }
+        await sleep(retryMs);
+        schedule();
+      }
+    }
   };
   return {
     push: (event) => {
       pending.push(event);
-      if (!scheduled) {
-        scheduled = true;
-        sending = sending.then(send);
-      }
+      schedule();
     },
-    flushed: async () => sending,
+    close: async () => {
+      closed = true;
+      await sending;
+    },
   };
 }
 
