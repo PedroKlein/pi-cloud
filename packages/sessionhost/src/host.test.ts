@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   fauxAssistantMessage,
@@ -384,4 +384,89 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
 
   expect(fake.terminals.get("t1")?.closed).toBe(true);
   expect(logs).toContain("terminal failed to start");
+});
+
+test("gives extensions Pi's theme to style status text with", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const extension = join(root, "themed.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.notify(ctx.ui.theme.fg("accent", "themed"), "info");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "status"));
+  await hosted.stop();
+
+  expect(
+    fake.events.some(
+      (e) => e.type === "notify" && e.message.includes("themed"),
+    ),
+  ).toBe(true);
+});
+
+test("opens the terminal in the home directory when the path is ~", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: "~",
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
+  await fake.waitFor(() => fake.terminals.has("t1"));
+  fake.terminals.get("t1")?.peer.input(new TextEncoder().encode("pwd\n"));
+
+  await fake.waitFor(() =>
+    (fake.terminals.get("t1")?.output.join("") ?? "").includes(homedir()),
+  );
+
+  await hosted.stop();
+
+  expect(fake.terminals.get("t1")?.output.join("")).toContain(homedir());
+});
+
+test("fails to start when the working directory does not exist", async () => {
+  const { models } = await fauxModels(root);
+  const missing = join(root, "missing");
+
+  const error: unknown = await hostSession(
+    {
+      cwd: missing,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fakeStream().stream,
+    () => undefined,
+  ).catch((e: unknown) => e);
+
+  expect(String(error)).toContain(`working directory not found: ${missing}`);
 });
