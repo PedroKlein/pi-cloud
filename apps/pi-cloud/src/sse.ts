@@ -1,7 +1,10 @@
 const heartbeatMs = 15_000;
 
 export function sseResponse(
-  open: (send: (data: unknown) => void, end: () => void) => () => void,
+  open: (
+    send: (data: unknown, id?: string) => void,
+    end: () => void,
+  ) => () => void,
 ): Response {
   const encoder = new TextEncoder();
   let close = (): void => undefined;
@@ -26,8 +29,9 @@ export function sseResponse(
       };
 
       stop = open(
-        (data) => {
-          write(`data: ${JSON.stringify(data)}\n\n`);
+        (data, id) => {
+          const field = id === undefined ? "" : `id: ${id}\n`;
+          write(`${field}data: ${JSON.stringify(data)}\n\n`);
         },
         () => {
           close();

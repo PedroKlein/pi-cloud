@@ -199,6 +199,7 @@ export class Sessions {
   watch(
     id: string,
     listener: Listener<SessionEvent>,
+    fromLine = 0,
   ): Result<{
     readonly replay: readonly SessionEvent[];
     readonly stop: () => void;
@@ -214,9 +215,11 @@ export class Sessions {
 
     const replay: SessionEvent[] = [
       { type: "session", session: this.#view(session) },
-      ...this.#store
-        .transcript(id, 0)
-        .map((entry, line): SessionEvent => ({ type: "entry", line, entry })),
+      ...this.#store.transcript(id, fromLine).map((entry, i): SessionEvent => ({
+        type: "entry",
+        line: fromLine + i,
+        entry,
+      })),
       ...this.#openPrompts(session).map((event): SessionEvent => ({
         type: "live",
         event,
