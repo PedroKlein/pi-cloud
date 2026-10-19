@@ -87,6 +87,18 @@ Sources:
 - [Pi Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md)
 - [Pi Packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md)
 
+### pi-durable
+
+[`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable) is a second Pi harness, separate from `pi-coding-agent`. It commits entries, task checkpoints and documents atomically before anything is shown, so a process that dies mid-turn resumes where it stopped. Tool intent is stored before a tool runs: a tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. It also has idempotent submits by `requestId`, conversations owned by tasks with abort cascading bottom-up, durable sleeps with a wake hook for hosts that hibernate, and a guard that parks a task after repeated crashes.
+
+Pi Cloud does not use it in v1:
+
+- `pi-coding-agent` does not depend on it, and it has its own extension API. Pi packages, extensions, skills and settings written for the coding agent don't run on it.
+- It has its own transcript format, not the session JSONL that ADR 0006 replicates.
+- It is marked experimental, and its API changes without notice between releases.
+
+It is the likely answer to resuming a Session on fresh compute in v2, and the session host is where it would plug in.
+
 ## Open-source prior art
 
 ### PI WEB
@@ -115,7 +127,26 @@ Sources:
 
 ### OpenHands
 
-[All-Hands-AI/OpenHands](https://github.com/All-Hands-AI/OpenHands) provides useful sandbox and Kubernetes-runtime lessons. Its open-source product is primarily personal-workstation oriented; team cloud and stronger tenant capabilities follow a different product boundary.
+[OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) is now Agent Canvas, a self-hosted React UI for coding agents. The backend is the Agent Server in [OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk): one REST and WebSocket server per host that runs conversations, stores their events on local disk and can start a Docker container per conversation. Canvas can drive Pi as an ACP subprocess (`pi-acp`).
+
+It is not shaped like Claude Code cloud. There is no control plane: the browser connects to each Agent Server directly and switches between them. That model has three costs Pi Cloud avoids with an outbound agent and one server ([ADR 0006](adr/0006-provider-protocol.md)):
+
+- Every backend must be reachable from the browser, so remote machines need a tunnel. Their DigitalOcean integration ships a tunnel bridge and a reverse proxy for this.
+- The browser keeps a session key per backend in `localStorage`. Their self-hosting guide notes that any script on the same origin can read every key.
+- History lives on each backend's disk and is lost with the machine.
+
+Running Pi over ACP also loses what makes a hosted Pi Session worth having: extension prompts, the JSONL tree and personalization ([ADR 0010](adr/0010-session-host-on-bun.md)).
+
+Parts worth reusing:
+
+- Their session socket gives every stored event a sequence number, starts with a sync frame naming the replay range, and resumes from `after_seq`. Streaming deltas may be dropped, and every streaming item ends with exactly one stored message or an abort frame.
+- A slow consumer is disconnected instead of being sent fewer frames. Admission is byte-bounded, so one stuck tab cannot stall the publisher, and a reconnect from the cursor loses nothing.
+- On restart, an unfinished tool call gets an explicit error result saying a restart interrupted it.
+- A conversation lease file holds a generation, a 45 second TTL and the owner's host and pid. A new owner takes over early when that pid is dead, and every write checks ownership first.
+- Per-conversation Docker containers sit behind a proxy in the host's Agent Server, each with its own API key and encryption key.
+- A storage reclaimer applies a disk budget and retention, moving files to a trash folder before deleting them.
+- Automations are a separate service that decides when to run and creates conversations through the public API.
+- UI extensions are installed disabled. An agent may install one, but only the user enables it.
 
 ### Coder and Daytona
 

@@ -43,7 +43,7 @@
 
 - Resolved: VM Sessions get a fresh clone each; laptop Sessions use a worktree of an existing checkout, or the folder directly ([ADR 0007](adr/0007-session-workspaces.md)).
 - How are local paths, VM directories, and PVCs represented by one Workspace interface?
-- What is backed up, replicated, exported, and garbage-collected?
+- What is backed up, replicated, exported, and garbage-collected? OpenHands applies a disk budget and retention, with a trash folder before deletion ([research](research.md#openhands)).
 - Can a Session migrate between providers, or should cross-provider continuation begin as a fork?
 
 ### Profiles and personalization
@@ -73,7 +73,7 @@
 ### Future compatibility without premature implementation
 
 - Which ownership and actor fields should exist now to avoid a single-user data-model dead end?
-- What common RunRequest can later serve humans, schedules, webhooks, Projects, and automation flows?
+- What common RunRequest can later serve humans, schedules, webhooks, Projects, and automation flows? OpenHands keeps triggers in a separate service that creates conversations through the public API ([research](research.md#openhands)).
 - Which domain events should exist from the beginning?
 - How should personal Cells later federate into a Team Hub without merging their local trust boundaries?
 
@@ -83,9 +83,9 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Runtime and isolation
 
-- When Sessions can move between machines, do they follow Claude Code cloud sessions (resume on fresh compute from the server transcript and a fresh clone), and how does a provider that loses its lease stop its own Sessions?
+- When Sessions can move between machines, do they follow Claude Code cloud sessions (resume on fresh compute from the server transcript and a fresh clone), and how does a provider that loses its lease stop its own Sessions? pi-durable resumes mid-turn from its own storage, and OpenHands fences writes with a generation lease ([research](research.md#pi-durable)).
 - What is the default Environment isolation mode for a personal Cell?
-- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod?
+- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod? OpenHands runs a container per conversation behind a proxy in the host server ([research](research.md#openhands)).
 - Where do subagents run when the parent Session has a dedicated pod?
 - What resource and concurrency limits prevent nested work from starving other Sessions?
 
@@ -101,6 +101,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 ### Extension system
 
 - What is the smallest stable Pi Cloud extension interface?
+- May a Session install extensions, or only propose them? OpenHands installs UI extensions disabled and lets only the user enable them ([research](research.md#openhands)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - What capabilities must an extension declare?
 - Which first-party features must prove the public extension surface?
