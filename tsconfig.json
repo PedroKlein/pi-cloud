@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "apps/*/src",
+    "packages/*/src",
+    "pi-extensions/*/src",
+    "**/*.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

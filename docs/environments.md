@@ -173,12 +173,12 @@ The Control Plane must distinguish strongly enforced policy from advisory config
 
 A user-facing model similar to Claude's is useful:
 
-| Mode | Meaning |
-|---|---|
-| None | Deny Session egress except required control/model channels |
-| Trusted | Allow a maintained set of package, Git, and platform endpoints |
-| Custom | Allow an Environment-specific domain list, optionally plus Trusted |
-| Full | Permit unrestricted egress and mark the Environment accordingly |
+| Mode    | Meaning                                                            |
+| ------- | ------------------------------------------------------------------ |
+| None    | Deny Session egress except required control/model channels         |
+| Trusted | Allow a maintained set of package, Git, and platform endpoints     |
+| Custom  | Allow an Environment-specific domain list, optionally plus Trusted |
+| Full    | Permit unrestricted egress and mark the Environment accordingly    |
 
 Plain Kubernetes NetworkPolicy is oriented around addresses rather than durable hostname allowlists. Strong domain enforcement may require an egress proxy, Cilium FQDN policy, a service mesh, or another DNS-aware layer.
 

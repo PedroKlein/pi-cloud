@@ -104,15 +104,15 @@ Its trust model is personal and explicitly not a multi-tenant sandbox. Pi Cloud 
 
 ## Likely integration boundaries
 
-| Capability | Existing owner | Possible Pi Cloud role |
-|---|---|---|
-| Agent loop and transcript | Pi | Host through SDK or RPC |
-| Nested delegation | pi-subagents | Available inside every hosted Session |
-| Repository topology | pi-repos | Adapter for discovery and shared system context |
-| Work planning | pi-task | Optional Project and Thread linkage |
-| Curated personal facts | pi-memory | Separate from Project coordination memory |
-| Semantic Session activity | pi-focus | Status signal and report input |
-| GitHub operations | pi-github | Policy-aware integration seam |
-| Browser Session host | PI WEB | Candidate foundation or prototype host |
+| Capability                | Existing owner | Possible Pi Cloud role                          |
+| ------------------------- | -------------- | ----------------------------------------------- |
+| Agent loop and transcript | Pi             | Host through SDK or RPC                         |
+| Nested delegation         | pi-subagents   | Available inside every hosted Session           |
+| Repository topology       | pi-repos       | Adapter for discovery and shared system context |
+| Work planning             | pi-task        | Optional Project and Thread linkage             |
+| Curated personal facts    | pi-memory      | Separate from Project coordination memory       |
+| Semantic Session activity | pi-focus       | Status signal and report input                  |
+| GitHub operations         | pi-github      | Policy-aware integration seam                   |
+| Browser Session host      | PI WEB         | Candidate foundation or prototype host          |
 
 These boundaries favor deletion and reuse. Pi Cloud should add distributed control, Projects, Environments, Profiles, Workspaces, Provider Agents, and extension interfaces only where the existing modules do not already own the behavior.
