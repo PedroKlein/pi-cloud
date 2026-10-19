@@ -1,0 +1,9 @@
+{
+  "name": "@pi-cloud/providers",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@pi-cloud/protocol": "workspace:*"
+  }
+}

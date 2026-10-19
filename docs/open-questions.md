@@ -59,6 +59,7 @@
 
 - Resolved: the first control plane runs on the VM, reached from the laptop through an SSH tunnel ([ADR 0005](adr/0005-v1-access-and-model-credentials.md), [ADR 0009](adr/0009-vm-deployment-and-testing.md)).
 - Resolved: the agent long-polls for work and each Session streams on its own over HTTPS and SSE, as Claude Code does; the provider's JSONL stays authoritative and every new entry is copied to the server, which serves browser replay ([ADR 0006](adr/0006-provider-protocol.md)).
+- Resolved: the agent hosts its Sessions in its own process, and the server uses `Bun.serve` and `node:sqlite` ([ADR 0011](adr/0011-server-and-agent-processes.md)).
 - Which operations are synchronous commands versus desired state reconciled asynchronously?
 
 ### Projects and shared state
