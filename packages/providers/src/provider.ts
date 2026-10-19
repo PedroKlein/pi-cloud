@@ -21,10 +21,12 @@ export interface ProviderOptions {
 
 export async function runProvider(options: ProviderOptions): Promise<void> {
   const { controlPlane, start, running, log, signal } = options;
+
   const { initialMs, maxMs } = options.retry ?? {
     initialMs: 1000,
     maxMs: 20_000,
   };
+
   let delayMs = initialMs;
   let polls = 0;
   let started = 0;
@@ -44,10 +46,12 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
       if (signal.aborted) {
         break;
       }
+
       log("work poll failed", { error: String(error), retryInMs: delayMs });
       await sleep(delayMs, undefined, { signal }).catch(() => undefined);
       delayMs = Math.min(delayMs * 2, maxMs);
     }
   }
+
   log("provider stopped", { polls, started });
 }

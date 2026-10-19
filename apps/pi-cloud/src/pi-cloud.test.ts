@@ -28,6 +28,7 @@ function startAgent(
   extensionPaths: readonly string[] = [],
 ): () => Promise<void> {
   const controller = new AbortController();
+
   const done = runAgent({
     server: server.url.href,
     provider,
@@ -40,28 +41,35 @@ function startAgent(
     },
     signal: controller.signal,
   });
+
   const stop = async (): Promise<void> => {
     controller.abort();
     await done;
   };
+
   agents.push(stop);
+
   return stop;
 }
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
+
   server = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
     log: quiet,
   });
+
   faux = fauxProvider();
+
   runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
   });
+
   runtime.registerNativeProvider(faux.provider);
   agents = [];
   agentLogs = [];
@@ -98,10 +106,12 @@ async function watch(
   ) => Promise<SessionEvent[]>
 > {
   const controller = new AbortController();
+
   const response = await fetch(
     new URL(`/api/sessions/${sessionId}/events`, server.url),
     { signal: controller.signal },
   );
+
   return async (until) => {
     const events: SessionEvent[] = [];
     for await (const event of readSse(response)) {
@@ -110,7 +120,9 @@ async function watch(
         break;
       }
     }
+
     controller.abort();
+
     return events;
   };
 }
@@ -133,7 +145,9 @@ function roles(events: readonly SessionEvent[]): string[] {
     if (event.type !== "entry") {
       return [];
     }
+
     const entry = JSON.parse(event.entry) as { message?: { role: string } };
+
     return entry.message?.role ?? [];
   });
 }
@@ -144,20 +158,25 @@ test("chats with a session on an agent and replays it later", async () => {
   expect(session.status).toBe("queued");
 
   await follow(session.id, status("idle"));
+
   const sent = await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "hi",
   });
+
   expect(sent.status).toBe(202);
+
   const live = await follow(session.id, (events) =>
     roles(events).includes("assistant"),
   );
+
   const replay = await follow(
     session.id,
     (events) => roles(events).length === roles(live).length,
   );
 
   expect(roles(replay).slice(-2)).toEqual(["user", "assistant"]);
+
   expect(replay.filter((e) => e.type === "entry")).toEqual(
     live.filter((e) => e.type === "entry"),
   );
@@ -169,6 +188,7 @@ test("streams text as it is generated", async () => {
   await follow(session.id, status("idle"));
 
   const watching = await watch(session.id);
+
   const done = watching(
     (events) =>
       events.some(
@@ -178,10 +198,12 @@ test("streams text as it is generated", async () => {
           e.event.status === "idle",
       ) && roles(events).includes("assistant"),
   );
+
   await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "hi",
   });
+
   const events = await done;
 
   const text = events
@@ -189,6 +211,7 @@ test("streams text as it is generated", async () => {
       e.type === "live" && e.event.type === "text" ? e.event.delta : [],
     )
     .join("");
+
   expect(text).toBe("streamed reply");
 });
 
@@ -223,11 +246,13 @@ async function asAgent(
 
 test("keeps transcript lines once and in order across resends", async () => {
   const session = await createSession("vm");
+
   const work = (await (
     await asAgent("vm", "/agent/work", { running: [] })
   ).json()) as {
     start: { generation: number }[];
   };
+
   const generation = work.start[0]?.generation;
   const path = `/agent/sessions/${session.id}/transcript`;
 
@@ -236,12 +261,15 @@ test("keeps transcript lines once and in order across resends", async () => {
     start: 0,
     lines: ["a", "b"],
   });
+
   const overlap = await asAgent("vm", path, {
     generation,
     start: 1,
     lines: ["b", "c"],
   });
+
   const gap = await asAgent("vm", path, { generation, start: 5, lines: ["f"] });
+
   const replay = await follow(
     session.id,
     (events) => events.filter((e) => e.type === "entry").length === 3,
@@ -250,6 +278,7 @@ test("keeps transcript lines once and in order across resends", async () => {
   expect(await first.json()).toEqual({ acked: 2 });
   expect(await overlap.json()).toEqual({ acked: 3 });
   expect(await gap.json()).toEqual({ acked: 3 });
+
   expect(replay.flatMap((e) => (e.type === "entry" ? e.entry : []))).toEqual([
     "a",
     "b",
@@ -279,6 +308,7 @@ test("rejects agent requests with another protocol version or provider", async (
   const session = await createSession("vm");
 
   const version = await asAgent("vm", "/agent/work", { running: [] }, "99");
+
   const provider = await asAgent(
     "laptop-2",
     `/agent/sessions/${session.id}/live`,
@@ -294,14 +324,17 @@ test("rejects agent requests with another protocol version or provider", async (
 
 test("rejects malformed requests with 400", async () => {
   const session = await createSession("vm");
+
   const malformed = await fetch(new URL("/api/sessions", server.url), {
     method: "POST",
     body: "{not json",
   });
+
   const noGeneration = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/commands`,
   );
+
   const negativeStart = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/transcript`,
@@ -323,9 +356,11 @@ test("aborts a running turn and stores the session as idle", async () => {
       await new Promise((resolve) => {
         options?.signal?.addEventListener("abort", resolve);
       });
+
       return fauxAssistantMessage([fauxText("too late")]);
     },
   ]);
+
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
   const watching = await watch(session.id);
@@ -334,11 +369,15 @@ test("aborts a running turn and stores the session as idle", async () => {
     type: "message",
     text: "hi",
   });
+
   await watching(status("running"));
+
   const aborted = await api(`/api/sessions/${session.id}/commands`, {
     type: "abort",
   });
+
   await follow(session.id, status("idle"));
+
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
@@ -352,6 +391,7 @@ test("rejects commands once the agent stops", async () => {
   await follow(session.id, status("idle"));
 
   await laptop();
+
   const sent = await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "hi",
@@ -372,19 +412,25 @@ test("restarts an interrupted session as a new attempt with its transcript", asy
         ),
       ]),
   ]);
+
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
+
   await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "one",
   });
+
   await follow(session.id, (events) => roles(events).includes("assistant"));
 
   await laptop();
+
   await follow(session.id, (events) =>
     events.some((e) => e.type === "session" && !e.session.online),
   );
+
   startAgent("laptop");
+
   await follow(
     session.id,
     (events) =>
@@ -396,14 +442,17 @@ test("restarts an interrupted session as a new attempt with its transcript", asy
           e.session.status === "idle",
       ),
   );
+
   await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "two",
   });
+
   const replay = await follow(
     session.id,
     (events) => roles(events).filter((r) => r === "assistant").length === 2,
   );
+
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
@@ -414,9 +463,11 @@ test("restarts an interrupted session as a new attempt with its transcript", asy
     "user",
     "assistant",
   ]);
+
   expect(
     replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
   ).toBe(true);
+
   expect(stored.interruptedAt).not.toBeNull();
   expect(stored.online).toBe(true);
 });
@@ -426,6 +477,7 @@ test("marks a session failed when its host cannot start", async () => {
   const session = await createSession("broken");
 
   await follow(session.id, status("failed"));
+
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
@@ -442,7 +494,9 @@ test("keeps a session running through a provider outage", async () => {
   const offline = await follow(session.id, (events) =>
     events.some((e) => e.type === "session" && !e.session.online),
   );
+
   await asAgent("vm", "/agent/work", { running });
+
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
@@ -451,6 +505,7 @@ test("keeps a session running through a provider outage", async () => {
     type: "session",
     session: { status: "starting", online: false },
   });
+
   expect(stored).toMatchObject({
     status: "starting",
     generation: 1,
@@ -464,6 +519,7 @@ test("takes a session back when another poll claims it", async () => {
   await follow(session.id, status("idle"));
 
   await asAgent("laptop", "/agent/work", { running: [] });
+
   const events = await follow(
     session.id,
     (seen) =>
@@ -485,6 +541,7 @@ test("takes a session back when another poll claims it", async () => {
 test("closes the command stream of an interrupted attempt", async () => {
   const session = await createSession("vm");
   await asAgent("vm", "/agent/work", { running: [] });
+
   const commands = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/commands?generation=1`,
@@ -509,24 +566,29 @@ async function openTerminal(sessionId: string): Promise<{
     `/api/sessions/${sessionId}/terminal?cols=80&rows=24`,
     server.url,
   );
+
   url.protocol = "ws:";
   const socket = new WebSocket(url);
   socket.binaryType = "arraybuffer";
   const decoder = new TextDecoder();
   let text = "";
   let changed = (): void => undefined;
+
   socket.addEventListener("message", (event: MessageEvent) => {
     text += decoder.decode(event.data as ArrayBuffer, { stream: true });
     changed();
   });
+
   const closed = new Promise<void>((resolve) => {
     socket.addEventListener("close", () => {
       resolve();
     });
   });
+
   await new Promise((resolve) => {
     socket.addEventListener("open", resolve);
   });
+
   return {
     socket,
     closed,
@@ -536,6 +598,7 @@ async function openTerminal(sessionId: string): Promise<{
           changed = resolve;
         });
       }
+
       return text;
     },
   };
@@ -610,10 +673,12 @@ test("serves the web UI with its bundled script", async () => {
 test("replays open prompts to a client that connects later", async () => {
   const session = await createSession("vm");
   await asAgent("vm", "/agent/work", { running: [] });
+
   const prompt = {
     type: "prompt",
     prompt: { id: "p1", kind: "confirm", title: "Deploy?", message: "Sure?" },
   } as const;
+
   await asAgent("vm", `/agent/sessions/${session.id}/live`, {
     generation: 1,
     events: [prompt],
@@ -622,20 +687,25 @@ test("replays open prompts to a client that connects later", async () => {
   const open = await follow(session.id, (events) =>
     events.some((e) => e.type === "live"),
   );
+
   await asAgent("vm", `/agent/sessions/${session.id}/live`, {
     generation: 1,
     events: [{ type: "prompt_end", id: "p1" }],
   });
+
   const later = await watch(session.id);
+
   await asAgent("vm", `/agent/sessions/${session.id}/live`, {
     generation: 1,
     events: [{ type: "status", status: "idle" }],
   });
+
   const answered = await later((events) =>
     events.some((e) => e.type === "live"),
   );
 
   expect(open.at(-1)).toEqual({ type: "live", event: prompt });
+
   expect(answered.filter((e) => e.type === "live")).toEqual([
     { type: "live", event: { type: "status", status: "idle" } },
   ]);
@@ -644,6 +714,7 @@ test("replays open prompts to a client that connects later", async () => {
 test("rejects requests from other sites", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
+
   const fromSite = async (
     path: string,
     headers: Record<string, string>,
@@ -681,6 +752,7 @@ test("does not open a terminal for a request that is not a WebSocket", async () 
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   expect(response.status).toBe(400);
+
   expect(
     agentLogs.filter((line) => line.startsWith("terminal opened")),
   ).toEqual([]);
@@ -706,15 +778,18 @@ test("does not let a host take another session's terminal", async () => {
   const secondReady = await follow(second.id, status("idle"));
   const generation = secondReady.findLast((e) => e.type === "session");
   await openTerminal(first.id);
+
   const opened = async (): Promise<string | undefined> => {
     for (;;) {
       const line = agentLogs.find((l) => l.startsWith("terminal opened"));
       if (line !== undefined) {
         return line;
       }
+
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   };
+
   const line = await opened();
   const terminalId = /"terminalId":"([^"]+)"/.exec(line ?? "")?.[1] ?? "";
 
@@ -722,6 +797,7 @@ test("does not let a host take another session's terminal", async () => {
     `/agent/sessions/${second.id}/terminals/${terminalId}?generation=${String(generation?.type === "session" ? generation.session.generation : 0)}`,
     server.url,
   );
+
   const response = await fetch(url, {
     headers: {
       "pi-cloud-protocol": "1",

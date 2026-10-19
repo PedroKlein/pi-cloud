@@ -45,6 +45,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           stopping.delete(sessionId);
         }
       });
+
     stopping.set(sessionId, stopped);
     await stopped;
   };
@@ -54,8 +55,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     sessionLog: Log,
   ): Promise<HostedSession | undefined> => {
     const { sessionId, generation } = assignment;
+
     const current = (): boolean =>
       hosted.get(sessionId)?.generation === generation;
+
     const fenced = (): void => {
       const entry = hosted.get(sessionId);
       if (entry?.generation === generation) {
@@ -64,6 +67,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         void retire(sessionId, entry);
       }
     };
+
     await stopping.get(sessionId);
     try {
       return await hostSession(
@@ -79,6 +83,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       );
     } catch (error) {
       sessionLog("session failed to start", { error: String(error) });
+
       await reportStartFailure(agent, sessionId, {
         generation,
         error: String(error),
@@ -87,9 +92,11 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           error: String(reportError),
         });
       });
+
       if (current()) {
         hosted.delete(sessionId);
       }
+
       return undefined;
     }
   };
@@ -105,13 +112,16 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       })),
     start: (assignment) => {
       const { sessionId } = assignment;
+
       const sessionLog: Log = (message, fields) => {
         log(message, { sessionId, ...fields });
       };
+
       const previous = hosted.get(sessionId);
       if (previous) {
         void retire(sessionId, previous);
       }
+
       hosted.set(sessionId, {
         generation: assignment.generation,
         session: start(assignment, sessionLog),
@@ -120,8 +130,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   });
 
   log("stopping sessions", { count: hosted.size });
+
   await Promise.all(
     [...hosted].map(async ([sessionId, entry]) => retire(sessionId, entry)),
   );
+
   await Promise.all(stopping.values());
 }

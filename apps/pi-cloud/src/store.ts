@@ -38,6 +38,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
+
   const db = new DatabaseSync(path);
   db.exec("pragma journal_mode = wal");
   db.exec(schema);
@@ -52,23 +53,30 @@ export function openStore(path: string): SessionStore & { close: () => void } {
     interruptedAt: row.interrupted_at,
     error: row.error,
   });
+
   const insert = db.prepare(
     "insert into sessions (id, provider, cwd, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
   );
+
   const update = db.prepare(
     "update sessions set status = ?, generation = ?, interrupted_at = ?, error = ? where id = ?",
   );
+
   const get = db.prepare("select * from sessions where id = ?");
   const list = db.prepare("select * from sessions order by created_at desc");
+
   const byProvider = db.prepare(
     "select * from sessions where provider = ? and status in (select value from json_each(?)) order by created_at",
   );
+
   const length = db.prepare(
     "select count(*) as n from transcript where session_id = ?",
   );
+
   const appendLine = db.prepare(
     "insert into transcript (session_id, line, entry) values (?, ?, ?)",
   );
+
   const transcript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
   );
@@ -91,6 +99,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
     },
     get: (id) => {
       const row = get.get(id) as SessionRow | undefined;
+
       return row && toSession(row);
     },
     list: () => (list.all() as unknown as SessionRow[]).map(toSession),

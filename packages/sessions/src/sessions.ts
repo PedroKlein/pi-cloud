@@ -94,10 +94,12 @@ export class Sessions {
       interruptedAt: null,
       error: null,
     };
+
     this.#store.insert(session);
     for (const wake of this.#pollers.get(session.provider) ?? []) {
       wake();
     }
+
     return this.#view(session);
   }
 
@@ -107,6 +109,7 @@ export class Sessions {
 
   get(id: string): Session | undefined {
     const session = this.#store.get(id);
+
     return session && this.#view(session);
   }
 
@@ -122,7 +125,9 @@ export class Sessions {
       if (start.length > 0 || signal.aborted) {
         return { start, interrupted };
       }
+
       await this.#waitForWork(provider, signal);
+
       return {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
         start: signal.aborted ? [] : this.#claimNext(provider),
@@ -138,7 +143,9 @@ export class Sessions {
     if (!current.ok) {
       return current;
     }
+
     this.#update({ ...current.value, status: "failed", error: failure.error });
+
     return { ok: true, value: undefined };
   }
 
@@ -147,16 +154,19 @@ export class Sessions {
     if (!current.ok) {
       return current;
     }
+
     const length = this.#store.transcriptLength(id);
     if (batch.start <= length) {
       const fresh = batch.lines.slice(length - batch.start);
       if (fresh.length > 0) {
         this.#store.appendTranscript(id, length, fresh);
+
         fresh.forEach((entry, i) => {
           this.#emit(id, { type: "entry", line: length + i, entry });
         });
       }
     }
+
     return {
       ok: true,
       value: { acked: this.#store.transcriptLength(id) },
@@ -168,17 +178,21 @@ export class Sessions {
     if (!current.ok) {
       return current;
     }
+
     let session = current.value;
     for (const event of post.events) {
       if (event.type === "status") {
         session = { ...session, status: event.status };
         this.#update(session);
       }
+
       if (event.type === "prompt" || event.type === "prompt_end") {
         this.#trackPrompt(id, post.generation, event);
       }
+
       this.#emit(id, { type: "live", event });
     }
+
     return { ok: true, value: undefined };
   }
 
@@ -193,9 +207,11 @@ export class Sessions {
     if (!session) {
       return { ok: false, reason: "not_found" };
     }
+
     const watchers = this.#watchers.get(id) ?? new Set();
     this.#watchers.set(id, watchers);
     watchers.add(listener);
+
     const replay: SessionEvent[] = [
       { type: "session", session: this.#view(session) },
       ...this.#store
@@ -206,6 +222,7 @@ export class Sessions {
         event,
       })),
     ];
+
     return {
       ok: true,
       value: {
@@ -221,11 +238,14 @@ export class Sessions {
     if (!this.#store.get(id)) {
       return { ok: false, reason: "not_found" };
     }
+
     const host = this.#hosts.get(id);
     if (!host) {
       return { ok: false, reason: "offline" };
     }
+
     host.send(command);
+
     return { ok: true, value: undefined };
   }
 
@@ -239,9 +259,11 @@ export class Sessions {
     if (!current.ok) {
       return current;
     }
+
     const host = { send, end };
     this.#hosts.get(id)?.end();
     this.#hosts.set(id, host);
+
     return {
       ok: true,
       value: () => {
@@ -274,15 +296,18 @@ export class Sessions {
           attempt.sessionId === session.id &&
           attempt.generation === session.generation,
       );
+
       if (!alive) {
         this.#hosts.get(session.id)?.end();
         this.#update({ ...session, status: "interrupted", interruptedAt: now });
+
         interrupted.push({
           sessionId: session.id,
           generation: session.generation,
         });
       }
     }
+
     return interrupted;
   }
 
@@ -294,7 +319,9 @@ export class Sessions {
         generation: next.generation + 1,
         error: null,
       };
+
       this.#update(session);
+
       return {
         sessionId: session.id,
         generation: session.generation,
@@ -307,12 +334,14 @@ export class Sessions {
     await new Promise<void>((resolve) => {
       const pollers = this.#pollers.get(provider) ?? new Set();
       this.#pollers.set(provider, pollers);
+
       const done = (): void => {
         clearTimeout(timer);
         signal.removeEventListener("abort", done);
         pollers.delete(done);
         resolve();
       };
+
       const timer = setTimeout(done, this.#pollWaitMs);
       signal.addEventListener("abort", done);
       pollers.add(done);
@@ -325,6 +354,7 @@ export class Sessions {
       lastPoll: 0,
       offlineTimer: undefined,
     };
+
     this.#providers.set(provider, state);
     const wasOnline = this.#online(provider);
     state.polling++;
@@ -332,6 +362,7 @@ export class Sessions {
     if (!wasOnline) {
       this.#emitProvider(provider);
     }
+
     return state;
   }
 
@@ -341,6 +372,7 @@ export class Sessions {
     if (state.polling > 0) {
       return;
     }
+
     state.offlineTimer = setTimeout(() => {
       this.#emitProvider(provider);
     }, this.#offlineAfterMs);
@@ -348,6 +380,7 @@ export class Sessions {
 
   #online(provider: string): boolean {
     const state = this.#providers.get(provider);
+
     return (
       state !== undefined &&
       (state.polling > 0 || Date.now() - state.lastPoll < this.#offlineAfterMs)
@@ -358,6 +391,7 @@ export class Sessions {
     const sessions = this.#store
       .list()
       .filter((session) => session.provider === provider);
+
     for (const session of sessions) {
       this.#emit(session.id, { type: "session", session: this.#view(session) });
     }
@@ -373,6 +407,7 @@ export class Sessions {
       tracked = { generation, events: new Map() };
       this.#prompts.set(id, tracked);
     }
+
     if (event.type === "prompt") {
       tracked.events.set(event.prompt.id, event);
     } else {
@@ -382,6 +417,7 @@ export class Sessions {
 
   #openPrompts(session: StoredSession): readonly LiveEvent[] {
     const tracked = this.#prompts.get(session.id);
+
     return tracked?.generation === session.generation &&
       attempting.includes(session.status)
       ? [...tracked.events.values()]
@@ -393,12 +429,14 @@ export class Sessions {
     if (!session) {
       return { ok: false, reason: "not_found" };
     }
+
     if (
       session.generation !== generation ||
       !attempting.includes(session.status)
     ) {
       return { ok: false, reason: "stale_generation" };
     }
+
     return { ok: true, value: session };
   }
 

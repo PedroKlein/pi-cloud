@@ -10,6 +10,7 @@ function element<T extends HTMLElement>(id: string, type: new () => T): T {
   if (!(found instanceof type)) {
     throw new Error(`missing #${id}`);
   }
+
   return found;
 }
 
@@ -37,20 +38,24 @@ async function api(path: string, body?: unknown): Promise<Response> {
       body: JSON.stringify(body),
     }),
   });
+
   if (!response.ok) {
     const { error } = (await response.json()) as { error: string };
     throw new Error(error);
   }
+
   return response;
 }
 
 function describe(session: Session): string {
   const where = session.online ? "" : ", provider offline";
+
   return `${session.status}${where}${session.error === null ? "" : `: ${session.error}`}`;
 }
 
 async function refreshSessions(): Promise<void> {
   const sessions = (await (await api("/api/sessions")).json()) as Session[];
+
   sessionList.replaceChildren(
     ...sessions.toReversed().map((session) => {
       const item = document.createElement("li");
@@ -60,9 +65,11 @@ async function refreshSessions(): Promise<void> {
       const details = document.createElement("small");
       details.textContent = `${session.provider} · ${describe(session)}`;
       item.append(name, details);
+
       item.addEventListener("click", () => {
         location.hash = session.id;
       });
+
       return item;
     }),
   );
@@ -80,9 +87,11 @@ function addItem(item: ChatItem): HTMLLIElement {
   const entry = document.createElement("li");
   entry.dataset["role"] = item.role;
   entry.textContent = item.text;
+
   keepScrolled(() => {
     chat.append(entry);
   });
+
   return entry;
 }
 
@@ -91,44 +100,55 @@ function follow(sessionId: string): () => void {
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
   const prompts = new Map<string, HTMLElement>();
+
   const clearLive = (): void => {
     streaming?.remove();
     streaming = undefined;
+
     tools.forEach((tool) => {
       tool.remove();
     });
+
     tools.clear();
   };
+
   const live = (event: LiveEvent): void => {
     switch (event.type) {
       case "status":
         if (event.status === "idle") {
           clearLive();
         }
+
         return;
       case "text": {
         streaming ??= addItem({ role: "assistant", text: "" });
         const bubble = streaming;
+
         keepScrolled(() => {
           bubble.textContent += event.delta;
         });
+
         return;
       }
+
       case "tool_start":
         tools.set(
           event.toolCallId,
           addItem({ role: "tool", text: `${event.toolName} running…` }),
         );
+
         return;
       case "tool_end":
         tools.get(event.toolCallId)?.remove();
         tools.delete(event.toolCallId);
+
         return;
       case "prompt": {
         const { id } = event.prompt;
         if (prompts.has(id)) {
           return;
         }
+
         const box = renderPrompt(event.prompt, (value) => {
           api(`/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
             type: "answer",
@@ -136,57 +156,72 @@ function follow(sessionId: string): () => void {
             value,
           }).catch(report);
         });
+
         prompts.set(id, box);
         chat.append(box);
         chat.scrollTop = chat.scrollHeight;
+
         return;
       }
+
       case "prompt_end":
         prompts.get(event.id)?.remove();
         prompts.delete(event.id);
+
         return;
       case "notify":
         addItem({
           role: event.level === "error" ? "error" : "tool",
           text: event.message,
         });
+
         return;
     }
   };
+
   const events = new EventSource(
     `/api/sessions/${encodeURIComponent(sessionId)}/events`,
   );
+
   events.addEventListener("error", () => {
     if (events.readyState === EventSource.CLOSED) {
       statusLabel.textContent = "session not found";
     }
   });
+
   events.addEventListener("open", () => {
     prompts.forEach((prompt) => {
       prompt.remove();
     });
+
     prompts.clear();
   });
+
   events.addEventListener("message", (message: MessageEvent<string>) => {
     const event = JSON.parse(message.data) as SessionEvent;
     switch (event.type) {
       case "session":
         statusLabel.textContent = describe(event.session);
         refreshSessions().catch(() => undefined);
+
         return;
       case "entry":
         if (event.line < lines) {
           return;
         }
+
         lines = event.line + 1;
         clearLive();
         chatItems(event.entry).forEach(addItem);
+
         return;
       case "live":
         live(event.event);
+
         return;
     }
   });
+
   return () => {
     events.close();
   };
@@ -202,7 +237,9 @@ function toggleTerminal(): void {
   if (terminalBox.hidden || selected === undefined) {
     return;
   }
+
   terminalLive = true;
+
   closeTerminal = openTerminal(selected, terminalBox, () => {
     terminalLive = false;
   });
@@ -223,6 +260,7 @@ function select(sessionId: string | undefined): void {
     statusLabel.textContent = "";
     closeEvents = follow(sessionId);
   }
+
   refreshSessions().catch(() => undefined);
 }
 
@@ -233,6 +271,7 @@ function report(error: unknown): void {
 createForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
+
   api("/api/sessions", {
     provider: form.get("provider"),
     cwd: form.get("cwd"),
@@ -252,7 +291,9 @@ promptForm.addEventListener("submit", (event) => {
   if (selected === undefined || text === "") {
     return;
   }
+
   field.value = "";
+
   api(`/api/sessions/${encodeURIComponent(selected)}/commands`, {
     type: "message",
     text,
@@ -281,6 +322,7 @@ window.addEventListener("hashchange", () => {
 });
 
 select(location.hash.slice(1) || undefined);
+
 setInterval(() => {
   refreshSessions().catch(() => undefined);
 }, sessionsRefreshMs);

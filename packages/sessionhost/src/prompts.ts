@@ -32,7 +32,9 @@ export function remotePrompts(publish: (event: LiveEvent) => void): {
     if (options?.signal?.aborted === true) {
       return null;
     }
+
     const id = randomUUID();
+
     return new Promise((resolve) => {
       const done = (value: Answer): void => {
         pending.delete(id);
@@ -41,13 +43,16 @@ export function remotePrompts(publish: (event: LiveEvent) => void): {
         publish({ type: "prompt_end", id });
         resolve(value);
       };
+
       const cancel = (): void => {
         done(null);
       };
+
       const timer =
         options?.timeout === undefined
           ? undefined
           : setTimeout(cancel, options.timeout);
+
       options?.signal?.addEventListener("abort", cancel);
       pending.set(id, done);
       publish({ type: "prompt", prompt: { id, ...request } as Prompt });

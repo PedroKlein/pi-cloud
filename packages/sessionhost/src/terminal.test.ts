@@ -9,6 +9,7 @@ function collect(): {
   const decoder = new TextDecoder();
   let output = "";
   let waiting: { text: string; resolve: () => void } | undefined;
+
   return {
     onData(data) {
       output += decoder.decode(data, { stream: true });
@@ -20,6 +21,7 @@ function collect(): {
       if (output.includes(text)) {
         return;
       }
+
       await new Promise<void>((resolve) => {
         waiting = { text, resolve };
       });
@@ -29,6 +31,7 @@ function collect(): {
 
 test("runs commands in an interactive shell and follows resizes", async () => {
   const output = collect();
+
   const terminal = openTerminal(
     { cwd: tmpdir(), shell: "/bin/sh", cols: 80, rows: 24 },
     output.onData,

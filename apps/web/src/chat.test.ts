@@ -8,6 +8,7 @@ test("shows user and assistant text", () => {
   expect(chatItems(line({ role: "user", content: "hi" }))).toEqual([
     { role: "user", text: "hi" },
   ]);
+
   expect(
     chatItems(
       line({
@@ -37,6 +38,7 @@ test("shows tool calls and their results", () => {
       }),
     ),
   ).toEqual([{ role: "tool", text: 'bash {"command":"ls"}' }]);
+
   expect(
     chatItems(
       line({

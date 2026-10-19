@@ -13,9 +13,11 @@ let binary: string;
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "sessionhost-compiled-"));
   binary = join(root, "compiled-session");
+
   const entry = fileURLToPath(
     import.meta.resolve("./testdata/compiled-session.ts"),
   );
+
   await run(process.execPath, [
     "build",
     "--compile",
@@ -33,7 +35,9 @@ test("a compiled binary loads extensions from disk", async () => {
   const subagents = dirname(
     fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
   );
+
   const local = join(root, "local-extension.ts");
+
   await writeFile(
     local,
     `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -54,6 +58,7 @@ export default function (pi: ExtensionAPI) {
   const { stdout } = await run(binary, [root, subagents, local], {
     cwd: root,
   });
+
   const result = JSON.parse(stdout) as { tools: string[]; reply: string };
 
   expect(result.tools).toContain("subagent");

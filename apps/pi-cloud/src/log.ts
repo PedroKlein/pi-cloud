@@ -8,6 +8,7 @@ export function stderrLog(component: string): Log {
       message,
       ...fields,
     };
+
     process.stderr.write(`${JSON.stringify(line)}\n`);
   };
 }

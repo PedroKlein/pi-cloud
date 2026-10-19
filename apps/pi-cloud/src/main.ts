@@ -15,9 +15,11 @@ const usage = `usage:
 const dataRoot = join(homedir(), ".pi-cloud");
 const [command, ...rest] = process.argv.slice(2);
 const shutdown = new AbortController();
+
 process.once("SIGINT", () => {
   shutdown.abort();
 });
+
 process.once("SIGTERM", () => {
   shutdown.abort();
 });
@@ -31,16 +33,20 @@ switch (command) {
         database: { type: "string", default: join(dataRoot, "server.db") },
       },
     });
+
     const server = serve({
       port: Number(values.port),
       database: values.database,
       log: stderrLog("server"),
     });
+
     shutdown.signal.addEventListener("abort", () => {
       void server.stop();
     });
+
     break;
   }
+
   case "agent": {
     const { values } = parseArgs({
       args: rest,
@@ -51,10 +57,12 @@ switch (command) {
         extension: { type: "string", multiple: true, default: [] },
       },
     });
+
     if (values.name === undefined) {
       process.stderr.write(`${usage}\n`);
       process.exit(2);
     }
+
     await runAgent({
       server: values.server,
       provider: values.name,
@@ -64,8 +72,10 @@ switch (command) {
       log: stderrLog("agent"),
       signal: shutdown.signal,
     });
+
     break;
   }
+
   case undefined:
   default:
     process.stderr.write(`${usage}\n`);

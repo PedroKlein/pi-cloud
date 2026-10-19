@@ -38,10 +38,12 @@ export function createHandler(
           { status: 400 },
         );
       }
+
       const provider = request.headers.get(providerHeader);
       if (provider === null || provider === "") {
         return Response.json({ error: "missing provider" }, { status: 400 });
       }
+
       const sessionId = params[0];
       if (
         sessionId !== undefined &&
@@ -49,6 +51,7 @@ export function createHandler(
       ) {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
+
       return route(request, params);
     };
   };
@@ -60,10 +63,12 @@ export function createHandler(
       /^\/api\/sessions$/,
       async (request) => {
         const session = sessions.create(await readJson<CreateSession>(request));
+
         log("session created", {
           sessionId: session.id,
           provider: session.provider,
         });
+
         return Response.json(session, { status: 201 });
       },
     ],
@@ -72,6 +77,7 @@ export function createHandler(
       /^\/api\/sessions\/([^/]+)$/,
       (_request, [id = ""]) => {
         const session = sessions.get(id);
+
         return session
           ? Response.json(session)
           : Response.json({ error: "not_found" }, { status: 404 });
@@ -82,15 +88,19 @@ export function createHandler(
       /^\/api\/sessions\/([^/]+)\/events$/,
       (_request, [id = ""]) => {
         let send: (event: SessionEvent) => void = () => undefined;
+
         const watch = sessions.watch(id, (event) => {
           send(event);
         });
+
         if (!watch.ok) {
           return reply(watch, 200);
         }
+
         return sseResponse((s) => {
           send = s;
           watch.value.replay.forEach(s);
+
           return watch.value.stop;
         });
       },
@@ -107,17 +117,21 @@ export function createHandler(
       agent(async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
         const { running } = await readJson<WorkPoll>(request);
+
         const { start, interrupted } = await sessions.claim(
           provider,
           running,
           request.signal,
         );
+
         for (const attempt of interrupted) {
           log("session interrupted", { provider, ...attempt });
         }
+
         for (const assignment of start) {
           log("session assigned", { provider, ...assignment });
         }
+
         return Response.json({ start });
       }),
     ],
@@ -129,6 +143,7 @@ export function createHandler(
         if (!Number.isSafeInteger(batch.start) || batch.start < 0) {
           throw new BadRequest("start must be a non-negative integer");
         }
+
         return reply(sessions.appendTranscript(id, batch), 200);
       }),
     ],
@@ -138,6 +153,7 @@ export function createHandler(
       agent(async (request, [id = ""]) => {
         const failure = await readJson<StartFailure>(request);
         log("session failed to start", { sessionId: id, ...failure });
+
         return reply(sessions.fail(id, failure), 204);
       }),
     ],
@@ -155,11 +171,14 @@ export function createHandler(
         const generation = Number(
           new URL(request.url).searchParams.get("generation") ?? NaN,
         );
+
         if (!Number.isSafeInteger(generation)) {
           throw new BadRequest("generation must be an integer");
         }
+
         let send: (command: Command) => void = () => undefined;
         let end = (): void => undefined;
+
         const attached = sessions.attach(
           id,
           generation,
@@ -170,12 +189,15 @@ export function createHandler(
             end();
           },
         );
+
         if (!attached.ok) {
           return reply(attached, 200);
         }
+
         return sseResponse((sendEvent, endStream) => {
           send = sendEvent;
           end = endStream;
+
           return attached.value;
         });
       }),
@@ -193,15 +215,18 @@ export function createHandler(
           if (error instanceof BadRequest) {
             return Response.json({ error: error.message }, { status: 400 });
           }
+
           log("request failed", {
             method,
             path: pathname,
             error: String(error),
           });
+
           return Response.json({ error: "internal" }, { status: 500 });
         }
       }
     }
+
     return Response.json({ error: "not_found" }, { status: 404 });
   };
 }
@@ -213,6 +238,7 @@ function reply(result: Result<unknown>, status: number): Response {
       { status: rejectionStatus[result.reason] },
     );
   }
+
   return result.value === undefined
     ? new Response(null, { status })
     : Response.json(result.value, { status });

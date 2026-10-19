@@ -17,6 +17,7 @@ export function openTerminal(
     `/api/sessions/${encodeURIComponent(sessionId)}/terminal`,
     location.href,
   );
+
   url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("cols", String(terminal.cols));
   url.searchParams.set("rows", String(terminal.rows));
@@ -27,6 +28,7 @@ export function openTerminal(
   socket.addEventListener("message", (event: MessageEvent<ArrayBuffer>) => {
     terminal.write(new Uint8Array(event.data));
   });
+
   const sendSize = (): void => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(
@@ -38,23 +40,31 @@ export function openTerminal(
       );
     }
   };
+
   socket.addEventListener("open", sendSize);
+
   const closed = (event: CloseEvent): void => {
     terminal.write(
       `\r\n[terminal closed${event.reason === "" ? "" : `: ${event.reason}`}]\r\n`,
     );
+
     onClose();
   };
+
   socket.addEventListener("close", closed);
+
   const input = terminal.onData((data) => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(encoder.encode(data));
     }
   });
+
   const resize = terminal.onResize(sendSize);
+
   const observer = new ResizeObserver(() => {
     fit.fit();
   });
+
   observer.observe(container);
   terminal.focus();
 

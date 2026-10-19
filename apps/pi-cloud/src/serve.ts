@@ -20,6 +20,7 @@ export function serve(options: ServeOptions): {
   const sessions = new Sessions(store, options.sessions);
   const handler = createHandler(sessions, options.log);
   const terminals = terminalBroker(sessions, options.log);
+
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
@@ -30,15 +31,19 @@ export function serve(options: ServeOptions): {
       if (!fromThisSite(request)) {
         return Response.json({ error: "forbidden" }, { status: 403 });
       }
+
       const upgraded = terminals.upgrade(request, bunServer);
       if (upgraded === "upgraded") {
         return undefined;
       }
+
       return upgraded ?? handler(request);
     },
     websocket: terminals.websocket,
   });
+
   options.log("server listening", { url: server.url.href });
+
   return {
     url: server.url,
     stop: async () => {
@@ -57,6 +62,7 @@ const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
 function fromThisSite(request: Request): boolean {
   const host = request.headers.get("host") ?? "";
   const origin = request.headers.get("origin");
+
   return (
     URL.canParse(`http://${host}`) &&
     loopback.has(new URL(`http://${host}`).hostname) &&

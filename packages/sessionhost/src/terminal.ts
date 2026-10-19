@@ -18,6 +18,7 @@ export function openTerminal(
   onData: (data: Uint8Array) => void,
 ): Terminal {
   const shell = options.shell ?? process.env["SHELL"] ?? "/bin/sh";
+
   const proc = Bun.spawn([shell, "-i"], {
     cwd: options.cwd,
     env: { ...process.env, TERM: "xterm-256color" },
@@ -29,10 +30,12 @@ export function openTerminal(
       },
     },
   });
+
   const { terminal } = proc;
   if (!terminal) {
     throw new Error("Bun did not attach a terminal to the shell");
   }
+
   return {
     write: (data) => {
       terminal.write(data);

@@ -6,6 +6,7 @@ const assignment: Assignment = { sessionId: "s1", generation: 1, cwd: "/w" };
 
 test("starts assigned sessions and retries failed polls", async () => {
   const controller = new AbortController();
+
   const responses: (() => Work)[] = [
     () => {
       throw new Error("connection refused");
@@ -13,6 +14,7 @@ test("starts assigned sessions and retries failed polls", async () => {
     () => ({ start: [] }),
     () => ({ start: [assignment] }),
   ];
+
   const started: Assignment[] = [];
   const logs: string[] = [];
 
@@ -23,8 +25,10 @@ test("starts assigned sessions and retries failed polls", async () => {
         const next = responses.shift();
         if (!next) {
           controller.abort();
+
           return { start: [] };
         }
+
         return next();
       },
     },
@@ -45,6 +49,7 @@ test("starts assigned sessions and retries failed polls", async () => {
 test("stops while waiting to retry", async () => {
   const controller = new AbortController();
   const logs: string[] = [];
+
   const stopped = runProvider({
     controlPlane: {
       work: async () => Promise.reject(new Error("down")),
@@ -77,6 +82,7 @@ test("reports the running attempts with every poll", async () => {
         if (polls.length === 2) {
           controller.abort();
         }
+
         return { start: [] };
       },
     },
