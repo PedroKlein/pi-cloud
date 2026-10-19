@@ -6,7 +6,8 @@
     "pi-cloud": "./src/main.ts"
   },
   "scripts": {
-    "build": "bun build --compile src/main.ts --outfile dist/pi-cloud"
+    "build": "bun build --compile src/main.ts --outfile dist/pi-cloud",
+    "dev": "bun src/dev.ts"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",

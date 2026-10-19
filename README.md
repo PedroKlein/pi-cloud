@@ -58,7 +58,10 @@ docs/             vision, architecture, research and decision records
 
 ## Development
 
+`bun run dev` runs the server and an agent named `local` from source and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pi-cloud/dev`.
+
 ```sh
+bun run dev
 bun run format
 bun run lint
 bun run typecheck
