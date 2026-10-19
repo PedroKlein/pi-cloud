@@ -25,7 +25,7 @@
 - Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
 - Resolved: Bun runtime, Bun workspaces monorepo ([ADR 0003](adr/0003-bun-runtime-and-workspaces.md)).
 - Resolved: apps for entry points, domain-named packages, and a separate folder for Pi extensions ([ADR 0008](adr/0008-monorepo-layout.md)).
-- Is the first supported deployment native, containerized, Kubernetes-only, or several modes from the beginning?
+- Resolved: the server runs natively on the VM as a compiled Bun binary under systemd, with no container image in v1 ([ADR 0009](adr/0009-vm-deployment-and-testing.md)).
 
 ### First end-to-end experience
 
@@ -56,7 +56,7 @@
 
 ### Control plane and protocol
 
-- Where does the first control plane run?
+- Resolved: the first control plane runs on the VM, reached from the laptop through an SSH tunnel ([ADR 0005](adr/0005-v1-access-and-model-credentials.md), [ADR 0009](adr/0009-vm-deployment-and-testing.md)).
 - Resolved: the agent long-polls for work and each Session streams on its own over HTTPS and SSE, as Claude Code does; the provider's JSONL stays authoritative and every new entry is copied to the server, which serves browser replay ([ADR 0006](adr/0006-provider-protocol.md)).
 - Which operations are synchronous commands versus desired state reconciled asynchronously?
 
