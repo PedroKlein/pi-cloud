@@ -1,12 +1,27 @@
 # Pi Cloud
 
-Pi Cloud is the working product and repository name for a self-hosted control plane for persistent, personalized Pi sessions across local machines, VMs, and Kubernetes. The direct name is intentional; branding can change later without changing the architecture.
+Pi Cloud runs [Pi](https://github.com/earendil-works/pi) coding-agent sessions on your own machines and lets you reach them from a browser. A session keeps running when you close the tab, and you can pick it up later from another device with the full transcript and a live terminal.
 
-The intended product supports ordinary independent sessions and long-running Projects. A Project has one coordinator session and any number of full thread sessions. Every thread is a normal Pi session with its own context, workspace, and subagents.
+It's self-hosted and meant for one person. The plan is a small server on an always-on VM plus an agent on your laptop, so a session can run wherever the work needs it.
 
-The design is still exploratory. The first slice runs one independent Session on a local agent with a minimal web UI.
+> **Status: early.** One session runs end to end on a local agent with a minimal web UI. There's no authentication yet, so only run it on localhost or behind an SSH tunnel. Expect breaking changes.
+
+## How it works
+
+```text
+browser ──HTTP/SSE──▶ pi-cloud server ◀──long-poll + HTTPS/SSE── pi-cloud agent ──▶ Pi sessions
+                      (web UI, SQLite)                          (your laptop)
+```
+
+- `pi-cloud server` serves the web UI, stores sessions and a copy of each transcript in SQLite, and relays commands.
+- `pi-cloud agent` connects out to the server, so the laptop needs no open port. It runs each Pi session in a working directory you choose, using your own Pi setup: models, logins and extensions.
+- If the laptop sleeps or goes offline, its sessions keep running and catch up when it reconnects.
+
+The design is written down in [docs/architecture.md](docs/architecture.md) and the decision records in [docs/adr/](docs/adr/).
 
 ## Run it
+
+You need [Bun](https://bun.sh) and a working Pi setup with at least one model you can log in to.
 
 ```sh
 bun install
@@ -15,35 +30,39 @@ apps/pi-cloud/dist/pi-cloud server
 apps/pi-cloud/dist/pi-cloud agent --name laptop
 ```
 
-Open http://127.0.0.1:7420, create a session with provider `laptop` and a directory on this machine, and chat. The agent uses the models and logins of your own Pi setup.
+Open http://127.0.0.1:7420, create a session for provider `laptop` with a directory on this machine, and start chatting.
 
-## Current direction
+Options:
 
-- Preserve Pi's package, extension, skill, prompt, MCP, model, and instruction system.
-- Treat personalization as a versioned Profile, not machine-local incidental state.
-- Let sessions select reusable Environments backed by local, VM, or Kubernetes Runtime Providers.
-- Keep one logical personal control plane authoritative for Projects, Sessions, Environments, and shared state.
-- Keep Projects logical: they coordinate full sessions but are not themselves an execution sandbox.
-- Design public extension seams so future scheduling, automations, integrations, and collaboration do not require a second execution system.
+```text
+pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
+pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
+               [--data-dir ~/.pi-cloud/agent] [--extension <path>]...
+```
 
-## Documentation
+## Roadmap
 
-- [Vision](docs/vision.md): agreed goal, product principles, scope, and non-goals.
-- [Concepts](docs/concepts.md): shared vocabulary and resource relationships.
-- [Working architecture](docs/architecture.md): control-plane, provider, Session, state, lifecycle, and deployment model.
-- [Environments](docs/environments.md): local, VM, Kubernetes, setup, policy, capability, and revision model.
-- [Extensibility](docs/extensibility.md): Profiles, Pi personalization, platform extensions, automations, and collaboration direction.
-- [Existing Pi ecosystem](docs/pi-ecosystem.md): boundaries and reuse opportunities across Pi and current extensions.
-- [Open questions](docs/open-questions.md): decisions that remain unresolved.
-- [Research](docs/research.md): facts learned from Claude Projects, cloud environments, and related open-source systems.
-- [Decisions](docs/adr/): accepted architecture decision records.
+- **v1:** independent sessions and Projects (a coordinator session plus thread sessions) on a laptop and one VM.
+- **v2:** Kubernetes, stronger isolation between sessions, and a public extension interface.
 
-Future discussions should treat these documents as a checkpoint, not as frozen requirements. When a decision is made, record it separately as an ADR rather than silently turning a working assumption into fact.
+See [docs/vision.md](docs/vision.md) for scope and non-goals, and [docs/open-questions.md](docs/open-questions.md) for what isn't decided yet.
 
-## Continue the design
+## Repository layout
 
-A focused follow-up Session should read `docs/vision.md`, `docs/concepts.md`, and the relevant section of `docs/open-questions.md`, then consult the deeper topic document. Resolve one decision cluster at a time; update open questions while exploring and create an ADR only after the choice and consequences are understood.
+```text
+apps/pi-cloud     the pi-cloud binary: server and agent
+apps/web          the web UI
+packages/         protocol, sessions, providers and the session host
+docs/             vision, architecture, research and decision records
+```
 
-Example:
+## Development
 
-> Read the Pi Cloud vision and concepts, then focus on the control-plane and protocol questions. Preserve agreed direction, challenge working assumptions, and produce a decision only where the evidence is sufficient.
+```sh
+bun run format
+bun run lint
+bun run typecheck
+bun test
+```
+
+Tests use Pi's faux model provider, so they need no API key. [AGENTS.md](AGENTS.md) has the coding conventions.
