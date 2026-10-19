@@ -4,6 +4,7 @@ import type {
   Attempt,
   Command,
   CreateSession,
+  LiveEvent,
   LivePost,
   Session,
   SessionEvent,
@@ -71,6 +72,10 @@ export class Sessions {
   >();
   readonly #pollers = new Map<string, Set<() => void>>();
   readonly #providers = new Map<string, ProviderState>();
+  readonly #prompts = new Map<
+    string,
+    { readonly generation: number; readonly events: Map<string, LiveEvent> }
+  >();
 
   constructor(store: SessionStore, options: SessionsOptions = {}) {
     this.#store = store;
@@ -169,6 +174,9 @@ export class Sessions {
         session = { ...session, status: event.status };
         this.#update(session);
       }
+      if (event.type === "prompt" || event.type === "prompt_end") {
+        this.#trackPrompt(id, post.generation, event);
+      }
       this.#emit(id, { type: "live", event });
     }
     return { ok: true, value: undefined };
@@ -193,6 +201,10 @@ export class Sessions {
       ...this.#store
         .transcript(id, 0)
         .map((entry, line): SessionEvent => ({ type: "entry", line, entry })),
+      ...this.#openPrompts(session).map((event): SessionEvent => ({
+        type: "live",
+        event,
+      })),
     ];
     return {
       ok: true,
@@ -238,6 +250,10 @@ export class Sessions {
         }
       },
     };
+  }
+
+  isCurrent(id: string, generation: number): boolean {
+    return this.#current(id, generation).ok;
   }
 
   close(): void {
@@ -345,6 +361,31 @@ export class Sessions {
     for (const session of sessions) {
       this.#emit(session.id, { type: "session", session: this.#view(session) });
     }
+  }
+
+  #trackPrompt(
+    id: string,
+    generation: number,
+    event: Extract<LiveEvent, { type: "prompt" | "prompt_end" }>,
+  ): void {
+    let tracked = this.#prompts.get(id);
+    if (tracked?.generation !== generation) {
+      tracked = { generation, events: new Map() };
+      this.#prompts.set(id, tracked);
+    }
+    if (event.type === "prompt") {
+      tracked.events.set(event.prompt.id, event);
+    } else {
+      tracked.events.delete(event.id);
+    }
+  }
+
+  #openPrompts(session: StoredSession): readonly LiveEvent[] {
+    const tracked = this.#prompts.get(session.id);
+    return tracked?.generation === session.generation &&
+      attempting.includes(session.status)
+      ? [...tracked.events.values()]
+      : [];
   }
 
   #current(id: string, generation: number): Result<StoredSession> {

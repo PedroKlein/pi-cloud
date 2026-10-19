@@ -19,6 +19,7 @@ let faux: ReturnType<typeof fauxProvider>;
 let runtime: ModelRuntime;
 let agents: (() => Promise<void>)[];
 let laptop: () => Promise<void>;
+let agentLogs: string[];
 
 const quiet = (): void => undefined;
 
@@ -34,7 +35,9 @@ function startAgent(
     agentDir: join(root, "pi"),
     extensionPaths,
     models: { runtime, model: faux.getModel() },
-    log: quiet,
+    log: (message, fields) => {
+      agentLogs.push(`${message} ${JSON.stringify(fields)}`);
+    },
     signal: controller.signal,
   });
   const stop = async (): Promise<void> => {
@@ -61,6 +64,7 @@ beforeEach(async () => {
   });
   runtime.registerNativeProvider(faux.provider);
   agents = [];
+  agentLogs = [];
   laptop = startAgent("laptop");
 });
 
@@ -494,4 +498,237 @@ test("closes the command stream of an interrupted attempt", async () => {
 
   expect(commands.status).toBe(200);
   expect(received).toEqual([]);
+});
+
+async function openTerminal(sessionId: string): Promise<{
+  readonly socket: WebSocket;
+  readonly output: (until: string) => Promise<string>;
+  readonly closed: Promise<void>;
+}> {
+  const url = new URL(
+    `/api/sessions/${sessionId}/terminal?cols=80&rows=24`,
+    server.url,
+  );
+  url.protocol = "ws:";
+  const socket = new WebSocket(url);
+  socket.binaryType = "arraybuffer";
+  const decoder = new TextDecoder();
+  let text = "";
+  let changed = (): void => undefined;
+  socket.addEventListener("message", (event: MessageEvent) => {
+    text += decoder.decode(event.data as ArrayBuffer, { stream: true });
+    changed();
+  });
+  const closed = new Promise<void>((resolve) => {
+    socket.addEventListener("close", () => {
+      resolve();
+    });
+  });
+  await new Promise((resolve) => {
+    socket.addEventListener("open", resolve);
+  });
+  return {
+    socket,
+    closed,
+    output: async (until) => {
+      while (!text.includes(until)) {
+        await new Promise<void>((resolve) => {
+          changed = resolve;
+        });
+      }
+      return text;
+    },
+  };
+}
+
+const encoder = new TextEncoder();
+
+const webSocketUpgrade = {
+  upgrade: "websocket",
+  connection: "Upgrade",
+  "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+  "sec-websocket-version": "13",
+};
+
+test("runs a shell in the session's directory over a terminal socket", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(encoder.encode("echo dir=$(pwd) sum=$((40+2))\n"));
+  const output = await terminal.output("sum=42");
+
+  expect(output).toContain(`dir=${root}`);
+});
+
+test("resizes the terminal", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
+  terminal.socket.send(encoder.encode("echo size=$(stty size)\n"));
+
+  expect(await terminal.output("size=30 100")).toContain("size=30 100");
+});
+
+test("closes the terminal socket when the shell exits", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(encoder.encode("exit\n"));
+  await terminal.closed;
+
+  expect(terminal.socket.readyState).toBe(WebSocket.CLOSED);
+});
+
+test("refuses a terminal for a session whose agent is gone", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  await laptop();
+
+  const response = await fetch(
+    new URL(`/api/sessions/${session.id}/terminal`, server.url),
+    { headers: webSocketUpgrade },
+  );
+
+  expect(response.status).toBe(409);
+});
+
+test("serves the web UI with its bundled script", async () => {
+  const page = await api("/");
+  const html = await page.text();
+  const script = /<script[^>]*src="([^"]+)"/.exec(html)?.[1] ?? "";
+  const bundle = await api(script);
+
+  expect(page.headers.get("content-type")).toContain("text/html");
+  expect(bundle.status).toBe(200);
+  expect(await bundle.text()).toContain("/api/sessions");
+});
+
+test("replays open prompts to a client that connects later", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+  const prompt = {
+    type: "prompt",
+    prompt: { id: "p1", kind: "confirm", title: "Deploy?", message: "Sure?" },
+  } as const;
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [prompt],
+  });
+
+  const open = await follow(session.id, (events) =>
+    events.some((e) => e.type === "live"),
+  );
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [{ type: "prompt_end", id: "p1" }],
+  });
+  const later = await watch(session.id);
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [{ type: "status", status: "idle" }],
+  });
+  const answered = await later((events) =>
+    events.some((e) => e.type === "live"),
+  );
+
+  expect(open.at(-1)).toEqual({ type: "live", event: prompt });
+  expect(answered.filter((e) => e.type === "live")).toEqual([
+    { type: "live", event: { type: "status", status: "idle" } },
+  ]);
+});
+
+test("rejects requests from other sites", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const fromSite = async (
+    path: string,
+    headers: Record<string, string>,
+  ): Promise<number> =>
+    (
+      await fetch(new URL(path, server.url), {
+        method: path.endsWith("/commands") ? "POST" : "GET",
+        headers,
+        ...(path.endsWith("/commands") && {
+          body: JSON.stringify({ type: "message", text: "hi" }),
+        }),
+      })
+    ).status;
+
+  const statuses = [
+    await fromSite(`/api/sessions/${session.id}/commands`, {
+      origin: "https://evil.example",
+    }),
+    await fromSite(`/api/sessions/${session.id}/terminal`, {
+      ...webSocketUpgrade,
+      origin: "https://evil.example",
+    }),
+    await fromSite("/api/sessions", { host: "evil.example" }),
+    await fromSite("/api/sessions", { origin: server.url.origin }),
+  ];
+
+  expect(statuses).toEqual([403, 403, 403, 200]);
+});
+
+test("does not open a terminal for a request that is not a WebSocket", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  const response = await api(`/api/sessions/${session.id}/terminal`);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  expect(response.status).toBe(400);
+  expect(
+    agentLogs.filter((line) => line.startsWith("terminal opened")),
+  ).toEqual([]);
+});
+
+test("ignores terminal control frames that are not resizes", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send("not json");
+  terminal.socket.send(JSON.stringify({ type: "resize", cols: -1, rows: 5 }));
+  terminal.socket.send(JSON.stringify({ type: "resize", cols: 90, rows: 20 }));
+  terminal.socket.send(encoder.encode("echo size=$(stty size)\n"));
+
+  expect(await terminal.output("size=20 90")).toContain("size=20 90");
+});
+
+test("does not let a host take another session's terminal", async () => {
+  const first = await createSession("laptop");
+  const second = await createSession("laptop");
+  await follow(first.id, status("idle"));
+  const secondReady = await follow(second.id, status("idle"));
+  const generation = secondReady.findLast((e) => e.type === "session");
+  await openTerminal(first.id);
+  const opened = async (): Promise<string | undefined> => {
+    for (;;) {
+      const line = agentLogs.find((l) => l.startsWith("terminal opened"));
+      if (line !== undefined) {
+        return line;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+  const line = await opened();
+  const terminalId = /"terminalId":"([^"]+)"/.exec(line ?? "")?.[1] ?? "";
+
+  const url = new URL(
+    `/agent/sessions/${second.id}/terminals/${terminalId}?generation=${String(generation?.type === "session" ? generation.session.generation : 0)}`,
+    server.url,
+  );
+  const response = await fetch(url, {
+    headers: {
+      "pi-cloud-protocol": "1",
+      "pi-cloud-provider": "laptop",
+      ...webSocketUpgrade,
+    },
+  });
+
+  expect(response.status).toBe(404);
 });

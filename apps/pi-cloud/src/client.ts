@@ -5,6 +5,7 @@ import {
   type LivePost,
   type StartFailure,
   protocolVersion,
+  type TerminalResize,
   providerHeader,
   type TranscriptAck,
   type TranscriptBatch,
@@ -12,7 +13,11 @@ import {
   type Work,
 } from "@pi-cloud/protocol";
 import type { ControlPlane, Log } from "@pi-cloud/providers";
-import type { SessionStream } from "@pi-cloud/sessionhost";
+import type {
+  SessionStream,
+  TerminalChannel,
+  TerminalPeer,
+} from "@pi-cloud/sessionhost";
 import { readSse } from "./sse";
 
 const reconnectMs = { initial: 500, max: 20_000 };
@@ -124,6 +129,64 @@ export function httpSessionStream(
       return () => {
         controller.abort();
       };
+    },
+    terminal: (terminalId, peer) =>
+      openTerminalSocket(
+        agent,
+        `${base}/terminals/${terminalId}?generation=${String(generation)}`,
+        peer,
+        log,
+      ),
+  };
+}
+
+function openTerminalSocket(
+  agent: Agent,
+  path: string,
+  peer: TerminalPeer,
+  log: Log,
+): TerminalChannel {
+  const url = new URL(path, agent.server);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(url, {
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      [providerHeader]: agent.provider,
+    },
+  });
+  socket.binaryType = "arraybuffer";
+  const pending: Uint8Array[] = [];
+  socket.addEventListener("open", () => {
+    for (const data of pending.splice(0)) {
+      socket.send(data);
+    }
+  });
+  socket.addEventListener("message", (event: MessageEvent) => {
+    if (event.data instanceof ArrayBuffer) {
+      peer.input(new Uint8Array(event.data));
+      return;
+    }
+    const resize = JSON.parse(String(event.data)) as TerminalResize;
+    peer.resize(resize.cols, resize.rows);
+  });
+  socket.addEventListener("close", (event) => {
+    log("terminal socket closed", {
+      path,
+      code: event.code,
+      reason: event.reason,
+    });
+    peer.closed();
+  });
+  return {
+    send: (data) => {
+      if (socket.readyState === WebSocket.CONNECTING) {
+        pending.push(data);
+      } else if (socket.readyState === WebSocket.OPEN) {
+        socket.send(data);
+      }
+    },
+    close: () => {
+      socket.close();
     },
   };
 }

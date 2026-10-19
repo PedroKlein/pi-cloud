@@ -5,7 +5,9 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
-import { type SessionOptions, startSession } from "./session";
+import { remotePrompts } from "./prompts";
+import { type SessionOptions, startSession, stopSession } from "./session";
+import { openTerminal } from "./terminal";
 
 export interface SessionStream {
   uploadTranscript: (
@@ -14,6 +16,18 @@ export interface SessionStream {
   ) => Promise<number>;
   publish: (events: readonly LiveEvent[]) => Promise<void>;
   commands: (listener: (command: Command) => void) => () => void;
+  terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
+}
+
+export interface TerminalPeer {
+  input: (data: Uint8Array) => void;
+  resize: (cols: number, rows: number) => void;
+  closed: () => void;
+}
+
+export interface TerminalChannel {
+  send: (data: Uint8Array) => void;
+  close: () => void;
 }
 
 export type Log = (
@@ -32,8 +46,11 @@ export async function hostSession(
   stream: SessionStream,
   log: Log,
 ): Promise<HostedSession> {
-  const session = await startSession(options);
   const live = liveQueue(stream, log);
+  const prompts = remotePrompts((event) => {
+    live.push(event);
+  });
+  const session = await startSession(options, prompts.ui);
   const transcript = transcriptSync(session, stream, log);
 
   const unsubscribe = session.subscribe((event) => {
@@ -48,7 +65,29 @@ export async function hostSession(
       transcript.sync();
     }
   });
+  const terminals = new Map<string, () => void>();
   const detach = stream.commands((command) => {
+    if (command.type === "answer") {
+      prompts.answer(command.id, command.value);
+      return;
+    }
+    if (command.type === "terminal") {
+      try {
+        terminals.set(
+          command.terminalId,
+          attachTerminal(options.cwd, command, stream, log, () => {
+            terminals.delete(command.terminalId);
+          }),
+        );
+      } catch (error) {
+        log("terminal failed to start", {
+          terminalId: command.terminalId,
+          error: String(error),
+        });
+        stream.terminal(command.terminalId, ignoredPeer).close();
+      }
+      return;
+    }
     run(session, command).catch((error: unknown) => {
       log("command failed", { command: command.type, error: String(error) });
     });
@@ -59,16 +98,67 @@ export async function hostSession(
   return {
     stop: async () => {
       detach();
-      await session.abort();
+      for (const close of terminals.values()) {
+        close();
+      }
+      prompts.cancelAll();
+      await stopSession(session);
       unsubscribe();
       transcript.sync();
       await Promise.all([transcript.close(), live.close()]);
-      session.dispose();
     },
   };
 }
 
-async function run(session: AgentSession, command: Command): Promise<void> {
+const ignoredPeer: TerminalPeer = {
+  input: () => undefined,
+  resize: () => undefined,
+  closed: () => undefined,
+};
+
+function attachTerminal(
+  cwd: string,
+  command: Extract<Command, { type: "terminal" }>,
+  stream: SessionStream,
+  log: Log,
+  exited: () => void,
+): () => void {
+  const { terminalId, cols, rows } = command;
+  const pending: Uint8Array[] = [];
+  let output = (data: Uint8Array): void => {
+    pending.push(data);
+  };
+  const terminal = openTerminal({ cwd, cols, rows }, (data) => {
+    output(data);
+  });
+  const channel = stream.terminal(terminalId, {
+    input: (data) => {
+      terminal.write(data);
+    },
+    resize: (c, r) => {
+      terminal.resize(c, r);
+    },
+    closed: () => {
+      terminal.close();
+    },
+  });
+  pending.forEach(channel.send);
+  output = channel.send;
+  log("terminal opened", { terminalId });
+  void terminal.exited.then((code) => {
+    log("terminal exited", { terminalId, code });
+    channel.close();
+    exited();
+  });
+  return () => {
+    terminal.close();
+  };
+}
+
+async function run(
+  session: AgentSession,
+  command: Exclude<Command, { type: "terminal" | "answer" }>,
+): Promise<void> {
   switch (command.type) {
     case "message":
       await session.prompt(command.text, { streamingBehavior: "steer" });
@@ -130,16 +220,22 @@ function liveQueue(
     try {
       await stream.publish(events);
     } catch (error) {
-      const status = events.findLast((event) => event.type === "status");
+      const status = pending.some((event) => event.type === "status")
+        ? undefined
+        : events.findLast((event) => event.type === "status");
+      const retry = [
+        ...(status ? [status] : []),
+        ...events.filter(
+          (event) => event.type === "prompt" || event.type === "prompt_end",
+        ),
+      ];
       log("live events dropped", {
-        count: events.length,
+        count: events.length - retry.length,
         error: String(error),
-        retryStatusInMs: status && retryMs,
+        retryInMs: retry.length > 0 ? retryMs : undefined,
       });
-      if (status && !closed) {
-        if (!pending.some((event) => event.type === "status")) {
-          pending.unshift(status);
-        }
+      if (retry.length > 0 && !closed) {
+        pending.unshift(...retry);
         await sleep(retryMs);
         schedule();
       }

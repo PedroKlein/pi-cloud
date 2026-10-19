@@ -6,6 +6,7 @@ import {
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import type { PromptUI } from "./prompts";
 
 export interface SessionOptions {
   readonly cwd: string;
@@ -20,6 +21,7 @@ export interface SessionOptions {
 
 export async function startSession(
   options: SessionOptions,
+  ui?: PromptUI,
 ): Promise<AgentSession> {
   const { cwd, agentDir } = options;
   const resourceLoader = new DefaultResourceLoader({
@@ -45,5 +47,22 @@ export async function startSession(
       model: options.models.model,
     }),
   });
+  await session.bindExtensions(
+    ui
+      ? {
+          uiContext: { ...session.extensionRunner.getUIContext(), ...ui },
+          mode: "rpc",
+        }
+      : {},
+  );
   return session;
+}
+
+export async function stopSession(session: AgentSession): Promise<void> {
+  await session.abort();
+  await session.extensionRunner.emit({
+    type: "session_shutdown",
+    reason: "quit",
+  });
+  session.dispose();
 }

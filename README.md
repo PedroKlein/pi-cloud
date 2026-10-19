@@ -4,7 +4,18 @@ Pi Cloud is the working product and repository name for a self-hosted control pl
 
 The intended product supports ordinary independent sessions and long-running Projects. A Project has one coordinator session and any number of full thread sessions. Every thread is a normal Pi session with its own context, workspace, and subagents.
 
-The design is still exploratory. The repository currently records the agreed direction and the questions that remain open; it does not contain an implementation plan yet.
+The design is still exploratory. The first slice runs one independent Session on a local agent with a minimal web UI.
+
+## Run it
+
+```sh
+bun install
+bun run build
+apps/pi-cloud/dist/pi-cloud server
+apps/pi-cloud/dist/pi-cloud agent --name laptop
+```
+
+Open http://127.0.0.1:7420, create a session with provider `laptop` and a directory on this machine, and chat. The agent uses the models and logins of your own Pi setup.
 
 ## Current direction
 

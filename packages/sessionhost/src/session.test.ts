@@ -10,7 +10,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { startSession } from "./index";
+import { startSession, stopSession } from "./index";
 
 const subagentsPath = dirname(
   fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
@@ -65,7 +65,7 @@ test("runs a turn with a tool call and a third-party extension loaded", async ()
   });
 
   await session.prompt("run something");
-  session.dispose();
+  await stopSession(session);
 
   expect(session.getActiveToolNames()).toContain("subagent");
   expect(toolOutputs.join()).toContain("hello from bash");
@@ -85,7 +85,7 @@ test("writes the transcript as JSONL in the session directory", async () => {
     models: { runtime, model: faux.getModel() },
   });
   await session.prompt("hello");
-  session.dispose();
+  await stopSession(session);
 
   const files = await readdir(sessionDir);
   expect(files).toHaveLength(1);
@@ -136,14 +136,46 @@ test("continues the session already in the session directory", async () => {
 
   const first = await startSession(options);
   await first.prompt("one");
-  first.dispose();
+  await stopSession(first);
   const second = await startSession(options);
   await second.prompt("two");
-  second.dispose();
+  await stopSession(second);
 
   expect(second.sessionFile).toBe(first.sessionFile);
   expect(
     second.messages.map((m) => m.role).filter((role) => role !== "system"),
   ).toEqual(["user", "assistant", "user", "assistant"]);
   expect(await readdir(join(root, "sessions"))).toHaveLength(1);
+});
+
+test("starts and stops extensions with session events", async () => {
+  const { faux, runtime } = await fauxModels();
+  const marker = join(root, "started");
+  const extension = join(root, "on-start.ts");
+  await writeFile(
+    extension,
+    `import { appendFileSync } from "node:fs";
+export default (pi) => {
+  pi.on("session_start", (event) => {
+    appendFileSync(${JSON.stringify(marker)}, "start:" + event.reason);
+  });
+  pi.on("session_shutdown", (event) => {
+    appendFileSync(${JSON.stringify(marker)}, " stop:" + event.reason);
+  });
+};
+`,
+  );
+
+  const session = await startSession({
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [extension],
+    models: { runtime, model: faux.getModel() },
+  });
+  await stopSession(session);
+
+  expect(await readFile(marker, "utf8").catch(() => "")).toBe(
+    "start:startup stop:quit",
+  );
 });
