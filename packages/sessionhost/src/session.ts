@@ -45,5 +45,15 @@ export async function startSession(
       model: options.models.model,
     }),
   });
+  await session.bindExtensions({});
   return session;
+}
+
+export async function stopSession(session: AgentSession): Promise<void> {
+  await session.abort();
+  await session.extensionRunner.emit({
+    type: "session_shutdown",
+    reason: "quit",
+  });
+  session.dispose();
 }

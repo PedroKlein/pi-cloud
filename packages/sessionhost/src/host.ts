@@ -5,7 +5,7 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
-import { type SessionOptions, startSession } from "./session";
+import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
 
 export interface SessionStream {
@@ -85,11 +85,10 @@ export async function hostSession(
       for (const close of terminals.values()) {
         close();
       }
-      await session.abort();
+      await stopSession(session);
       unsubscribe();
       transcript.sync();
       await Promise.all([transcript.close(), live.close()]);
-      session.dispose();
     },
   };
 }

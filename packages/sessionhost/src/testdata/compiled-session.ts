@@ -5,7 +5,7 @@ import {
   fauxText,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { startSession } from "../index";
+import { startSession, stopSession } from "../index";
 
 const [root, ...extensionPaths] = process.argv.slice(2);
 if (root === undefined) {
@@ -29,7 +29,7 @@ const session = await startSession({
   models: { runtime, model: faux.getModel() },
 });
 await session.prompt("hello");
-session.dispose();
+await stopSession(session);
 process.stdout.write(
   JSON.stringify({
     tools: session.getActiveToolNames(),
