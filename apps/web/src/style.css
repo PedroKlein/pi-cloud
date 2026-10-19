@@ -1,0 +1,117 @@
+@import "@xterm/xterm/css/xterm.css";
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  height: 100vh;
+}
+
+aside {
+  width: 18rem;
+  padding: 1rem;
+  border-right: 1px solid #8884;
+  overflow-y: auto;
+}
+
+h1 {
+  font-size: 1.2rem;
+  margin: 0 0 1rem;
+}
+
+form#create {
+  display: grid;
+  gap: 0.5rem;
+}
+
+#sessions {
+  list-style: none;
+  padding: 0;
+}
+
+#sessions li {
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 0.25rem;
+}
+
+#sessions li[aria-current="true"] {
+  background: #8883;
+}
+
+#sessions small {
+  display: block;
+  opacity: 0.7;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+main[hidden] {
+  display: none;
+}
+
+header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #8884;
+}
+
+#title {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+}
+
+#chat {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 1rem;
+}
+
+#chat li {
+  margin-bottom: 0.75rem;
+  white-space: pre-wrap;
+}
+
+#chat li[data-role="user"] {
+  font-weight: 600;
+}
+
+#chat li[data-role="tool"] {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+#chat li[data-role="error"] {
+  color: #d33;
+}
+
+#terminal {
+  height: 40vh;
+  border-top: 1px solid #8884;
+}
+
+form#prompt {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-top: 1px solid #8884;
+}
+
+form#prompt textarea {
+  flex: 1;
+  font: inherit;
+}

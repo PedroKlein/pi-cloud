@@ -1,5 +1,6 @@
 import type { Log } from "@pi-cloud/providers";
 import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
+import web from "@pi-cloud/web/index.html";
 import { createHandler } from "./server";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
@@ -23,6 +24,8 @@ export function serve(options: ServeOptions): {
     hostname: "127.0.0.1",
     port: options.port,
     idleTimeout: 30,
+    development: false,
+    routes: { "/": web },
     fetch: async (request, bunServer) => {
       const upgraded = terminals.upgrade(request, bunServer);
       if (upgraded === "upgraded") {

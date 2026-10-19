@@ -13,7 +13,8 @@
     "@pi-cloud/protocol": "workspace:*",
     "@pi-cloud/providers": "workspace:*",
     "@pi-cloud/sessionhost": "workspace:*",
-    "@pi-cloud/sessions": "workspace:*"
+    "@pi-cloud/sessions": "workspace:*",
+    "@pi-cloud/web": "workspace:*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.3.0"

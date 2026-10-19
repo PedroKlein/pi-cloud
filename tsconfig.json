@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "include": [
-    "apps/*/src",
+    "apps/pi-cloud/src",
     "packages/*/src",
     "pi-extensions/*/src",
     "**/*.test.ts"

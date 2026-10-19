@@ -581,3 +581,14 @@ test("refuses a terminal for a session whose agent is gone", async () => {
 
   expect(response.status).toBe(409);
 });
+
+test("serves the web UI with its bundled script", async () => {
+  const page = await api("/");
+  const html = await page.text();
+  const script = /<script[^>]*src="([^"]+)"/.exec(html)?.[1] ?? "";
+  const bundle = await api(script);
+
+  expect(page.headers.get("content-type")).toContain("text/html");
+  expect(bundle.status).toBe(200);
+  expect(await bundle.text()).toContain("/api/sessions");
+});
