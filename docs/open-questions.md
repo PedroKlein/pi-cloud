@@ -24,7 +24,7 @@
 
 - Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)).
 - Resolved: Bun runtime, Bun workspaces monorepo ([ADR 0003](adr/0003-bun-runtime-and-workspaces.md)).
-- Which packages does the monorepo start with?
+- Resolved: apps for entry points, domain-named packages, and a separate folder for Pi extensions ([ADR 0008](adr/0008-monorepo-layout.md)).
 - Is the first supported deployment native, containerized, Kubernetes-only, or several modes from the beginning?
 
 ### First end-to-end experience
@@ -40,8 +40,7 @@
 
 ### Workspace durability
 
-- How are repository mirrors, clones, and worktrees organized?
-- Is storage shared per user, separate per Session, or selected by Environment policy?
+- Resolved: VM Sessions get a fresh clone each; laptop Sessions use a worktree of an existing checkout, or the folder directly ([ADR 0007](adr/0007-session-workspaces.md)).
 - How are local paths, VM directories, and PVCs represented by one Workspace interface?
 - What is backed up, replicated, exported, and garbage-collected?
 - Can a Session migrate between providers, or should cross-provider continuation begin as a fork?
