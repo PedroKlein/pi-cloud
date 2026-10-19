@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxText,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
@@ -230,4 +234,96 @@ test("opens a terminal in the session directory on command", async () => {
   await hosted.stop();
 
   expect(terminal?.output.join("")).toContain(root);
+});
+
+async function confirmTool(): Promise<string> {
+  const path = join(root, "confirm-tool.ts");
+  await writeFile(
+    path,
+    `import { Type } from "typebox";
+export default (pi) => {
+  pi.registerTool({
+    name: "deploy",
+    label: "Deploy",
+    description: "Deploys after the user confirms",
+    parameters: Type.Object({}),
+    execute: async (_id, _params, _signal, _update, ctx) => {
+      const confirmed = await ctx.ui.confirm("Deploy?", "This ships to production");
+      return { content: [{ type: "text", text: "confirmed: " + confirmed }], details: {} };
+    },
+  });
+};
+`,
+  );
+  return path;
+}
+
+test("asks the user through prompt events and waits for the answer", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("deploy", {})], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("deployed")]),
+  ]);
+  const fake = fakeStream();
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [await confirmTool()],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "message", text: "ship it" });
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  const prompt = fake.events.find((e) => e.type === "prompt");
+  const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
+  fake.send({ type: "answer", id, value: true });
+  await fake.waitFor(() => fake.lines.join().includes("deployed"));
+  await hosted.stop();
+
+  expect(prompt).toEqual({
+    type: "prompt",
+    prompt: {
+      id,
+      kind: "confirm",
+      title: "Deploy?",
+      message: "This ships to production",
+    },
+  });
+  expect(fake.events).toContainEqual({ type: "prompt_end", id });
+  expect(fake.lines.join()).toContain("confirmed: true");
+});
+
+test("cancels open prompts when the session stops", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("deploy", {})], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("not deployed")]),
+  ]);
+  const fake = fakeStream();
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [await confirmTool()],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "message", text: "ship it" });
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type === "prompt_end")).toHaveLength(1);
 });

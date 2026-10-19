@@ -592,3 +592,37 @@ test("serves the web UI with its bundled script", async () => {
   expect(bundle.status).toBe(200);
   expect(await bundle.text()).toContain("/api/sessions");
 });
+
+test("replays open prompts to a client that connects later", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+  const prompt = {
+    type: "prompt",
+    prompt: { id: "p1", kind: "confirm", title: "Deploy?", message: "Sure?" },
+  } as const;
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [prompt],
+  });
+
+  const open = await follow(session.id, (events) =>
+    events.some((e) => e.type === "live"),
+  );
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [{ type: "prompt_end", id: "p1" }],
+  });
+  const later = await watch(session.id);
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [{ type: "status", status: "idle" }],
+  });
+  const answered = await later((events) =>
+    events.some((e) => e.type === "live"),
+  );
+
+  expect(open.at(-1)).toEqual({ type: "live", event: prompt });
+  expect(answered.filter((e) => e.type === "live")).toEqual([
+    { type: "live", event: { type: "status", status: "idle" } },
+  ]);
+});

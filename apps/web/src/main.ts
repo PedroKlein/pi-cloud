@@ -1,5 +1,6 @@
 import type { LiveEvent, Session, SessionEvent } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
+import { renderPrompt } from "./prompt";
 import { openTerminal } from "./terminal";
 
 const sessionsRefreshMs = 2000;
@@ -82,6 +83,7 @@ function follow(sessionId: string): () => void {
   let lines = 0;
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
+  const prompts = new Map<string, HTMLElement>();
   const clearLive = (): void => {
     streaming?.remove();
     streaming = undefined;
@@ -111,9 +113,42 @@ function follow(sessionId: string): () => void {
         tools.get(event.toolCallId)?.remove();
         tools.delete(event.toolCallId);
         return;
+      case "prompt": {
+        const { id } = event.prompt;
+        if (prompts.has(id)) {
+          return;
+        }
+        const box = renderPrompt(event.prompt, (value) => {
+          api(`/api/sessions/${sessionId}/commands`, {
+            type: "answer",
+            id,
+            value,
+          }).catch(report);
+        });
+        prompts.set(id, box);
+        chat.append(box);
+        chat.scrollTop = chat.scrollHeight;
+        return;
+      }
+      case "prompt_end":
+        prompts.get(event.id)?.remove();
+        prompts.delete(event.id);
+        return;
+      case "notify":
+        addItem({
+          role: event.level === "error" ? "error" : "tool",
+          text: event.message,
+        });
+        return;
     }
   };
   const events = new EventSource(`/api/sessions/${sessionId}/events`);
+  events.addEventListener("open", () => {
+    prompts.forEach((prompt) => {
+      prompt.remove();
+    });
+    prompts.clear();
+  });
   events.addEventListener("message", (message: MessageEvent<string>) => {
     const event = JSON.parse(message.data) as SessionEvent;
     switch (event.type) {

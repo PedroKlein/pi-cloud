@@ -38,8 +38,41 @@ export interface TranscriptAck {
 
 export type ActivityStatus = "idle" | "running";
 
+export type Prompt =
+  | {
+      readonly id: string;
+      readonly kind: "confirm";
+      readonly title: string;
+      readonly message: string;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "select";
+      readonly title: string;
+      readonly options: readonly string[];
+    }
+  | {
+      readonly id: string;
+      readonly kind: "input";
+      readonly title: string;
+      readonly placeholder: string | null;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "editor";
+      readonly title: string;
+      readonly prefill: string | null;
+    };
+
 export type LiveEvent =
   | { readonly type: "status"; readonly status: ActivityStatus }
+  | { readonly type: "prompt"; readonly prompt: Prompt }
+  | { readonly type: "prompt_end"; readonly id: string }
+  | {
+      readonly type: "notify";
+      readonly message: string;
+      readonly level: "info" | "warning" | "error";
+    }
   | { readonly type: "text"; readonly delta: string }
   | {
       readonly type: "tool_start";
@@ -60,6 +93,11 @@ export interface LivePost {
 export type Command =
   | { readonly type: "message"; readonly text: string }
   | { readonly type: "abort" }
+  | {
+      readonly type: "answer";
+      readonly id: string;
+      readonly value: string | boolean | null;
+    }
   | {
       readonly type: "terminal";
       readonly terminalId: string;

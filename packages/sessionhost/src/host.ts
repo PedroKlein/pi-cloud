@@ -5,6 +5,7 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
+import { remotePrompts } from "./prompts";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
 
@@ -45,8 +46,11 @@ export async function hostSession(
   stream: SessionStream,
   log: Log,
 ): Promise<HostedSession> {
-  const session = await startSession(options);
   const live = liveQueue(stream, log);
+  const prompts = remotePrompts((event) => {
+    live.push(event);
+  });
+  const session = await startSession(options, prompts.ui);
   const transcript = transcriptSync(session, stream, log);
 
   const unsubscribe = session.subscribe((event) => {
@@ -63,6 +67,10 @@ export async function hostSession(
   });
   const terminals = new Map<string, () => void>();
   const detach = stream.commands((command) => {
+    if (command.type === "answer") {
+      prompts.answer(command.id, command.value);
+      return;
+    }
     if (command.type === "terminal") {
       terminals.set(
         command.terminalId,
@@ -85,6 +93,7 @@ export async function hostSession(
       for (const close of terminals.values()) {
         close();
       }
+      prompts.cancelAll();
       await stopSession(session);
       unsubscribe();
       transcript.sync();
@@ -134,7 +143,7 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Exclude<Command, { type: "terminal" }>,
+  command: Exclude<Command, { type: "terminal" | "answer" }>,
 ): Promise<void> {
   switch (command.type) {
     case "message":
@@ -197,16 +206,22 @@ function liveQueue(
     try {
       await stream.publish(events);
     } catch (error) {
-      const status = events.findLast((event) => event.type === "status");
+      const status = pending.some((event) => event.type === "status")
+        ? undefined
+        : events.findLast((event) => event.type === "status");
+      const retry = [
+        ...(status ? [status] : []),
+        ...events.filter(
+          (event) => event.type === "prompt" || event.type === "prompt_end",
+        ),
+      ];
       log("live events dropped", {
-        count: events.length,
+        count: events.length - retry.length,
         error: String(error),
-        retryStatusInMs: status && retryMs,
+        retryInMs: retry.length > 0 ? retryMs : undefined,
       });
-      if (status && !closed) {
-        if (!pending.some((event) => event.type === "status")) {
-          pending.unshift(status);
-        }
+      if (retry.length > 0 && !closed) {
+        pending.unshift(...retry);
         await sleep(retryMs);
         schedule();
       }

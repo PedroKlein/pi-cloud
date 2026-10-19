@@ -95,6 +95,26 @@ header {
   opacity: 0.75;
 }
 
+#chat li[data-role="prompt"] {
+  border: 1px solid #8888;
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  white-space: normal;
+}
+
+#chat li[data-role="prompt"] textarea {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0;
+  font: inherit;
+}
+
+#chat li[data-role="prompt"] div {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 #chat li[data-role="error"] {
   color: #d33;
 }
