@@ -82,9 +82,15 @@ export async function hostSession(
       try {
         terminals.set(
           command.terminalId,
-          attachTerminal(options.cwd, command, stream, log, () => {
-            terminals.delete(command.terminalId);
-          }),
+          attachTerminal(
+            session.sessionManager.getCwd(),
+            command,
+            stream,
+            log,
+            () => {
+              terminals.delete(command.terminalId);
+            },
+          ),
         );
       } catch (error) {
         log("terminal failed to start", {

@@ -1,8 +1,12 @@
+import { stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   createAgentSession,
   DefaultResourceLoader,
+  initTheme,
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -23,7 +27,12 @@ export async function startSession(
   options: SessionOptions,
   ui?: PromptUI,
 ): Promise<AgentSession> {
-  const { cwd, agentDir } = options;
+  const { agentDir } = options;
+  const cwd = await workingDirectory(options.cwd);
+
+  // Pi's CLI sets the theme before any mode runs, and extensions style their
+  // status text with it even when no terminal renders it.
+  initTheme();
 
   const resourceLoader = new DefaultResourceLoader({
     cwd,
@@ -60,6 +69,23 @@ export async function startSession(
   );
 
   return session;
+}
+
+async function workingDirectory(path: string): Promise<string> {
+  const expanded =
+    path === "~" || path.startsWith("~/")
+      ? join(homedir(), path.slice(1))
+      : path;
+
+  const found = isAbsolute(expanded)
+    ? await stat(expanded).catch(() => undefined)
+    : undefined;
+
+  if (found?.isDirectory() !== true) {
+    throw new Error(`working directory not found: ${path}`);
+  }
+
+  return expanded;
 }
 
 export async function stopSession(session: AgentSession): Promise<void> {
