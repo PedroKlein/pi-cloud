@@ -470,3 +470,42 @@ test("fails to start when the working directory does not exist", async () => {
 
   expect(String(error)).toContain(`working directory not found: ${missing}`);
 });
+
+test("logs errors thrown by extension handlers", async () => {
+  const { models } = await fauxModels(root);
+  const extension = join(root, "throws.ts");
+  const logs: { message: string; fields?: Record<string, unknown> }[] = [];
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", () => {
+    throw new Error("status bar broke");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fakeStream().stream,
+    (message, fields) => logs.push({ message, ...(fields && { fields }) }),
+  );
+
+  await hosted.stop();
+
+  expect(logs).toContainEqual({
+    message: "extension error",
+    fields: {
+      extension,
+      event: "session_start",
+      error: "status bar broke",
+    },
+  });
+});
