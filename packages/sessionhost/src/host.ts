@@ -72,12 +72,20 @@ export async function hostSession(
       return;
     }
     if (command.type === "terminal") {
-      terminals.set(
-        command.terminalId,
-        attachTerminal(options.cwd, command, stream, log, () => {
-          terminals.delete(command.terminalId);
-        }),
-      );
+      try {
+        terminals.set(
+          command.terminalId,
+          attachTerminal(options.cwd, command, stream, log, () => {
+            terminals.delete(command.terminalId);
+          }),
+        );
+      } catch (error) {
+        log("terminal failed to start", {
+          terminalId: command.terminalId,
+          error: String(error),
+        });
+        stream.terminal(command.terminalId, ignoredPeer).close();
+      }
       return;
     }
     run(session, command).catch((error: unknown) => {
@@ -101,6 +109,12 @@ export async function hostSession(
     },
   };
 }
+
+const ignoredPeer: TerminalPeer = {
+  input: () => undefined,
+  resize: () => undefined,
+  closed: () => undefined,
+};
 
 function attachTerminal(
   cwd: string,

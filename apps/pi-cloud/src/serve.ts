@@ -27,6 +27,9 @@ export function serve(options: ServeOptions): {
     development: false,
     routes: { "/": web },
     fetch: async (request, bunServer) => {
+      if (!fromThisSite(request)) {
+        return Response.json({ error: "forbidden" }, { status: 403 });
+      }
       const upgraded = terminals.upgrade(request, bunServer);
       if (upgraded === "upgraded") {
         return undefined;
@@ -45,4 +48,18 @@ export function serve(options: ServeOptions): {
       options.log("server stopped");
     },
   };
+}
+
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+// Without auth, a page on another site, or one reached by DNS rebinding,
+// could otherwise drive sessions and terminals from the user's browser.
+function fromThisSite(request: Request): boolean {
+  const host = request.headers.get("host") ?? "";
+  const origin = request.headers.get("origin");
+  return (
+    URL.canParse(`http://${host}`) &&
+    loopback.has(new URL(`http://${host}`).hostname) &&
+    (origin === null || (URL.canParse(origin) && new URL(origin).host === host))
+  );
 }

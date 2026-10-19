@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -326,4 +326,33 @@ test("cancels open prompts when the session stops", async () => {
   await hosted.stop();
 
   expect(fake.events.filter((e) => e.type === "prompt_end")).toHaveLength(1);
+});
+
+test("closes a terminal that cannot start and keeps taking commands", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("still here")])]);
+  const fake = fakeStream();
+  const logs: string[] = [];
+  const cwd = join(root, "work");
+  await mkdir(cwd);
+  const hosted = await hostSession(
+    {
+      cwd,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    (message) => logs.push(message),
+  );
+  await rm(cwd, { recursive: true });
+
+  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
+  fake.send({ type: "message", text: "hello" });
+  await fake.waitFor(() => fake.lines.join().includes("still here"));
+  await hosted.stop();
+
+  expect(fake.terminals.get("t1")?.closed).toBe(true);
+  expect(logs).toContain("terminal failed to start");
 });

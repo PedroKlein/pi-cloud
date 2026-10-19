@@ -3,6 +3,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import {
   protocolVersion,
   providerHeader,
+  type TerminalResize,
   versionHeader,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -14,6 +15,7 @@ interface SocketData {
 }
 
 interface Pair {
+  readonly sessionId: string;
   browser?: ServerWebSocket<SocketData>;
   host?: ServerWebSocket<SocketData>;
   readonly pending: (string | Buffer)[];
@@ -53,13 +55,16 @@ export function terminalBroker(
     server: Server<SocketData>,
     sessionId: string,
   ): Response | "upgraded" => {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return Response.json({ error: "expected a websocket" }, { status: 400 });
+    }
     const url = new URL(request.url);
     const terminalId = randomUUID();
     const sent = sessions.send(sessionId, {
       type: "terminal",
       terminalId,
-      cols: Number(url.searchParams.get("cols") ?? 80),
-      rows: Number(url.searchParams.get("rows") ?? 24),
+      cols: size(url.searchParams.get("cols"), 80),
+      rows: size(url.searchParams.get("rows"), 24),
     });
     if (!sent.ok) {
       return Response.json(
@@ -68,15 +73,18 @@ export function terminalBroker(
       );
     }
     pairs.set(terminalId, {
+      sessionId,
       pending: [],
       timeout: setTimeout(() => {
         end(terminalId, "session host did not open the terminal");
       }, hostTimeoutMs),
     });
     log("terminal requested", { sessionId, terminalId });
-    return server.upgrade(request, { data: { role: "browser", terminalId } })
-      ? "upgraded"
-      : Response.json({ error: "expected a websocket" }, { status: 400 });
+    if (server.upgrade(request, { data: { role: "browser", terminalId } })) {
+      return "upgraded";
+    }
+    end(terminalId, "browser upgrade failed");
+    return Response.json({ error: "expected a websocket" }, { status: 400 });
   };
 
   const openHost = (
@@ -89,11 +97,13 @@ export function terminalBroker(
       new URL(request.url).searchParams.get("generation"),
     );
     const provider = request.headers.get(providerHeader);
+    const pair = pairs.get(terminalId);
     if (
+      pair?.sessionId !== sessionId ||
+      pair.host !== undefined ||
       request.headers.get(versionHeader) !== String(protocolVersion) ||
       sessions.get(sessionId)?.provider !== provider ||
-      !sessions.isCurrent(sessionId, generation) ||
-      !pairs.has(terminalId)
+      !sessions.isCurrent(sessionId, generation)
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });
     }
@@ -139,10 +149,16 @@ export function terminalBroker(
         }
         if (ws.data.role === "host") {
           pair.browser?.send(message);
-        } else if (pair.host) {
-          pair.host.send(message);
+          return;
+        }
+        const forward = typeof message === "string" ? resize(message) : message;
+        if (forward === undefined) {
+          return;
+        }
+        if (pair.host) {
+          pair.host.send(forward);
         } else {
-          pair.pending.push(message);
+          pair.pending.push(forward);
         }
       },
       close: (ws) => {
@@ -150,4 +166,31 @@ export function terminalBroker(
       },
     },
   };
+}
+
+const maxSize = 1000;
+
+function validSize(value: unknown): value is number {
+  return (
+    Number.isInteger(value) && Number(value) > 0 && Number(value) <= maxSize
+  );
+}
+
+function size(value: string | null, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return validSize(parsed) ? parsed : fallback;
+}
+
+function resize(message: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return undefined;
+  }
+  const { type, cols, rows } = (parsed ?? {}) as Record<string, unknown>;
+  if (type !== "resize" || !validSize(cols) || !validSize(rows)) {
+    return undefined;
+  }
+  return JSON.stringify({ type, cols, rows } satisfies TerminalResize);
 }
