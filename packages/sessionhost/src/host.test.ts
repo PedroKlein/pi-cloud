@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
-import { hostSession, type SessionStream } from "./index";
+import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
 
 let root: string;
@@ -25,8 +25,16 @@ function fakeStream(
   events: LiveEvent[];
   lines: string[];
   uploads: number[];
+  terminals: Map<
+    string,
+    { peer: TerminalPeer; output: string[]; closed: boolean }
+  >;
   waitFor: (predicate: () => boolean) => Promise<void>;
 } {
+  const terminals = new Map<
+    string,
+    { peer: TerminalPeer; output: string[]; closed: boolean }
+  >();
   let failures = options.failUploads ?? 0;
   let publishFailures = options.failPublishes ?? 0;
   let listener: ((command: Command) => void) | undefined;
@@ -58,6 +66,19 @@ function fakeStream(
         listener = undefined;
       };
     },
+    terminal: (terminalId, peer) => {
+      const terminal = { peer, output: [] as string[], closed: false };
+      terminals.set(terminalId, terminal);
+      const decoder = new TextDecoder();
+      return {
+        send: (data) => {
+          terminal.output.push(decoder.decode(data));
+        },
+        close: () => {
+          terminal.closed = true;
+        },
+      };
+    },
   };
   return {
     stream,
@@ -65,6 +86,7 @@ function fakeStream(
     events,
     lines,
     uploads,
+    terminals,
     waitFor: async (predicate) => {
       while (!predicate()) {
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -184,4 +206,28 @@ test("uploads lines the server is missing as soon as it starts", async () => {
   await after.stop();
 
   expect(second.lines).toEqual(first.lines);
+});
+
+test("opens a terminal in the session directory on command", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
+  const terminal = fake.terminals.get("t1");
+  terminal?.peer.input(new TextEncoder().encode("pwd; exit\n"));
+  await fake.waitFor(() => terminal?.closed === true);
+  await hosted.stop();
+
+  expect(terminal?.output.join("")).toContain(root);
 });

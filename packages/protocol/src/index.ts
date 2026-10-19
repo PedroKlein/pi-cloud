@@ -59,7 +59,19 @@ export interface LivePost {
 
 export type Command =
   | { readonly type: "message"; readonly text: string }
-  | { readonly type: "abort" };
+  | { readonly type: "abort" }
+  | {
+      readonly type: "terminal";
+      readonly terminalId: string;
+      readonly cols: number;
+      readonly rows: number;
+    };
+
+export interface TerminalResize {
+  readonly type: "resize";
+  readonly cols: number;
+  readonly rows: number;
+}
 
 export type SessionStatus =
   "queued" | "starting" | ActivityStatus | "interrupted" | "failed";

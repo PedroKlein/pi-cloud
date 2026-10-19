@@ -2,6 +2,7 @@ import type { Log } from "@pi-cloud/providers";
 import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import { createHandler } from "./server";
 import { openStore } from "./store";
+import { terminalBroker } from "./terminals";
 
 export interface ServeOptions {
   readonly port: number;
@@ -16,11 +17,20 @@ export function serve(options: ServeOptions): {
 } {
   const store = openStore(options.database);
   const sessions = new Sessions(store, options.sessions);
+  const handler = createHandler(sessions, options.log);
+  const terminals = terminalBroker(sessions, options.log);
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
     idleTimeout: 30,
-    fetch: createHandler(sessions, options.log),
+    fetch: async (request, bunServer) => {
+      const upgraded = terminals.upgrade(request, bunServer);
+      if (upgraded === "upgraded") {
+        return undefined;
+      }
+      return upgraded ?? handler(request);
+    },
+    websocket: terminals.websocket,
   });
   options.log("server listening", { url: server.url.href });
   return {

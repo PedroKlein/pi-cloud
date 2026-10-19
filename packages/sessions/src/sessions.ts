@@ -240,6 +240,10 @@ export class Sessions {
     };
   }
 
+  isCurrent(id: string, generation: number): boolean {
+    return this.#current(id, generation).ok;
+  }
+
   close(): void {
     for (const state of this.#providers.values()) {
       clearTimeout(state.offlineTimer);

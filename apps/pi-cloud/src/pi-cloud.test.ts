@@ -495,3 +495,89 @@ test("closes the command stream of an interrupted attempt", async () => {
   expect(commands.status).toBe(200);
   expect(received).toEqual([]);
 });
+
+async function openTerminal(sessionId: string): Promise<{
+  readonly socket: WebSocket;
+  readonly output: (until: string) => Promise<string>;
+  readonly closed: Promise<void>;
+}> {
+  const url = new URL(
+    `/api/sessions/${sessionId}/terminal?cols=80&rows=24`,
+    server.url,
+  );
+  url.protocol = "ws:";
+  const socket = new WebSocket(url);
+  socket.binaryType = "arraybuffer";
+  const decoder = new TextDecoder();
+  let text = "";
+  let changed = (): void => undefined;
+  socket.addEventListener("message", (event: MessageEvent) => {
+    text += decoder.decode(event.data as ArrayBuffer, { stream: true });
+    changed();
+  });
+  const closed = new Promise<void>((resolve) => {
+    socket.addEventListener("close", () => {
+      resolve();
+    });
+  });
+  await new Promise((resolve) => {
+    socket.addEventListener("open", resolve);
+  });
+  return {
+    socket,
+    closed,
+    output: async (until) => {
+      while (!text.includes(until)) {
+        await new Promise<void>((resolve) => {
+          changed = resolve;
+        });
+      }
+      return text;
+    },
+  };
+}
+
+const encoder = new TextEncoder();
+
+test("runs a shell in the session's directory over a terminal socket", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(encoder.encode("echo dir=$(pwd) sum=$((40+2))\n"));
+  const output = await terminal.output("sum=42");
+
+  expect(output).toContain(`dir=${root}`);
+});
+
+test("resizes the terminal", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(JSON.stringify({ type: "resize", cols: 100, rows: 30 }));
+  terminal.socket.send(encoder.encode("echo size=$(stty size)\n"));
+
+  expect(await terminal.output("size=30 100")).toContain("size=30 100");
+});
+
+test("closes the terminal socket when the shell exits", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(encoder.encode("exit\n"));
+  await terminal.closed;
+
+  expect(terminal.socket.readyState).toBe(WebSocket.CLOSED);
+});
+
+test("refuses a terminal for a session whose agent is gone", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  await laptop();
+
+  const response = await api(`/api/sessions/${session.id}/terminal`);
+
+  expect(response.status).toBe(409);
+});

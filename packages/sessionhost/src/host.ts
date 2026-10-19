@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
 import { type SessionOptions, startSession } from "./session";
+import { openTerminal } from "./terminal";
 
 export interface SessionStream {
   uploadTranscript: (
@@ -14,6 +15,18 @@ export interface SessionStream {
   ) => Promise<number>;
   publish: (events: readonly LiveEvent[]) => Promise<void>;
   commands: (listener: (command: Command) => void) => () => void;
+  terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
+}
+
+export interface TerminalPeer {
+  input: (data: Uint8Array) => void;
+  resize: (cols: number, rows: number) => void;
+  closed: () => void;
+}
+
+export interface TerminalChannel {
+  send: (data: Uint8Array) => void;
+  close: () => void;
 }
 
 export type Log = (
@@ -48,7 +61,17 @@ export async function hostSession(
       transcript.sync();
     }
   });
+  const terminals = new Map<string, () => void>();
   const detach = stream.commands((command) => {
+    if (command.type === "terminal") {
+      terminals.set(
+        command.terminalId,
+        attachTerminal(options.cwd, command, stream, log, () => {
+          terminals.delete(command.terminalId);
+        }),
+      );
+      return;
+    }
     run(session, command).catch((error: unknown) => {
       log("command failed", { command: command.type, error: String(error) });
     });
@@ -59,6 +82,9 @@ export async function hostSession(
   return {
     stop: async () => {
       detach();
+      for (const close of terminals.values()) {
+        close();
+      }
       await session.abort();
       unsubscribe();
       transcript.sync();
@@ -68,7 +94,49 @@ export async function hostSession(
   };
 }
 
-async function run(session: AgentSession, command: Command): Promise<void> {
+function attachTerminal(
+  cwd: string,
+  command: Extract<Command, { type: "terminal" }>,
+  stream: SessionStream,
+  log: Log,
+  exited: () => void,
+): () => void {
+  const { terminalId, cols, rows } = command;
+  const pending: Uint8Array[] = [];
+  let output = (data: Uint8Array): void => {
+    pending.push(data);
+  };
+  const terminal = openTerminal({ cwd, cols, rows }, (data) => {
+    output(data);
+  });
+  const channel = stream.terminal(terminalId, {
+    input: (data) => {
+      terminal.write(data);
+    },
+    resize: (c, r) => {
+      terminal.resize(c, r);
+    },
+    closed: () => {
+      terminal.close();
+    },
+  });
+  pending.forEach(channel.send);
+  output = channel.send;
+  log("terminal opened", { terminalId });
+  void terminal.exited.then((code) => {
+    log("terminal exited", { terminalId, code });
+    channel.close();
+    exited();
+  });
+  return () => {
+    terminal.close();
+  };
+}
+
+async function run(
+  session: AgentSession,
+  command: Exclude<Command, { type: "terminal" }>,
+): Promise<void> {
   switch (command.type) {
     case "message":
       await session.prompt(command.text, { streamingBehavior: "steer" });
