@@ -7,7 +7,7 @@ This sets up `pi-cloud server` on a Linux VM with a built-in provider named `vm`
 Sessions use the VM's own tools, so set these up first as the user that will run the server:
 
 - git, with credentials for the repositories you'll clone (an SSH key or a credential helper). Pi Cloud never prompts for them.
-- Pi, logged in to at least one model. Check with `pi` once.
+- A Pi login for at least one model, in `~/.pi/agent`. The binary bundles Pi, so the `pi` command isn't needed to run sessions, only to log in. Either install it (`bun add -g @earendil-works/pi-coding-agent`), run `pi` and use `/login`, or copy `auth.json` from a machine that is already logged in. If an extension adds your model provider, copy the extension and `settings.json` too.
 - Whatever your projects need to build and test.
 
 ## Build and copy the binary
@@ -16,6 +16,7 @@ From a checkout on your laptop, build for the VM's platform and copy it over:
 
 ```sh
 bun install
+ssh <vm> mkdir -p .local/bin
 bun build --compile --target=bun-linux-x64 apps/pi-cloud/src/main.ts --outfile dist/pi-cloud-linux
 scp dist/pi-cloud-linux <vm>:~/.local/bin/pi-cloud
 ```
@@ -24,7 +25,7 @@ Use `--target=bun-linux-arm64` for an ARM VM.
 
 ## Install the service
 
-On the VM, save this as `~/.config/systemd/user/pi-cloud.service`:
+On the VM, run `mkdir -p ~/.config/systemd/user` and save this as `~/.config/systemd/user/pi-cloud.service`:
 
 ```ini
 [Unit]
@@ -59,6 +60,8 @@ Open a tunnel and keep it running:
 ```sh
 ssh -N -L 7420:127.0.0.1:7420 <vm>
 ```
+
+If your SSH config uses `ControlMaster`, this command returns right away while the forward stays up on the shared connection. `ssh -O cancel -L 7420:127.0.0.1:7420 <vm>` removes it.
 
 Open http://127.0.0.1:7420, choose "Clone repository", enter provider `vm` and a repository URL the VM can clone, and start the session.
 
