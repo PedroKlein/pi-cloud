@@ -203,6 +203,51 @@ test("keeps the latest status when a live post fails", async () => {
   expect(fake.events).toEqual([{ type: "status", status: "idle" }]);
 });
 
+test("resends extension status and widgets when a live post fails", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 1 });
+  const extension = join(root, "status.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("build", "running");
+    ctx.ui.setWidget("todo", ["first"]);
+    ctx.ui.setTitle("my session");
+    ctx.ui.setEditorText("draft");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.length > 0);
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+    { type: "extension_status", key: "build", text: "running" },
+    {
+      type: "widget",
+      key: "todo",
+      lines: ["first"],
+      placement: "aboveEditor",
+    },
+    { type: "title", title: "my session" },
+  ]);
+});
+
 test("uploads lines the server is missing as soon as it starts", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
@@ -508,4 +553,314 @@ test("logs errors thrown by extension handlers", async () => {
       error: "status bar broke",
     },
   });
+});
+
+test("forwards extension status, widgets, title and editor text", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const extension = join(root, "surfaces.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("build", ctx.ui.theme.fg("accent", "2 running"));
+    ctx.ui.setWidget("todo", ["first", "second"]);
+    ctx.ui.setWidget("hint", ["below"], { placement: "belowEditor" });
+    ctx.ui.setWidget("drawn", () => ({ render: () => [], invalidate: () => {} }));
+    ctx.ui.setStatus("build", undefined);
+    ctx.ui.setTitle("my session");
+    ctx.ui.setEditorText("draft");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+    { type: "extension_status", key: "build", text: "2 running" },
+    {
+      type: "widget",
+      key: "todo",
+      lines: ["first", "second"],
+      placement: "aboveEditor",
+    },
+    {
+      type: "widget",
+      key: "hint",
+      lines: ["below"],
+      placement: "belowEditor",
+    },
+    { type: "extension_status", key: "build", text: null },
+    { type: "title", title: "my session" },
+    { type: "editor_text", text: "draft" },
+  ]);
+});
+
+test("asks structured questions with the built-in ask_user tool", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("ask_user", {
+          questions: [
+            {
+              id: "db",
+              prompt: "Which database?",
+              type: "single",
+              options: [
+                {
+                  value: "sqlite",
+                  label: "SQLite",
+                  description: "One file",
+                  recommended: true,
+                },
+                { value: "pg", label: "Postgres" },
+              ],
+            },
+            {
+              id: "size",
+              label: "Disk",
+              prompt: "How much disk?",
+              type: "number",
+              min: 1,
+              max: 100,
+              unit: "GB",
+            },
+            {
+              id: "order",
+              prompt: "Rank the steps",
+              type: "rank",
+              options: [
+                { value: "lint", label: "Lint" },
+                { value: "test", label: "Test" },
+              ],
+            },
+          ],
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("noted")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "message", text: "set it up" });
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  const prompt = fake.events.find((e) => e.type === "prompt");
+  const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
+
+  fake.send({
+    type: "answer",
+    id,
+    value: {
+      answers: [
+        {
+          id: "db",
+          type: "choice",
+          selections: [
+            {
+              value: "sqlite",
+              label: "SQLite",
+              custom: false,
+              annotation: "keep it simple",
+            },
+          ],
+        },
+        { id: "size", type: "number", value: 40 },
+        {
+          id: "order",
+          type: "choice",
+          selections: [
+            { value: "test", label: "Test", custom: false, annotation: null },
+            { value: "lint", label: "Lint", custom: false, annotation: null },
+          ],
+        },
+      ],
+      note: "no rush",
+    },
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes("noted"));
+  await hosted.stop();
+
+  expect(prompt).toEqual({
+    type: "prompt",
+    prompt: {
+      id,
+      kind: "questions",
+      title: "Questions from the agent",
+      explain: true,
+      questions: [
+        {
+          id: "db",
+          label: "Q1",
+          prompt: "Which database?",
+          context: null,
+          type: "single",
+          options: [
+            {
+              value: "sqlite",
+              label: "SQLite",
+              description: "One file",
+              recommended: true,
+            },
+            {
+              value: "pg",
+              label: "Postgres",
+              description: null,
+              recommended: false,
+            },
+          ],
+        },
+        {
+          id: "size",
+          label: "Disk",
+          prompt: "How much disk?",
+          context: null,
+          type: "number",
+          min: 1,
+          max: 100,
+          step: 1,
+          unit: "GB",
+          recommended: null,
+        },
+        {
+          id: "order",
+          label: "Q3",
+          prompt: "Rank the steps",
+          context: null,
+          type: "rank",
+          options: [
+            {
+              value: "lint",
+              label: "Lint",
+              description: null,
+              recommended: false,
+            },
+            {
+              value: "test",
+              label: "Test",
+              description: null,
+              recommended: false,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  const result = fake.lines
+    .map((line) => JSON.parse(line) as { message?: { role: string } })
+    .find((entry) => entry.message?.role === "toolResult");
+
+  expect(JSON.stringify(result)).toContain(
+    [
+      "User answers:",
+      "- Q1: SQLite",
+      '    → \\"keep it simple\\"',
+      "- Disk: 40 GB",
+      "- Q3: 1. Test, 2. Lint",
+      "- Additional notes: no rush",
+    ].join("\\n"),
+  );
+});
+
+test("explains an option with the session's model while the form is open", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("ask_user", {
+          questions: [
+            {
+              id: "db",
+              prompt: "Which database?",
+              type: "single",
+              options: [
+                { value: "sqlite", label: "SQLite" },
+                { value: "pg", label: "Postgres" },
+              ],
+            },
+          ],
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("Postgres needs a server.")]),
+    fauxAssistantMessage([fauxText("noted")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ type: "message", text: "set it up" });
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  const prompt = fake.events.find((e) => e.type === "prompt");
+  const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
+
+  fake.send({
+    type: "explain",
+    id,
+    questionId: "db",
+    value: "pg",
+    question: "Do I need to run it?",
+  });
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "explanation"));
+  fake.send({ type: "answer", id, value: null });
+  await fake.waitFor(() => fake.lines.join().includes("noted"));
+  await hosted.stop();
+
+  expect(fake.events.find((e) => e.type === "explanation")).toEqual({
+    type: "explanation",
+    id,
+    questionId: "db",
+    value: "pg",
+    question: "Do I need to run it?",
+    text: "Postgres needs a server.",
+    error: null,
+  });
+
+  expect(fake.lines.join()).toContain("User cancelled the questionnaire");
 });

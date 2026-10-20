@@ -25,10 +25,18 @@
       </header>
       <ol id="chat"></ol>
       <div id="terminal" hidden></div>
+      <div id="widgets-above" class="widgets"></div>
       <form id="prompt">
-        <textarea name="text" rows="3" placeholder="Message"></textarea>
+        <textarea
+          id="prompt-text"
+          name="text"
+          rows="3"
+          placeholder="Message"
+        ></textarea>
         <button>Send</button>
       </form>
+      <div id="widgets-below" class="widgets"></div>
+      <footer id="extension-status"></footer>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

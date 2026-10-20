@@ -79,7 +79,7 @@
 
 ## Deferred to v2
 
-These depend on the Kubernetes provider or the public extension SDK, which [vision.md](vision.md#scope) places in v2. v1 uses one trusted shared-process mode and one provider per Environment.
+These depend on the Kubernetes provider or the public extension SDK, which [vision.md](vision.md#scope) places in v2. v1 uses one trusted shared-process mode and one provider per Environment. Ideas collected for these from prior art are in [v2-ideas.md](v2-ideas.md).
 
 ### Runtime and isolation
 

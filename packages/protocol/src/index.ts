@@ -38,7 +38,69 @@ export interface TranscriptAck {
 
 export type ActivityStatus = "idle" | "running";
 
+export interface QuestionOption {
+  readonly value: string;
+  readonly label: string;
+  readonly description: string | null;
+  readonly recommended: boolean;
+}
+
+interface QuestionBase {
+  readonly id: string;
+  readonly label: string;
+  readonly prompt: string;
+  readonly context: string | null;
+}
+
+export type Question =
+  | (QuestionBase & {
+      readonly type: "single" | "multi" | "scale" | "rank";
+      readonly options: readonly QuestionOption[];
+    })
+  | (QuestionBase & {
+      readonly type: "text";
+      readonly placeholder: string | null;
+    })
+  | (QuestionBase & {
+      readonly type: "number";
+      readonly min: number;
+      readonly max: number;
+      readonly step: number;
+      readonly unit: string | null;
+      readonly recommended: number | null;
+    });
+
+export interface Selection {
+  readonly value: string;
+  readonly label: string;
+  readonly custom: boolean;
+  readonly annotation: string | null;
+}
+
+export type QuestionAnswer =
+  | {
+      readonly id: string;
+      readonly type: "choice";
+      readonly selections: readonly Selection[];
+    }
+  | { readonly id: string; readonly type: "text"; readonly text: string }
+  | { readonly id: string; readonly type: "number"; readonly value: number };
+
+export interface QuestionsAnswer {
+  readonly answers: readonly QuestionAnswer[];
+  readonly note: string | null;
+}
+
+export type Answer = string | boolean | QuestionsAnswer | null;
+
 export type Prompt =
+  | {
+      readonly id: string;
+      readonly kind: "questions";
+      readonly title: string;
+      readonly questions: readonly Question[];
+      readonly explain: boolean;
+    }
   | {
       readonly id: string;
       readonly kind: "confirm";
@@ -73,6 +135,28 @@ export type LiveEvent =
       readonly message: string;
       readonly level: "info" | "warning" | "error";
     }
+  | {
+      readonly type: "extension_status";
+      readonly key: string;
+      readonly text: string | null;
+    }
+  | {
+      readonly type: "widget";
+      readonly key: string;
+      readonly lines: readonly string[] | null;
+      readonly placement: "aboveEditor" | "belowEditor";
+    }
+  | { readonly type: "title"; readonly title: string }
+  | { readonly type: "editor_text"; readonly text: string }
+  | {
+      readonly type: "explanation";
+      readonly id: string;
+      readonly questionId: string;
+      readonly value: string;
+      readonly question: string | null;
+      readonly text: string | null;
+      readonly error: string | null;
+    }
   | { readonly type: "text"; readonly delta: string }
   | {
       readonly type: "tool_start";
@@ -93,10 +177,13 @@ export interface LivePost {
 export type Command =
   | { readonly type: "message"; readonly text: string }
   | { readonly type: "abort" }
+  | { readonly type: "answer"; readonly id: string; readonly value: Answer }
   | {
-      readonly type: "answer";
+      readonly type: "explain";
       readonly id: string;
-      readonly value: string | boolean | null;
+      readonly questionId: string;
+      readonly value: string;
+      readonly question: string | null;
     }
   | {
       readonly type: "terminal";

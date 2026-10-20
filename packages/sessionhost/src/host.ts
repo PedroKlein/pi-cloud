@@ -5,7 +5,8 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
-import { remotePrompts } from "./prompts";
+import { askUserTool } from "./ask";
+import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
 
@@ -41,6 +42,14 @@ export interface HostedSession {
 
 const retryMs = 1000;
 
+const resent: readonly LiveEvent["type"][] = [
+  "prompt",
+  "prompt_end",
+  "extension_status",
+  "widget",
+  "title",
+];
+
 export async function hostSession(
   options: SessionOptions,
   stream: SessionStream,
@@ -48,12 +57,13 @@ export async function hostSession(
 ): Promise<HostedSession> {
   const live = liveQueue(stream, log);
 
-  const prompts = remotePrompts((event) => {
+  const prompts = remoteUI((event) => {
     live.push(event);
   });
 
   const session = await startSession(options, {
     ui: prompts.ui,
+    tools: [askUserTool(prompts.questions)],
     onError: (error) => {
       log("extension error", {
         extension: error.extensionPath,
@@ -84,6 +94,12 @@ export async function hostSession(
   const detach = stream.commands((command) => {
     if (command.type === "answer") {
       prompts.answer(command.id, command.value);
+
+      return;
+    }
+
+    if (command.type === "explain") {
+      prompts.explain(command);
 
       return;
     }
@@ -191,7 +207,7 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Exclude<Command, { type: "terminal" | "answer" }>,
+  command: Exclude<Command, { type: "terminal" | "answer" | "explain" }>,
 ): Promise<void> {
   switch (command.type) {
     case "message":
@@ -269,9 +285,7 @@ function liveQueue(
 
       const retry = [
         ...(status ? [status] : []),
-        ...events.filter(
-          (event) => event.type === "prompt" || event.type === "prompt_end",
-        ),
+        ...events.filter((event) => resent.includes(event.type)),
       ];
 
       log("live events dropped", {
