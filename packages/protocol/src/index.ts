@@ -175,7 +175,11 @@ export interface LivePost {
 }
 
 export type Command =
-  | { readonly type: "message"; readonly text: string }
+  | {
+      readonly type: "message";
+      readonly text: string;
+      readonly requestId?: string;
+    }
   | { readonly type: "abort" }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }
   | {

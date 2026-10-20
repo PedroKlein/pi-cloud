@@ -187,6 +187,58 @@ test("chats with a session on an agent and replays it later", async () => {
   );
 });
 
+test("delivers a retried message once and a new one with the same text", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    fauxAssistantMessage([fauxText("second")]),
+    fauxAssistantMessage([fauxText("third")]),
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  for (const [requestId, text] of [
+    ["a", "one"],
+    ["a", "one"],
+    ["b", "one"],
+    ["c", "two"],
+  ]) {
+    const sent = await api(`/api/sessions/${session.id}/commands`, {
+      type: "message",
+      text,
+      requestId,
+    });
+
+    expect(sent.status).toBe(202);
+  }
+
+  const events = await follow(session.id, (seen) =>
+    userTexts(seen).includes("two"),
+  );
+
+  expect(userTexts(events)).toEqual(["one", "one", "two"]);
+});
+
+function userTexts(events: readonly SessionEvent[]): string[] {
+  return events.flatMap((event) => {
+    if (event.type !== "entry") {
+      return [];
+    }
+
+    const { message } = JSON.parse(event.entry) as {
+      message?: { role: string; content: string | { text?: string }[] };
+    };
+
+    if (message?.role !== "user") {
+      return [];
+    }
+
+    return typeof message.content === "string"
+      ? message.content
+      : message.content.map((part) => part.text ?? "").join("");
+  });
+}
+
 test("resumes the event stream after the last received line", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("hello again")])]);
   const session = await createSession("laptop");
