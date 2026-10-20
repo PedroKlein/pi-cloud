@@ -474,6 +474,7 @@ function surfaceOf(
     case "status":
     case "notify":
     case "editor_text":
+    case "explanation":
     case "text":
     case "tool_start":
     case "tool_end":

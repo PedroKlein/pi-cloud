@@ -1,6 +1,11 @@
-import type { LiveEvent, Session, SessionEvent } from "@pi-cloud/protocol";
+import type {
+  Command,
+  LiveEvent,
+  Session,
+  SessionEvent,
+} from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
-import { renderPrompt } from "./prompt";
+import { renderPrompt, type RenderedPrompt } from "./prompt";
 import { openTerminal } from "./terminal";
 
 const sessionsRefreshMs = 2000;
@@ -103,7 +108,7 @@ function follow(sessionId: string): () => void {
   let lines = 0;
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
-  const prompts = new Map<string, HTMLElement>();
+  const prompts = new Map<string, RenderedPrompt>();
   const statuses = new Map<string, string>();
   const widgets = new Map<string, Extract<LiveEvent, { type: "widget" }>>();
 
@@ -174,24 +179,37 @@ function follow(sessionId: string): () => void {
           return;
         }
 
-        const box = renderPrompt(event.prompt, (value) => {
-          api(`/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
-            type: "answer",
-            id,
-            value,
-          }).catch(report);
-        });
+        const command = (body: Command): void => {
+          api(
+            `/api/sessions/${encodeURIComponent(sessionId)}/commands`,
+            body,
+          ).catch(report);
+        };
 
-        prompts.set(id, box);
-        chat.append(box);
+        const rendered = renderPrompt(
+          event.prompt,
+          (value) => {
+            command({ type: "answer", id, value });
+          },
+          (questionId, value, question) => {
+            command({ type: "explain", id, questionId, value, question });
+          },
+        );
+
+        prompts.set(id, rendered);
+        chat.append(rendered.element);
         chat.scrollTop = chat.scrollHeight;
 
         return;
       }
 
       case "prompt_end":
-        prompts.get(event.id)?.remove();
+        prompts.get(event.id)?.element.remove();
         prompts.delete(event.id);
+
+        return;
+      case "explanation":
+        prompts.get(event.id)?.explained(event);
 
         return;
       case "notify":
@@ -246,7 +264,7 @@ function follow(sessionId: string): () => void {
 
   events.addEventListener("open", () => {
     prompts.forEach((prompt) => {
-      prompt.remove();
+      prompt.element.remove();
     });
 
     prompts.clear();

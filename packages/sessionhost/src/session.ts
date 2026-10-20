@@ -4,6 +4,7 @@ import { isAbsolute, join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
+  type ToolDefinition,
   createAgentSessionFromServices,
   createAgentSessionServices,
   type ExtensionError,
@@ -26,6 +27,7 @@ export interface SessionOptions {
 
 export interface SessionHost {
   readonly ui: RemoteUI;
+  readonly tools: readonly ToolDefinition[];
   readonly onError: (error: ExtensionError) => void;
 }
 
@@ -60,6 +62,7 @@ export async function startSession(
   const { session } = await createAgentSessionFromServices({
     services,
     sessionManager: SessionManager.continueRecent(cwd, options.sessionDir),
+    ...(host && { customTools: [...host.tools] }),
     ...(options.models && { model: options.models.model }),
   });
 

@@ -1,6 +1,12 @@
-import type { Prompt } from "@pi-cloud/protocol";
+import type { Answer, LiveEvent, Prompt } from "@pi-cloud/protocol";
+import { renderQuestions } from "./questions";
 
-type Answer = string | boolean | null;
+export interface RenderedPrompt {
+  readonly element: HTMLElement;
+  readonly explained: (
+    event: Extract<LiveEvent, { type: "explanation" }>,
+  ) => void;
+}
 
 function button(label: string, onClick: () => void): HTMLButtonElement {
   const element = document.createElement("button");
@@ -14,7 +20,12 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
 export function renderPrompt(
   prompt: Prompt,
   answer: (value: Answer) => void,
-): HTMLElement {
+  explain: (questionId: string, value: string, question: string | null) => void,
+): RenderedPrompt {
+  if (prompt.kind === "questions") {
+    return renderQuestions(prompt, { answer, explain });
+  }
+
   const box = document.createElement("li");
   box.dataset["role"] = "prompt";
   const title = document.createElement("strong");
@@ -79,5 +90,5 @@ export function renderPrompt(
 
   box.append(actions);
 
-  return box;
+  return { element: box, explained: () => undefined };
 }
