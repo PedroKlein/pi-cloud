@@ -7,6 +7,7 @@ import {
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
@@ -149,6 +150,51 @@ test("streams a turn as live events and transcript lines", async () => {
   ]);
 
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
+});
+
+test("tells clients when a message cannot be sent to the model", async () => {
+  const runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+
+  const loggedOut = runtime.getModels().find((m) => m.provider === "openai");
+  if (!loggedOut) {
+    throw new Error("Pi has no built-in openai model");
+  }
+
+  const fake = fakeStream();
+  const apiKey = process.env["OPENAI_API_KEY"];
+  delete process.env["OPENAI_API_KEY"];
+
+  try {
+    const hosted = await hostSession(
+      {
+        cwd: root,
+        agentDir: join(root, "agent"),
+        sessionDir: join(root, "sessions"),
+        extensionPaths: [],
+        models: { runtime, model: loggedOut },
+      },
+      fake.stream,
+      () => undefined,
+    );
+
+    fake.send({ type: "message", text: "hello" });
+    await fake.waitFor(() => fake.events.some((e) => e.type === "notify"));
+    await hosted.stop();
+  } finally {
+    if (apiKey !== undefined) {
+      process.env["OPENAI_API_KEY"] = apiKey;
+    }
+  }
+
+  const notice = fake.events.find((e) => e.type === "notify");
+
+  expect(notice).toMatchObject({ type: "notify", level: "error" });
+  expect(notice?.message).toStartWith("message failed: ");
+  expect(notice?.message).toContain("No API key");
 });
 
 test("resends the transcript from the last acknowledged line after a failure", async () => {
