@@ -10,7 +10,13 @@
     <aside>
       <h1>Pi Cloud</h1>
       <form id="create">
-        <input name="provider" placeholder="provider" required />
+        <input
+          name="provider"
+          placeholder="provider"
+          list="providers"
+          required
+        />
+        <datalist id="providers"></datalist>
         <select name="kind">
           <option value="worktree">Worktree of folder</option>
           <option value="folder">Folder (shared with other sessions)</option>
@@ -19,8 +25,10 @@
         <input
           name="location"
           placeholder="directory or repository URL"
+          list="folders"
           required
         />
+        <datalist id="folders"></datalist>
         <button>New session</button>
       </form>
       <ul id="sessions"></ul>

@@ -57,6 +57,7 @@ export function createHandler(
   };
 
   const routes: readonly (readonly [string, RegExp, Route])[] = [
+    ["GET", /^\/api\/providers$/, () => Response.json(sessions.providers())],
     ["GET", /^\/api\/sessions$/, () => Response.json(sessions.list())],
     [
       "POST",
@@ -125,11 +126,11 @@ export function createHandler(
       /^\/agent\/work$/,
       agent(async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
-        const { running } = await readJson<WorkPoll>(request);
+        const poll = await readJson<WorkPoll>(request);
 
         const { start, interrupted } = await sessions.claim(
           provider,
-          running,
+          poll,
           request.signal,
         );
 

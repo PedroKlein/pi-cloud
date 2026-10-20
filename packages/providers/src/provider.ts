@@ -14,13 +14,14 @@ export interface ProviderOptions {
   readonly controlPlane: ControlPlane;
   readonly start: (assignment: Assignment) => void;
   readonly running: () => readonly Attempt[];
+  readonly folders: readonly string[];
   readonly log: Log;
   readonly signal: AbortSignal;
   readonly retry?: { readonly initialMs: number; readonly maxMs: number };
 }
 
 export async function runProvider(options: ProviderOptions): Promise<void> {
-  const { controlPlane, start, running, log, signal } = options;
+  const { controlPlane, start, running, folders, log, signal } = options;
 
   const { initialMs, maxMs } = options.retry ?? {
     initialMs: 1000,
@@ -33,7 +34,11 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
   log("provider polling for work");
   while (!signal.aborted) {
     try {
-      const work = await controlPlane.work({ running: running() }, signal);
+      const work = await controlPlane.work(
+        { running: running(), folders },
+        signal,
+      );
+
       polls++;
       delayMs = initialMs;
       for (const assignment of work.start) {
