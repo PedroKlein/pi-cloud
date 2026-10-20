@@ -58,6 +58,8 @@ interface ProviderState {
   offlineTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
+// Enough to catch a browser retrying a send; ids only need to outlive retries.
+const maxRequestIds = 100;
 const claimable: readonly SessionStatus[] = ["queued", "interrupted"];
 const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
 
@@ -71,6 +73,7 @@ export class Sessions {
     { readonly send: Listener<Command>; readonly end: () => void }
   >();
   readonly #pollers = new Map<string, Set<() => void>>();
+  readonly #requestIds = new Map<string, Set<string>>();
   readonly #providers = new Map<string, ProviderState>();
   readonly #surfaces = new Map<
     string,
@@ -245,9 +248,31 @@ export class Sessions {
       return { ok: false, reason: "offline" };
     }
 
-    host.send(command);
+    if (
+      command.type !== "message" ||
+      command.requestId === undefined ||
+      this.#firstRequest(id, command.requestId)
+    ) {
+      host.send(command);
+    }
 
     return { ok: true, value: undefined };
+  }
+
+  #firstRequest(id: string, requestId: string): boolean {
+    const seen = this.#requestIds.get(id) ?? new Set<string>();
+    this.#requestIds.set(id, seen);
+    if (seen.has(requestId)) {
+      return false;
+    }
+
+    seen.add(requestId);
+    const [oldest] = seen;
+    if (seen.size > maxRequestIds && oldest !== undefined) {
+      seen.delete(oldest);
+    }
+
+    return true;
   }
 
   attach(

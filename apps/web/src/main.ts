@@ -372,6 +372,7 @@ promptForm.addEventListener("submit", (event) => {
   api(`/api/sessions/${encodeURIComponent(selected)}/commands`, {
     type: "message",
     text,
+    requestId: crypto.randomUUID(),
   }).catch(report);
 });
 
