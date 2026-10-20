@@ -208,7 +208,10 @@ async function terminalPrints(
 process.stdout.write(`smoke test in ${cwd} with your Pi setup\n`);
 
 const { id } = (await (
-  await api("/api/sessions", { provider: "smoke", cwd })
+  await api("/api/sessions", {
+    provider: "smoke",
+    workspace: { kind: "folder", path: cwd },
+  })
 ).json()) as Session;
 
 const events = follow(id);

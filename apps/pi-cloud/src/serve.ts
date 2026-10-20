@@ -1,6 +1,7 @@
 import type { Log } from "@pi-cloud/providers";
 import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
+import { type AgentOptions, runAgent } from "./agent";
 import { createHandler } from "./server";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
@@ -9,6 +10,7 @@ export interface ServeOptions {
   readonly port: number;
   readonly database: string;
   readonly sessions?: SessionsOptions;
+  readonly agent?: Omit<AgentOptions, "server" | "log" | "signal">;
   readonly log: Log;
 }
 
@@ -43,10 +45,24 @@ export function serve(options: ServeOptions): {
   });
 
   options.log("server listening", { url: server.url.href });
+  const agentStop = new AbortController();
+
+  // The built-in provider is the same agent a laptop runs, talking to this
+  // server over loopback, so both providers share one tested path.
+  const agent =
+    options.agent &&
+    runAgent({
+      ...options.agent,
+      server: server.url.href,
+      log: options.log,
+      signal: agentStop.signal,
+    });
 
   return {
     url: server.url,
     stop: async () => {
+      agentStop.abort();
+      await agent;
       await server.stop(true);
       sessions.close();
       store.close();

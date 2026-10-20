@@ -2,10 +2,22 @@ export const protocolVersion = 1;
 export const versionHeader = "pi-cloud-protocol";
 export const providerHeader = "pi-cloud-provider";
 
+export type Workspace =
+  | { readonly kind: "folder"; readonly path: string }
+  | {
+      readonly kind: "clone";
+      readonly repository: string;
+      readonly branch: string;
+    };
+
+export type WorkspaceRequest =
+  | { readonly kind: "folder"; readonly path: string }
+  | { readonly kind: "clone"; readonly repository: string };
+
 export interface Assignment {
   readonly sessionId: string;
   readonly generation: number;
-  readonly cwd: string;
+  readonly workspace: Workspace;
 }
 
 export interface Attempt {
@@ -208,7 +220,7 @@ export type SessionStatus =
 export interface Session {
   readonly id: string;
   readonly provider: string;
-  readonly cwd: string;
+  readonly workspace: Workspace;
   readonly status: SessionStatus;
   readonly generation: number;
   readonly createdAt: string;
@@ -219,7 +231,7 @@ export interface Session {
 
 export interface CreateSession {
   readonly provider: string;
-  readonly cwd: string;
+  readonly workspace: WorkspaceRequest;
 }
 
 export type SessionEvent =

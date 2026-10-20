@@ -1,13 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { SessionStatus } from "@pi-cloud/protocol";
+import type { SessionStatus, Workspace } from "@pi-cloud/protocol";
 import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
 
 interface SessionRow {
   id: string;
   provider: string;
-  cwd: string;
+  workspace: string;
   status: SessionStatus;
   generation: number;
   created_at: string;
@@ -19,7 +19,7 @@ const schema = `
 create table if not exists sessions (
   id text primary key,
   provider text not null,
-  cwd text not null,
+  workspace text not null,
   status text not null,
   generation integer not null,
   created_at text not null,
@@ -34,6 +34,24 @@ create table if not exists transcript (
 );
 `;
 
+// Databases from before Sessions had a workspace stored a folder path in cwd.
+function migrate(db: DatabaseSync): void {
+  const columns = db
+    .prepare("select name from pragma_table_info('sessions')")
+    .all() as { name: string }[];
+
+  if (columns.some((column) => column.name === "cwd")) {
+    db.exec(`
+      begin;
+      alter table sessions rename column cwd to workspace;
+      update sessions set workspace = json_object('kind', 'folder', 'path', workspace);
+      commit;
+    `);
+  }
+
+  db.exec(schema);
+}
+
 export function openStore(path: string): SessionStore & { close: () => void } {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
@@ -41,12 +59,12 @@ export function openStore(path: string): SessionStore & { close: () => void } {
 
   const db = new DatabaseSync(path);
   db.exec("pragma journal_mode = wal");
-  db.exec(schema);
+  migrate(db);
 
   const toSession = (row: SessionRow): StoredSession => ({
     id: row.id,
     provider: row.provider,
-    cwd: row.cwd,
+    workspace: JSON.parse(row.workspace) as Workspace,
     status: row.status,
     generation: row.generation,
     createdAt: row.created_at,
@@ -55,7 +73,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, provider, cwd, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, provider, workspace, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
@@ -86,7 +104,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
       insert.run(
         s.id,
         s.provider,
-        s.cwd,
+        JSON.stringify(s.workspace),
         s.status,
         s.generation,
         s.createdAt,

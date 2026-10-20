@@ -16,6 +16,7 @@
     "@pi-cloud/providers": "workspace:*",
     "@pi-cloud/sessionhost": "workspace:*",
     "@pi-cloud/sessions": "workspace:*",
+    "@pi-cloud/workspaces": "workspace:*",
     "@pi-cloud/web": "workspace:*"
   },
   "devDependencies": {

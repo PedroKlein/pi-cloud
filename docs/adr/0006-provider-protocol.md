@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md)
 - Date: 2026-10-17
 
 ## Context
@@ -28,7 +28,7 @@ The protocol follows Claude Code's shape: a work channel per provider and a stre
 - **Session stream.** The Session host opens its own stream for each Session. Transcript entries and live events go up as HTTPS POSTs, and chat input, steering, abort and approval answers come down over server-sent events (SSE). Session traffic doesn't go through the work channel, so in v2 a Session in its own pod talks to the server the same way.
 - **Terminal.** Each open terminal gets its own WebSocket between the Session host and the server, because keystrokes need low latency in both directions.
 - Bodies are JSON, typed in the shared `protocol` package. Every request carries the protocol version and the provider's configured name, and the server rejects a version it doesn't support.
-- The built-in VM provider implements the same interfaces in process, without HTTP.
+- The built-in VM provider implements the same interfaces in process, without HTTP. (Replaced by [ADR 0012](0012-built-in-provider.md): it runs the same agent over loopback HTTP.)
 
 ### Attempts and connection health
 

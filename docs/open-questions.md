@@ -42,7 +42,7 @@
 ### Workspace durability
 
 - Resolved: VM Sessions get a fresh clone each; laptop Sessions use a worktree of an existing checkout, or the folder directly ([ADR 0007](adr/0007-session-workspaces.md)).
-- How are local paths, VM directories, and PVCs represented by one Workspace interface?
+- Resolved for v1: a Session's workspace is a folder or a clone on its own branch, prepared by the provider ([ADR 0012](adr/0012-built-in-provider.md)). How PVCs fit is still open.
 - What is backed up, replicated, exported, and garbage-collected? OpenHands applies a disk budget and retention, with a trash folder before deletion ([research](research.md#openhands)).
 - Can a Session migrate between providers, or should cross-provider continuation begin as a fork?
 

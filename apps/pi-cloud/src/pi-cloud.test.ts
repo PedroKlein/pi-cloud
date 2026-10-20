@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import type { CreateSession, Session, SessionEvent } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { readSse } from "./sse";
@@ -53,19 +55,30 @@ function startAgent(
   return stop;
 }
 
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
-  serverLogs = [];
-
-  server = serve({
+function startServer(builtInProvider?: string): ReturnType<typeof serve> {
+  return serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
+    ...(builtInProvider !== undefined && {
+      agent: {
+        provider: builtInProvider,
+        dataDir: join(root, builtInProvider),
+        agentDir: join(root, "pi"),
+        extensionPaths: [],
+        models: { runtime, model: faux.getModel() },
+      },
+    }),
     log: (message, fields) => {
       serverLogs.push(`${message} ${JSON.stringify(fields)}`);
     },
   });
+}
 
+beforeEach(async () => {
+  // macOS tmpdir is a symlink, and the shell reports the resolved path.
+  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
+  serverLogs = [];
   faux = fauxProvider();
 
   runtime = await ModelRuntime.create({
@@ -75,6 +88,7 @@ beforeEach(async () => {
   });
 
   runtime.registerNativeProvider(faux.provider);
+  server = startServer();
   agents = [];
   agentLogs = [];
   laptop = startAgent("laptop");
@@ -96,9 +110,12 @@ async function api(path: string, body?: unknown): Promise<Response> {
   });
 }
 
-async function createSession(provider: string): Promise<Session> {
+async function createSession(
+  provider: string,
+  workspace: CreateSession["workspace"] = { kind: "folder", path: root },
+): Promise<Session> {
   return (await (
-    await api("/api/sessions", { provider, cwd: root })
+    await api("/api/sessions", { provider, workspace })
   ).json()) as Session;
 }
 
@@ -452,6 +469,13 @@ test("rejects malformed requests with 400", async () => {
     `/agent/sessions/${session.id}/commands`,
   );
 
+  const noWorkspace = await api("/api/sessions", { provider: "vm" });
+
+  const unknownWorkspace = await api("/api/sessions", {
+    provider: "vm",
+    workspace: { kind: "volume", path: root },
+  });
+
   const negativeStart = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/transcript`,
@@ -463,6 +487,8 @@ test("rejects malformed requests with 400", async () => {
   );
 
   expect(malformed.status).toBe(400);
+  expect(noWorkspace.status).toBe(400);
+  expect(unknownWorkspace.status).toBe(400);
   expect(noGeneration.status).toBe(400);
   expect(negativeStart.status).toBe(400);
 });
@@ -774,6 +800,73 @@ test("runs a shell in the session's directory over a terminal socket", async () 
   const output = await terminal.output("sum=42");
 
   expect(output).toContain(`dir=${root}`);
+});
+
+async function gitRepository(): Promise<string> {
+  const repository = join(root, "origin");
+  const git = promisify(execFile);
+  await git("git", ["init", "--initial-branch=main", repository]);
+  await writeFile(join(repository, "README.md"), "hello\n");
+  await git("git", ["-C", repository, "add", "."]);
+
+  await git("git", [
+    "-C",
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "first",
+  ]);
+
+  return repository;
+}
+
+test("runs a session in a fresh clone on the server's own provider", async () => {
+  await server.stop();
+  server = startServer("cloud");
+  const repository = await gitRepository();
+  const session = await createSession("cloud", { kind: "clone", repository });
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+
+  expect(session.workspace).toEqual({ kind: "clone", repository, branch });
+
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(
+    encoder.encode(
+      "echo dir=$(pwd) branch=$(git branch --show-current) sum=$((40+2))\n",
+    ),
+  );
+
+  const output = await terminal.output("sum=42");
+
+  expect(output).toContain(
+    `dir=${join(root, "cloud", "workspaces", session.id)}`,
+  );
+
+  expect(output).toContain(`branch=${branch}`);
+});
+
+test("marks a session failed when its repository cannot be cloned", async () => {
+  await server.stop();
+  server = startServer("cloud");
+
+  const session = await createSession("cloud", {
+    kind: "clone",
+    repository: join(root, "missing"),
+  });
+
+  await follow(session.id, status("failed"));
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored.error).toContain("git clone failed");
 });
 
 test("resizes the terminal", async () => {

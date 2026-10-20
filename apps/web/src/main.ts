@@ -3,6 +3,7 @@ import type {
   LiveEvent,
   Session,
   SessionEvent,
+  Workspace,
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 import { renderPrompt, type RenderedPrompt } from "./prompt";
@@ -62,6 +63,12 @@ function describe(session: Session): string {
   return `${session.status}${where}${session.error === null ? "" : `: ${session.error}`}`;
 }
 
+function workspaceName(workspace: Workspace): string {
+  return workspace.kind === "folder"
+    ? workspace.path
+    : `${workspace.repository} (${workspace.branch})`;
+}
+
 async function refreshSessions(): Promise<void> {
   const sessions = (await (await api("/api/sessions")).json()) as Session[];
 
@@ -70,7 +77,7 @@ async function refreshSessions(): Promise<void> {
       const item = document.createElement("li");
       item.setAttribute("aria-current", String(session.id === selected));
       const name = document.createElement("span");
-      name.textContent = session.cwd;
+      name.textContent = workspaceName(session.workspace);
       const details = document.createElement("small");
       details.textContent = `${session.provider} · ${describe(session)}`;
       item.append(name, details);
@@ -348,9 +355,14 @@ createForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
 
+  const where = form.get("location");
+
   api("/api/sessions", {
     provider: form.get("provider"),
-    cwd: form.get("cwd"),
+    workspace:
+      form.get("kind") === "clone"
+        ? { kind: "clone", repository: where }
+        : { kind: "folder", path: where },
   })
     .then(async (response) => {
       location.hash = ((await response.json()) as Session).id;
