@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,7 +76,8 @@ function startServer(builtInProvider?: string): ReturnType<typeof serve> {
 }
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
+  // macOS tmpdir is a symlink, and the shell reports the resolved path.
+  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
   serverLogs = [];
   faux = fauxProvider();
 
