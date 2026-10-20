@@ -7,7 +7,16 @@ This sets up `pi-cloud server` on a Linux VM with a built-in provider named `vm`
 Sessions use the VM's own tools, so set these up first as the user that will run the server:
 
 - git, with credentials for the repositories you'll clone (an SSH key or a credential helper). Pi Cloud never prompts for them.
-- A Pi login for at least one model, in `~/.pi/agent`. The binary bundles Pi, so the `pi` command isn't needed to run sessions, only to log in. Either install it (`bun add -g @earendil-works/pi-coding-agent`), run `pi` and use `/login`, or copy `auth.json` from a machine that is already logged in. If an extension adds your model provider, copy the extension and `settings.json` too.
+- A Pi login for at least one model, in `~/.pi/agent`. The binary bundles Pi, so the `pi` command isn't needed to run sessions, only to log in. Either install it and use `/login`, or copy `auth.json` from a machine that is already logged in. The `pi` launcher expects Node, so on a VM with only Bun run it through Bun:
+
+  ```sh
+  curl -fsSL https://bun.sh/install | bash
+  ~/.bun/bin/bun add -g @earendil-works/pi-coding-agent
+  ~/.bun/bin/bun --bun ~/.bun/bin/pi
+  ```
+
+  In Pi, use `/login`, then `/model` to save the default model that sessions will use. The server creates an empty `~/.pi/agent/auth.json` when it first starts, so that file existing doesn't mean Pi is logged in. If an extension adds your model provider, copy the extension and `settings.json` too.
+
 - Whatever your projects need to build and test.
 
 ## Build and copy the binary
