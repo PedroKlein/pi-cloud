@@ -57,9 +57,12 @@ export async function startSession(
     throw new Error(`extensions failed to load: ${details}`);
   }
 
+  const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
+  recordInterruptedToolCalls(sessionManager);
+
   const { session } = await createAgentSessionFromServices({
     services,
-    sessionManager: SessionManager.continueRecent(cwd, options.sessionDir),
+    sessionManager,
     ...(options.models && { model: options.models.model }),
   });
 
@@ -74,6 +77,44 @@ export async function startSession(
   );
 
   return session;
+}
+
+// Pi fills a missing tool result with "No result provided" when it builds the
+// next request, which hides that the tool may have partly run before the crash.
+function recordInterruptedToolCalls(sessionManager: SessionManager): void {
+  const messages = sessionManager
+    .getBranch()
+    .flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
+
+  const callIndex = messages.findLastIndex((m) => m.role === "assistant");
+  const call = messages[callIndex];
+  if (call?.role !== "assistant" || call.stopReason !== "toolUse") {
+    return;
+  }
+
+  const answered = new Set(
+    messages
+      .slice(callIndex + 1)
+      .flatMap((m) => (m.role === "toolResult" ? [m.toolCallId] : [])),
+  );
+
+  for (const block of call.content) {
+    if (block.type === "toolCall" && !answered.has(block.id)) {
+      sessionManager.appendMessage({
+        role: "toolResult",
+        toolCallId: block.id,
+        toolName: block.name,
+        content: [
+          {
+            type: "text",
+            text: "The tool was interrupted by a restart and may have partly run.",
+          },
+        ],
+        isError: true,
+        timestamp: Date.now(),
+      });
+    }
+  }
 }
 
 async function workingDirectory(path: string): Promise<string> {
