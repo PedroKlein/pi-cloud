@@ -23,6 +23,10 @@ interface Pair {
 }
 
 const hostTimeoutMs = 10_000;
+
+// Terminal output is not replayed, so a browser this far behind is closed
+// instead of buffered without bound. The user opens a new terminal.
+const maxBufferedBytes = 1024 * 1024;
 const browserPath = /^\/api\/sessions\/([^/]+)\/terminal$/;
 const hostPath = /^\/agent\/sessions\/([^/]+)\/terminals\/([^/]+)$/;
 
@@ -165,7 +169,15 @@ export function terminalBroker(
         }
 
         if (ws.data.role === "host") {
-          pair.browser?.send(message);
+          const { browser } = pair;
+          if ((browser?.getBufferedAmount() ?? 0) > maxBufferedBytes) {
+            end(ws.data.terminalId, "browser fell behind");
+            browser?.terminate();
+
+            return;
+          }
+
+          browser?.send(message);
 
           return;
         }
