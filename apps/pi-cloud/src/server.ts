@@ -279,12 +279,16 @@ function createSession(body: unknown): CreateSession {
     return { provider, workspace: { kind, path } };
   }
 
+  if (kind === "worktree" && typeof path === "string" && path !== "") {
+    return { provider, workspace: { kind, path } };
+  }
+
   if (kind === "clone" && typeof repository === "string" && repository !== "") {
     return { provider, workspace: { kind, repository } };
   }
 
   throw new BadRequest(
-    "workspace must be a folder with a path or a clone with a repository",
+    "workspace must be a folder or worktree with a path, or a clone with a repository",
   );
 }
 

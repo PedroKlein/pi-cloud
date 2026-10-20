@@ -93,9 +93,9 @@ export class Sessions {
       id,
       provider: request.provider,
       workspace:
-        request.workspace.kind === "clone"
-          ? { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` }
-          : request.workspace,
+        request.workspace.kind === "folder"
+          ? request.workspace
+          : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),

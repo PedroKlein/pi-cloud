@@ -28,19 +28,22 @@ You need [Bun](https://bun.sh) and a working Pi setup with at least one model yo
 bun install
 bun run build
 apps/pi-cloud/dist/pi-cloud server
-apps/pi-cloud/dist/pi-cloud agent --name laptop
+apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
 ```
 
-Open http://127.0.0.1:7420, create a session for provider `laptop` with a directory on this machine, and start chatting.
+Open http://127.0.0.1:7420, create a session for provider `laptop` with `~/code/my-project`, and start chatting.
+
+The agent only runs sessions in the folders you list with `--folder`. By default each session gets its own Git worktree of that folder, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Choose "Folder" instead to run in the folder itself; sessions sharing a folder this way can step on each other's changes.
 
 Options:
 
 ```text
 pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
                 [--provider <name> [--data-dir ~/.pi-cloud/server]
-                [--extension <path>]...]
+                [--folder <path>]... [--extension <path>]...]
 pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
-               [--data-dir ~/.pi-cloud/agent] [--extension <path>]...
+               [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
+               [--extension <path>]...
 ```
 
 ## Roadmap
@@ -61,7 +64,7 @@ docs/             vision, architecture, research and decision records
 
 ## Development
 
-`bun run dev` runs the server with a built-in provider named `cloud`, plus an agent named `local`, from source, and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pi-cloud/dev`.
+`bun run dev` runs the server with a built-in provider named `cloud`, plus an agent named `local` that may use this repository's folder, from source, and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pi-cloud/dev`.
 
 ```sh
 bun run dev

@@ -64,9 +64,14 @@ function describe(session: Session): string {
 }
 
 function workspaceName(workspace: Workspace): string {
-  return workspace.kind === "folder"
-    ? workspace.path
-    : `${workspace.repository} (${workspace.branch})`;
+  switch (workspace.kind) {
+    case "folder":
+      return workspace.path;
+    case "worktree":
+      return `${workspace.path} (${workspace.branch})`;
+    case "clone":
+      return `${workspace.repository} (${workspace.branch})`;
+  }
 }
 
 async function refreshSessions(): Promise<void> {
@@ -355,14 +360,13 @@ createForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
 
+  const kind = form.get("kind");
   const where = form.get("location");
 
   api("/api/sessions", {
     provider: form.get("provider"),
     workspace:
-      form.get("kind") === "clone"
-        ? { kind: "clone", repository: where }
-        : { kind: "folder", path: where },
+      kind === "clone" ? { kind, repository: where } : { kind, path: where },
   })
     .then(async (response) => {
       location.hash = ((await response.json()) as Session).id;

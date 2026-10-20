@@ -19,6 +19,7 @@ export interface AgentOptions {
   readonly dataDir: string;
   readonly agentDir: string;
   readonly extensionPaths: readonly string[];
+  readonly folders: readonly string[];
   readonly models?: SessionOptions["models"];
   readonly log: Log;
   readonly signal: AbortSignal;
@@ -73,7 +74,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     try {
       const cwd = await prepareWorkspace(
         assignment.workspace,
-        join(options.dataDir, "workspaces", sessionId),
+        {
+          dir: join(options.dataDir, "workspaces", sessionId),
+          folders: options.folders,
+        },
         sessionLog,
       );
 

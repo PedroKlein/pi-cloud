@@ -19,7 +19,15 @@ const commands = [
     "--data-dir",
     join(dataRoot, "server"),
   ],
-  ["agent", "--name", "local", "--data-dir", join(dataRoot, "agent")],
+  [
+    "agent",
+    "--name",
+    "local",
+    "--data-dir",
+    join(dataRoot, "agent"),
+    "--folder",
+    repo,
+  ],
 ];
 
 let children: ChildProcess[] = [];

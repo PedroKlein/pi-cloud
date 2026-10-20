@@ -43,6 +43,8 @@ const agent = spawn(
     server.url.href,
     "--data-dir",
     join(root, "agent"),
+    "--folder",
+    cwd,
   ],
   { stdio: ["ignore", "pipe", "pipe"] },
 );

@@ -10,9 +10,10 @@ import { serve } from "./serve";
 const usage = `usage:
   pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
-                  [--extension <path>]...]
+                  [--folder <path>]... [--extension <path>]...]
   pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
-                 [--data-dir ~/.pi-cloud/agent] [--extension <path>]...`;
+                 [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
+                 [--extension <path>]...`;
 
 const dataRoot = join(homedir(), ".pi-cloud");
 const [command, ...rest] = process.argv.slice(2);
@@ -35,6 +36,7 @@ switch (command) {
         database: { type: "string", default: join(dataRoot, "server.db") },
         provider: { type: "string" },
         "data-dir": { type: "string", default: join(dataRoot, "server") },
+        folder: { type: "string", multiple: true, default: [] },
         extension: { type: "string", multiple: true, default: [] },
       },
     });
@@ -48,6 +50,7 @@ switch (command) {
           dataDir: values["data-dir"],
           agentDir: getAgentDir(),
           extensionPaths: values.extension,
+          folders: values.folder,
         },
       }),
       log: stderrLog("server"),
@@ -67,6 +70,7 @@ switch (command) {
         name: { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
         "data-dir": { type: "string", default: join(dataRoot, "agent") },
+        folder: { type: "string", multiple: true, default: [] },
         extension: { type: "string", multiple: true, default: [] },
       },
     });
@@ -82,6 +86,7 @@ switch (command) {
       dataDir: values["data-dir"],
       agentDir: getAgentDir(),
       extensionPaths: values.extension,
+      folders: values.folder,
       log: stderrLog("agent"),
       signal: shutdown.signal,
     });

@@ -5,6 +5,11 @@ export const providerHeader = "pi-cloud-provider";
 export type Workspace =
   | { readonly kind: "folder"; readonly path: string }
   | {
+      readonly kind: "worktree";
+      readonly path: string;
+      readonly branch: string;
+    }
+  | {
       readonly kind: "clone";
       readonly repository: string;
       readonly branch: string;
@@ -12,6 +17,7 @@ export type Workspace =
 
 export type WorkspaceRequest =
   | { readonly kind: "folder"; readonly path: string }
+  | { readonly kind: "worktree"; readonly path: string }
   | { readonly kind: "clone"; readonly repository: string };
 
 export interface Assignment {
