@@ -11,7 +11,7 @@ import {
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import type { PromptUI } from "./prompts";
+import type { RemoteUI } from "./ui";
 
 export interface SessionOptions {
   readonly cwd: string;
@@ -25,7 +25,7 @@ export interface SessionOptions {
 }
 
 export interface SessionHost {
-  readonly ui: PromptUI;
+  readonly ui: RemoteUI;
   readonly onError: (error: ExtensionError) => void;
 }
 

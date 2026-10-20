@@ -811,6 +811,52 @@ test("replays open prompts to a client that connects later", async () => {
   ]);
 });
 
+test("replays the current extension status, widgets and title to a client that connects later", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [] });
+
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [
+      { type: "extension_status", key: "build", text: "1 running" },
+      { type: "extension_status", key: "lint", text: "clean" },
+      { type: "extension_status", key: "build", text: "2 running" },
+      { type: "extension_status", key: "lint", text: null },
+      {
+        type: "widget",
+        key: "todo",
+        lines: ["first"],
+        placement: "aboveEditor",
+      },
+      { type: "widget", key: "gone", lines: ["x"], placement: "belowEditor" },
+      { type: "widget", key: "gone", lines: null, placement: "belowEditor" },
+      { type: "title", title: "my session" },
+      { type: "editor_text", text: "draft" },
+    ],
+  });
+
+  const later = await follow(session.id, (events) =>
+    events.some((e) => e.type === "live" && e.event.type === "title"),
+  );
+
+  expect(later.filter((e) => e.type === "live")).toEqual([
+    {
+      type: "live",
+      event: { type: "extension_status", key: "build", text: "2 running" },
+    },
+    {
+      type: "live",
+      event: {
+        type: "widget",
+        key: "todo",
+        lines: ["first"],
+        placement: "aboveEditor",
+      },
+    },
+    { type: "live", event: { type: "title", title: "my session" } },
+  ]);
+});
+
 test("rejects requests from other sites", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));

@@ -72,7 +72,7 @@ export class Sessions {
   >();
   readonly #pollers = new Map<string, Set<() => void>>();
   readonly #providers = new Map<string, ProviderState>();
-  readonly #prompts = new Map<
+  readonly #surfaces = new Map<
     string,
     { readonly generation: number; readonly events: Map<string, LiveEvent> }
   >();
@@ -186,9 +186,7 @@ export class Sessions {
         this.#update(session);
       }
 
-      if (event.type === "prompt" || event.type === "prompt_end") {
-        this.#trackPrompt(id, post.generation, event);
-      }
+      this.#trackSurface(id, post.generation, event);
 
       this.#emit(id, { type: "live", event });
     }
@@ -220,7 +218,7 @@ export class Sessions {
         line: fromLine + i,
         entry,
       })),
-      ...this.#openPrompts(session).map((event): SessionEvent => ({
+      ...this.#openSurfaces(session).map((event): SessionEvent => ({
         type: "live",
         event,
       })),
@@ -400,26 +398,26 @@ export class Sessions {
     }
   }
 
-  #trackPrompt(
-    id: string,
-    generation: number,
-    event: Extract<LiveEvent, { type: "prompt" | "prompt_end" }>,
-  ): void {
-    let tracked = this.#prompts.get(id);
-    if (tracked?.generation !== generation) {
-      tracked = { generation, events: new Map() };
-      this.#prompts.set(id, tracked);
+  #trackSurface(id: string, generation: number, event: LiveEvent): void {
+    const surface = surfaceOf(event);
+    if (surface === undefined) {
+      return;
     }
 
-    if (event.type === "prompt") {
-      tracked.events.set(event.prompt.id, event);
-    } else {
-      tracked.events.delete(event.id);
+    let tracked = this.#surfaces.get(id);
+    if (tracked?.generation !== generation) {
+      tracked = { generation, events: new Map() };
+      this.#surfaces.set(id, tracked);
+    }
+
+    tracked.events.delete(surface.key);
+    if (surface.open) {
+      tracked.events.set(surface.key, event);
     }
   }
 
-  #openPrompts(session: StoredSession): readonly LiveEvent[] {
-    const tracked = this.#prompts.get(session.id);
+  #openSurfaces(session: StoredSession): readonly LiveEvent[] {
+    const tracked = this.#surfaces.get(session.id);
 
     return tracked?.generation === session.generation &&
       attempting.includes(session.status)
@@ -456,5 +454,29 @@ export class Sessions {
     for (const listener of this.#watchers.get(id) ?? []) {
       listener(event);
     }
+  }
+}
+
+function surfaceOf(
+  event: LiveEvent,
+): { readonly key: string; readonly open: boolean } | undefined {
+  switch (event.type) {
+    case "prompt":
+      return { key: `prompt:${event.prompt.id}`, open: true };
+    case "prompt_end":
+      return { key: `prompt:${event.id}`, open: false };
+    case "extension_status":
+      return { key: `status:${event.key}`, open: event.text !== null };
+    case "widget":
+      return { key: `widget:${event.key}`, open: event.lines !== null };
+    case "title":
+      return { key: "title", open: true };
+    case "status":
+    case "notify":
+    case "editor_text":
+    case "text":
+    case "tool_start":
+    case "tool_end":
+      return undefined;
   }
 }

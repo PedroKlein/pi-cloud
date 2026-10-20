@@ -135,3 +135,23 @@ form#prompt textarea {
   flex: 1;
   font: inherit;
 }
+
+.widgets:empty,
+#extension-status:empty {
+  display: none;
+}
+
+.widgets {
+  padding: 0.25rem 1rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  border-top: 1px solid #8884;
+}
+
+#extension-status {
+  padding: 0.25rem 1rem;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  border-top: 1px solid #8884;
+}

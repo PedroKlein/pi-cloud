@@ -1,13 +1,23 @@
 import { randomUUID } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
 import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
+  ExtensionWidgetOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { LiveEvent, Prompt } from "@pi-cloud/protocol";
 
-export type PromptUI = Pick<
+export type RemoteUI = Pick<
   ExtensionUIContext,
-  "select" | "confirm" | "input" | "editor" | "notify"
+  | "select"
+  | "confirm"
+  | "input"
+  | "editor"
+  | "notify"
+  | "setStatus"
+  | "setWidget"
+  | "setTitle"
+  | "setEditorText"
 >;
 
 type Answer = string | boolean | null;
@@ -18,8 +28,8 @@ type PromptRequest = Prompt extends infer P
     : never
   : never;
 
-export function remotePrompts(publish: (event: LiveEvent) => void): {
-  readonly ui: PromptUI;
+export function remoteUI(publish: (event: LiveEvent) => void): {
+  readonly ui: RemoteUI;
   readonly answer: (id: string, value: Answer) => void;
   readonly cancelAll: () => void;
 } {
@@ -84,6 +94,36 @@ export function remotePrompts(publish: (event: LiveEvent) => void): {
         ),
       notify: (message, level) => {
         publish({ type: "notify", message, level: level ?? "info" });
+      },
+      setStatus: (key, value) => {
+        publish({
+          type: "extension_status",
+          key,
+          text: value === undefined ? null : stripVTControlCharacters(value),
+        });
+      },
+      setWidget: (
+        key: string,
+        content:
+          readonly string[] | ((...args: never[]) => unknown) | undefined,
+        options?: ExtensionWidgetOptions,
+      ) => {
+        if (typeof content === "function") {
+          return;
+        }
+
+        publish({
+          type: "widget",
+          key,
+          lines: content?.map((line) => stripVTControlCharacters(line)) ?? null,
+          placement: options?.placement ?? "aboveEditor",
+        });
+      },
+      setTitle: (title) => {
+        publish({ type: "title", title });
+      },
+      setEditorText: (value) => {
+        publish({ type: "editor_text", text: value });
       },
     },
     answer: (id, value) => {
