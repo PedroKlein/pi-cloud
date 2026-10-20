@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -248,4 +249,79 @@ test("uses a default model from a provider an extension registers", async () => 
   expect(
     `${String(session.model?.provider)}/${String(session.model?.id)}`,
   ).toBe("proxy/proxy-small");
+});
+
+test("records an interrupted result for a tool call cut off by a crash", async () => {
+  const crashing = spawn(
+    process.execPath,
+    [
+      fileURLToPath(import.meta.resolve("./testdata/crashing-session.ts")),
+      root,
+    ],
+    { stdio: ["ignore", "pipe", "inherit"] },
+  );
+
+  await new Promise<void>((resolve) => {
+    crashing.stdout.on("data", (data: Buffer) => {
+      if (data.toString().includes("tool started")) {
+        resolve();
+      }
+    });
+  });
+
+  crashing.kill("SIGKILL");
+  await new Promise((resolve) => crashing.once("exit", resolve));
+  const { faux, runtime } = await fauxModels();
+  faux.setResponses([fauxAssistantMessage([fauxText("sorry")])]);
+
+  const session = await startSession({
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models: { runtime, model: faux.getModel() },
+  });
+
+  await stopSession(session);
+
+  const [call, result] = session.messages.slice(-2);
+  expect(call?.role).toBe("assistant");
+
+  expect(result).toMatchObject({
+    role: "toolResult",
+    toolName: "bash",
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: "The tool was interrupted by a restart and may have partly run.",
+      },
+    ],
+  });
+
+  expect(await readFile(String(session.sessionFile), "utf8")).toContain(
+    "interrupted by a restart",
+  );
+}, 30_000);
+
+test("adds nothing when a session stopped between turns", async () => {
+  const { faux, runtime } = await fauxModels();
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models: { runtime, model: faux.getModel() },
+  };
+
+  const first = await startSession(options);
+  await first.prompt("hello");
+  await stopSession(first);
+  const before = await readFile(String(first.sessionFile), "utf8");
+  const second = await startSession(options);
+  await stopSession(second);
+
+  expect(await readFile(String(second.sessionFile), "utf8")).toBe(before);
 });
