@@ -109,7 +109,7 @@ header {
   font: inherit;
 }
 
-#chat li[data-role="prompt"] div {
+#chat li[data-role="prompt"]:not(.questions) > div {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
@@ -154,4 +154,230 @@ form#prompt textarea {
   font-size: 0.8rem;
   opacity: 0.75;
   border-top: 1px solid #8884;
+}
+
+#chat li.questions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.questions .tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.questions button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.questions .tab {
+  border: 1px solid #8886;
+  background: none;
+  border-radius: 1rem;
+  padding: 0.2rem 0.75rem;
+}
+
+.questions .tab.current {
+  background: #8883;
+  font-weight: 600;
+}
+
+.questions h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.questions .context,
+.questions .hint {
+  margin: 0;
+  opacity: 0.75;
+}
+
+.questions .split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (width < 700px) {
+  .questions .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.questions .options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.questions .options li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #8884;
+  border-radius: 0.35rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.questions .options li.chosen {
+  border-color: #48f;
+  background: #48f2;
+}
+
+.questions .options .choice {
+  flex: 1;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+}
+
+.questions .options input,
+.questions .annotation {
+  flex: 1 1 100%;
+  font: inherit;
+}
+
+.questions .rank li {
+  cursor: grab;
+}
+
+.questions .rank .grip {
+  opacity: 0.5;
+}
+
+.questions .rank .annotation {
+  flex-basis: 100%;
+}
+
+.questions .detail {
+  border-left: 3px solid #8884;
+  padding-left: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+.questions .detail h4,
+.questions .detail p {
+  margin: 0;
+}
+
+.questions .star {
+  color: #c90;
+  font-weight: 600;
+}
+
+.questions .explanation {
+  background: #8882;
+  border-radius: 0.35rem;
+  padding: 0.5rem;
+}
+
+.questions .explanation p {
+  white-space: pre-wrap;
+}
+
+.questions .ask {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.questions .ask input {
+  flex: 1;
+  font: inherit;
+}
+
+.questions .scale,
+.questions .number {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+.questions input[type="range"] {
+  width: 100%;
+}
+
+.questions .ticks {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.questions .tick {
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  padding: 0;
+}
+
+.questions .tick.current {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.questions .number .row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.questions .number input[type="number"] {
+  width: 6rem;
+  font: inherit;
+}
+
+.questions .review {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.questions .review dd {
+  margin: 0;
+}
+
+.questions textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.questions .actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.questions .primary {
+  background: #48f;
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  padding: 0.35rem 1rem;
+}
+
+.questions .quiet {
+  background: none;
+  border: 1px solid #8886;
+  border-radius: 0.25rem;
+}
+
+.questions .error {
+  color: #d33;
+}
+
+.questions .number > button {
+  justify-self: start;
+}
+
+.questions .number small {
+  white-space: nowrap;
 }

@@ -5,6 +5,7 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
+import { askUserTool } from "./ask";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
@@ -62,6 +63,7 @@ export async function hostSession(
 
   const session = await startSession(options, {
     ui: prompts.ui,
+    tools: [askUserTool(prompts.questions)],
     onError: (error) => {
       log("extension error", {
         extension: error.extensionPath,
@@ -92,6 +94,12 @@ export async function hostSession(
   const detach = stream.commands((command) => {
     if (command.type === "answer") {
       prompts.answer(command.id, command.value);
+
+      return;
+    }
+
+    if (command.type === "explain") {
+      prompts.explain(command);
 
       return;
     }
@@ -199,7 +207,7 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Exclude<Command, { type: "terminal" | "answer" }>,
+  command: Exclude<Command, { type: "terminal" | "answer" | "explain" }>,
 ): Promise<void> {
   switch (command.type) {
     case "message":
