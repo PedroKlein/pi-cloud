@@ -132,6 +132,12 @@ export async function hostSession(
 
     run(session, command).catch((error: unknown) => {
       log("command failed", { command: command.type, error: String(error) });
+
+      live.push({
+        type: "notify",
+        level: "error",
+        message: `${command.type} failed: ${String(error)}`,
+      });
     });
   });
 
