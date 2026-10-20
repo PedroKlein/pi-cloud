@@ -6,6 +6,7 @@ import {
   hostSession,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
+import { prepareWorkspace } from "@pi-cloud/workspaces";
 import {
   httpControlPlane,
   httpSessionStream,
@@ -70,9 +71,15 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     await stopping.get(sessionId);
     try {
+      const cwd = await prepareWorkspace(
+        assignment.workspace,
+        join(options.dataDir, "workspaces", sessionId),
+        sessionLog,
+      );
+
       return await hostSession(
         {
-          cwd: assignment.cwd,
+          cwd,
           agentDir: options.agentDir,
           sessionDir: join(options.dataDir, "sessions", sessionId),
           extensionPaths: options.extensionPaths,

@@ -84,10 +84,15 @@ export class Sessions {
   }
 
   create(request: CreateSession): Session {
+    const id = randomUUID();
+
     const session: StoredSession = {
-      id: randomUUID(),
+      id,
       provider: request.provider,
-      cwd: request.cwd,
+      workspace:
+        request.workspace.kind === "clone"
+          ? { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` }
+          : request.workspace,
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),
@@ -326,7 +331,7 @@ export class Sessions {
       return {
         sessionId: session.id,
         generation: session.generation,
-        cwd: session.cwd,
+        workspace: session.workspace,
       };
     });
   }

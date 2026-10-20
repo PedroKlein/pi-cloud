@@ -10,7 +10,15 @@ const repo = join(import.meta.dirname, "..", "..", "..");
 const dataRoot = join(homedir(), ".pi-cloud", "dev");
 
 const commands = [
-  ["server", "--database", join(dataRoot, "server.db")],
+  [
+    "server",
+    "--database",
+    join(dataRoot, "server.db"),
+    "--provider",
+    "cloud",
+    "--data-dir",
+    join(dataRoot, "server"),
+  ],
   ["agent", "--name", "local", "--data-dir", join(dataRoot, "agent")],
 ];
 
@@ -61,5 +69,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
-log("starting server and agent", { provider: "local", dataRoot });
+log("starting server and agent", {
+  providers: ["cloud", "local"],
+  dataRoot,
+});
+
 start();

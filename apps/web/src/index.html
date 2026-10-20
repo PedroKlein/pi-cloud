@@ -11,7 +11,15 @@
       <h1>Pi Cloud</h1>
       <form id="create">
         <input name="provider" placeholder="provider" required />
-        <input name="cwd" placeholder="directory" required />
+        <select name="kind">
+          <option value="folder">Folder</option>
+          <option value="clone">Clone repository</option>
+        </select>
+        <input
+          name="location"
+          placeholder="directory or repository URL"
+          required
+        />
         <button>New session</button>
       </form>
       <ul id="sessions"></ul>

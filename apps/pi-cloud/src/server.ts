@@ -62,7 +62,9 @@ export function createHandler(
       "POST",
       /^\/api\/sessions$/,
       async (request) => {
-        const session = sessions.create(await readJson<CreateSession>(request));
+        const session = sessions.create(
+          createSession(await readJson<unknown>(request)),
+        );
 
         log("session created", {
           sessionId: session.id,
@@ -259,6 +261,31 @@ async function readJson<T>(request: Request): Promise<T> {
   } catch {
     throw new BadRequest("body must be JSON");
   }
+}
+
+function createSession(body: unknown): CreateSession {
+  const { provider, workspace } = (body ?? {}) as Record<string, unknown>;
+
+  const { kind, path, repository } = (workspace ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  if (typeof provider !== "string" || provider === "") {
+    throw new BadRequest("provider must be a non-empty string");
+  }
+
+  if (kind === "folder" && typeof path === "string" && path !== "") {
+    return { provider, workspace: { kind, path } };
+  }
+
+  if (kind === "clone" && typeof repository === "string" && repository !== "") {
+    return { provider, workspace: { kind, repository } };
+  }
+
+  throw new BadRequest(
+    "workspace must be a folder with a path or a clone with a repository",
+  );
 }
 
 function lineAfter(lastEventId: string | null): number {

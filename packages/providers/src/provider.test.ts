@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import type { Assignment, Work, WorkPoll } from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
-const assignment: Assignment = { sessionId: "s1", generation: 1, cwd: "/w" };
+const assignment: Assignment = {
+  sessionId: "s1",
+  generation: 1,
+  workspace: { kind: "folder", path: "/w" },
+};
 
 test("starts assigned sessions and retries failed polls", async () => {
   const controller = new AbortController();

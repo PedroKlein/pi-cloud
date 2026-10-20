@@ -9,6 +9,8 @@ import { serve } from "./serve";
 
 const usage = `usage:
   pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
+                  [--provider <name> [--data-dir ~/.pi-cloud/server]
+                  [--extension <path>]...]
   pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
                  [--data-dir ~/.pi-cloud/agent] [--extension <path>]...`;
 
@@ -31,12 +33,23 @@ switch (command) {
       options: {
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
+        provider: { type: "string" },
+        "data-dir": { type: "string", default: join(dataRoot, "server") },
+        extension: { type: "string", multiple: true, default: [] },
       },
     });
 
     const server = serve({
       port: Number(values.port),
       database: values.database,
+      ...(values.provider !== undefined && {
+        agent: {
+          provider: values.provider,
+          dataDir: values["data-dir"],
+          agentDir: getAgentDir(),
+          extensionPaths: values.extension,
+        },
+      }),
       log: stderrLog("server"),
     });
 
