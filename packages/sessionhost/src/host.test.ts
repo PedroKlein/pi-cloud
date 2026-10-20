@@ -203,6 +203,51 @@ test("keeps the latest status when a live post fails", async () => {
   expect(fake.events).toEqual([{ type: "status", status: "idle" }]);
 });
 
+test("resends extension status and widgets when a live post fails", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 1 });
+  const extension = join(root, "status.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("build", "running");
+    ctx.ui.setWidget("todo", ["first"]);
+    ctx.ui.setTitle("my session");
+    ctx.ui.setEditorText("draft");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.length > 0);
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+    { type: "extension_status", key: "build", text: "running" },
+    {
+      type: "widget",
+      key: "todo",
+      lines: ["first"],
+      placement: "aboveEditor",
+    },
+    { type: "title", title: "my session" },
+  ]);
+});
+
 test("uploads lines the server is missing as soon as it starts", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
@@ -508,4 +553,60 @@ test("logs errors thrown by extension handlers", async () => {
       error: "status bar broke",
     },
   });
+});
+
+test("forwards extension status, widgets, title and editor text", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const extension = join(root, "surfaces.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("build", ctx.ui.theme.fg("accent", "2 running"));
+    ctx.ui.setWidget("todo", ["first", "second"]);
+    ctx.ui.setWidget("hint", ["below"], { placement: "belowEditor" });
+    ctx.ui.setWidget("drawn", () => ({ render: () => [], invalidate: () => {} }));
+    ctx.ui.setStatus("build", undefined);
+    ctx.ui.setTitle("my session");
+    ctx.ui.setEditorText("draft");
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+    { type: "extension_status", key: "build", text: "2 running" },
+    {
+      type: "widget",
+      key: "todo",
+      lines: ["first", "second"],
+      placement: "aboveEditor",
+    },
+    {
+      type: "widget",
+      key: "hint",
+      lines: ["below"],
+      placement: "belowEditor",
+    },
+    { type: "extension_status", key: "build", text: null },
+    { type: "title", title: "my session" },
+    { type: "editor_text", text: "draft" },
+  ]);
 });

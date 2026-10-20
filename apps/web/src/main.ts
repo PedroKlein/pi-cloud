@@ -24,6 +24,10 @@ const terminalBox = element("terminal", HTMLElement);
 const terminalButton = element("open-terminal", HTMLButtonElement);
 const abortButton = element("abort", HTMLButtonElement);
 const promptForm = element("prompt", HTMLFormElement);
+const promptText = element("prompt-text", HTMLTextAreaElement);
+const widgetsAbove = element("widgets-above", HTMLElement);
+const widgetsBelow = element("widgets-below", HTMLElement);
+const extensionStatus = element("extension-status", HTMLElement);
 
 let selected: string | undefined;
 let closeEvents = (): void => undefined;
@@ -100,6 +104,27 @@ function follow(sessionId: string): () => void {
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
   const prompts = new Map<string, HTMLElement>();
+  const statuses = new Map<string, string>();
+  const widgets = new Map<string, Extract<LiveEvent, { type: "widget" }>>();
+
+  const renderSurfaces = (): void => {
+    extensionStatus.textContent = [...statuses.values()].join(" · ");
+
+    const widgetText = (placement: string): string =>
+      [...widgets.values()]
+        .filter((widget) => widget.placement === placement)
+        .flatMap((widget) => widget.lines ?? [])
+        .join("\n");
+
+    widgetsAbove.textContent = widgetText("aboveEditor");
+    widgetsBelow.textContent = widgetText("belowEditor");
+  };
+
+  const clearSurfaces = (): void => {
+    statuses.clear();
+    widgets.clear();
+    renderSurfaces();
+  };
 
   const clearLive = (): void => {
     streaming?.remove();
@@ -176,6 +201,36 @@ function follow(sessionId: string): () => void {
         });
 
         return;
+      case "extension_status":
+        if (event.text === null) {
+          statuses.delete(event.key);
+        } else {
+          statuses.set(event.key, event.text);
+        }
+
+        renderSurfaces();
+
+        return;
+      case "widget":
+        if (event.lines === null) {
+          widgets.delete(event.key);
+        } else {
+          widgets.set(event.key, event);
+        }
+
+        renderSurfaces();
+
+        return;
+      case "title":
+        title.textContent = event.title;
+        document.title = `${event.title} · Pi Cloud`;
+
+        return;
+      case "editor_text":
+        promptText.value = event.text;
+        promptText.focus();
+
+        return;
     }
   };
 
@@ -195,6 +250,7 @@ function follow(sessionId: string): () => void {
     });
 
     prompts.clear();
+    clearSurfaces();
   });
 
   events.addEventListener("message", (message: MessageEvent<string>) => {
@@ -224,6 +280,7 @@ function follow(sessionId: string): () => void {
 
   return () => {
     events.close();
+    clearSurfaces();
   };
 }
 
@@ -257,6 +314,7 @@ function select(sessionId: string | undefined): void {
   panel.hidden = sessionId === undefined;
   if (sessionId !== undefined) {
     title.textContent = sessionId;
+    document.title = "Pi Cloud";
     statusLabel.textContent = "";
     closeEvents = follow(sessionId);
   }
@@ -286,13 +344,12 @@ createForm.addEventListener("submit", (event) => {
 
 promptForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const field = promptForm.elements.namedItem("text") as HTMLTextAreaElement;
-  const text = field.value.trim();
+  const text = promptText.value.trim();
   if (selected === undefined || text === "") {
     return;
   }
 
-  field.value = "";
+  promptText.value = "";
 
   api(`/api/sessions/${encodeURIComponent(selected)}/commands`, {
     type: "message",

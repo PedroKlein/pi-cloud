@@ -5,7 +5,7 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
-import { remotePrompts } from "./prompts";
+import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
 
@@ -41,6 +41,14 @@ export interface HostedSession {
 
 const retryMs = 1000;
 
+const resent: readonly LiveEvent["type"][] = [
+  "prompt",
+  "prompt_end",
+  "extension_status",
+  "widget",
+  "title",
+];
+
 export async function hostSession(
   options: SessionOptions,
   stream: SessionStream,
@@ -48,7 +56,7 @@ export async function hostSession(
 ): Promise<HostedSession> {
   const live = liveQueue(stream, log);
 
-  const prompts = remotePrompts((event) => {
+  const prompts = remoteUI((event) => {
     live.push(event);
   });
 
@@ -269,9 +277,7 @@ function liveQueue(
 
       const retry = [
         ...(status ? [status] : []),
-        ...events.filter(
-          (event) => event.type === "prompt" || event.type === "prompt_end",
-        ),
+        ...events.filter((event) => resent.includes(event.type)),
       ];
 
       log("live events dropped", {

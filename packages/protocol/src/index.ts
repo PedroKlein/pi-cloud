@@ -73,6 +73,19 @@ export type LiveEvent =
       readonly message: string;
       readonly level: "info" | "warning" | "error";
     }
+  | {
+      readonly type: "extension_status";
+      readonly key: string;
+      readonly text: string | null;
+    }
+  | {
+      readonly type: "widget";
+      readonly key: string;
+      readonly lines: readonly string[] | null;
+      readonly placement: "aboveEditor" | "belowEditor";
+    }
+  | { readonly type: "title"; readonly title: string }
+  | { readonly type: "editor_text"; readonly text: string }
   | { readonly type: "text"; readonly delta: string }
   | {
       readonly type: "tool_start";
