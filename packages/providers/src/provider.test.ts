@@ -40,6 +40,7 @@ test("starts assigned sessions and retries failed polls", async () => {
       started.push(a);
     },
     running: () => [],
+    folders: [],
     log: (message) => logs.push(message),
     signal: controller.signal,
     retry: { initialMs: 1, maxMs: 1 },
@@ -60,6 +61,7 @@ test("stops while waiting to retry", async () => {
     },
     start: () => undefined,
     running: () => [],
+    folders: [],
     log: (message) => {
       logs.push(message);
     },
@@ -73,7 +75,7 @@ test("stops while waiting to retry", async () => {
   expect(logs.at(-1)).toBe("provider stopped");
 });
 
-test("reports the running attempts with every poll", async () => {
+test("reports the running attempts and folders with every poll", async () => {
   const controller = new AbortController();
   const polls: WorkPoll[] = [];
   const running = [{ sessionId: "s1", generation: 2 }];
@@ -92,9 +94,13 @@ test("reports the running attempts with every poll", async () => {
     },
     start: () => undefined,
     running: () => running,
+    folders: ["/work"],
     log: () => undefined,
     signal: controller.signal,
   });
 
-  expect(polls).toEqual([{ running }, { running }]);
+  expect(polls).toEqual([
+    { running, folders: ["/work"] },
+    { running, folders: ["/work"] },
+  ]);
 });

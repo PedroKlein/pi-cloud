@@ -33,6 +33,7 @@ export interface Attempt {
 
 export interface WorkPoll {
   readonly running: readonly Attempt[];
+  readonly folders: readonly string[];
 }
 
 export interface Work {
@@ -233,6 +234,12 @@ export interface Session {
   readonly interruptedAt: string | null;
   readonly error: string | null;
   readonly online: boolean;
+}
+
+export interface Provider {
+  readonly name: string;
+  readonly online: boolean;
+  readonly folders: readonly string[];
 }
 
 export interface CreateSession {

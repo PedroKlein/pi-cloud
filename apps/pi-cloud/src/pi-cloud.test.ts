@@ -12,7 +12,12 @@ import {
   fauxText,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { CreateSession, Session, SessionEvent } from "@pi-cloud/protocol";
+import type {
+  CreateSession,
+  Provider,
+  Session,
+  SessionEvent,
+} from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { readSse } from "./sse";
@@ -384,7 +389,7 @@ test("keeps transcript lines once and in order across resends", async () => {
   const session = await createSession("vm");
 
   const work = (await (
-    await asAgent("vm", "/agent/work", { running: [] })
+    await asAgent("vm", "/agent/work", { running: [], folders: [] })
   ).json()) as {
     start: { generation: number }[];
   };
@@ -424,7 +429,7 @@ test("keeps transcript lines once and in order across resends", async () => {
 
 test("drops messages from an older generation", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
 
   const stale = await asAgent(
     "vm",
@@ -443,7 +448,12 @@ test("drops messages from an older generation", async () => {
 test("rejects agent requests with another protocol version or provider", async () => {
   const session = await createSession("vm");
 
-  const version = await asAgent("vm", "/agent/work", { running: [] }, "99");
+  const version = await asAgent(
+    "vm",
+    "/agent/work",
+    { running: [], folders: [] },
+    "99",
+  );
 
   const provider = await asAgent(
     "laptop-2",
@@ -634,13 +644,13 @@ test("marks a session failed when its host cannot start", async () => {
 test("keeps a session running through a provider outage", async () => {
   const session = await createSession("vm");
   const running = [{ sessionId: session.id, generation: 1 }];
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
 
   const offline = await follow(session.id, (events) =>
     events.some((e) => e.type === "session" && !e.session.online),
   );
 
-  await asAgent("vm", "/agent/work", { running });
+  await asAgent("vm", "/agent/work", { running, folders: [] });
 
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
@@ -663,7 +673,7 @@ test("takes a session back when another poll claims it", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
 
-  await asAgent("laptop", "/agent/work", { running: [] });
+  await asAgent("laptop", "/agent/work", { running: [], folders: [] });
 
   const events = await follow(
     session.id,
@@ -685,14 +695,14 @@ test("takes a session back when another poll claims it", async () => {
 
 test("closes the command stream of an interrupted attempt", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
 
   const commands = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/commands?generation=1`,
   );
 
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
   const received: unknown[] = [];
   for await (const command of readSse(commands)) {
     received.push(command);
@@ -853,6 +863,17 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   expect(output).toContain(`branch=${branch}`);
 });
 
+test("lists each provider with the folders its agent offers", async () => {
+  let providers: Provider[] = [];
+  while (!providers.some((p) => p.name === "laptop")) {
+    providers = (await (await api("/api/providers")).json()) as Provider[];
+  }
+
+  expect(providers).toEqual([
+    { name: "laptop", online: true, folders: [root, join(root, "origin")] },
+  ]);
+});
+
 test("runs a laptop session in its own worktree of a listed checkout", async () => {
   const checkout = await gitRepository();
 
@@ -970,7 +991,7 @@ test("serves the web UI with its bundled script", async () => {
 
 test("replays open prompts to a client that connects later", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
 
   const prompt = {
     type: "prompt",
@@ -1011,7 +1032,7 @@ test("replays open prompts to a client that connects later", async () => {
 
 test("replays the current extension status, widgets and title to a client that connects later", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [] });
 
   await asAgent("vm", `/agent/sessions/${session.id}/live`, {
     generation: 1,

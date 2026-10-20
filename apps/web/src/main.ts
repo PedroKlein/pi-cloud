@@ -1,6 +1,7 @@
 import type {
   Command,
   LiveEvent,
+  Provider,
   Session,
   SessionEvent,
   Workspace,
@@ -21,6 +22,8 @@ function element<T extends HTMLElement>(id: string, type: new () => T): T {
 }
 
 const createForm = element("create", HTMLFormElement);
+const providerList = element("providers", HTMLDataListElement);
+const folderList = element("folders", HTMLDataListElement);
 const sessionList = element("sessions", HTMLUListElement);
 const panel = element("session", HTMLElement);
 const title = element("title", HTMLElement);
@@ -72,6 +75,36 @@ function workspaceName(workspace: Workspace): string {
     case "clone":
       return `${workspace.repository} (${workspace.branch})`;
   }
+}
+
+let providers: readonly Provider[] = [];
+
+function option(value: string, label: string): HTMLOptionElement {
+  const item = document.createElement("option");
+  item.value = value;
+  item.label = label;
+
+  return item;
+}
+
+function renderProviders(): void {
+  const form = new FormData(createForm);
+  const chosen = providers.find((p) => p.name === form.get("provider"));
+
+  providerList.replaceChildren(
+    ...providers.map((p) => option(p.name, p.online ? "online" : "offline")),
+  );
+
+  folderList.replaceChildren(
+    ...(form.get("kind") === "clone" ? [] : (chosen?.folders ?? [])).map(
+      (folder) => option(folder, folder),
+    ),
+  );
+}
+
+async function refreshProviders(): Promise<void> {
+  providers = (await (await api("/api/providers")).json()) as Provider[];
+  renderProviders();
 }
 
 async function refreshSessions(): Promise<void> {
@@ -356,6 +389,8 @@ function report(error: unknown): void {
   addItem({ role: "error", text: String(error) });
 }
 
+createForm.addEventListener("input", renderProviders);
+
 createForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
@@ -414,7 +449,9 @@ window.addEventListener("hashchange", () => {
 });
 
 select(location.hash.slice(1) || undefined);
+refreshProviders().catch(() => undefined);
 
 setInterval(() => {
   refreshSessions().catch(() => undefined);
+  refreshProviders().catch(() => undefined);
 }, sessionsRefreshMs);

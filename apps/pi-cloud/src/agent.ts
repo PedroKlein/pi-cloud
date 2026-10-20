@@ -116,6 +116,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     controlPlane: httpControlPlane(agent),
     log,
     signal: options.signal,
+    folders: options.folders,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({
         sessionId,

@@ -6,12 +6,14 @@ import type {
   CreateSession,
   LiveEvent,
   LivePost,
+  Provider,
   Session,
   SessionEvent,
   SessionStatus,
   StartFailure,
   TranscriptAck,
   TranscriptBatch,
+  WorkPoll,
 } from "@pi-cloud/protocol";
 
 export type StoredSession = Omit<Session, "online">;
@@ -56,6 +58,7 @@ interface ProviderState {
   polling: number;
   lastPoll: number;
   offlineTimer: ReturnType<typeof setTimeout> | undefined;
+  folders: readonly string[];
 }
 
 // Enough to catch a browser retrying a send; ids only need to outlive retries.
@@ -121,12 +124,21 @@ export class Sessions {
     return session && this.#view(session);
   }
 
+  providers(): readonly Provider[] {
+    return [...this.#providers].map(([name, { folders }]) => ({
+      name,
+      online: this.#online(name),
+      folders,
+    }));
+  }
+
   async claim(
     provider: string,
-    running: readonly Attempt[],
+    { running, folders }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
     const state = this.#pollStarted(provider);
+    state.folders = folders;
     try {
       const interrupted = this.#interruptMissing(provider, running);
       const start = this.#claimNext(provider);
@@ -384,6 +396,7 @@ export class Sessions {
       polling: 0,
       lastPoll: 0,
       offlineTimer: undefined,
+      folders: [],
     };
 
     this.#providers.set(provider, state);
