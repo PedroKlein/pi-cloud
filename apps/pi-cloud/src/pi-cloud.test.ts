@@ -38,6 +38,7 @@ function startAgent(
     dataDir: join(root, provider),
     agentDir: join(root, "pi"),
     extensionPaths,
+    folders: [root, join(root, "origin")],
     models: { runtime, model: faux.getModel() },
     log: (message, fields) => {
       agentLogs.push(`${message} ${JSON.stringify(fields)}`);
@@ -66,6 +67,7 @@ function startServer(builtInProvider?: string): ReturnType<typeof serve> {
         dataDir: join(root, builtInProvider),
         agentDir: join(root, "pi"),
         extensionPaths: [],
+        folders: [],
         models: { runtime, model: faux.getModel() },
       },
     }),
@@ -849,6 +851,57 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   );
 
   expect(output).toContain(`branch=${branch}`);
+});
+
+test("runs a laptop session in its own worktree of a listed checkout", async () => {
+  const checkout = await gitRepository();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+
+  expect(session.workspace).toEqual({
+    kind: "worktree",
+    path: checkout,
+    branch,
+  });
+
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(
+    encoder.encode(
+      "echo dir=$(pwd) branch=$(git branch --show-current) sum=$((40+2))\n",
+    ),
+  );
+
+  const output = await terminal.output("sum=42");
+
+  expect(output).toContain(
+    `dir=${join(root, "laptop", "workspaces", session.id)}`,
+  );
+
+  expect(output).toContain(`branch=${branch}`);
+});
+
+test("marks a session failed when its folder is not listed", async () => {
+  const unlisted = join(root, "laptop");
+
+  const session = await createSession("laptop", {
+    kind: "folder",
+    path: unlisted,
+  });
+
+  await follow(session.id, status("failed"));
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored.error).toContain(`folder not allowed: ${unlisted}`);
 });
 
 test("marks a session failed when its repository cannot be cloned", async () => {

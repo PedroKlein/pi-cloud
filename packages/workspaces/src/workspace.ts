@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { Workspace } from "@pi-cloud/protocol";
 
@@ -11,17 +12,40 @@ export type Log = (
   fields?: Readonly<Record<string, unknown>>,
 ) => void;
 
+export interface WorkspaceOptions {
+  readonly dir: string;
+  readonly folders: readonly string[];
+}
+
 export async function prepareWorkspace(
   workspace: Workspace,
-  dir: string,
+  { dir, folders }: WorkspaceOptions,
   log: Log,
 ): Promise<string> {
-  if (workspace.kind === "folder") {
-    return workspace.path;
+  if (workspace.kind !== "clone") {
+    const folder = absolute(workspace.path);
+    if (!folders.some((allowed) => absolute(allowed) === folder)) {
+      throw new Error(`folder not allowed: ${workspace.path}`);
+    }
+
+    if (workspace.kind === "folder") {
+      return folder;
+    }
   }
 
   if (await exists(dir)) {
     log("workspace reused", { dir });
+
+    return dir;
+  }
+
+  if (workspace.kind === "worktree") {
+    const { branch } = workspace;
+    log("adding worktree", { folder: workspace.path, branch, dir });
+
+    await mkdir(dirname(dir), { recursive: true });
+    await git(absolute(workspace.path), "worktree", "add", "-b", branch, dir);
+    log("worktree added", { dir });
 
     return dir;
   }
@@ -63,6 +87,14 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
       { cause: error },
     );
   }
+}
+
+function absolute(path: string): string {
+  return resolve(
+    path === "~" || path.startsWith("~/")
+      ? join(homedir(), path.slice(1))
+      : path,
+  );
 }
 
 async function exists(path: string): Promise<boolean> {
