@@ -1,5 +1,9 @@
 const heartbeatMs = 15_000;
 
+// A client this far behind is not keeping up. Dropping it bounds server
+// memory, and it reconnects with Last-Event-ID without losing events.
+const maxQueuedBytes = 1024 * 1024;
+
 export function sseResponse(
   open: (
     send: (data: unknown, id?: string) => void,
@@ -8,41 +12,64 @@ export function sseResponse(
 ): Response {
   const encoder = new TextEncoder();
   let close = (): void => undefined;
+  let closed = false;
+  let replayed = false;
 
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const write = (text: string): void => {
-        controller.enqueue(encoder.encode(text));
-      };
+  const body = new ReadableStream<Uint8Array>(
+    {
+      start(controller) {
+        const write = (text: string): void => {
+          if (closed) {
+            return;
+          }
 
-      write(": open\n\n");
+          if (replayed && (controller.desiredSize ?? 0) < 0) {
+            close();
+            controller.error(new Error("client fell behind"));
 
-      const heartbeat = setInterval(() => {
-        write(": ping\n\n");
-      }, heartbeatMs);
+            return;
+          }
 
-      let stop = (): void => undefined;
+          controller.enqueue(encoder.encode(text));
+        };
 
-      close = () => {
-        clearInterval(heartbeat);
-        stop();
-      };
+        write(": open\n\n");
 
-      stop = open(
-        (data, id) => {
-          const field = id === undefined ? "" : `id: ${id}\n`;
-          write(`${field}data: ${JSON.stringify(data)}\n\n`);
-        },
-        () => {
-          close();
-          controller.close();
-        },
-      );
+        const heartbeat = setInterval(() => {
+          write(": ping\n\n");
+        }, heartbeatMs);
+
+        let stop = (): void => undefined;
+
+        close = () => {
+          if (!closed) {
+            closed = true;
+            clearInterval(heartbeat);
+            stop();
+          }
+        };
+
+        stop = open(
+          (data, id) => {
+            const field = id === undefined ? "" : `id: ${id}\n`;
+            write(`${field}data: ${JSON.stringify(data)}\n\n`);
+          },
+          () => {
+            if (!closed) {
+              close();
+              controller.close();
+            }
+          },
+        );
+
+        replayed = true;
+      },
+      cancel() {
+        close();
+      },
     },
-    cancel() {
-      close();
-    },
-  });
+    { highWaterMark: maxQueuedBytes, size: (chunk) => chunk?.byteLength ?? 0 },
+  );
 
   return new Response(body, {
     headers: {

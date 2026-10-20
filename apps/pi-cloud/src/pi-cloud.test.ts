@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
+import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,8 +22,7 @@ let runtime: ModelRuntime;
 let agents: (() => Promise<void>)[];
 let laptop: () => Promise<void>;
 let agentLogs: string[];
-
-const quiet = (): void => undefined;
+let serverLogs: string[];
 
 function startAgent(
   provider: string,
@@ -54,12 +55,15 @@ function startAgent(
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "pi-cloud-"));
+  serverLogs = [];
 
   server = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
-    log: quiet,
+    log: (message, fields) => {
+      serverLogs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
 
   faux = fauxProvider();
@@ -674,6 +678,41 @@ const webSocketUpgrade = {
   "sec-websocket-version": "13",
 };
 
+async function stalledTerminal(
+  sessionId: string,
+  input: string,
+): Promise<Socket> {
+  const socket = connect(Number(server.url.port), "127.0.0.1");
+
+  socket.write(
+    [
+      `GET /api/sessions/${sessionId}/terminal?cols=80&rows=24 HTTP/1.1`,
+      `Host: ${server.url.host}`,
+      ...Object.entries(webSocketUpgrade).map(([k, v]) => `${k}: ${v}`),
+      "",
+      "",
+    ].join("\r\n"),
+  );
+
+  await once(socket, "data");
+
+  const payload = encoder.encode(input);
+  const mask = [1, 2, 3, 4];
+
+  socket.write(
+    Uint8Array.from([
+      0x82,
+      0x80 | payload.length,
+      ...mask,
+      ...payload.map((byte, i) => byte ^ (mask[i % 4] ?? 0)),
+    ]),
+  );
+
+  socket.pause();
+
+  return socket;
+}
+
 test("runs a shell in the session's directory over a terminal socket", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
@@ -869,3 +908,24 @@ test("does not let a host take another session's terminal", async () => {
 
   expect(response.status).toBe(404);
 });
+
+test("closes a terminal whose browser stops reading while others keep working", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const healthy = await openTerminal(session.id);
+
+  const stalled = await stalledTerminal(
+    session.id,
+    "head -c 100000000 /dev/zero | tr '\\0' x\n",
+  );
+
+  while (!serverLogs.some((line) => line.includes("browser fell behind"))) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  healthy.socket.send(encoder.encode("echo still=$((40+2))\n"));
+  const output = await healthy.output("still=42");
+  stalled.destroy();
+
+  expect(output).toContain("still=42");
+}, 30_000);
