@@ -1,6 +1,7 @@
 import type {
   Command,
   LiveEvent,
+  ModelRef,
   Provider,
   Session,
   SessionEvent,
@@ -24,6 +25,7 @@ function element<T extends HTMLElement>(id: string, type: new () => T): T {
 const createForm = element("create", HTMLFormElement);
 const providerList = element("providers", HTMLDataListElement);
 const folderList = element("folders", HTMLDataListElement);
+const modelList = element("models", HTMLDataListElement);
 const sessionList = element("sessions", HTMLUListElement);
 const panel = element("session", HTMLElement);
 const title = element("title", HTMLElement);
@@ -77,6 +79,18 @@ function workspaceName(workspace: Workspace): string {
   }
 }
 
+function modelName({ provider, id }: ModelRef): string {
+  return `${provider}/${id}`;
+}
+
+function modelRef(name: string): ModelRef | undefined {
+  const slash = name.indexOf("/");
+
+  return slash > 0 && slash < name.length - 1
+    ? { provider: name.slice(0, slash), id: name.slice(slash + 1) }
+    : undefined;
+}
+
 let providers: readonly Provider[] = [];
 
 function option(value: string, label: string): HTMLOptionElement {
@@ -100,6 +114,12 @@ function renderProviders(): void {
       (folder) => option(folder, folder),
     ),
   );
+
+  modelList.replaceChildren(
+    ...(chosen?.models ?? []).map((model) =>
+      option(modelName(model), modelName(model)),
+    ),
+  );
 }
 
 async function refreshProviders(): Promise<void> {
@@ -117,7 +137,13 @@ async function refreshSessions(): Promise<void> {
       const name = document.createElement("span");
       name.textContent = workspaceName(session.workspace);
       const details = document.createElement("small");
-      details.textContent = `${session.provider} · ${describe(session)}`;
+
+      details.textContent = [
+        session.provider,
+        ...(session.model ? [modelName(session.model)] : []),
+        describe(session),
+      ].join(" · ");
+
       item.append(name, details);
 
       item.addEventListener("click", () => {
@@ -397,11 +423,24 @@ createForm.addEventListener("submit", (event) => {
 
   const kind = form.get("kind");
   const where = form.get("location");
+  const modelText = form.get("model");
+
+  const model =
+    typeof modelText === "string" && modelText.trim() !== ""
+      ? modelRef(modelText.trim())
+      : null;
+
+  if (model === undefined) {
+    alert("model must be provider/id");
+
+    return;
+  }
 
   api("/api/sessions", {
     provider: form.get("provider"),
     workspace:
       kind === "clone" ? { kind, repository: where } : { kind, path: where },
+    model,
   })
     .then(async (response) => {
       location.hash = ((await response.json()) as Session).id;

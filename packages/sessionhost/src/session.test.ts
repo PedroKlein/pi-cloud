@@ -17,8 +17,11 @@ import {
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { startSession, stopSession } from "./index";
+import {
+  type AgentSession,
+  ModelRuntime,
+} from "@earendil-works/pi-coding-agent";
+import { listModels, startSession, stopSession } from "./index";
 
 const subagentsPath = dirname(
   fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
@@ -38,7 +41,9 @@ async function fauxModels(): Promise<{
   faux: ReturnType<typeof fauxProvider>;
   runtime: ModelRuntime;
 }> {
-  const faux = fauxProvider();
+  const faux = fauxProvider({
+    models: [{ id: "faux-small" }, { id: "faux-large" }],
+  });
 
   const runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
@@ -204,15 +209,18 @@ export default (pi) => {
   );
 });
 
-test("uses a default model from a provider an extension registers", async () => {
-  const agentDir = join(root, "agent");
+async function proxyExtension(): Promise<string> {
   const extension = join(root, "proxy.ts");
-  await mkdir(agentDir);
 
-  await writeFile(
-    join(agentDir, "settings.json"),
-    JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
-  );
+  const model = (id: string): string => `{
+        id: "${id}",
+        name: "${id}",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 1000,
+        maxTokens: 100,
+      }`;
 
   await writeFile(
     extension,
@@ -221,34 +229,118 @@ test("uses a default model from a provider an extension registers", async () => 
     baseUrl: "http://127.0.0.1:9/v1",
     apiKey: "test-key",
     api: "openai-completions",
-    models: [
-      {
-        id: "proxy-small",
-        name: "Proxy small",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 1000,
-        maxTokens: 100,
-      },
-    ],
+    models: [${model("proxy-small")}, ${model("proxy-large")}],
   });
 };
 `,
+  );
+
+  return extension;
+}
+
+function modelName(session: AgentSession): string {
+  return `${String(session.model?.provider)}/${String(session.model?.id)}`;
+}
+
+test("uses a default model from a provider an extension registers", async () => {
+  const agentDir = join(root, "agent");
+  await mkdir(agentDir);
+
+  await writeFile(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
   );
 
   const session = await startSession({
     cwd: root,
     agentDir,
     sessionDir: join(root, "sessions"),
-    extensionPaths: [extension],
+    extensionPaths: [await proxyExtension()],
   });
 
   await stopSession(session);
 
-  expect(
-    `${String(session.model?.provider)}/${String(session.model?.id)}`,
-  ).toBe("proxy/proxy-small");
+  expect(modelName(session)).toBe("proxy/proxy-small");
+});
+
+test("starts a new session on the model it asks for", async () => {
+  const agentDir = join(root, "agent");
+  await mkdir(agentDir);
+
+  await writeFile(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
+  );
+
+  const session = await startSession({
+    cwd: root,
+    agentDir,
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [await proxyExtension()],
+    model: { provider: "proxy", id: "proxy-large" },
+  });
+
+  await stopSession(session);
+
+  expect(modelName(session)).toBe("proxy/proxy-large");
+});
+
+test("refuses to start on a model the provider cannot use", async () => {
+  const start = startSession({
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [await proxyExtension()],
+    model: { provider: "proxy", id: "proxy-huge" },
+  });
+
+  expect(start).rejects.toThrow("model not available: proxy/proxy-huge");
+});
+
+test("keeps a resumed session on the model it last used", async () => {
+  const { faux, runtime } = await fauxModels();
+  const [first, second] = faux.models;
+  if (second === undefined) {
+    throw new Error("faux has one model");
+  }
+
+  faux.setResponses([fauxAssistantMessage("hi")]);
+
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models: { runtime, model: first },
+  };
+
+  const started = await startSession({
+    ...options,
+    model: { provider: first.provider, id: first.id },
+  });
+
+  await started.setModel(second);
+  await started.prompt("hello");
+  await stopSession(started);
+
+  const resumed = await startSession({
+    ...options,
+    model: { provider: first.provider, id: first.id },
+  });
+
+  await stopSession(resumed);
+
+  expect(modelName(resumed)).toBe(`${second.provider}/${second.id}`);
+});
+
+test("lists the models Pi can use, with the ones extensions register", async () => {
+  const models = await listModels({
+    agentDir: join(root, "agent"),
+    extensionPaths: [await proxyExtension()],
+  });
+
+  expect(models).toContainEqual({ provider: "proxy", id: "proxy-small" });
+  expect(models).toContainEqual({ provider: "proxy", id: "proxy-large" });
 });
 
 test("records an interrupted result for a tool call cut off by a crash", async () => {

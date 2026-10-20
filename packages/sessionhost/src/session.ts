@@ -4,6 +4,7 @@ import { isAbsolute, join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
+  type AgentSessionServices,
   type ToolDefinition,
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -12,17 +13,22 @@ import {
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import type { ModelRef } from "@pi-cloud/protocol";
 import type { RemoteUI } from "./ui";
 
-export interface SessionOptions {
-  readonly cwd: string;
+export interface ModelOptions {
   readonly agentDir: string;
-  readonly sessionDir: string;
   readonly extensionPaths: readonly string[];
   readonly models?: {
     readonly runtime: ModelRuntime;
     readonly model: Model<Api>;
   };
+}
+
+export interface SessionOptions extends ModelOptions {
+  readonly cwd: string;
+  readonly sessionDir: string;
+  readonly model?: ModelRef;
 }
 
 export interface SessionHost {
@@ -35,38 +41,29 @@ export async function startSession(
   options: SessionOptions,
   host?: SessionHost,
 ): Promise<AgentSession> {
-  const { agentDir } = options;
   const cwd = await workingDirectory(options.cwd);
 
   // Pi's CLI sets the theme before any mode runs, and extensions style their
   // status text with it even when no terminal renders it.
   initTheme();
 
-  // Services register the providers extensions add before the default model
-  // is resolved, as Pi's CLI does.
-  const services = await createAgentSessionServices({
-    cwd,
-    agentDir,
-    resourceLoaderOptions: {
-      additionalExtensionPaths: [...options.extensionPaths],
-    },
-    ...(options.models && { modelRuntime: options.models.runtime }),
-  });
-
-  const { errors } = services.resourceLoader.getExtensions();
-  if (errors.length > 0) {
-    const details = errors.map((e) => `${e.path}: ${e.error}`).join("; ");
-    throw new Error(`extensions failed to load: ${details}`);
-  }
+  const services = await loadServices(cwd, options);
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
   recordInterruptedToolCalls(sessionManager);
+
+  // Pi restores the model a resumed session last used, so the chosen model
+  // only picks the first one.
+  const model =
+    sessionManager.buildSessionContext().messages.length > 0
+      ? undefined
+      : await firstModel(services.modelRuntime, options);
 
   const { session } = await createAgentSessionFromServices({
     services,
     sessionManager,
     ...(host && { customTools: [...host.tools] }),
-    ...(options.models && { model: options.models.model }),
+    ...(model && { model }),
   });
 
   await session.bindExtensions(
@@ -80,6 +77,57 @@ export async function startSession(
   );
 
   return session;
+}
+
+export async function listModels(
+  options: ModelOptions,
+): Promise<readonly ModelRef[]> {
+  const services = await loadServices(homedir(), options);
+  const models = await services.modelRuntime.getAvailable();
+
+  return models.map(({ provider, id }) => ({ provider, id }));
+}
+
+// Services register the providers extensions add before the default model is
+// resolved, as Pi's CLI does.
+async function loadServices(
+  cwd: string,
+  options: ModelOptions,
+): Promise<AgentSessionServices> {
+  const services = await createAgentSessionServices({
+    cwd,
+    agentDir: options.agentDir,
+    resourceLoaderOptions: {
+      additionalExtensionPaths: [...options.extensionPaths],
+    },
+    ...(options.models && { modelRuntime: options.models.runtime }),
+  });
+
+  const { errors } = services.resourceLoader.getExtensions();
+  if (errors.length > 0) {
+    const details = errors.map((e) => `${e.path}: ${e.error}`).join("; ");
+    throw new Error(`extensions failed to load: ${details}`);
+  }
+
+  return services;
+}
+
+async function firstModel(
+  runtime: ModelRuntime,
+  options: SessionOptions,
+): Promise<Model<Api> | undefined> {
+  if (options.model === undefined) {
+    return options.models?.model;
+  }
+
+  const { provider, id } = options.model;
+  const models = await runtime.getAvailable(provider);
+  const model = models.find((m) => m.id === id);
+  if (model === undefined) {
+    throw new Error(`model not available: ${provider}/${id}`);
+  }
+
+  return model;
 }
 
 // Pi fills a missing tool result with "No result provided" when it builds the

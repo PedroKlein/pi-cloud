@@ -86,7 +86,10 @@ beforeEach(async () => {
   // macOS tmpdir is a symlink, and the shell reports the resolved path.
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
   serverLogs = [];
-  faux = fauxProvider();
+
+  faux = fauxProvider({
+    models: [{ id: "faux-small" }, { id: "faux-large" }],
+  });
 
   runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
@@ -389,7 +392,7 @@ test("keeps transcript lines once and in order across resends", async () => {
   const session = await createSession("vm");
 
   const work = (await (
-    await asAgent("vm", "/agent/work", { running: [], folders: [] })
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
   ).json()) as {
     start: { generation: number }[];
   };
@@ -429,7 +432,7 @@ test("keeps transcript lines once and in order across resends", async () => {
 
 test("drops messages from an older generation", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
 
   const stale = await asAgent(
     "vm",
@@ -451,7 +454,7 @@ test("rejects agent requests with another protocol version or provider", async (
   const version = await asAgent(
     "vm",
     "/agent/work",
-    { running: [], folders: [] },
+    { running: [], folders: [], models: [] },
     "99",
   );
 
@@ -644,13 +647,13 @@ test("marks a session failed when its host cannot start", async () => {
 test("keeps a session running through a provider outage", async () => {
   const session = await createSession("vm");
   const running = [{ sessionId: session.id, generation: 1 }];
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
 
   const offline = await follow(session.id, (events) =>
     events.some((e) => e.type === "session" && !e.session.online),
   );
 
-  await asAgent("vm", "/agent/work", { running, folders: [] });
+  await asAgent("vm", "/agent/work", { running, folders: [], models: [] });
 
   const stored = (await (
     await api(`/api/sessions/${session.id}`)
@@ -673,7 +676,11 @@ test("takes a session back when another poll claims it", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
 
-  await asAgent("laptop", "/agent/work", { running: [], folders: [] });
+  await asAgent("laptop", "/agent/work", {
+    running: [],
+    folders: [],
+    models: [],
+  });
 
   const events = await follow(
     session.id,
@@ -695,14 +702,14 @@ test("takes a session back when another poll claims it", async () => {
 
 test("closes the command stream of an interrupted attempt", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
 
   const commands = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/commands?generation=1`,
   );
 
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
   const received: unknown[] = [];
   for await (const command of readSse(commands)) {
     received.push(command);
@@ -863,15 +870,86 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   expect(output).toContain(`branch=${branch}`);
 });
 
-test("lists each provider with the folders its agent offers", async () => {
+test("lists each provider with the folders and models its agent offers", async () => {
   let providers: Provider[] = [];
   while (!providers.some((p) => p.name === "laptop")) {
     providers = (await (await api("/api/providers")).json()) as Provider[];
   }
 
-  expect(providers).toEqual([
+  expect(providers).toMatchObject([
     { name: "laptop", online: true, folders: [root, join(root, "origin")] },
   ]);
+
+  expect(providers[0]?.models).toContainEqual({
+    provider: faux.getModel().provider,
+    id: "faux-large",
+  });
+});
+
+test("runs a session on the model it was created with", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello")])]);
+  const model = { provider: faux.getModel().provider, id: "faux-large" };
+
+  const session = (await (
+    await api("/api/sessions", {
+      provider: "laptop",
+      workspace: { kind: "folder", path: root },
+      model,
+    })
+  ).json()) as Session;
+
+  expect(session.model).toEqual(model);
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  const events = await follow(session.id, (seen) =>
+    roles(seen).includes("assistant"),
+  );
+
+  const replies = events.flatMap((event) => {
+    if (event.type !== "entry") {
+      return [];
+    }
+
+    const { message } = JSON.parse(event.entry) as {
+      message?: { role: string; model?: string };
+    };
+
+    return message?.role === "assistant" ? [message.model] : [];
+  });
+
+  expect(replies).toEqual(["faux-large"]);
+});
+
+test("fails a session whose model its provider cannot use", async () => {
+  const session = (await (
+    await api("/api/sessions", {
+      provider: "laptop",
+      workspace: { kind: "folder", path: root },
+      model: { provider: "nowhere", id: "none" },
+    })
+  ).json()) as Session;
+
+  const events = await follow(session.id, status("failed"));
+  const last = events.at(-1);
+
+  expect(last?.type === "session" && last.session.error).toContain(
+    "model not available: nowhere/none",
+  );
+});
+
+test("rejects a session request with a malformed model", async () => {
+  const response = await api("/api/sessions", {
+    provider: "laptop",
+    workspace: { kind: "folder", path: root },
+    model: "faux-large",
+  });
+
+  expect(response.status).toBe(400);
 });
 
 test("runs a laptop session in its own worktree of a listed checkout", async () => {
@@ -991,7 +1069,7 @@ test("serves the web UI with its bundled script", async () => {
 
 test("replays open prompts to a client that connects later", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
 
   const prompt = {
     type: "prompt",
@@ -1032,7 +1110,7 @@ test("replays open prompts to a client that connects later", async () => {
 
 test("replays the current extension status, widgets and title to a client that connects later", async () => {
   const session = await createSession("vm");
-  await asAgent("vm", "/agent/work", { running: [], folders: [] });
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
 
   await asAgent("vm", `/agent/sessions/${session.id}/live`, {
     generation: 1,

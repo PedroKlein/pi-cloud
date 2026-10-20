@@ -1,13 +1,14 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { SessionStatus, Workspace } from "@pi-cloud/protocol";
+import type { ModelRef, SessionStatus, Workspace } from "@pi-cloud/protocol";
 import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
 
 interface SessionRow {
   id: string;
   provider: string;
   workspace: string;
+  model: string | null;
   status: SessionStatus;
   generation: number;
   created_at: string;
@@ -20,6 +21,7 @@ create table if not exists sessions (
   id text primary key,
   provider text not null,
   workspace text not null,
+  model text,
   status text not null,
   generation integer not null,
   created_at text not null,
@@ -49,6 +51,13 @@ function migrate(db: DatabaseSync): void {
     `);
   }
 
+  if (
+    columns.length > 0 &&
+    !columns.some((column) => column.name === "model")
+  ) {
+    db.exec("alter table sessions add column model text");
+  }
+
   db.exec(schema);
 }
 
@@ -65,6 +74,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
     id: row.id,
     provider: row.provider,
     workspace: JSON.parse(row.workspace) as Workspace,
+    model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
     status: row.status,
     generation: row.generation,
     createdAt: row.created_at,
@@ -73,7 +83,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, provider, workspace, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, provider, workspace, model, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
@@ -105,6 +115,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
         s.id,
         s.provider,
         JSON.stringify(s.workspace),
+        s.model && JSON.stringify(s.model),
         s.status,
         s.generation,
         s.createdAt,

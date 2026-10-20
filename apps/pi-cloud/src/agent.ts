@@ -4,6 +4,7 @@ import { runProvider, type Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
   hostSession,
+  listModels,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
 import { prepareWorkspace } from "@pi-cloud/workspaces";
@@ -88,6 +89,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           sessionDir: join(options.dataDir, "sessions", sessionId),
           extensionPaths: options.extensionPaths,
           ...(options.models && { models: options.models }),
+          ...(assignment.model && { model: assignment.model }),
         },
         httpSessionStream(agent, assignment, sessionLog, fenced),
         sessionLog,
@@ -112,11 +114,24 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     }
   };
 
+  const models = await listModels({
+    agentDir: options.agentDir,
+    extensionPaths: options.extensionPaths,
+    ...(options.models && { models: options.models }),
+  }).catch((error: unknown) => {
+    log("models not listed", { error: String(error) });
+
+    return [];
+  });
+
+  log("models listed", { count: models.length });
+
   await runProvider({
     controlPlane: httpControlPlane(agent),
     log,
     signal: options.signal,
     folders: options.folders,
+    models,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({
         sessionId,
