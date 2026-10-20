@@ -18,13 +18,13 @@ const dataRoot = join(homedir(), ".pi-cloud");
 const [command, ...rest] = process.argv.slice(2);
 const shutdown = new AbortController();
 
-process.once("SIGINT", () => {
-  shutdown.abort();
-});
-
-process.once("SIGTERM", () => {
-  shutdown.abort();
-});
+// Stay subscribed: signal-exit, which Pi loads, kills the process outright
+// when it sees no other handler left for the signal.
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    shutdown.abort();
+  });
+}
 
 switch (command) {
   case "server": {
