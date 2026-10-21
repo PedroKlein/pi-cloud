@@ -194,6 +194,9 @@ function editor(
     names: readonly string[],
     backends = draft.backends,
   ): AliasConfig => ({
+    ...(draft.defaultAlias !== undefined && {
+      defaultAlias: draft.defaultAlias,
+    }),
     fallbackChain: names.filter((name) => backends[name]?.forceOnly !== true),
     backends: Object.fromEntries(
       names.flatMap((name) => {
@@ -239,9 +242,33 @@ function editor(
     }
   });
 
+  const fallback = el(
+    "select",
+    undefined,
+    el("option", "The machine's Pi default"),
+    ...aliasesOf(draft).map(({ id }) => {
+      const option = el("option", `${gatewayProvider}/${id}`);
+      option.value = id;
+      option.selected = id === draft.defaultAlias;
+
+      return option;
+    }),
+  );
+
+  fallback.addEventListener("change", () => {
+    const { defaultAlias: _, ...rest } = draft;
+
+    change(
+      fallback.selectedIndex === 0
+        ? rest
+        : { ...rest, defaultAlias: fallback.value },
+    );
+  });
+
   return el(
     "div",
     undefined,
+    el("label", "Model for sessions that name none ", fallback),
     el("h4", "Backends, in fallback order"),
     ...order.map((name, index) => {
       const backend = draft.backends[name] ?? { tiers: {} };

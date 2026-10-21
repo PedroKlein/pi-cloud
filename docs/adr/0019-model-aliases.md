@@ -46,7 +46,8 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 - Model fields list the Environment's aliases first, as `alias/<alias>`, then the machine's real models. That covers the new Session form, a Project's coordinator model and the model `start_thread` takes. A real model still works anywhere it did.
 - An Environment can set a default alias. A Session with no model uses it, and the machine's Pi default applies only when the Environment has none.
-- A Project can set an alias for its coordinator and one for its threads. `start_thread` uses the thread alias unless the coordinator names a model.
+- A Project can set a model for its coordinator and one for its threads, usually aliases. `start_thread` uses the thread model unless the coordinator names one.
+- The plugin gives the kernel its aliases and default through a model offer (ADR 0015), so the kernel's model fields and start request need no Project or alias code.
 - The order is: the model named on the Session, then the Project's alias for that role, then the Environment's default, then the machine's Pi default.
 
 ### Web

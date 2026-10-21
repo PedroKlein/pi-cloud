@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { KernelEvent, StartRequest } from "@pi-cloud/plugins";
+import type {
+  KernelEvent,
+  OfferedModels,
+  StartRequest,
+} from "@pi-cloud/plugins";
 import type {
   Assignment,
   Attempt,
@@ -67,6 +71,7 @@ export interface SessionsOptions {
   readonly offlineAfterMs?: number;
   readonly events?: (event: KernelEvent) => void;
   readonly sessionPlugins?: readonly string[];
+  readonly offeredModels?: (environmentId: string) => OfferedModels;
 }
 
 export interface Claim {
@@ -97,6 +102,7 @@ export class Sessions {
   readonly #offlineAfterMs: number;
   readonly #events: (event: KernelEvent) => void;
   readonly #sessionPlugins: readonly string[];
+  readonly #offeredModels: (environmentId: string) => OfferedModels;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
@@ -116,6 +122,7 @@ export class Sessions {
     this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
     this.#events = options.events ?? (() => undefined);
     this.#sessionPlugins = options.sessionPlugins ?? [];
+    this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
   }
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
@@ -142,7 +149,8 @@ export class Sessions {
         request.workspace.kind === "folder"
           ? request.workspace
           : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
-      model: request.model ?? null,
+      model:
+        request.model ?? this.#offeredModels(environment.id).default ?? null,
       systemPrompt: request.systemPrompt ?? null,
       firstMessage: request.firstMessage ?? null,
       status: "queued",
@@ -268,12 +276,13 @@ export class Sessions {
   environments(): readonly Environment[] {
     return this.#store.environments().map((environment) => {
       const state = this.#providers.get(environment.provider);
+      const offered = this.#offeredModels(environment.id).models;
 
       return {
         ...environment,
         online: this.#online(environment.provider),
         folders: state?.folders ?? [],
-        models: state?.models ?? [],
+        models: [...offered, ...(state?.models ?? [])],
       };
     });
   }

@@ -6,6 +6,7 @@ import type { EventBus } from "./events";
 import type {
   Actor,
   CreateSession,
+  ModelRef,
   Question,
   QuestionsAnswer,
   Session,
@@ -65,6 +66,15 @@ export interface PluginStore {
   readonly run: (sql: string, ...params: readonly unknown[]) => void;
 }
 
+// Models a plugin offers for an Environment: listed before the machine's own
+// in model fields, and a default for Sessions that name none.
+export interface OfferedModels {
+  readonly models: readonly ModelRef[];
+  readonly default?: ModelRef;
+}
+
+export type ModelOffer = (environmentId: string) => OfferedModels;
+
 export interface ServerPluginContext {
   // The user this installation belongs to. v1 has exactly one.
   readonly owner: string;
@@ -80,6 +90,7 @@ export interface ServerPluginContext {
     readonly transcript: (id: string) => readonly string[];
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
+  readonly models: { readonly offer: (offer: ModelOffer) => void };
   readonly store: PluginStore;
   // Aborted when the server stops.
   readonly signal: AbortSignal;
