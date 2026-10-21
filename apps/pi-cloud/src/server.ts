@@ -1,4 +1,5 @@
 import {
+  type Answer,
   type Command,
   type CreateSession,
   type LivePost,
@@ -138,7 +139,10 @@ export function createHandler(
       "POST",
       /^\/api\/sessions\/([^/]+)\/commands$/,
       async (request, [id = ""]) =>
-        reply(sessions.send(id, await readJson<Command>(request)), 202),
+        reply(
+          sessions.send(id, browserCommand(await readJson<unknown>(request))),
+          202,
+        ),
     ],
     [
       "POST",
@@ -338,6 +342,73 @@ function workspaceRequest(workspace: unknown): WorkspaceRequest {
   throw new BadRequest(
     "workspace must be a folder or worktree with a path, or a clone with a repository",
   );
+}
+
+// Terminal commands come from the server's own terminal socket, never from a
+// browser's POST.
+function browserCommand(body: unknown): Command {
+  const fields = (
+    typeof body === "object" && body !== null ? body : {}
+  ) as Record<string, unknown>;
+
+  const text = (key: string): string => {
+    const value = fields[key];
+    if (typeof value !== "string") {
+      throw new BadRequest(`${key} must be a string`);
+    }
+
+    return value;
+  };
+
+  switch (fields["type"]) {
+    case "message": {
+      const { requestId, delivery } = fields;
+      if (requestId !== undefined && typeof requestId !== "string") {
+        throw new BadRequest("requestId must be a string");
+      }
+
+      if (
+        delivery !== undefined &&
+        delivery !== "steer" &&
+        delivery !== "followUp"
+      ) {
+        throw new BadRequest('delivery must be "steer" or "followUp"');
+      }
+
+      return {
+        type: "message",
+        text: text("text"),
+        ...(requestId !== undefined && { requestId }),
+        ...(delivery !== undefined && { delivery }),
+      };
+    }
+
+    case "abort":
+      return { type: "abort" };
+    case "answer":
+      return {
+        type: "answer",
+        id: text("id"),
+        value: fields["value"] as Answer,
+      };
+    case "explain": {
+      const { question } = fields;
+      if (question !== null && typeof question !== "string") {
+        throw new BadRequest("question must be a string or null");
+      }
+
+      return {
+        type: "explain",
+        id: text("id"),
+        questionId: text("questionId"),
+        value: text("value"),
+        question,
+      };
+    }
+
+    default:
+      throw new BadRequest("type must be message, abort, answer or explain");
+  }
 }
 
 function startPointOf(startPoint: unknown): { startPoint?: string } {
