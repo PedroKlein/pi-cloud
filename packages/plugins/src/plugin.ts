@@ -51,9 +51,11 @@ export interface ServerTool extends ToolSpec {
   readonly run: (input: unknown, caller: ToolCaller) => Promise<ToolResult>;
 }
 
+// caller is set when a Session's own plugin part sent the request.
 export type PluginRoute = (
   request: Request,
   path: string,
+  caller: ToolCaller | undefined,
 ) => Response | Promise<Response>;
 
 // Tables a plugin creates must be named <plugin>_<table>.
@@ -118,6 +120,8 @@ export interface SessionCloud {
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
   readonly checkouts: readonly Checkout[];
+  // Sends a request to the plugin's own server routes as this Session.
+  readonly request: (path: string, init?: RequestInit) => Promise<Response>;
   readonly log: (
     message: string,
     fields?: Readonly<Record<string, unknown>>,
@@ -127,6 +131,9 @@ export interface SessionCloud {
 export interface SessionPlugin {
   readonly name: string;
   readonly extension?: (cloud: SessionCloud) => ExtensionFactory;
-  // Tools that replace any extension tool of the same name.
-  readonly tools?: (cloud: SessionCloud) => readonly ToolDefinition[];
+  // Tools that replace any extension tool of the same name, asked for once
+  // when the Session starts.
+  readonly tools?: (
+    cloud: SessionCloud,
+  ) => readonly ToolDefinition[] | Promise<readonly ToolDefinition[]>;
 }

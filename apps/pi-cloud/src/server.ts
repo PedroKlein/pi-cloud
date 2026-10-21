@@ -112,6 +112,28 @@ export function createHandler(
         Response.json({ error: "not_found" }, { status: 404 }),
     ],
     [
+      "ANY",
+      /^\/agent\/sessions\/([^/]+)\/plugins\/([^/]+)\/(.*)$/,
+      agent(async (request, [id = "", name = "", path = ""]) => {
+        const session = sessions.get(id);
+
+        const generation = Number(
+          new URL(request.url).searchParams.get("generation") ?? NaN,
+        );
+
+        if (!session || !sessions.isCurrent(id, generation)) {
+          return Response.json({ error: "stale_generation" }, { status: 409 });
+        }
+
+        return (
+          (await plugins.route(request, name, path, {
+            session,
+            actor: `session:${id}`,
+          })) ?? Response.json({ error: "not_found" }, { status: 404 })
+        );
+      }),
+    ],
+    [
       "GET",
       /^\/agent\/sessions\/([^/]+)\/tools$/,
       agent((request, [id = ""]) => {

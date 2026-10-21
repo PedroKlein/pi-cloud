@@ -11,7 +11,22 @@ const deliveryMs = 1000;
 export const projects: ServerPlugin = {
   name: "projects",
   register: (context) => {
-    const store = projectStore(context.store);
+    const stored = projectStore(context.store);
+
+    // Other plugins, like the library, follow who is in which Project.
+    const store: ProjectStore = {
+      ...stored,
+      addMember: (member) => {
+        stored.addMember(member);
+
+        context.events.publish({
+          type: "projects.MemberAdded",
+          sessionId: member.sessionId,
+          projectId: member.projectId,
+        });
+      },
+    };
+
     const user: Actor = `user:${context.owner}`;
 
     for (const tool of projectTools(store, context)) {

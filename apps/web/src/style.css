@@ -399,3 +399,8 @@ form#prompt textarea {
 #plugin-page tr.needs-you {
   font-weight: bold;
 }
+
+#plugin-nav {
+  display: flex;
+  gap: 0.75rem;
+}

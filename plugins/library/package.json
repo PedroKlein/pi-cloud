@@ -1,0 +1,17 @@
+{
+  "name": "@pi-cloud/library",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./model": "./src/model.ts",
+    "./server": "./src/server.ts",
+    "./session": "./src/session.ts",
+    "./web": "./web/index.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@pi-cloud/plugins": "workspace:*",
+    "@pi-cloud/protocol": "workspace:*"
+  }
+}

@@ -1,5 +1,7 @@
 import { ask } from "@pi-cloud/ask/session";
 import { changes } from "@pi-cloud/changes/session";
+import { library as librarySession } from "@pi-cloud/library/session";
+import { library } from "@pi-cloud/library/server";
 import { projects } from "@pi-cloud/projects/server";
 import type {
   EventBus,
@@ -7,6 +9,7 @@ import type {
   PluginStore,
   ServerPlugin,
   ServerTool,
+  ToolCaller,
   SessionPlugin,
 } from "@pi-cloud/plugins";
 import type { Actor, Session, ToolCall, ToolSpec } from "@pi-cloud/protocol";
@@ -20,10 +23,11 @@ export const builtInPlugins: readonly string[] = [
   "changes",
   "usage",
   "projects",
+  "library",
 ];
 
-export const serverPlugins: readonly ServerPlugin[] = [projects];
-const sessionPlugins: readonly SessionPlugin[] = [ask, changes];
+export const serverPlugins: readonly ServerPlugin[] = [projects, library];
+const sessionPlugins: readonly SessionPlugin[] = [ask, changes, librarySession];
 
 export function sessionPluginsNamed(
   enabled: readonly string[],
@@ -39,6 +43,7 @@ export interface PluginHost {
     request: Request,
     name: string,
     path: string,
+    caller?: ToolCaller,
   ) => Promise<Response | undefined>;
 }
 
@@ -155,6 +160,7 @@ export function startPlugins(
           });
         });
     },
-    route: async (request, name, path) => routes.get(name)?.(request, path),
+    route: async (request, name, path, caller) =>
+      routes.get(name)?.(request, path, caller),
   };
 }
