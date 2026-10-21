@@ -1244,6 +1244,14 @@ test("starts with its first message, its system prompt text and plugin extension
     firstMessage: "kick off",
     extensions: [
       (pi: ExtensionAPI) => {
+        pi.on("session_start", () => {
+          pi.sendMessage({
+            customType: "snapshot",
+            content: "notes an extension restores",
+            display: false,
+          });
+        });
+
         pi.registerTool({
           name: "plugin_tool",
           label: "Plugin tool",

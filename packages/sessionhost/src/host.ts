@@ -207,7 +207,7 @@ export async function hostSession(
   const firstMessage = options.firstMessage ?? null;
   if (
     firstMessage !== null &&
-    session.sessionManager.buildSessionContext().messages.length === 0
+    !session.sessionManager.getEntries().some(({ type }) => type === "message")
   ) {
     session.prompt(firstMessage).catch((error: unknown) => {
       log("first message failed", { error: String(error) });
