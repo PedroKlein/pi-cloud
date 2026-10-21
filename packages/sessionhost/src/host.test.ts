@@ -910,3 +910,76 @@ test("explains an option with the session's model while the form is open", async
 
   expect(fake.lines.join()).toContain("User cancelled the questionnaire");
 });
+
+test.each([
+  ["steer", ["user", "assistant", "toolResult", "user", "assistant"]],
+  [
+    "followUp",
+    ["user", "assistant", "toolResult", "assistant", "user", "assistant"],
+  ],
+] as const)(
+  "queues a %s message sent while the session is busy",
+  async (delivery, expected) => {
+    const { faux, models } = await fauxModels(root);
+    await writeFile(join(root, "notes.txt"), "notes");
+    let release = (): void => undefined;
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    faux.setResponses([
+      async () => {
+        await gate;
+
+        return fauxAssistantMessage([
+          fauxToolCall("read", { path: "notes.txt" }),
+        ]);
+      },
+      fauxAssistantMessage([fauxText("read it")]),
+      fauxAssistantMessage([fauxText("queued reply")]),
+    ]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      {
+        cwd: root,
+        agentDir: join(root, "agent"),
+        sessionDir: join(root, "sessions"),
+        extensionPaths: [],
+        models,
+      },
+      fake.stream,
+      () => undefined,
+    );
+
+    fake.send({ type: "message", text: "first" });
+    await fake.waitFor(() => faux.state.callCount === 1);
+    fake.send({ type: "message", text: "second", delivery });
+
+    await fake.waitFor(() => fake.events.some((e) => e.type === "queue"));
+    release();
+
+    await fake.waitFor(
+      () =>
+        fake.events.at(-1)?.type === "status" &&
+        roles(fake.lines).at(-1) === "assistant",
+    );
+
+    await hosted.stop();
+
+    expect(fake.events.filter((e) => e.type === "queue")).toEqual([
+      {
+        type: "queue",
+        steering: delivery === "steer" ? ["second"] : [],
+        followUp: delivery === "followUp" ? ["second"] : [],
+      },
+      { type: "queue", steering: [], followUp: [] },
+    ]);
+
+    expect(roles(fake.lines).filter((role) => role !== "system")).toEqual([
+      ...expected,
+    ]);
+  },
+);

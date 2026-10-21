@@ -173,6 +173,11 @@ export type LiveEvent =
       readonly placement: "aboveEditor" | "belowEditor";
     }
   | { readonly type: "title"; readonly title: string }
+  | {
+      readonly type: "queue";
+      readonly steering: readonly string[];
+      readonly followUp: readonly string[];
+    }
   | { readonly type: "editor_text"; readonly text: string }
   | {
       readonly type: "explanation";
@@ -205,6 +210,7 @@ export type Command =
       readonly type: "message";
       readonly text: string;
       readonly requestId?: string;
+      readonly delivery?: "steer" | "followUp";
     }
   | { readonly type: "abort" }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }
