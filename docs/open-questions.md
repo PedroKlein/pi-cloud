@@ -65,9 +65,10 @@
 
 ### Projects and shared state
 
-- Which messages should create a new Thread versus reuse an existing one?
-- What structured report contract keeps coordinator context small?
-- Who may write Project memory, and how are concurrent updates versioned or reviewed?
+- Resolved for v1: a Project has one coordinator and thread Sessions, each with its own Workspace holding every Project repository; Project tools are built into the session host ([ADR 0015](adr/0015-projects.md)).
+- Which messages should create a new Thread versus reuse an existing one? The coordinator decides; there is no rule yet.
+- Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, without starting a turn, and threads message the coordinator explicitly ([ADR 0015](adr/0015-projects.md)).
+- Resolved for v1: any Project Session may write Project memory; the last write wins, and every write is logged ([ADR 0015](adr/0015-projects.md)).
 - Are Library artifacts immutable publications, versioned files, or a writable shared space?
 - How are overlapping repository or file claims detected before work begins?
 
@@ -92,7 +93,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Environments
 
-- Is an Environment tied to one Runtime Provider, or can equivalent providers serve one Environment pool?
+- Can equivalent providers serve one Environment pool? In v1 an Environment has exactly one provider ([ADR 0014](adr/0014-concept-map-and-environments.md)).
 - How are Environment revisions built and cached?
 - Do initial Kubernetes Environments use immutable OCI images, setup volumes, or both?
 - Which network-policy claims can be strongly enforced on each provider?

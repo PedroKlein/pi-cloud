@@ -24,11 +24,15 @@ An adapter that supplies execution capacity. Expected provider types include a l
 
 A versioned execution definition served by compatible Runtime Providers. It may define a runtime image or host profile, setup, networking, variables, secret policy, resources, isolation, capacity, and Workspace driver.
 
-Sessions target an Environment, not a specific machine or pod. Whether one Environment binds to one Provider or forms a pool across equivalent Providers remains open.
+Sessions target an Environment, not a specific machine or pod. In v1 an Environment has exactly one Provider ([ADR 0014](adr/0014-concept-map-and-environments.md)). Whether it can later form a pool across equivalent Providers remains open.
 
 ### Runtime
 
 A live realization of an Environment capable of hosting one or more sessions. Depending on Environment policy, a Runtime may be a local process host, a shared runner pod, a dedicated session pod, or a bounded Job.
+
+### Repository
+
+A Git repository a Session works on, identified by its clone URL. A Session may have several, checked out side by side in its Workspace ([ADR 0015](adr/0015-projects.md)).
 
 ### Workspace
 
@@ -38,17 +42,19 @@ The durable filesystem and repository state owned by a session. A Workspace may 
 
 One full Pi conversation with its own transcript, context, model state, Profile revision, Environment revision, Workspace, active attempt, and lifecycle. A Session may be independent or related to a Project.
 
+The Session is where the other concepts meet. Project, Repository, Environment and Profile are peers that a Session points at; none contains another ([ADR 0014](adr/0014-concept-map-and-environments.md)).
+
 ### Attempt
 
 One Runtime assignment for a Session. A replacement Runtime creates a new attempt. This records interruptions honestly and provides fencing against two Runtimes executing the same Session after a network partition.
 
 ### Project
 
-A long-running goal with one coordinator Session, zero or more thread Sessions, shared instructions, controlled memory, artifacts, repository context, and lifecycle status. The coordinator is model-driven and interprets the goal; it is not the deterministic Control Plane.
+A long-running goal with one coordinator Session, zero or more thread Sessions, shared instructions, memory, one or more repositories, and a default Environment ([ADR 0015](adr/0015-projects.md)). The coordinator is model-driven and interprets the goal; it is not the deterministic Control Plane.
 
 ### Thread
 
-A full Session attached to a Project to own one area of work. A Thread can run its own subagents and workflows. Its detailed transcript stays in the Thread; it sends structured progress, question, decision, completion, or failure reports to the Project.
+A full Session attached to a Project to own one area of work. A Thread can run its own subagents and workflows. Its detailed transcript stays in the Thread. The coordinator gets a short notice when the Thread finishes a turn or changes state, and the Thread can message the coordinator directly. The user can also talk to a Thread directly.
 
 ### Subagent
 
