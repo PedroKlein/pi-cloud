@@ -40,10 +40,13 @@ export function serve(options: ServeOptions): {
     sessionPlugins: enabled,
   });
 
+  const pluginsStop = new AbortController();
+
   const pluginHost = startPlugins(plugins, enabled, {
     sessions,
     events,
     store: store.plugin,
+    signal: pluginsStop.signal,
     log: options.log,
   });
 
@@ -89,6 +92,7 @@ export function serve(options: ServeOptions): {
     url: server.url,
     stop: async () => {
       agentStop.abort();
+      pluginsStop.abort();
       await agent;
       await server.stop(true);
       sessions.close();

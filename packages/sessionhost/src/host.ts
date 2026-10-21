@@ -285,9 +285,20 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Extract<Command, { type: "message" | "abort" }>,
+  command: Extract<Command, { type: "message" | "abort" | "context" }>,
 ): Promise<void> {
   switch (command.type) {
+    case "context":
+      await session.sendCustomMessage(
+        {
+          customType: "pi-cloud-context",
+          content: command.text,
+          display: true,
+        },
+        { triggerTurn: false },
+      );
+
+      return;
     case "message":
       await session.prompt(command.text, {
         streamingBehavior: command.delivery ?? "steer",

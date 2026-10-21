@@ -292,6 +292,8 @@ export type Command = { readonly actor: Actor } & (
       readonly delivery?: "steer" | "followUp";
     }
   | { readonly type: "abort" }
+  // Context for the model's next turn that doesn't start one.
+  | { readonly type: "context"; readonly text: string }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }
   | {
       readonly type: "tool_result";

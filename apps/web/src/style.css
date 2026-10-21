@@ -389,3 +389,13 @@ form#prompt textarea {
   margin: 0.25rem 0;
   font-size: 0.8rem;
 }
+
+#plugin-page textarea {
+  display: block;
+  width: 100%;
+  min-height: 4rem;
+}
+
+#plugin-page tr.needs-you {
+  font-weight: bold;
+}

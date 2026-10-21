@@ -64,16 +64,23 @@ export interface PluginStore {
 }
 
 export interface ServerPluginContext {
+  // The user this installation belongs to. v1 has exactly one.
+  readonly owner: string;
   readonly tools: { readonly register: (tool: ServerTool) => void };
   readonly events: EventBus;
   readonly sessions: {
     readonly start: (request: StartRequest) => Session;
     readonly get: (id: string) => Session | undefined;
+    // Starts a turn, or queues as a follow-up when the Session is busy.
     readonly send: (id: string, text: string, actor: Actor) => void;
+    // Adds context the Session reads on its next turn, without starting one.
+    readonly notify: (id: string, text: string, actor: Actor) => void;
     readonly transcript: (id: string) => readonly string[];
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly store: PluginStore;
+  // Aborted when the server stops.
+  readonly signal: AbortSignal;
   readonly log: (
     message: string,
     fields?: Readonly<Record<string, unknown>>,

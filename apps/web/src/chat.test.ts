@@ -63,3 +63,19 @@ test("skips entries that are not chat messages", () => {
   expect(chatItems(JSON.stringify({ type: "session", id: "s" }))).toEqual([]);
   expect(chatItems(line({ role: "system", content: "rules" }))).toEqual([]);
 });
+
+test("shows custom messages meant for display", () => {
+  const custom = (display: boolean): string =>
+    JSON.stringify({
+      type: "custom_message",
+      customType: "note",
+      content: "thread finished",
+      display,
+    });
+
+  expect(chatItems(custom(true))).toEqual([
+    { role: "tool", text: "thread finished" },
+  ]);
+
+  expect(chatItems(custom(false))).toEqual([]);
+});

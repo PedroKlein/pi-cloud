@@ -25,6 +25,7 @@
         "@pi-cloud/ask": "workspace:*",
         "@pi-cloud/changes": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
         "@pi-cloud/providers": "workspace:*",
         "@pi-cloud/sessionhost": "workspace:*",
@@ -42,6 +43,7 @@
       "dependencies": {
         "@pi-cloud/changes": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
         "@pi-cloud/usage": "workspace:*",
         "@xterm/addon-fit": "0.11.0",
@@ -104,6 +106,13 @@
       "name": "@pi-cloud/changes",
       "dependencies": {
         "@pi-cloud/plugins": "workspace:*",
+      },
+    },
+    "plugins/projects": {
+      "name": "@pi-cloud/projects",
+      "dependencies": {
+        "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/protocol": "workspace:*",
       },
     },
     "plugins/usage": {
@@ -215,6 +224,8 @@
     "@pi-cloud/pi-cloud": ["@pi-cloud/pi-cloud@workspace:apps/pi-cloud"],
 
     "@pi-cloud/plugins": ["@pi-cloud/plugins@workspace:packages/plugins"],
+
+    "@pi-cloud/projects": ["@pi-cloud/projects@workspace:plugins/projects"],
 
     "@pi-cloud/protocol": ["@pi-cloud/protocol@workspace:packages/protocol"],
 
