@@ -205,7 +205,7 @@ export function renderQuestions(
     return found;
   };
 
-  const box = el("li", { className: "questions" });
+  const box = el("section", { className: "questions" });
   box.dataset["role"] = "prompt";
   const tabs = el("nav", { className: "tabs" });
   const body = el("div", { className: "question" });

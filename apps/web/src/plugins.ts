@@ -111,19 +111,14 @@ export function mountSession(
   };
 }
 
-export function renderNav(nav: HTMLElement): void {
-  nav.replaceChildren(
-    ...enabled.flatMap(({ name, nav: entry }) => {
-      if (!entry) {
-        return [];
-      }
+export interface NavEntry {
+  readonly name: string;
+  readonly label: string;
+}
 
-      const link = document.createElement("a");
-      link.href = `#plugin/${name}`;
-      link.textContent = entry.label;
-
-      return [link];
-    }),
+export function navEntries(): readonly NavEntry[] {
+  return enabled.flatMap(({ name, nav }) =>
+    nav ? [{ name, label: nav.label }] : [],
   );
 }
 

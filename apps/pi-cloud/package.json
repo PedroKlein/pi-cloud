@@ -7,7 +7,7 @@
     "pi-cloud": "./src/main.ts"
   },
   "scripts": {
-    "build": "bun build --compile --root . src/main.ts src/extensions/codemode/worker.ts --outfile dist/pi-cloud",
+    "build": "bun src/build.ts",
     "dev": "bun src/dev.ts",
     "smoke": "bun src/smoke.ts"
   },

@@ -60,6 +60,7 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   faux.setResponses([fauxAssistantMessage([fauxText("hello from faux pi")])]);
   await page.goto(server.url.href);
 
+  await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
   await form
@@ -68,7 +69,7 @@ test("chats with a session, replays it after a reload and opens its terminal", a
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
-  await form.getByRole("button", { name: "New session" }).click();
+  await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
   await page.locator("#prompt-text").fill("hi");
@@ -97,6 +98,7 @@ test("chats with a session, replays it after a reload and opens its terminal", a
 test("archives a session, shows it only with archived sessions and unarchives it", async () => {
   await page.goto(server.url.href);
 
+  await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
   await form
@@ -105,7 +107,7 @@ test("archives a session, shows it only with archived sessions and unarchives it
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
-  await form.getByRole("button", { name: "New session" }).click();
+  await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   const id = new URL(page.url()).hash.slice(1);
   const item = page.locator(`#sessions li[data-id="${id}"]`);
@@ -140,6 +142,7 @@ test("shows the session's changes and usage from their plugins", async () => {
 
   await page.goto(server.url.href);
 
+  await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
   await form
@@ -148,7 +151,7 @@ test("shows the session's changes and usage from their plugins", async () => {
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
-  await form.getByRole("button", { name: "New session" }).click();
+  await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
   await page.locator("#prompt-text").fill("write notes");

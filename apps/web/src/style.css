@@ -1,406 +1,360 @@
+@import "tailwindcss";
+@import "@pi-cloud/ui/theme.css";
 @import "@xterm/xterm/css/xterm.css";
 
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-}
+@source "../../../packages/ui/web";
+@source "../../../plugins/*/web";
 
-body {
-  margin: 0;
-  display: flex;
-  height: 100vh;
-}
+@layer base {
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
 
-aside {
-  width: 18rem;
-  padding: 1rem;
-  border-right: 1px solid #8884;
-  overflow-y: auto;
-}
-
-h1 {
-  font-size: 1.2rem;
-  margin: 0 0 1rem;
-}
-
-form#create {
-  display: grid;
-  gap: 0.5rem;
-}
-
-#sessions {
-  list-style: none;
-  padding: 0;
-}
-
-#sessions li {
-  padding: 0.5rem;
-  cursor: pointer;
-  border-radius: 0.25rem;
-}
-
-#sessions li[aria-current="true"] {
-  background: #8883;
-}
-
-#sessions small {
-  display: block;
-  opacity: 0.7;
-}
-
-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-main[hidden],
-form#prompt[hidden] {
-  display: none;
-}
-
-header {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #8884;
-}
-
-#title {
-  flex: 1;
-  font-family: ui-monospace, monospace;
-}
-
-#chat {
-  flex: 1;
-  overflow-y: auto;
-  list-style: none;
-  margin: 0;
-  padding: 1rem;
-}
-
-#chat li {
-  margin-bottom: 0.75rem;
-  white-space: pre-wrap;
-}
-
-#chat li[data-role="user"] {
-  font-weight: 600;
-}
-
-#chat li[data-role="tool"] {
-  font-family: ui-monospace, monospace;
-  font-size: 0.85rem;
-  opacity: 0.75;
-}
-
-#chat li[data-role="prompt"] {
-  border: 1px solid #8888;
-  border-radius: 0.25rem;
-  padding: 0.75rem;
-  white-space: normal;
-}
-
-#chat li[data-role="prompt"] textarea {
-  display: block;
-  width: 100%;
-  margin: 0.5rem 0;
-  font: inherit;
-}
-
-#chat li[data-role="prompt"]:not(.questions) > div {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-#chat li[data-role="error"] {
-  color: #d33;
-}
-
-#terminal {
-  height: 40vh;
-  border-top: 1px solid #8884;
-}
-
-form#prompt {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-top: 1px solid #8884;
-}
-
-form#prompt textarea {
-  flex: 1;
-  font: inherit;
-}
-
-.widgets:empty,
-#extension-status:empty {
-  display: none;
-}
-
-.widgets {
-  padding: 0.25rem 1rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.85rem;
-  white-space: pre-wrap;
-  border-top: 1px solid #8884;
-}
-
-#extension-status {
-  padding: 0.25rem 1rem;
-  font-size: 0.8rem;
-  opacity: 0.75;
-  border-top: 1px solid #8884;
-}
-
-#chat li.questions {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.questions .tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.questions button {
-  font: inherit;
-  cursor: pointer;
-}
-
-.questions .tab {
-  border: 1px solid #8886;
-  background: none;
-  border-radius: 1rem;
-  padding: 0.2rem 0.75rem;
-}
-
-.questions .tab.current {
-  background: #8883;
-  font-weight: 600;
-}
-
-.questions h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.questions .context,
-.questions .hint {
-  margin: 0;
-  opacity: 0.75;
-}
-
-.questions .split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-}
-
-@media (width < 700px) {
-  .questions .split {
-    grid-template-columns: minmax(0, 1fr);
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 }
 
-.questions .options {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.35rem;
-}
+/*
+ * Parts still built with DOM code: prompt forms and plugin web parts.
+ * They move to React components one at a time (ADR 0020), and these rules go with them.
+ */
+@layer components {
+  .legacy {
+    font-size: var(--text-ui);
+    line-height: var(--text-ui--line-height);
 
-.questions .options li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid #8884;
-  border-radius: 0.35rem;
-  padding: 0.35rem 0.5rem;
-}
+    & h2,
+    & h3 {
+      margin: 0 0 calc(var(--spacing) * 2);
+      font-size: var(--text-title);
+      line-height: var(--text-title--line-height);
+      font-weight: 600;
+      color: var(--text-strong);
+    }
 
-.questions .options li.chosen {
-  border-color: #48f;
-  background: #48f2;
-}
+    & h4 {
+      font-weight: 500;
+    }
 
-.questions .options .choice {
-  flex: 1;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 0.2rem 0;
-}
+    & p {
+      margin: 0 0 calc(var(--spacing) * 2);
+    }
 
-.questions .options input,
-.questions .annotation {
-  flex: 1 1 100%;
-  font: inherit;
-}
+    & a {
+      color: var(--accent);
+      text-underline-offset: 3px;
+    }
 
-.questions .rank li {
-  cursor: grab;
-}
+    & a:hover {
+      text-decoration: underline;
+    }
 
-.questions .rank .grip {
-  opacity: 0.5;
-}
+    & button {
+      height: var(--spacing-control);
+      padding: 0 calc(var(--spacing) * 3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      color: var(--text);
+      font-weight: 500;
+      cursor: pointer;
+    }
 
-.questions .rank .annotation {
-  flex-basis: 100%;
-}
+    & button:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
 
-.questions .detail {
-  border-left: 3px solid #8884;
-  padding-left: 0.75rem;
-  display: grid;
-  gap: 0.5rem;
-  align-content: start;
-}
+    &
+      input:not(
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="file"]
+      ),
+    & select,
+    & textarea {
+      width: 100%;
+      padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--bg);
+      color: var(--text);
+    }
 
-.questions .detail h4,
-.questions .detail p {
-  margin: 0;
-}
+    & input:focus,
+    & select:focus,
+    & textarea:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
 
-.questions .star {
-  color: #c90;
-  font-weight: 600;
-}
+    & form {
+      display: grid;
+      gap: calc(var(--spacing) * 2);
+      margin-bottom: calc(var(--spacing) * 4);
+    }
 
-.questions .explanation {
-  background: #8882;
-  border-radius: 0.35rem;
-  padding: 0.5rem;
-}
+    & table {
+      width: 100%;
+      border-collapse: collapse;
+    }
 
-.questions .explanation p {
-  white-space: pre-wrap;
-}
+    & th {
+      text-align: left;
+      font-size: var(--text-label);
+      font-weight: 500;
+      color: var(--text-dim);
+    }
 
-.questions .ask {
-  display: flex;
-  gap: 0.35rem;
-}
+    & th,
+    & td {
+      padding: calc(var(--spacing) * 2);
+      border-bottom: 1px solid var(--border);
+    }
 
-.questions .ask input {
-  flex: 1;
-  font: inherit;
-}
+    & tr.needs-you td {
+      color: var(--status-waiting);
+      font-weight: 500;
+    }
 
-.questions .scale,
-.questions .number {
-  display: grid;
-  gap: 0.5rem;
-  align-content: start;
-}
+    & pre {
+      max-height: 40vh;
+      overflow: auto;
+      padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+      border-radius: var(--radius-md);
+      background: var(--bg-code);
+      font-family: var(--font-mono);
+      font-size: var(--text-code-sm);
+      line-height: var(--text-code-sm--line-height);
+    }
 
-.questions input[type="range"] {
-  width: 100%;
-}
+    & summary {
+      cursor: pointer;
+      color: var(--text-dim);
+    }
 
-.questions .ticks {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.25rem;
-}
+    & ul {
+      display: grid;
+      gap: var(--spacing);
+    }
+  }
 
-.questions .tick {
-  border: none;
-  background: none;
-  font-size: 0.85rem;
-  opacity: 0.7;
-  padding: 0;
-}
+  .prompt-card > section {
+    display: grid;
+    gap: calc(var(--spacing) * 3);
+    padding: calc(var(--spacing) * 4);
+    border: 1px solid var(--border-strong);
+    border-top: 3px solid var(--status-waiting);
+    border-radius: var(--radius-xl);
+    background: var(--bg-elevated);
+    white-space: normal;
 
-.questions .tick.current {
-  opacity: 1;
-  font-weight: 600;
-}
+    & > strong {
+      color: var(--status-waiting);
+      font-size: var(--text-label);
+    }
 
-.questions .number .row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+    &:not(.questions) > div {
+      display: flex;
+      flex-wrap: wrap;
+      gap: calc(var(--spacing) * 2);
+    }
+  }
 
-.questions .number input[type="number"] {
-  width: 6rem;
-  font: inherit;
-}
+  .questions {
+    & .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing);
+    }
 
-.questions .review {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.35rem 1rem;
-  margin: 0;
-}
+    & .tab {
+      height: 28px;
+      border-radius: 999px;
+      background: transparent;
+    }
 
-.questions .review dd {
-  margin: 0;
-}
+    & .tab.current {
+      background: var(--accent-tint);
+      border-color: var(--accent);
+      color: var(--text-strong);
+    }
 
-.questions textarea {
-  width: 100%;
-  font: inherit;
-}
+    & .context,
+    & .hint {
+      margin: 0;
+      color: var(--text-dim);
+    }
 
-.questions .actions {
-  display: flex;
-  gap: 0.5rem;
-}
+    & .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: calc(var(--spacing) * 4);
+    }
 
-.questions .primary {
-  background: #48f;
-  color: white;
-  border: none;
-  border-radius: 0.25rem;
-  padding: 0.35rem 1rem;
-}
+    @media (width < 700px) {
+      & .split {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
 
-.questions .quiet {
-  background: none;
-  border: 1px solid #8886;
-  border-radius: 0.25rem;
-}
+    & .options {
+      display: grid;
+      gap: calc(var(--spacing) * 1.5);
+    }
 
-.questions .error {
-  color: #d33;
-}
+    & .options li {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: calc(var(--spacing) * 1.5);
+      padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+    }
 
-.questions .number > button {
-  justify-self: start;
-}
+    & .options li.chosen {
+      border-color: var(--accent);
+      background: var(--accent-tint);
+    }
 
-.questions .number small {
-  white-space: nowrap;
-}
+    & .options .choice {
+      flex: 1;
+      height: auto;
+      padding: calc(var(--spacing) * 0.5) 0;
+      border: none;
+      background: none;
+      text-align: left;
+    }
 
-#plugin-panels pre {
-  max-height: 40vh;
-  overflow: auto;
-  margin: 0.25rem 0;
-  font-size: 0.8rem;
-}
+    & .options input,
+    & .annotation {
+      flex: 1 1 100%;
+    }
 
-#plugin-page textarea {
-  display: block;
-  width: 100%;
-  min-height: 4rem;
-}
+    & .rank li {
+      cursor: grab;
+    }
 
-#plugin-page tr.needs-you {
-  font-weight: bold;
-}
+    & .rank .grip {
+      color: var(--text-dim);
+    }
 
-#plugin-nav {
-  display: flex;
-  gap: 0.75rem;
+    & .detail {
+      display: grid;
+      align-content: start;
+      gap: calc(var(--spacing) * 2);
+      padding-left: calc(var(--spacing) * 3);
+      border-left: 3px solid var(--border);
+    }
+
+    & .star {
+      color: var(--status-waiting);
+      font-weight: 600;
+    }
+
+    & .explanation {
+      padding: calc(var(--spacing) * 2);
+      border-radius: var(--radius-md);
+      background: var(--bg-code);
+    }
+
+    & .explanation p {
+      white-space: pre-wrap;
+    }
+
+    & .ask {
+      display: flex;
+      gap: calc(var(--spacing) * 1.5);
+    }
+
+    & .scale,
+    & .number {
+      display: grid;
+      align-content: start;
+      gap: calc(var(--spacing) * 2);
+    }
+
+    & input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    & .ticks {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--spacing);
+    }
+
+    & .tick {
+      height: auto;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--text-dim);
+      font-size: var(--text-caption);
+    }
+
+    & .tick.current {
+      color: var(--text-strong);
+      font-weight: 600;
+    }
+
+    & .number .row {
+      display: flex;
+      align-items: center;
+      gap: calc(var(--spacing) * 2);
+    }
+
+    & .number input[type="number"] {
+      width: 6rem;
+    }
+
+    & .number > button {
+      justify-self: start;
+    }
+
+    & .number small {
+      white-space: nowrap;
+    }
+
+    & .review {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: calc(var(--spacing) * 1.5) calc(var(--spacing) * 4);
+      margin: 0;
+    }
+
+    & .review dt {
+      color: var(--text-dim);
+    }
+
+    & .actions {
+      display: flex;
+      gap: calc(var(--spacing) * 2);
+    }
+
+    & .primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    & .primary:hover {
+      background: var(--accent);
+      filter: brightness(1.1);
+    }
+
+    & .quiet {
+      background: transparent;
+    }
+
+    & .error {
+      color: var(--status-failed);
+    }
+  }
 }
