@@ -24,6 +24,7 @@ The VM plays the cloud role in v1 and the laptop plays the local one. The laptop
 ### Laptop provider
 
 - A Session starts from a checkout the user already has. The agent's config lists the folders it may use, and the UI offers only those.
+  - Amended 2026-10-21: each listed folder is a root. Any folder inside a root may be used, after symlinks are resolved, so one `--folder ~/Dev` covers every checkout under it. The agent looks for git checkouts up to four levels under each root, skipping `node_modules` and hidden folders, and offers them in the UI. A Project repository becomes a worktree of whichever of those checkouts has it as a remote.
 - By default the Session gets its own Git worktree of that checkout, on its own branch, stored outside the checkout under the agent's data directory.
 - The user can instead run the Session in the folder directly. Sessions sharing a folder this way are not isolated from each other, and the UI says so.
 

@@ -5,12 +5,13 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
   checkoutName,
@@ -89,7 +90,7 @@ async function prepareCheckout(
 ): Promise<{ readonly cwd: string; readonly base: string | null }> {
   if (workspace.kind !== "clone") {
     const folder = absolute(workspace.path);
-    if (!folders.some((allowed) => absolute(allowed) === folder)) {
+    if (!(await allowed(folder, folders))) {
       throw new Error(`folder not allowed: ${workspace.path}`);
     }
 
@@ -276,7 +277,8 @@ async function removeCheckout(
 
   const present = await exists(dir);
 
-  const orphaned = workspace.kind === "worktree" && !(await exists(repository));
+  const orphaned =
+    workspace.kind === "worktree" && !(await isCheckout(repository));
 
   const hasBranch =
     !orphaned &&
@@ -369,14 +371,83 @@ async function lossOf(
   return unpushed === "" ? null : "unpushed commits";
 }
 
-// The listed folder whose remotes include repository, if any.
+// A folder is allowed when it is a listed root or inside one. Symlinks are
+// resolved first, so a link can't lead out of a root.
+async function allowed(
+  folder: string,
+  roots: readonly string[],
+): Promise<boolean> {
+  const real = await realpath(folder).catch(() => undefined);
+  if (real === undefined) {
+    return false;
+  }
+
+  for (const root of roots) {
+    const realRoot = await realpath(absolute(root)).catch(() => undefined);
+    const path = realRoot === undefined ? ".." : relative(realRoot, real);
+    if (path === "" || (path !== ".." && !path.startsWith(`..${sep}`))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+const checkoutDepth = 4;
+const skipped = new Set(["node_modules"]);
+
+// The git checkouts in and under the listed roots, a few levels deep. A
+// checkout's own subfolders aren't searched, but those of a folder whose .git
+// is a bare repository are, since its worktrees sit there.
+export async function findCheckouts(
+  roots: readonly string[],
+): Promise<string[]> {
+  const found: string[] = [];
+
+  const search = async (dir: string, depth: number): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+
+    if (
+      entries.some(({ name }) => name === ".git") &&
+      (await isCheckout(dir))
+    ) {
+      found.push(dir);
+
+      return;
+    }
+
+    if (depth === 0) {
+      return;
+    }
+
+    await Promise.all(
+      entries
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            !entry.name.startsWith(".") &&
+            !skipped.has(entry.name),
+        )
+        .map(async ({ name }) => search(join(dir, name), depth - 1)),
+    );
+  };
+
+  await Promise.all(
+    roots.map(async (root) => search(absolute(root), checkoutDepth)),
+  );
+
+  return [...new Set(found)].sort();
+}
+
+// The checkout under the listed roots whose remotes include repository, if
+// any.
 async function folderOf(
   repository: string,
   folders: readonly string[],
 ): Promise<string | undefined> {
   const wanted = repositoryKey(repository);
 
-  for (const folder of folders) {
+  for (const folder of await findCheckouts(folders)) {
     const urls = await git(
       absolute(folder),
       "config",
@@ -649,6 +720,13 @@ function absolute(path: string): string {
     path === "~" || path.startsWith("~/")
       ? join(homedir(), path.slice(1))
       : path,
+  );
+}
+
+async function isCheckout(path: string): Promise<boolean> {
+  return git(path, "rev-parse", "--is-inside-work-tree").then(
+    (inside) => inside === "true",
+    () => false,
   );
 }
 

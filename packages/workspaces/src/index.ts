@@ -1,4 +1,5 @@
 export {
+  findCheckouts,
   type PreparedWorkspace,
   prepareWorkspace,
   removeWorkspace,
