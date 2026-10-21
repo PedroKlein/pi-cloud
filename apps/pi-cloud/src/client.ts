@@ -22,6 +22,7 @@ import { readSse } from "./sse";
 
 const reconnectMs = { initial: 500, max: 20_000 };
 const pollTimeoutMs = 30_000;
+const requestTimeoutMs = 30_000;
 
 class HttpError extends Error {
   readonly status: number;
@@ -84,6 +85,7 @@ export async function reportStartFailure(
   await call(agent, `/agent/sessions/${sessionId}/failed`, {
     method: "POST",
     body: failure,
+    signal: AbortSignal.timeout(requestTimeoutMs),
   });
 }
 
@@ -98,7 +100,11 @@ export function httpSessionStream(
 
   const post = async (path: string, body: unknown): Promise<Response> => {
     try {
-      return await call(agent, `${base}/${path}`, { method: "POST", body });
+      return await call(agent, `${base}/${path}`, {
+        method: "POST",
+        body,
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
     } catch (error) {
       if (rejected(error)) {
         fenced();
