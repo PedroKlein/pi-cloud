@@ -5,7 +5,12 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionPlugin } from "@pi-cloud/plugins";
-import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
+import type {
+  Command,
+  LiveEvent,
+  SlashCommand,
+  ToolSpec,
+} from "@pi-cloud/protocol";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
@@ -61,6 +66,7 @@ const resent: readonly LiveEvent["type"][] = [
   "extension_status",
   "widget",
   "title",
+  "commands",
   "queue",
   "plugin",
 ];
@@ -213,6 +219,7 @@ export async function hostSession(
   });
 
   live.push({ type: "status", status: "idle" });
+  live.push({ type: "commands", commands: slashCommands(session) });
   transcript.sync();
 
   const firstMessage = options.firstMessage ?? null;
@@ -324,6 +331,31 @@ async function run(
 
       return;
   }
+}
+
+// The same list Pi's RPC mode answers get_commands with.
+function slashCommands(session: AgentSession): readonly SlashCommand[] {
+  return [
+    ...session.extensionRunner
+      .getRegisteredCommands()
+      .map(({ invocationName, description }): SlashCommand => ({
+        name: invocationName,
+        description: description ?? null,
+        source: "extension",
+      })),
+    ...session.promptTemplates.map(({ name, description }): SlashCommand => ({
+      name,
+      description,
+      source: "prompt",
+    })),
+    ...session.resourceLoader
+      .getSkills()
+      .skills.map(({ name, description }): SlashCommand => ({
+        name: `skill:${name}`,
+        description,
+        source: "skill",
+      })),
+  ];
 }
 
 function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {

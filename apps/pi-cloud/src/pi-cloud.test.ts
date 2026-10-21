@@ -294,6 +294,37 @@ test("delivers a retried message once and a new one with the same text", async (
   expect(userTexts(events)).toEqual(["one", "one", "two"]);
 });
 
+test("lists the slash commands Pi knows, also for a browser that joins later", async () => {
+  await mkdir(join(root, ".pi", "prompts"), { recursive: true });
+
+  await writeFile(
+    join(root, ".pi", "prompts", "review.md"),
+    "---\ndescription: Review the diff\n---\nReview the current diff.\n",
+  );
+
+  const session = await createSession("laptop");
+
+  const hasCommands = (events: readonly SessionEvent[]): boolean =>
+    events.some(
+      (event) => event.type === "live" && event.event.type === "commands",
+    );
+
+  await follow(session.id, hasCommands);
+  const replay = await follow(session.id, hasCommands);
+
+  const commands = replay.flatMap((event) =>
+    event.type === "live" && event.event.type === "commands"
+      ? event.event.commands
+      : [],
+  );
+
+  expect(commands).toContainEqual({
+    name: "review",
+    description: "Review the diff",
+    source: "prompt",
+  });
+});
+
 // A 1×1 transparent PNG.
 const pixel =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";

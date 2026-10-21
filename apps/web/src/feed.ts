@@ -3,6 +3,7 @@ import type {
   Prompt,
   Session,
   SessionEvent,
+  SlashCommand,
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 
@@ -34,6 +35,7 @@ export interface Feed {
     readonly followUp: readonly string[];
   };
   readonly editorText: { readonly text: string } | undefined;
+  readonly commands: readonly SlashCommand[];
 }
 
 export const emptyFeed: Feed = {
@@ -49,6 +51,7 @@ export const emptyFeed: Feed = {
   widgetsBelow: "",
   queue: { steering: [], followUp: [] },
   editorText: undefined,
+  commands: [],
 };
 
 export interface FollowOptions {
@@ -198,6 +201,10 @@ export function follow(
         return;
       case "title":
         update({ title: event.title });
+
+        return;
+      case "commands":
+        update({ commands: event.commands });
 
         return;
       case "editor_text":
