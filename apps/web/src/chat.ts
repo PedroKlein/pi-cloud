@@ -101,6 +101,7 @@ export function chatItems(line: string): readonly ChatItem[] {
 }
 
 const verbs: Readonly<Record<string, string>> = {
+  ask_user: "Asked",
   bash: "Ran",
   edit: "Edited",
   find: "Found",

@@ -1,9 +1,19 @@
-import type { LiveEvent, Session, SessionEvent } from "@pi-cloud/protocol";
-import { command } from "./api";
+import type {
+  LiveEvent,
+  Prompt,
+  Session,
+  SessionEvent,
+} from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
-import { renderPrompt, type RenderedPrompt } from "./prompt";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
+export type Explanation = Extract<LiveEvent, { type: "explanation" }>;
+
+// A question the agent is waiting on, and the explanations asked about it.
+export interface OpenPrompt {
+  readonly prompt: Prompt;
+  readonly explanations: readonly Explanation[];
+}
 
 export type FeedItem = ChatItem & { readonly key: number };
 
@@ -15,10 +25,7 @@ export interface Feed {
   readonly items: readonly FeedItem[];
   readonly streaming: string | undefined;
   readonly tools: readonly { readonly id: string; readonly name: string }[];
-  readonly prompts: readonly {
-    readonly id: string;
-    readonly element: HTMLElement;
-  }[];
+  readonly prompts: readonly OpenPrompt[];
   readonly statuses: readonly string[];
   readonly widgetsAbove: string;
   readonly widgetsBelow: string;
@@ -57,7 +64,10 @@ export function follow(
   let feed = emptyFeed;
   let lines = 0;
   let nextKey = 0;
-  const prompts = new Map<string, RenderedPrompt>();
+
+  // Live text can arrive after the entry that already holds it; that text
+  // is skipped instead of shown twice.
+  let echo = "";
   const statuses = new Map<string, string>();
   const widgets = new Map<string, Widget>();
 
@@ -93,22 +103,29 @@ export function follow(
     };
   };
 
-  const shownPrompts = (): Feed["prompts"] =>
-    [...prompts].map(([id, { element }]) => ({ id, element }));
-
   const live = (event: LiveEvent): void => {
     switch (event.type) {
       case "status":
+        echo = "";
         if (event.status === "idle") {
           update({ streaming: undefined, tools: [] });
         }
 
         return;
       case "text":
+        if (feed.streaming === undefined && echo.startsWith(event.delta)) {
+          echo = echo.slice(event.delta.length);
+
+          return;
+        }
+
+        echo = "";
         update({ streaming: (feed.streaming ?? "") + event.delta });
 
         return;
       case "tool_start":
+        echo = "";
+
         update({
           tools: [
             ...feed.tools,
@@ -118,48 +135,38 @@ export function follow(
 
         return;
       case "tool_end":
+        echo = "";
+
         update({
           tools: feed.tools.filter(({ id }) => id !== event.toolCallId),
         });
 
         return;
-      case "prompt": {
-        const { id } = event.prompt;
-        if (prompts.has(id)) {
-          return;
+      case "prompt":
+        if (!feed.prompts.some(({ prompt }) => prompt.id === event.prompt.id)) {
+          update({
+            prompts: [
+              ...feed.prompts,
+              { prompt: event.prompt, explanations: [] },
+            ],
+          });
         }
 
-        prompts.set(
-          id,
-          renderPrompt(
-            event.prompt,
-            (value) => {
-              command(sessionId, { type: "answer", id, value }).catch(report);
-            },
-            (questionId, value, question) => {
-              command(sessionId, {
-                type: "explain",
-                id,
-                questionId,
-                value,
-                question,
-              }).catch(report);
-            },
-          ),
-        );
-
-        update({ prompts: shownPrompts() });
-
         return;
-      }
-
       case "prompt_end":
-        prompts.delete(event.id);
-        update({ prompts: shownPrompts() });
+        update({
+          prompts: feed.prompts.filter(({ prompt }) => prompt.id !== event.id),
+        });
 
         return;
       case "explanation":
-        prompts.get(event.id)?.explained(event);
+        update({
+          prompts: feed.prompts.map((open) =>
+            open.prompt.id === event.id
+              ? { ...open, explanations: [...open.explanations, event] }
+              : open,
+          ),
+        });
 
         return;
       case "notify":
@@ -219,7 +226,6 @@ export function follow(
   });
 
   events.addEventListener("open", () => {
-    prompts.clear();
     statuses.clear();
     widgets.clear();
     update({ ...surfaces(), prompts: [], queue: emptyFeed.queue });
@@ -234,16 +240,24 @@ export function follow(
         onSession(event.session);
 
         return;
-      case "entry":
+      case "entry": {
         if (event.line < lines) {
           return;
         }
 
         lines = event.line + 1;
+        const items = chatItems(event.entry);
+
+        echo = items
+          .flatMap((item) => (item.role === "assistant" ? [item.text] : []))
+          .join("");
+
         update({ streaming: undefined, tools: [] });
-        add(...chatItems(event.entry));
+        add(...items);
 
         return;
+      }
+
       case "live":
         live(event.event);
 

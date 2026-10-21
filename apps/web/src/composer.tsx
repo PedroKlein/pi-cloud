@@ -1,8 +1,8 @@
 import { Button, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useEffect, useRef } from "react";
 import { command } from "./api";
-import { DomNode } from "./dom-node";
 import type { Feed } from "./feed";
+import { PromptCard, type PromptHandlers } from "./prompt-card";
 
 export function Composer({
   sessionId,
@@ -26,6 +26,21 @@ export function Composer({
     }
   }, [feed.editorText]);
 
+  const handlers: PromptHandlers = {
+    answer: (id, value) => {
+      command(sessionId, { type: "answer", id, value }).catch(report);
+    },
+    explain: (id, questionId, value, question) => {
+      command(sessionId, {
+        type: "explain",
+        id,
+        questionId,
+        value,
+        question,
+      }).catch(report);
+    },
+  };
+
   const send = (delivery: "steer" | "followUp"): void => {
     const box = text.current;
     const message = box?.value.trim() ?? "";
@@ -45,8 +60,8 @@ export function Composer({
 
   return (
     <div className="mx-auto flex w-full max-w-chat flex-col gap-2 px-4 pb-4">
-      {feed.prompts.map(({ id, element }) => (
-        <DomNode key={id} node={element} className="legacy prompt-card" />
+      {feed.prompts.map((open) => (
+        <PromptCard key={open.prompt.id} open={open} handlers={handlers} />
       ))}
 
       {[
