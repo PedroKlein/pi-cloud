@@ -5,6 +5,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
   symlink,
@@ -122,6 +123,14 @@ test("finds the checkouts under a root", async () => {
   expect(await findCheckouts([root])).toEqual([nested, repository]);
 });
 
+test("finds the worktrees of a bare repository kept in a folder's .git", async () => {
+  const container = join(root, "tools");
+  await run("git", ["clone", "--bare", repository, join(container, ".git")]);
+  await git(container, "worktree", "add", join(container, "main"), "main");
+
+  expect(await findCheckouts([container])).toEqual([join(container, "main")]);
+});
+
 test("makes a Project repository a worktree of a checkout under a root", async () => {
   const dir = join(root, "workspaces", "s1");
 
@@ -147,7 +156,7 @@ test("makes a Project repository a worktree of a checkout under a root", async (
 
   expect(
     await git(checkouts[0]?.path ?? "", "rev-parse", "--git-common-dir"),
-  ).toBe(join(repository, ".git"));
+  ).toBe(join(await realpath(repository), ".git"));
 });
 
 test("matches listed folders after expanding ~ and trailing slashes", async () => {
@@ -224,6 +233,17 @@ test("fails a worktree of a folder that is not a checkout", async () => {
 
   await prepared.catch(() => undefined);
   expect(stat(dir)).rejects.toThrow();
+
+  expect(
+    await removeWorkspace(
+      { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
+      { dir, force: false },
+      noLog,
+    ),
+  ).toEqual({
+    outcome: "removed",
+    restore: { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
+  });
 });
 
 test("clones the repository onto the session's own branch", async () => {

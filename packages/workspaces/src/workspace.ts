@@ -277,7 +277,8 @@ async function removeCheckout(
 
   const present = await exists(dir);
 
-  const orphaned = workspace.kind === "worktree" && !(await exists(repository));
+  const orphaned =
+    workspace.kind === "worktree" && !(await isCheckout(repository));
 
   const hasBranch =
     !orphaned &&
@@ -396,7 +397,8 @@ const checkoutDepth = 4;
 const skipped = new Set(["node_modules"]);
 
 // The git checkouts in and under the listed roots, a few levels deep. A
-// checkout's own subfolders aren't searched.
+// checkout's own subfolders aren't searched, but those of a folder whose .git
+// is a bare repository are, since its worktrees sit there.
 export async function findCheckouts(
   roots: readonly string[],
 ): Promise<string[]> {
@@ -405,7 +407,10 @@ export async function findCheckouts(
   const search = async (dir: string, depth: number): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
 
-    if (entries.some(({ name }) => name === ".git")) {
+    if (
+      entries.some(({ name }) => name === ".git") &&
+      (await isCheckout(dir))
+    ) {
       found.push(dir);
 
       return;
@@ -715,6 +720,13 @@ function absolute(path: string): string {
     path === "~" || path.startsWith("~/")
       ? join(homedir(), path.slice(1))
       : path,
+  );
+}
+
+async function isCheckout(path: string): Promise<boolean> {
+  return git(path, "rev-parse", "--is-inside-work-tree").then(
+    (inside) => inside === "true",
+    () => false,
   );
 }
 
