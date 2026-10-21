@@ -50,6 +50,7 @@
 ### Profiles and personalization
 
 - Which Pi configuration belongs in a Profile versus an Environment or project checkout?
+- Resolved for model aliases: alias config and backend health live on the server per Environment, through a `models` plugin around pi-gateway ([ADR 0019](adr/0019-model-aliases.md)).
 - How are credentials excluded from portable Profile data?
 - How are required packages distinguished from optional packages?
 - When a Profile revision changes, do existing Sessions stay pinned, reload, or migrate?
