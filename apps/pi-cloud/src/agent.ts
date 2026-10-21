@@ -8,7 +8,11 @@ import {
   listModels,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
-import { prepareWorkspace, removeWorkspace } from "@pi-cloud/workspaces";
+import {
+  findCheckouts,
+  prepareWorkspace,
+  removeWorkspace,
+} from "@pi-cloud/workspaces";
 import {
   httpControlPlane,
   httpSessionStream,
@@ -195,11 +199,15 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
   log("models listed", { count: models.length });
 
+  // The roots and the checkouts found under them, for the UI to suggest.
+  const checkouts = await findCheckouts(options.folders);
+  log("checkouts found", { count: checkouts.length });
+
   await runProvider({
     controlPlane: httpControlPlane(agent),
     log,
     signal: options.signal,
-    folders: options.folders,
+    folders: [...new Set([...options.folders, ...checkouts])],
     models,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({

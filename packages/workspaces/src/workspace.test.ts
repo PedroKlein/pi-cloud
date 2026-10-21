@@ -7,12 +7,13 @@ import {
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { prepareWorkspace, removeWorkspace } from "./workspace";
+import { findCheckouts, prepareWorkspace, removeWorkspace } from "./workspace";
 
 const run = promisify(execFile);
 
@@ -82,6 +83,71 @@ test("refuses folders the provider does not list", async () => {
   }
 
   expect(stat(dir)).rejects.toThrow();
+});
+
+test("allows any folder inside a listed root", async () => {
+  const nested = join(repository, "docs");
+  await mkdir(nested);
+
+  const { cwd } = await prepareWorkspace(
+    { kind: "folder", path: nested },
+    { dir: join(root, "unused"), folders: [root] },
+    noLog,
+  );
+
+  expect(cwd).toBe(nested);
+});
+
+test("refuses a symlink inside a root that leads out of it", async () => {
+  const allowedRoot = join(root, "allowed");
+  await mkdir(allowedRoot);
+  await symlink(repository, join(allowedRoot, "escape"));
+
+  const prepared = prepareWorkspace(
+    { kind: "folder", path: join(allowedRoot, "escape") },
+    { dir: join(root, "unused"), folders: [allowedRoot] },
+    noLog,
+  );
+
+  expect(prepared).rejects.toThrow("folder not allowed");
+  await prepared.catch(() => undefined);
+});
+
+test("finds the checkouts under a root", async () => {
+  const nested = join(root, "github.com", "org", "app");
+  await mkdir(join(nested, "node_modules", "dep"), { recursive: true });
+  await run("git", ["init", nested]);
+  await run("git", ["init", join(nested, "node_modules", "dep")]);
+
+  expect(await findCheckouts([root])).toEqual([nested, repository]);
+});
+
+test("makes a Project repository a worktree of a checkout under a root", async () => {
+  const dir = join(root, "workspaces", "s1");
+
+  await git(
+    repository,
+    "remote",
+    "add",
+    "origin",
+    "https://example.com/org/origin",
+  );
+
+  const { checkouts } = await prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: "https://example.com/org/origin" }],
+    },
+    { dir, folders: [root] },
+    noLog,
+  );
+
+  expect(checkouts).toHaveLength(1);
+
+  expect(
+    await git(checkouts[0]?.path ?? "", "rev-parse", "--git-common-dir"),
+  ).toBe(join(repository, ".git"));
 });
 
 test("matches listed folders after expanding ~ and trailing slashes", async () => {
