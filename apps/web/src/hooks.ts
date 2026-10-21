@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { api } from "./api";
+import { noticeText, settled } from "./notices";
 
 const refreshMs = 2000;
 
@@ -69,4 +76,38 @@ export function useNow(everyMs = 30_000): number {
   }, [everyMs]);
 
   return now;
+}
+
+// Tells the browser when a session stops working, unless it is on screen.
+export function useSettledNotices(
+  sessions: readonly Session[],
+  route: string,
+): void {
+  const previous = useRef<readonly Session[]>([]);
+
+  useEffect(() => {
+    const done = settled(previous.current, sessions);
+    previous.current = sessions;
+
+    if (
+      typeof Notification === "undefined" ||
+      Notification.permission !== "granted"
+    ) {
+      return;
+    }
+
+    for (const session of done) {
+      if (session.id === route && document.visibilityState === "visible") {
+        continue;
+      }
+
+      const notice = new Notification(noticeText(session), { tag: session.id });
+
+      notice.addEventListener("click", () => {
+        window.focus();
+        location.hash = session.id;
+        notice.close();
+      });
+    }
+  }, [sessions, route]);
 }
