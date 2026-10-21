@@ -1,4 +1,7 @@
-import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionFactory,
+  ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
 import type { EventBus } from "./events";
 import type {
   Actor,
@@ -109,5 +112,7 @@ export interface SessionCloud {
 
 export interface SessionPlugin {
   readonly name: string;
-  readonly extension: (cloud: SessionCloud) => ExtensionFactory;
+  readonly extension?: (cloud: SessionCloud) => ExtensionFactory;
+  // Tools that replace any extension tool of the same name.
+  readonly tools?: (cloud: SessionCloud) => readonly ToolDefinition[];
 }

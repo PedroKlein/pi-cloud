@@ -128,7 +128,7 @@ export async function runSessionProcess(): Promise<void> {
       },
     );
   } catch (error) {
-    send({ error: String(error) });
+    send({ error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
   }
 

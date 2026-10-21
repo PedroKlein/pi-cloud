@@ -115,23 +115,29 @@ export async function hostSession(
 
   const calls = serverTools(await stream.tools(), stream.callTool);
 
-  const extensions = (options.plugins ?? []).map(({ name, extension }) =>
-    extension({
-      publish: (key, data) => {
-        live.push({ type: "plugin", plugin: name, key, data });
+  const plugins = (options.plugins ?? []).map((plugin) => ({
+    plugin,
+    cloud: {
+      publish: (key: string, data: unknown) => {
+        live.push({ type: "plugin", plugin: plugin.name, key, data });
       },
       askQuestions: prompts.questions,
       base: options.base ?? null,
-      log: (message, fields) => {
-        log(message, { plugin: name, ...fields });
+      log: (message: string, fields?: Readonly<Record<string, unknown>>) => {
+        log(message, { plugin: plugin.name, ...fields });
       },
-    }),
-  );
+    },
+  }));
 
   const session = await startSession(options, {
     ui: prompts.ui,
-    tools: calls.tools,
-    extensions,
+    tools: [
+      ...plugins.flatMap(({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
+      ...calls.tools,
+    ],
+    extensions: plugins.flatMap(({ plugin, cloud }) =>
+      plugin.extension ? [plugin.extension(cloud)] : [],
+    ),
     onError: (error) => {
       log("extension error", {
         extension: error.extensionPath,

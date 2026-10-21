@@ -19,6 +19,7 @@ export type RemoteUI = Pick<
   | "setWidget"
   | "setTitle"
   | "setEditorText"
+  | "custom"
 >;
 
 type PromptRequest = Prompt extends infer P
@@ -133,6 +134,11 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       setEditorText: (value) => {
         publish({ type: "editor_text", text: value });
       },
+      // A custom dialog is a terminal component, which the web can't draw.
+      custom: async () =>
+        Promise.reject(
+          new Error("Pi Cloud's web UI can't show custom terminal dialogs"),
+        ),
     },
     questions: async (questions, explain, signal) => {
       const value = await ask(

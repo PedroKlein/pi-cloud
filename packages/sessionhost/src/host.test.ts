@@ -442,6 +442,54 @@ test("asks the user through prompt events and waits for the answer", async () =>
   expect(fake.lines.join()).toContain("confirmed: true");
 });
 
+test("fails an extension's custom terminal dialog with an error it can read", async () => {
+  const { faux, models } = await fauxModels(root);
+  const extension = join(root, "custom-dialog.ts");
+
+  await writeFile(
+    extension,
+    `import { Type } from "typebox";
+export default (pi) => {
+  pi.registerTool({
+    name: "pick",
+    label: "Pick",
+    description: "Shows a terminal dialog",
+    parameters: Type.Object({}),
+    execute: async (_id, _params, _signal, _update, ctx) => {
+      await ctx.ui.custom(() => ({ render: () => [], invalidate: () => undefined }));
+      return { content: [{ type: "text", text: "picked" }], details: {} };
+    },
+  });
+};
+`,
+  );
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("pick", {})], { stopReason: "toolUse" }),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "pick" });
+  await fake.waitFor(() => fake.lines.join().includes('"done"'));
+  await hosted.stop();
+
+  expect(fake.lines.join()).toContain("can't show custom terminal dialogs");
+});
+
 test("cancels open prompts when the session stops", async () => {
   const { faux, models } = await fauxModels(root);
 
@@ -881,6 +929,84 @@ test("asks structured questions with the ask plugin's ask_user tool", async () =
       "- Additional notes: no rush",
     ].join("\\n"),
   );
+});
+
+// Pi Cloud's web UI can't draw a terminal extension's custom() dialog, so
+// the built-in form must replace a user's own ask_user.
+test("replaces a user's own ask_user extension with the web form", async () => {
+  const { faux, models } = await fauxModels(root);
+  const extension = join(root, "own-ask.ts");
+
+  await writeFile(
+    extension,
+    `import { Type } from "typebox";
+export default (pi) => {
+  pi.registerTool({
+    name: "ask_user",
+    label: "Ask",
+    description: "The user's own ask_user",
+    parameters: Type.Object({}),
+    execute: async () => ({ content: [{ type: "text", text: "asked my way" }], details: {} }),
+  });
+};
+`,
+  );
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("ask_user", {
+          questions: [
+            {
+              id: "color",
+              prompt: "Which color?",
+              type: "single",
+              options: [{ value: "red", label: "Red" }],
+            },
+          ],
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [extension],
+      models,
+      plugins: [ask],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "ask me" });
+
+  await fake.waitFor(() =>
+    fake.events.some(
+      (e) => e.type === "prompt" && e.prompt.kind === "questions",
+    ),
+  );
+
+  const prompt = fake.events.find((e) => e.type === "prompt");
+
+  fake.send({
+    actor: "user:local",
+    type: "answer",
+    id: prompt?.type === "prompt" ? prompt.prompt.id : "",
+    value: null,
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes('"done"'));
+  await hosted.stop();
+
+  expect(fake.lines.join()).not.toContain("asked my way");
 });
 
 test("explains an option with the session's model while the form is open", async () => {

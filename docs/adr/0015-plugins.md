@@ -55,6 +55,7 @@ A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, 
 - **Session part** (`src/session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session. The host also hands it a small context:
   - `publish(key, data)` sends a plugin live event `{plugin, key, data}` to everyone watching the Session. The latest value per key is kept and replayed to anyone who opens the Session later, like extension widgets. This is the only way out of a Session for a plugin's own data, and it's the second generic protocol addition.
   - `askQuestions` raises the kernel's questions form.
+  - A session part can also give tools that replace any extension tool of the same name. `ask` gives `ask_user` this way: a user's own terminal `ask_user` draws a `custom()` dialog, which the web can't show. The session host fails `custom()` with an error the extension can read.
   - `base`, the commit the Session's workspace started from.
 - **Web part** (`web/index.ts`, with its own browser tsconfig) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
 
