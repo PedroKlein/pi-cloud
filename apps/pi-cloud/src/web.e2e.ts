@@ -241,6 +241,7 @@ test("answers the agent's questions in the prompt card", async () => {
   await page.locator("#prompt-text").press("Enter");
 
   const card = page.locator('[data-role="prompt"]');
+  await card.getByRole("heading", { level: 2, name: "Which size?" }).waitFor();
   await card.getByLabel("Large").check();
 
   expect(
@@ -324,7 +325,8 @@ test("creates a Project and shares a file through its library", async () => {
   await form.locator("[name=name]").fill("Site");
   await form.locator("[name=repositories]").fill(repository);
   await form.getByRole("button", { name: "New Project" }).click();
-  await page.getByRole("heading", { name: "Site" }).waitFor();
+  await page.getByRole("heading", { level: 1, name: "Site" }).waitFor();
+  await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
   await page.getByText("No threads yet.").waitFor();
 
   faux.setResponses([

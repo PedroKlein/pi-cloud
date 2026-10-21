@@ -234,9 +234,9 @@ function QuestionBody({
 
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-title font-semibold text-fg-strong">
+      <h2 className="text-title font-semibold text-fg-strong">
         {question.prompt}
-      </h3>
+      </h2>
       {question.context !== null && (
         <p className="text-ui whitespace-pre-wrap text-fg-dim">
           {question.context}
@@ -647,9 +647,9 @@ function Detail({
 
   if (!option) {
     return (
-      <aside className="border-l-3 border-line pl-3 text-label text-fg-dim">
+      <div className="border-l-3 border-line pl-3 text-label text-fg-dim">
         Pick or hover an option to see its details.
-      </aside>
+      </div>
     );
   }
 
@@ -663,8 +663,8 @@ function Detail({
     key in asking.waiting && found.length <= (asking.waiting[key] ?? 0);
 
   return (
-    <aside className="flex flex-col gap-2 border-l-3 border-line pl-3 text-ui">
-      <h4 className="font-semibold text-fg-strong">{option.label}</h4>
+    <div className="flex flex-col gap-2 border-l-3 border-line pl-3 text-ui">
+      <h3 className="font-semibold text-fg-strong">{option.label}</h3>
       {option.recommended && (
         <p className="text-label font-semibold text-waiting">★ Recommended</p>
       )}
@@ -713,7 +713,7 @@ function Detail({
           </form>
         </>
       )}
-    </aside>
+    </div>
   );
 }
 
@@ -732,9 +732,9 @@ function Review({
 }): ReactElement {
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-title font-semibold text-fg-strong">
+      <h2 className="text-title font-semibold text-fg-strong">
         Review your answers
-      </h3>
+      </h2>
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-ui">
         {questions.map((question, index) => (
           <div key={question.id} className="contents">

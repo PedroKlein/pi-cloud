@@ -9,7 +9,7 @@ export function PageTitle({
 }): ReactElement {
   return (
     <header className="mb-6 flex flex-col gap-2">
-      <h2 className="text-display font-semibold text-fg-strong">{children}</h2>
+      <h1 className="text-display font-semibold text-fg-strong">{children}</h1>
       {description !== undefined && (
         <p className="max-w-chat text-ui text-fg-dim">{description}</p>
       )}
@@ -26,7 +26,7 @@ export function Section({
 }): ReactElement {
   return (
     <section className="mt-8 flex flex-col gap-3">
-      <h3 className="text-title font-semibold text-fg-strong">{title}</h3>
+      <h2 className="text-title font-semibold text-fg-strong">{title}</h2>
       {children}
     </section>
   );
