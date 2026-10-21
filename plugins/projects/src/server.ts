@@ -2,11 +2,23 @@ import { randomUUID } from "node:crypto";
 import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
 import { type Actor, checkoutName } from "@pi-cloud/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
-import { coordinatorPrompt, runState, threadNotice } from "./prompts";
-import { type Project, type ProjectStore, projectStore } from "./projects";
+import {
+  coordinatorPrompt,
+  messagedCoordinator,
+  runState,
+  threadNotice,
+  turnError,
+} from "./prompts";
+import {
+  type Member,
+  type Project,
+  type ProjectStore,
+  projectStore,
+} from "./projects";
 import { modelRef, projectTools, workState } from "./tools";
 
 const deliveryMs = 1000;
+const errorLimit = 300;
 
 export const projects: ServerPlugin = {
   name: "projects",
@@ -61,7 +73,7 @@ export const projects: ServerPlugin = {
         (session.status === "interrupted" || session.status === "failed")
       ) {
         store.enqueue(project.coordinatorId, "plugin:projects", {
-          kind: "context",
+          kind: "message",
           text: threadNotice(thread, session, `stopped: ${session.status}`, []),
         });
       }
@@ -113,16 +125,7 @@ function deliver(
         case "turn": {
           const thread = store.member(delivery.threadId);
           if (thread) {
-            sessions.notify(
-              sessionId,
-              threadNotice(
-                thread,
-                sessions.get(thread.sessionId),
-                "finished a turn",
-                sessions.transcript(thread.sessionId),
-              ),
-              actor,
-            );
+            deliverTurn(thread, sessionId, actor, sessions, log);
           }
         }
       }
@@ -134,6 +137,40 @@ function deliver(
         log("delivery failed", { sessionId, error: String(error) });
       }
     }
+  }
+}
+
+function deliverTurn(
+  thread: Member,
+  coordinatorId: string,
+  actor: Actor,
+  sessions: ServerPluginContext["sessions"],
+  log: ServerPluginContext["log"],
+): void {
+  const transcript = sessions.transcript(thread.sessionId);
+  const error = turnError(transcript);
+
+  const notice = threadNotice(
+    thread,
+    sessions.get(thread.sessionId),
+    error === undefined
+      ? "finished a turn"
+      : `ended its turn with a model error: ${error.slice(0, errorLimit)}`,
+    transcript,
+  );
+
+  if (error !== undefined) {
+    log("thread turn failed", { sessionId: thread.sessionId, error });
+  }
+
+  // A thread that messaged the coordinator this turn already started a
+  // coordinator turn, so its notice is only context. So is a failed turn: a
+  // coordinator woken by it tends to retry the thread on the same model, which
+  // fails the same way.
+  if (error !== undefined || messagedCoordinator(transcript)) {
+    sessions.notify(coordinatorId, notice, actor);
+  } else {
+    sessions.send(coordinatorId, notice, actor);
   }
 }
 

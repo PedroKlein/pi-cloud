@@ -72,9 +72,11 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 ### Thread reports
 
 - The plugin subscribes to `TurnEnded` and `SessionStateChanged`. When a thread finishes a turn, it adds a short notice to the coordinator's transcript: the thread's title, its states, and its final reply, cut to a fixed length.
-- A notice doesn't start a coordinator turn. It's sent as context that doesn't start a turn, which the session host delivers through Pi's `sendMessage` with `triggerTurn: false`. The coordinator reads it on its next turn.
-- A change of work state sends the same kind of notice.
-- `message_coordinator` is the only thread action that starts a coordinator turn.
+- A thread's turn notice starts a coordinator turn, like a message, and waits as a follow-up while the coordinator is busy. So does a notice that a thread stopped as interrupted or failed, since no turn notice follows it.
+- A work state change from `set_status` comes in the middle of a thread's turn, so its notice is context that doesn't start a turn (Pi's `sendMessage` with `triggerTurn: false`). The turn notice that follows starts the turn.
+- This replaces an earlier rule that no notice started a turn. In the v1 acceptance run a coordinator told "when they're all done, summarize" had no turn to do it in: it polled with `list_threads` and `sleep`, then ended its turn before the last thread finished. The cost is a coordinator turn per thread turn, and the prompts tell both sides not to answer only to acknowledge.
+- `message_coordinator` sends the thread's own words and starts a coordinator turn the same way. If a thread used it during a turn, that turn's notice is only context, so one thread turn never starts two coordinator turns.
+- A thread turn that ends in a model error, such as a provider's 429, sends a notice that names the error, as context only, and the server logs it. In a real run, waking the coordinator for those made it message the thread again on the same exhausted quota, which failed again and woke the coordinator again.
 - If the coordinator's provider is offline, the plugin keeps its notices and messages and delivers them in order once the provider polls again. [ADR 0006](0006-provider-protocol.md) rejects input to an offline provider. These come from the server, not the user, so holding them doesn't change that.
 - Transcripts stay in the threads. The coordinator uses `read_thread` when a notice isn't enough.
 
