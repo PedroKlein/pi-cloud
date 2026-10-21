@@ -153,7 +153,7 @@ test("fails a worktree of a folder that is not a checkout", async () => {
   );
 
   expect(prepared).rejects.toThrow(
-    /git worktree failed: .*not a git repository/,
+    `${plain} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
   );
 
   await prepared.catch(() => undefined);

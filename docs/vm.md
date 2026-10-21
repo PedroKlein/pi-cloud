@@ -49,6 +49,8 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
+A login shell reads `~/.profile`, not `~/.bashrc`, so put the PATH entries your Sessions need there. Bun's installer writes to `~/.bashrc`; without `export PATH="$HOME/.bun/bin:$PATH"` in `~/.profile`, Sessions can't find `bun`.
+
 Then start it, and let it keep running after you log out:
 
 ```sh
