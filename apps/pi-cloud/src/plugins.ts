@@ -2,6 +2,8 @@ import { ask } from "@pi-cloud/ask/session";
 import { changes } from "@pi-cloud/changes/session";
 import { library as librarySession } from "@pi-cloud/library/session";
 import { library } from "@pi-cloud/library/server";
+import { models as modelsSession } from "@pi-cloud/models/session";
+import { models } from "@pi-cloud/models/server";
 import { projects } from "@pi-cloud/projects/server";
 import type {
   EventBus,
@@ -24,10 +26,21 @@ export const builtInPlugins: readonly string[] = [
   "usage",
   "projects",
   "library",
+  "models",
 ];
 
-export const serverPlugins: readonly ServerPlugin[] = [projects, library];
-const sessionPlugins: readonly SessionPlugin[] = [ask, changes, librarySession];
+export const serverPlugins: readonly ServerPlugin[] = [
+  projects,
+  library,
+  models,
+];
+
+const sessionPlugins: readonly SessionPlugin[] = [
+  ask,
+  changes,
+  librarySession,
+  modelsSession,
+];
 
 export function sessionPluginsNamed(
   enabled: readonly string[],

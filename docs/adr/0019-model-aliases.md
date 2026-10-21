@@ -1,6 +1,6 @@
 # 0019: Model aliases
 
-- Status: accepted
+- Status: accepted, amended 2026-10-21 (pi-cloud has its own gateway on Pi virtual models instead of reusing pi-gateway)
 - Date: 2026-10-21
 
 ## Context
@@ -19,26 +19,28 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 ## Decision
 
-### A default plugin around pi-gateway
+### pi-cloud's own gateway, as a default plugin
 
 - Model aliases are the `models` plugin in `plugins/models/`. It's on by default ([ADR 0015](0015-plugins.md)).
-- Its session part loads pi-gateway and a small bridge between pi-gateway and the plugin's server part. pi-cloud doesn't copy pi-gateway's routing code.
-- pi-gateway gains a `pi.events` seam that takes its config and health from another extension and reports health changes back. It already uses `pi.events` to find custom transports. Without the bridge it keeps reading and writing its own files, so it still works on its own in Pi.
-- The TUI board, the config editor and oh-my-pi support stay in pi-gateway. pi-cloud doesn't use them.
+- pi-cloud has its own gateway. pi-gateway is a reference, as [ADR 0001](0001-own-the-control-plane-and-ui.md) treats other projects. An earlier version of this ADR reused pi-gateway through a `pi.events` seam. That meant an npm release for every change and a guard for Sessions that load both copies.
+- The session part registers each alias as a Pi virtual model, `gateway/<alias>`. Pi calls its `route` before every request, and it returns the first healthy backend's model that has credentials on the machine. Pi keeps the backends' own providers, auth and streaming, so pi-cloud needs no transport of its own.
+- A tool follow-up or a retry stays on the model that answered while its backend is healthy, which keeps the prompt cache.
+- pi-gateway replays a failed request on the next backend in the same turn. Pi already retries rate limits and server errors, and that retry routes to the next backend. Pi doesn't retry a quota or billing cap, so that turn ends with the error and the next request goes to the next backend.
+- The alias names follow pi-gateway: `<tier>-<n>`, where the count per tier comes from the first backend in the chain that has the tier.
 
 ### Config per Environment, on the server
 
 - The server stores the alias config for each Environment in the plugin's tables. It has the same shape as `aliases.json`: backends, the tiers of each backend with their ordered models, the fallback chain, reset schedules and cap status codes.
 - Backends are the Pi providers on that Environment's machine. Credentials stay on the machine, as ADR 0005 says.
-- When a Session starts, the bridge asks the server for its Environment's config and hands it to pi-gateway.
+- When a Session starts, the session part reads its Environment's config from the plugin's server route.
 - A config change reaches running Sessions the same way health does (below).
 
 ### Health on the server, per machine and backend
 
-- When pi-gateway marks a backend unhealthy or healthy, the bridge reports it to the plugin's server route through the session part's `request` (ADR 0015).
+- When a response through an alias fails with a cap or a transient error, the session part marks its backend unhealthy and reports it to the plugin's server route through `request` (ADR 0015). The server keeps, per backend, the later of the reset times it hears about.
 - The server keeps health per Environment and backend. In v1 one Environment is one machine.
-- Every Session in that Environment that uses the gateway gets the change and reroutes its next request. The bridge waits for changes on a long-polling route, so this needs no protocol addition.
-- A per-minute 429 is a transient error with a short cooldown, not a daily cap. Only a backend's cap status codes and reset schedule make a cap.
+- Every Session in that Environment that uses the gateway gets the change and reroutes its next request. The session part waits for changes on a long-polling route, so this needs no protocol addition.
+- A per-minute 429 is a transient error with a one-minute cooldown, not a cap. A cap comes from a backend's cap status codes (402 unless set) or from quota and billing wording, and lasts until its reset schedule, or an hour.
 
 ### Choosing a model
 
@@ -56,6 +58,6 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 - One alias name works on every machine whose Environment defines it, so Project threads can move between the laptop and the VM without changing models.
 - Sessions on one machine share what they learn about a quota, instead of each finding it on its own.
-- pi-gateway needs the `pi.events` seam before the plugin can be built. That change lands in pi-extensions and a new pi-gateway release.
-- pi-gateway serves one backend's credential per registration. When aliases would need two backends at once, it serves the primary backend and warns. The settings page shows that instead of a log line.
+- pi-cloud owns about 300 lines of routing code that can drift from pi-gateway. Virtual models keep it small: pi-gateway's custom transport and single-credential registration aren't needed.
+- A quota cap costs the turn it happens in. Same-turn replay can come later if that hurts.
 - Profiles (v2) may later carry alias config with the rest of a user's Pi setup. Until then it belongs to Environments.

@@ -16,6 +16,7 @@
     "@pi-cloud/ask": "workspace:*",
     "@pi-cloud/changes": "workspace:*",
     "@pi-cloud/library": "workspace:*",
+    "@pi-cloud/models": "workspace:*",
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/projects": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",
