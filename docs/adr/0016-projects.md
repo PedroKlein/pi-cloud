@@ -105,5 +105,5 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 - Every Session in a Project pays for a checkout of every repository unless `start_thread` narrows them. Mirrors keep the network cost down.
 - Laptop threads need each repository checked out in an advertised folder, or they clone it.
 - Memory is shared and unlocked. Two threads writing one file at once lose one write, which the log shows.
-- A shared file library for uploads and outputs waits for a later slice.
+- A shared file library for uploads and outputs comes as its own plugin after Projects, still in v1 ([vision](../vision.md#v1-personal-sessions-and-projects-on-your-own-machines)).
 - Deleting or archiving a whole Project isn't decided. Its Sessions can be archived one by one.
