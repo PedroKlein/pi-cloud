@@ -58,9 +58,9 @@ loginctl enable-linger "$USER"
 journalctl --user -u pi-cloud -f
 ```
 
-The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`.
+The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`. `curl -s 127.0.0.1:7420/healthz` returns the running version, or a 503 when the database can't be read.
 
-To update, copy a new binary over and run `systemctl --user restart pi-cloud`. Running Sessions are interrupted and reload idle from their transcript.
+To update, copy a new binary over and run `systemctl --user restart pi-cloud`. `/healthz` shows the new version once it's back. Running Sessions are interrupted and reload idle from their transcript.
 
 ## From the laptop
 
