@@ -502,6 +502,15 @@ test("rejects malformed requests with 400", async () => {
     workspace: { kind: "volume", path: root },
   });
 
+  const optionStartPoint = await api("/api/sessions", {
+    provider: "vm",
+    workspace: {
+      kind: "clone",
+      repository: root,
+      startPoint: "--upload-pack=x",
+    },
+  });
+
   const negativeStart = await asAgent(
     "vm",
     `/agent/sessions/${session.id}/transcript`,
@@ -515,6 +524,7 @@ test("rejects malformed requests with 400", async () => {
   expect(malformed.status).toBe(400);
   expect(noWorkspace.status).toBe(400);
   expect(unknownWorkspace.status).toBe(400);
+  expect(optionStartPoint.status).toBe(400);
   expect(noGeneration.status).toBe(400);
   expect(negativeStart.status).toBe(400);
 });

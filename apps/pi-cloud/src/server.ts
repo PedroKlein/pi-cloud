@@ -316,7 +316,7 @@ function createSession(body: unknown): CreateSession {
 }
 
 function workspaceRequest(workspace: unknown): WorkspaceRequest {
-  const { kind, path, repository } = (workspace ?? {}) as Record<
+  const { kind, path, repository, startPoint } = (workspace ?? {}) as Record<
     string,
     unknown
   >;
@@ -325,17 +325,32 @@ function workspaceRequest(workspace: unknown): WorkspaceRequest {
     return { kind, path };
   }
 
+  const start = startPointOf(startPoint);
+
   if (kind === "worktree" && typeof path === "string" && path !== "") {
-    return { kind, path };
+    return { kind, path, ...start };
   }
 
   if (kind === "clone" && typeof repository === "string" && repository !== "") {
-    return { kind, repository };
+    return { kind, repository, ...start };
   }
 
   throw new BadRequest(
     "workspace must be a folder or worktree with a path, or a clone with a repository",
   );
+}
+
+function startPointOf(startPoint: unknown): { startPoint?: string } {
+  if (startPoint === undefined || startPoint === null || startPoint === "") {
+    return {};
+  }
+
+  // A leading dash would reach git as an option.
+  if (typeof startPoint !== "string" || startPoint.startsWith("-")) {
+    throw new BadRequest("startPoint must be a branch, tag or commit");
+  }
+
+  return { startPoint };
 }
 
 function lineAfter(lastEventId: string | null): number {

@@ -249,3 +249,57 @@ test("remembers the commit a session branch started from", async () => {
     ).base,
   ).toBeNull();
 });
+
+test("starts a session branch from the branch it names", async () => {
+  await git(repository, "switch", "--create", "feature");
+  await writeFile(join(repository, "feature.txt"), "feature\n");
+  await git(repository, "add", ".");
+
+  await git(
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "feature",
+  );
+
+  const feature = await git(repository, "rev-parse", "HEAD");
+  await git(repository, "switch", "main");
+
+  for (const workspace of [
+    {
+      kind: "worktree",
+      path: repository,
+      branch: "pi-cloud/s1",
+      startPoint: "feature",
+    },
+    {
+      kind: "clone",
+      repository,
+      branch: "pi-cloud/s2",
+      startPoint: "feature",
+    },
+    {
+      kind: "clone",
+      repository,
+      branch: "pi-cloud/s3",
+      startPoint: feature,
+    },
+  ] as const) {
+    const { cwd, base } = await prepareWorkspace(
+      workspace,
+      {
+        dir: join(root, "workspaces", workspace.branch),
+        folders: [repository],
+      },
+      noLog,
+    );
+
+    expect(base).toBe(feature);
+    expect(await readFile(join(cwd, "feature.txt"), "utf8")).toBe("feature\n");
+    expect(await git(cwd, "branch", "--show-current")).toBe(workspace.branch);
+  }
+});

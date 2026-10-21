@@ -461,6 +461,8 @@ createForm.addEventListener("submit", (event) => {
 
   const kind = form.get("kind");
   const where = form.get("location");
+  const startText = form.get("start-point");
+  const startPoint = typeof startText === "string" ? startText.trim() : "";
   const modelText = form.get("model");
 
   const model =
@@ -477,7 +479,9 @@ createForm.addEventListener("submit", (event) => {
   api("/api/sessions", {
     provider: form.get("provider"),
     workspace:
-      kind === "clone" ? { kind, repository: where } : { kind, path: where },
+      kind === "clone"
+        ? { kind, repository: where, startPoint }
+        : { kind, path: where, startPoint },
     model,
   })
     .then(async (response) => {
