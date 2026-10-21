@@ -184,6 +184,17 @@ function roles(events: readonly SessionEvent[]): string[] {
   });
 }
 
+test("reports itself healthy", async () => {
+  const response = await api("/healthz");
+
+  expect(response.status).toBe(200);
+
+  expect(await response.json()).toEqual({
+    status: "ok",
+    version: expect.any(String) as unknown,
+  });
+});
+
 test("chats with a session on an agent and replays it later", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("hello from pi")])]);
   const session = await createSession("laptop");

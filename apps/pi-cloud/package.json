@@ -1,6 +1,7 @@
 {
   "name": "@pi-cloud/pi-cloud",
   "private": true,
+  "version": "0.1.0",
   "type": "module",
   "bin": {
     "pi-cloud": "./src/main.ts"
