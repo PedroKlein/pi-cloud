@@ -294,6 +294,57 @@ test("delivers a retried message once and a new one with the same text", async (
   expect(userTexts(events)).toEqual(["one", "one", "two"]);
 });
 
+// A 1×1 transparent PNG.
+const pixel =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+test("sends a message's images to the model and keeps them in the transcript", async () => {
+  let seen: unknown;
+
+  faux.setResponses([
+    (context) => {
+      seen = context.messages.at(-1);
+
+      return fauxAssistantMessage([fauxText("a pixel")]);
+    },
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "what is this?",
+    images: [{ mimeType: "image/png", data: pixel }],
+  });
+
+  expect(sent.status).toBe(202);
+
+  const events = await follow(session.id, (seenEvents) =>
+    roles(seenEvents).includes("assistant"),
+  );
+
+  const image = { type: "image", mimeType: "image/png", data: pixel };
+
+  expect(seen).toMatchObject({
+    role: "user",
+    content: expect.arrayContaining([image]) as unknown,
+  });
+
+  const entries = events.flatMap((event) =>
+    event.type === "entry" ? [JSON.parse(event.entry) as unknown] : [],
+  );
+
+  expect(entries).toContainEqual(
+    expect.objectContaining({
+      message: expect.objectContaining({
+        role: "user",
+        content: expect.arrayContaining([image]) as unknown,
+      }) as unknown,
+    }),
+  );
+});
+
 function userTexts(events: readonly SessionEvent[]): string[] {
   return events.flatMap((event) => {
     if (event.type !== "entry") {
@@ -427,6 +478,35 @@ test("rejects commands a browser may not send", async () => {
     [
       { type: "message" },
       { type: "message", text: "hi", delivery: "later" },
+      { type: "message", text: "hi", images: "cat.png" },
+      {
+        type: "message",
+        text: "hi",
+        images: [{ mimeType: "image/svg+xml", data: pixel }],
+      },
+      {
+        type: "message",
+        text: "hi",
+        images: [{ mimeType: "image/png", data: "not base64!" }],
+      },
+      {
+        type: "message",
+        text: "hi",
+        images: Array.from({ length: 6 }, () => ({
+          mimeType: "image/png",
+          data: pixel,
+        })),
+      },
+      {
+        type: "message",
+        text: "hi",
+        images: [
+          {
+            mimeType: "image/png",
+            data: Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64"),
+          },
+        ],
+      },
       { type: "answer", value: "yes" },
       { type: "terminal", terminalId: "t1", cols: 80, rows: 24 },
       { type: "reboot" },
@@ -441,7 +521,7 @@ test("rejects commands a browser may not send", async () => {
     }),
   );
 
-  expect(statuses).toEqual([400, 400, 400, 400, 400, 400]);
+  expect(statuses).toEqual(Array.from({ length: 11 }, () => 400));
 });
 
 async function asAgent(

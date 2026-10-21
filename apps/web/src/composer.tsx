@@ -1,6 +1,12 @@
+import {
+  type ImageAttachment,
+  imageLimits,
+  imageTypes,
+} from "@pi-cloud/protocol";
 import { Button, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import { command } from "./api";
+import { admit, dataUrl } from "./attachments";
 import type { Feed } from "./feed";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
 
@@ -16,6 +22,7 @@ export function Composer({
   readonly report: (error: unknown) => void;
 }): ReactElement {
   const text = useRef<HTMLTextAreaElement>(null);
+  const [images, setImages] = useState<readonly Attached[]>([]);
   const running = feed.session?.status === "running";
   const { steering, followUp } = feed.queue;
 
@@ -41,18 +48,34 @@ export function Composer({
     },
   };
 
+  const attach = (files: readonly File[]): void => {
+    const { admitted, problems } = admit(images.length, files);
+
+    if (problems.length > 0) {
+      report(problems.join(" "));
+    }
+
+    void Promise.all(admitted.map(attached)).then((read) => {
+      setImages((current) => [...current, ...read].slice(0, imageLimits.count));
+    }, report);
+  };
+
   const send = (delivery: "steer" | "followUp"): void => {
     const box = text.current;
     const message = box?.value.trim() ?? "";
-    if (!box || message === "") {
+    if (!box || (message === "" && images.length === 0)) {
       return;
     }
 
     box.value = "";
+    setImages([]);
 
     command(sessionId, {
       type: "message",
       text: message,
+      ...(images.length > 0 && {
+        images: images.map(({ mimeType, data }) => ({ mimeType, data })),
+      }),
       requestId: crypto.randomUUID(),
       delivery,
     }).catch(report);
@@ -86,17 +109,63 @@ export function Composer({
             event.preventDefault();
             send("steer");
           }}
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes("Files")) {
+              event.preventDefault();
+            }
+          }}
+          onDrop={(event) => {
+            if (event.dataTransfer.files.length > 0) {
+              event.preventDefault();
+              attach([...event.dataTransfer.files]);
+            }
+          }}
           className="flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
         >
           <label htmlFor="prompt-text" className="sr-only">
             Message Pi
           </label>
+          {images.length > 0 && (
+            <ul
+              aria-label="Attached images"
+              className="flex flex-wrap gap-2 pt-1"
+            >
+              {images.map((image) => (
+                <li key={image.id} className="relative">
+                  <img
+                    src={dataUrl(image)}
+                    alt={image.name}
+                    className="size-16 rounded-md border border-line object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Remove ${image.name}`}
+                    onClick={() => {
+                      setImages((current) =>
+                        current.filter(({ id }) => id !== image.id),
+                      );
+                    }}
+                    className="absolute -top-1.5 -right-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-fg-dim hover:text-fg"
+                  >
+                    <Icon name="x" className="size-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <textarea
             ref={text}
             id="prompt-text"
             name="text"
             rows={2}
             placeholder="Message Pi"
+            onPaste={(event) => {
+              const pasted = [...event.clipboardData.files];
+              if (pasted.length > 0) {
+                event.preventDefault();
+                attach(pasted);
+              }
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -106,6 +175,23 @@ export function Composer({
             className="resize-none bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
           />
           <div className="flex items-center gap-2">
+            <label
+              title="Attach images"
+              className="-ml-2 flex size-8 cursor-pointer items-center justify-center rounded-full text-fg-dim hover:bg-hover hover:text-fg has-focus-visible:outline-2 has-focus-visible:outline-accent"
+            >
+              <Icon name="paperclip" />
+              <input
+                type="file"
+                multiple
+                accept={imageTypes.join(",")}
+                aria-label="Attach images"
+                onChange={(event) => {
+                  attach([...(event.target.files ?? [])]);
+                  event.target.value = "";
+                }}
+                className="sr-only"
+              />
+            </label>
             <span className="flex-1 text-caption text-fg-dim max-sm:hidden">
               Enter steers · Alt+Enter queues a follow-up
             </span>
@@ -144,6 +230,34 @@ export function Composer({
       )}
     </div>
   );
+}
+
+interface Attached extends ImageAttachment {
+  readonly id: string;
+  readonly name: string;
+}
+
+async function attached(file: File): Promise<Attached> {
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    });
+
+    reader.addEventListener("error", () => {
+      reject(reader.error ?? new Error(`couldn't read ${file.name}`));
+    });
+
+    reader.readAsDataURL(file);
+  });
+
+  return {
+    id: crypto.randomUUID(),
+    name: file.name,
+    mimeType: file.type as ImageAttachment["mimeType"],
+    data: url.slice(url.indexOf(",") + 1),
+  };
 }
 
 function Widget({ text }: { readonly text: string }): ReactElement {
