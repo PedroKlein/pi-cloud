@@ -96,7 +96,23 @@ interface Entry {
     readonly role: string;
     readonly content:
       string | readonly { type: string; text?: string; name?: string }[];
+    readonly stopReason?: string;
+    readonly errorMessage?: string;
   };
+}
+
+// The model error a thread's last turn ended with, if it did.
+export function turnError(transcript: readonly string[]): string | undefined {
+  for (const line of transcript.toReversed()) {
+    const { message } = JSON.parse(line) as Entry;
+    if (message?.role === "assistant") {
+      return message.stopReason === "error"
+        ? (message.errorMessage ?? "unknown error")
+        : undefined;
+    }
+  }
+
+  return undefined;
 }
 
 export function messagedCoordinator(transcript: readonly string[]): boolean {

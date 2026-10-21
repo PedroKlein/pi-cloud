@@ -374,6 +374,75 @@ test("wakes the coordinator once for each thread turn", async () => {
   expect(wakes.filter((wake) => wake.includes("[Thread"))).toHaveLength(1);
 }, 30_000);
 
+test("tells the coordinator about a failed thread turn without waking it", async () => {
+  const a = await repository("app");
+  const wakes: string[] = [];
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const seen = JSON.stringify(context.messages);
+    const last = lastUserText(context.messages);
+
+    if (!seen.includes("You are the coordinator")) {
+      return fauxAssistantMessage([], {
+        stopReason: "error",
+        errorMessage: "bad request: no such model",
+      });
+    }
+
+    if (last.includes("start it")) {
+      return fauxAssistantMessage(
+        [fauxToolCall("start_thread", { title: "Read", message: "read" })],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (last.includes("[Project notice]")) {
+      wakes.push(last);
+    }
+
+    return fauxAssistantMessage([fauxText("ok")]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Failing",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "start it",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) =>
+      text.includes(
+        "ended its turn with a model error: bad request: no such model",
+      ),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  expect(wakes).toHaveLength(0);
+}, 30_000);
+
 test("refuses a Project without repositories", async () => {
   const response = await api("/api/plugins/projects/projects", {
     name: "Empty",
