@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes)
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md))
 - Date: 2026-10-21
 
 ## Context
@@ -60,7 +60,7 @@ A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, 
   - `request(path, init)` sends an HTTP request to the plugin's own server routes as this Session. The agent forwards it to `/agent/sessions/<id>/plugins/<name>/<path>`, fenced by the Session's generation like every other Session call, and the route handler gets the calling Session and its actor. It carries bytes a tool call can't, like files ([ADR 0018](0018-project-library.md)).
   - A session part's tools are asked for once when the Session starts, and may be async, so a part can ask its server part whether this Session gets them at all.
   - `checkouts`, each git checkout in the workspace and the commit its branch started from.
-- **Web part** (`web/index.ts`, with its own browser tsconfig) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
+- **Web part** (`web/index.tsx`, with its own browser tsconfig) exports a React component for each slot or page it claims. See the web section below.
 
 The interfaces live in `packages/plugins/`. The server, the session host and the web app depend on it. Plugins depend only on it and on `packages/protocol/`, never on app code.
 
@@ -87,9 +87,10 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 ### Web UI
 
 - A plugin's web part claims named slots: `nav` (an entry and a page), `session.panel`, `session.header`, and `message.<type>` renderers for its own custom messages.
-- `mount(element, ctx)` renders into the element it's given and returns an unmount function. Inside it, a plugin uses whatever it wants: plain DOM, Preact, Lit, and its own CSS scoped to its root.
-- `ctx` gives it: requests to its own routes, live events for a Session, opening a Session, navigation, and the theme's CSS variables.
-- A `session.panel` or `session.header` mount also gets the open Session's event stream, shared with the Session view, so it sees transcript entries and its own plugin live events without opening another connection.
+- Each slot is a React component. The web bundle imports plugins statically, so they share the app's React, its data hooks and the `packages/ui` components and tokens ([ADR 0020](0020-web-stack.md)). A plugin styles itself with the same Tailwind token classes and never brings its own colours or fonts.
+- Its props give it what `ctx` gave it before: requests to its own routes, live events for a Session, opening a Session and navigation.
+- The first version of this section had each slot export `mount(element, ctx)` and let a plugin render with anything it liked. With every v1 plugin in this repository and one design system, that only meant a second way to do everything.
+- A `session.panel` or `session.header` component also gets the open Session's event stream, shared with the Session view, so it sees transcript entries and its own plugin live events without opening another connection.
 - Pi extensions' own UI inside a Session (`ctx.ui` widgets, status and dialogs) is still forwarded as before. Plugin UI is a separate layer around it.
 
 ### Loading and trust
@@ -97,7 +98,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 - v1 plugins live in this repository. The binary and the web bundle import them statically, so the compiled binary needs no dynamic loading.
 - A config list turns plugins off. A plugin that is off registers nothing, and its tables stay untouched.
 - Plugins are trusted and run in the server process, the Session process and the page, like Pi extensions do.
-- The plugin interfaces are internal in v1 and may change. The public SDK and third-party plugins come in v2. Untrusted web parts can then run in a sandboxed iframe that gets the same `ctx` over `postMessage`, so plugins written against `ctx` don't change.
+- The plugin interfaces are internal in v1 and may change. The public SDK and third-party plugins come in v2. Untrusted web parts can then run in a sandboxed iframe that gets the same context over `postMessage`. That iframe has its own document, so a third-party part renders on its own there, and trusted parts stay React components.
 
 ### Actors and owners
 
