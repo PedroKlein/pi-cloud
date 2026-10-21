@@ -13,7 +13,7 @@ import { Composer } from "./composer";
 import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, follow } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
-import { mountSession } from "./plugins";
+import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
 import { openTerminal } from "./terminal";
 
 type View = "chat" | "terminal";
@@ -32,8 +32,7 @@ export function SessionView({
   const [feed, setFeed] = useState<Feed>(emptyFeed);
   const [view, setView] = useState<View>("chat");
   const report = useRef<(error: unknown) => void>(() => undefined);
-  const pluginHeader = useRef<HTMLSpanElement>(null);
-  const pluginPanels = useRef<HTMLDivElement>(null);
+  const [channel] = useState(() => sessionChannel(sessionId));
   const sessionChanged = useEffectEvent(onSessionChange);
 
   const reportError = useCallback((error: unknown) => {
@@ -41,18 +40,8 @@ export function SessionView({
   }, []);
 
   useEffect(() => {
-    if (!pluginHeader.current || !pluginPanels.current) {
-      return undefined;
-    }
-
-    const plugins = mountSession(
-      sessionId,
-      pluginHeader.current,
-      pluginPanels.current,
-    );
-
     const feedStream = follow(sessionId, {
-      dispatch: plugins.dispatch,
+      dispatch: channel.dispatch,
       onChange: setFeed,
       onSession: () => {
         sessionChanged();
@@ -63,9 +52,8 @@ export function SessionView({
 
     return () => {
       feedStream.close();
-      plugins.unmount();
     };
-  }, [sessionId]);
+  }, [sessionId, channel]);
 
   const { session } = feed;
 
@@ -124,8 +112,18 @@ export function SessionView({
         <span
           id="plugin-header"
           className="flex items-center gap-2 text-caption text-fg-dim"
-          ref={pluginHeader}
-        />
+        >
+          {enabledPlugins().map(({ name, SessionHeader }) =>
+            SessionHeader ? (
+              <span key={name} data-plugin={name}>
+                <SessionHeader
+                  context={pluginContext(name)}
+                  session={channel.session}
+                />
+              </span>
+            ) : null,
+          )}
+        </span>
         {!archived && <ViewSwitch view={view} onChange={setView} />}
         <div className="flex gap-1">
           {session && !archived && (
@@ -172,9 +170,19 @@ export function SessionView({
 
       <div
         id="plugin-panels"
-        ref={pluginPanels}
-        className="legacy flex flex-col gap-2 border-b border-line px-4 py-2 text-label not-has-[>:not(:empty)]:hidden"
-      />
+        className="flex flex-col gap-2 border-b border-line px-4 py-2 text-label not-has-[>:not(:empty)]:hidden"
+      >
+        {enabledPlugins().map(({ name, SessionPanel }) =>
+          SessionPanel ? (
+            <div key={name} data-plugin={name} className="empty:hidden">
+              <SessionPanel
+                context={pluginContext(name)}
+                session={channel.session}
+              />
+            </div>
+          ) : null,
+        )}
+      </div>
 
       {view === "terminal" && !archived ? (
         <TerminalView sessionId={sessionId} />

@@ -213,7 +213,7 @@ function StepRow({
     <>
       <StepMark running={running} failed={step.result?.failed === true} />
       <span className="shrink-0 font-medium text-fg">{verb}</span>
-      <span className="truncate font-mono text-code-sm text-fg-dim">
+      <span className="truncate font-mono text-mono-sm text-fg-dim">
         {object}
       </span>
     </>
@@ -237,7 +237,7 @@ function StepRow({
       </summary>
       <pre
         className={cn(
-          "mx-2 mt-1 mb-2 max-h-80 overflow-auto rounded-md border border-line bg-code px-3 py-2 font-mono text-code-sm whitespace-pre-wrap",
+          "mx-2 mt-1 mb-2 max-h-80 overflow-auto rounded-md border border-line bg-code px-3 py-2 font-mono text-mono-sm whitespace-pre-wrap",
           step.result.failed ? "text-failed" : "text-fg",
         )}
       >

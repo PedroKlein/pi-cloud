@@ -1,8 +1,8 @@
 import { Button, cn, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import { type ReactElement, useState } from "react";
 import { useEnvironments, useHash, useSessions } from "./hooks";
 import { NewSessionDialog } from "./new-session";
-import { mountPage, type NavEntry } from "./plugins";
+import { enabledPlugins, type NavEntry, pluginContext } from "./plugins";
 import { SessionView } from "./session-view";
 import { Sidebar } from "./sidebar";
 
@@ -152,15 +152,8 @@ function PluginPage({
   readonly name: string;
   readonly onMenu: () => void;
 }): ReactElement {
-  const host = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!host.current) {
-      return undefined;
-    }
-
-    return mountPage(name, host.current);
-  }, [name]);
+  const Page = enabledPlugins().find((plugin) => plugin.name === name)?.nav
+    ?.Page;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -169,9 +162,15 @@ function PluginPage({
       </div>
       <div
         id="plugin-page"
-        ref={host}
-        className="legacy mx-auto max-w-5xl px-4 py-8 md:px-10"
-      />
+        data-plugin={name}
+        className="mx-auto flex max-w-5xl flex-col px-4 py-8 md:px-10"
+      >
+        {Page ? (
+          <Page context={pluginContext(name)} />
+        ) : (
+          <p className="text-fg-dim">This page isn&apos;t available.</p>
+        )}
+      </div>
     </div>
   );
 }

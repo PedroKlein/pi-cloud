@@ -6,12 +6,17 @@
     "./model": "./src/model.ts",
     "./server": "./src/server.ts",
     "./session": "./src/session.ts",
-    "./web": "./web/index.ts"
+    "./web": "./web/index.tsx"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.3.0",
     "@earendil-works/pi-coding-agent": "1.3.0",
     "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*"
+    "@pi-cloud/protocol": "workspace:*",
+    "@pi-cloud/ui": "workspace:*",
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
   }
 }

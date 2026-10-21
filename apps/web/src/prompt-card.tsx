@@ -1,8 +1,8 @@
 import type { Answer, Prompt } from "@pi-cloud/protocol";
-import { Button } from "@pi-cloud/ui";
+import { Button, fieldClass } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
 import type { OpenPrompt } from "./feed";
-import { Actions, fieldClass } from "./fields";
+import { Actions } from "./fields";
 import { QuestionsForm } from "./questions-form";
 
 export interface PromptHandlers {

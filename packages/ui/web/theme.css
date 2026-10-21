@@ -141,10 +141,11 @@
   --text-caption--line-height: 16px;
   --text-badge: 11px;
   --text-badge--line-height: 16px;
-  --text-code: 13px;
-  --text-code--line-height: 20px;
-  --text-code-sm: 12px;
-  --text-code-sm--line-height: 18px;
+  /* Not "code": text-code would also match the code background colour. */
+  --text-mono: 13px;
+  --text-mono--line-height: 20px;
+  --text-mono-sm: 12px;
+  --text-mono-sm--line-height: 18px;
 
   --radius-*: initial;
   --radius-sm: 6px;
