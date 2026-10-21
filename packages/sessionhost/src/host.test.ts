@@ -1314,6 +1314,49 @@ test("publishes no changes outside a git repository", async () => {
   expect(logs).not.toContain("workspace changes failed");
 });
 
+// Pi writes a session file once it has an assistant message, so the context
+// follows a first turn here.
+test("adds context to the session without starting a turn", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hello")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      firstMessage: null,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "hi" });
+  await fake.waitFor(() => roles(fake.lines).includes("assistant"));
+
+  const turns = fake.events.filter(
+    (e) => e.type === "status" && e.status === "running",
+  ).length;
+
+  fake.send({
+    actor: "plugin:test",
+    type: "context",
+    text: "a thread finished",
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes("a thread finished"));
+  await hosted.stop();
+
+  expect(
+    fake.events.filter((e) => e.type === "status" && e.status === "running"),
+  ).toHaveLength(turns);
+
+  expect(roles(fake.lines)).toEqual(["system", "user", "assistant"]);
+});
+
 test("runs server tools through the stream and gives the model their result", async () => {
   const { faux, models } = await fauxModels(root);
 

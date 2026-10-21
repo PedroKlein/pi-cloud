@@ -12,6 +12,8 @@ interface Part {
 
 interface Entry {
   readonly type: string;
+  readonly content?: unknown;
+  readonly display?: boolean;
   readonly message?: {
     readonly role: string;
     readonly content: string | readonly Part[];
@@ -24,6 +26,14 @@ interface Entry {
 export function chatItems(line: string): readonly ChatItem[] {
   const entry = JSON.parse(line) as Entry;
   const message = entry.message;
+  if (
+    entry.type === "custom_message" &&
+    entry.display === true &&
+    typeof entry.content === "string"
+  ) {
+    return [{ role: "tool", text: entry.content }];
+  }
+
   if (entry.type !== "message" || !message) {
     return [];
   }

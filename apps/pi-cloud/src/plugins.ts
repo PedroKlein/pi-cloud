@@ -1,5 +1,6 @@
 import { ask } from "@pi-cloud/ask/session";
 import { changes } from "@pi-cloud/changes/session";
+import { projects } from "@pi-cloud/projects/server";
 import type {
   EventBus,
   PluginRoute,
@@ -10,12 +11,18 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Actor, Session, ToolCall, ToolSpec } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import type { Sessions } from "@pi-cloud/sessions";
+import { owner, type Sessions } from "@pi-cloud/sessions";
 
 // The plugins built into this binary (ADR 0015). Each app imports its own
 // parts statically, so the compiled binary needs no dynamic loading.
-export const builtInPlugins: readonly string[] = ["ask", "changes", "usage"];
-export const serverPlugins: readonly ServerPlugin[] = [];
+export const builtInPlugins: readonly string[] = [
+  "ask",
+  "changes",
+  "usage",
+  "projects",
+];
+
+export const serverPlugins: readonly ServerPlugin[] = [projects];
 const sessionPlugins: readonly SessionPlugin[] = [ask, changes];
 
 export function sessionPluginsNamed(
@@ -42,6 +49,7 @@ export function startPlugins(
     readonly sessions: Sessions;
     readonly events: EventBus;
     readonly store: (name: string) => PluginStore;
+    readonly signal: AbortSignal;
     readonly log: Log;
   },
 ): PluginHost {
@@ -53,6 +61,7 @@ export function startPlugins(
     };
 
     plugin.register({
+      owner,
       tools: {
         register: (tool) => {
           if (tools.has(tool.name)) {
@@ -74,9 +83,21 @@ export function startPlugins(
         },
         get: (id) => deps.sessions.get(id),
         send: (id, text, actor) => {
-          const sent = deps.sessions.send(id, { actor, type: "message", text });
+          const sent = deps.sessions.send(id, {
+            actor,
+            type: "message",
+            text,
+            delivery: "followUp",
+          });
+
           if (!sent.ok) {
             throw new Error(`message not sent: ${sent.reason}`);
+          }
+        },
+        notify: (id, text, actor) => {
+          const sent = deps.sessions.send(id, { actor, type: "context", text });
+          if (!sent.ok) {
+            throw new Error(`context not sent: ${sent.reason}`);
           }
         },
         transcript: (id) => deps.sessions.transcript(id),
@@ -87,6 +108,7 @@ export function startPlugins(
         },
       },
       store: deps.store(plugin.name),
+      signal: deps.signal,
       log,
     });
 

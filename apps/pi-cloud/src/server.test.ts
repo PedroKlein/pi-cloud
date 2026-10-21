@@ -16,6 +16,7 @@ test("reports unhealthy when the database can't be read", async () => {
       sessions,
       events: eventBus(() => undefined),
       store: store.plugin,
+      signal: new AbortController().signal,
       log: () => undefined,
     }),
     store.check,

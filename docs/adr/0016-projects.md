@@ -97,6 +97,13 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 - A Project's instructions, and then its `MEMORY.md`, are appended to the system prompt of the coordinator and of each thread when it starts. The plugin passes them in the start request, and the session host applies them through Pi's append-system-prompt option.
 - Editing the instructions affects Sessions started after the edit.
 
+### Notes from building it
+
+- The run state also has `archived`, for a member Session the user archived.
+- The Project page links to the coordinator's session view instead of embedding it, so it reuses the normal session page.
+- `start_thread` takes start points as `start_points`, a map from repository URL to a branch, tag or commit.
+- Notices and messages wait in the plugin's outbox table. A one-second loop delivers them in order and drops those for archived Sessions.
+
 ## Consequences
 
 - A Project is a plugin with a few tables, nine tools, two event subscribers and a page. Everything else is kernel Session machinery.
