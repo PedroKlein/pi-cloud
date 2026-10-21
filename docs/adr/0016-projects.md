@@ -49,7 +49,7 @@ A Project can span several repositories. Every Session in it, the coordinator in
 - On the VM each checkout is a clone, as in [ADR 0012](0012-built-in-provider.md).
 - On the laptop, the agent matches each URL against the remotes of the folders it advertises ([ADR 0007](0007-session-workspaces.md)) and makes a worktree of the match. A repository with no checkout on that laptop is cloned.
 - Mirrors and `.worktreeinclude` from [ADR 0013](0013-archive-and-workspace-lifecycle.md) apply to each checkout.
-- Archiving removes the Workspace only if every checkout in it is clean by ADR 0013's rule. Otherwise the whole Workspace stays and is flagged.
+- Archiving removes the Workspace only if every checkout in it is clean by ADR 0013's rule and nothing else sits at its root. Otherwise the whole Workspace stays and is flagged.
 - The Changes panel shows changes per repository.
 - Project Sessions never run in the user's folder directly. That mode stays for independent Sessions.
 

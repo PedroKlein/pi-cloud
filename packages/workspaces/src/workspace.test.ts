@@ -860,3 +860,31 @@ test("removes several repositories only when none of them would lose work", asyn
     "work.txt\n",
   );
 });
+
+test("keeps several repositories while files sit beside them", async () => {
+  const dir = join(root, "workspaces", "s1");
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pi-cloud/s1",
+    repositories: [{ repository }],
+  } as const;
+
+  await prepareWorkspace(workspace, { dir, folders: [] }, noLog);
+  await writeFile(join(dir, "out.txt"), "result\n");
+
+  expect(
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({
+    outcome: "kept",
+    reason: "files outside the repositories: out.txt",
+  });
+
+  expect(await readFile(join(dir, "out.txt"), "utf8")).toBe("result\n");
+
+  expect(
+    (await removeWorkspace(workspace, { dir, force: true }, noLog)).outcome,
+  ).toBe("removed");
+
+  expect(stat(dir)).rejects.toThrow();
+});

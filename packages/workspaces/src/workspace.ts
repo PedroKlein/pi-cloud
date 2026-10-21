@@ -1,6 +1,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -188,6 +196,21 @@ export async function removeWorkspace(
   );
 
   if (!force) {
+    const names = new Set(
+      workspace.repositories.map(({ repository }) => checkoutName(repository)),
+    );
+
+    const outside = (await exists(dir))
+      ? (await readdir(dir)).filter((name) => !names.has(name)).sort()
+      : [];
+
+    if (outside.length > 0) {
+      const reason = `files outside the repositories: ${outside.join(", ")}`;
+      log("workspace kept", { dir, reason });
+
+      return { outcome: "kept", reason };
+    }
+
     for (const { checkout, path, workspace: single } of checkouts) {
       const present = await exists(path);
       const reason = await lossOf(single, path, present, present);
