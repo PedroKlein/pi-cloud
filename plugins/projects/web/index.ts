@@ -211,6 +211,14 @@ async function projectPage(
 
   const project = (await response.json()) as ProjectView;
 
+  const environments = (await (
+    await fetch("/api/environments")
+  ).json()) as Environment[];
+
+  const environmentNames = new Map(
+    environments.map(({ id: environmentId, name }) => [environmentId, name]),
+  );
+
   const instructions = el("textarea");
   instructions.value = project.instructions;
 
@@ -272,7 +280,7 @@ async function projectPage(
     el("h3", "Threads"),
     project.threads.length === 0
       ? el("p", "No threads yet. Ask the coordinator to start some.")
-      : threadTable(context, project.threads),
+      : threadTable(context, project.threads, environmentNames),
     el("h3", "Instructions"),
     instructions,
     save,
@@ -285,12 +293,13 @@ async function projectPage(
 function threadTable(
   context: WebContext,
   threads: readonly ThreadView[],
+  environmentNames: ReadonlyMap<string, string>,
 ): HTMLTableElement {
   const header = el(
     "tr",
     undefined,
-    ...["Thread", "Run", "Work", "Branch", "Last activity"].map((text) =>
-      el("th", text),
+    ...["Thread", "Environment", "Run", "Work", "Branch", "Last activity"].map(
+      (text) => el("th", text),
     ),
   );
 
@@ -323,6 +332,10 @@ function threadTable(
         button(thread.title, () => {
           context.openSession(thread.sessionId);
         }),
+      ),
+      el(
+        "td",
+        environmentNames.get(thread.environmentId) ?? thread.environmentId,
       ),
       el("td", thread.runState),
       el("td", undefined, state),

@@ -189,6 +189,34 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("heading", { name: "Site" }).waitFor();
   await page.getByText("No threads yet.").waitFor();
 
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("start_thread", { title: "Docs", message: "write docs" })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("ok")]),
+    fauxAssistantMessage([fauxText("ok")]),
+  ]);
+
+  await page.getByRole("button", { name: "Open coordinator" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+  await page.locator("#prompt-text").fill("start a docs thread");
+  await page.locator("#prompt-text").press("Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
+    .waitFor();
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  await page.getByRole("button", { name: /^Site/ }).click();
+
+  const row = page.locator("tr", { hasText: "Docs" });
+  await row.locator("td", { hasText: /^e2e$/ }).waitFor();
+
   await page
     .locator("#plugin-nav")
     .getByRole("link", { name: "Library" })
