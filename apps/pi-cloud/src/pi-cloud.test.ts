@@ -1794,6 +1794,30 @@ test("runs each session in its own process and reloads it when the process dies"
   }
 }, 30_000);
 
+test("sends a session process its first message", async () => {
+  const model = fakeModelServer("first reply");
+  await startProcessAgent(model);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "fake", id: "fake-model" },
+        firstMessage: "start here",
+      })
+    ).json()) as Session;
+
+    const events = await follow(session.id, (seen) =>
+      seen.some((e) => e.type === "entry" && e.entry.includes("first reply")),
+    );
+
+    expect(roles(events)).toEqual(["system", "user", "assistant"]);
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);
+
 test("marks a session failed when its process cannot start it", async () => {
   const model = fakeModelServer("unused");
   await startProcessAgent(model);
