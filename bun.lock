@@ -75,6 +75,7 @@
         "@earendil-works/pi-coding-agent": "1.3.0",
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
+        "quickjs-wasi": "3.6.2",
       },
       "devDependencies": {
         "@pi-cloud/ask": "workspace:*",

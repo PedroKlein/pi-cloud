@@ -3,6 +3,7 @@ import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { startSession, stopSession } from "../index";
@@ -13,7 +14,13 @@ if (root === undefined) {
 }
 
 const faux = fauxProvider();
-faux.setResponses([fauxAssistantMessage([fauxText("compiled ok")])]);
+
+faux.setResponses([
+  fauxAssistantMessage([fauxToolCall("codemode", { code: "return 6 * 7" })], {
+    stopReason: "toolUse",
+  }),
+  fauxAssistantMessage([fauxText("compiled ok")]),
+]);
 
 const runtime = await ModelRuntime.create({
   authPath: join(root, "auth.json"),
@@ -31,6 +38,14 @@ const session = await startSession({
   models: { runtime, model: faux.getModel() },
 });
 
+const toolOutputs: string[] = [];
+
+session.subscribe((event) => {
+  if (event.type === "tool_execution_end") {
+    toolOutputs.push(JSON.stringify(event.result));
+  }
+});
+
 await session.prompt("hello");
 await stopSession(session);
 
@@ -38,5 +53,6 @@ process.stdout.write(
   JSON.stringify({
     tools: session.getActiveToolNames(),
     reply: session.getLastAssistantText(),
+    toolOutputs,
   }),
 );
