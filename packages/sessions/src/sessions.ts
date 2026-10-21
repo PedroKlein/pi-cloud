@@ -724,8 +724,8 @@ function surfaceOf(
       return { key: `widget:${event.key}`, open: event.lines !== null };
     case "title":
       return { key: "title", open: true };
-    case "changes":
-      return { key: "changes", open: true };
+    case "plugin":
+      return { key: `plugin:${event.plugin}:${event.key}`, open: true };
     case "queue":
       return {
         key: "queue",

@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { type Browser, chromium, type Page } from "playwright-core";
@@ -123,4 +125,40 @@ test("archives a session, shows it only with archived sessions and unarchives it
 
   expect(new URL(page.url()).hash.slice(1)).toBe(id);
   expect(await page.locator("#prompt").isVisible()).toBe(true);
+}, 30_000);
+
+test("shows the session's changes and usage from their plugins", async () => {
+  execFileSync("git", ["init", "--quiet"], { cwd: root });
+  await writeFile(join(root, ".git/info/exclude"), "/*\n!/notes.txt\n");
+
+  faux.setResponses([
+    fauxAssistantMessage([
+      fauxToolCall("write", { path: "notes.txt", content: "new notes\n" }),
+    ]),
+    fauxAssistantMessage([fauxText("wrote it")]),
+  ]);
+
+  await page.goto(server.url.href);
+
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "New session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.locator("#prompt-text").fill("write notes");
+  await page.locator("#prompt-text").press("Enter");
+
+  const changes = page.locator('#plugin-panels [data-plugin="changes"]');
+  await changes.getByText("Changes (1 files)").click();
+  await changes.getByText("+new notes").waitFor();
+
+  await page
+    .locator('#plugin-header [data-plugin="usage"]', { hasText: "out" })
+    .waitFor();
 }, 30_000);

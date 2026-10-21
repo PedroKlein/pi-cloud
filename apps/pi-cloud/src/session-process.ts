@@ -11,7 +11,7 @@ import {
 } from "@pi-cloud/sessionhost";
 import { httpSessionStream } from "./client";
 import { stderrLog } from "./log";
-import { sessionExtensions } from "./plugins";
+import { sessionPluginsNamed } from "./plugins";
 
 export interface SessionSpec {
   readonly server: string;
@@ -117,7 +117,7 @@ export async function runSessionProcess(): Promise<void> {
       {
         ...spec.options,
         firstMessage: spec.assignment.firstMessage,
-        extensions: sessionExtensions(spec.assignment.plugins),
+        plugins: sessionPluginsNamed(spec.assignment.plugins),
       },
       httpSessionStream(spec, spec.assignment, log, () => {
         void stop();
@@ -128,7 +128,7 @@ export async function runSessionProcess(): Promise<void> {
       },
     );
   } catch (error) {
-    send({ error: String(error) });
+    send({ error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
   }
 

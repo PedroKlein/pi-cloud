@@ -5,14 +5,8 @@ import type {
   ExtensionUIDialogOptions,
   ExtensionWidgetOptions,
 } from "@earendil-works/pi-coding-agent";
-import type {
-  Answer,
-  Command,
-  LiveEvent,
-  Prompt,
-  Question,
-  QuestionsAnswer,
-} from "@pi-cloud/protocol";
+import type { AskQuestions, Explain } from "@pi-cloud/plugins";
+import type { Answer, Command, LiveEvent, Prompt } from "@pi-cloud/protocol";
 
 export type RemoteUI = Pick<
   ExtensionUIContext,
@@ -25,6 +19,7 @@ export type RemoteUI = Pick<
   | "setWidget"
   | "setTitle"
   | "setEditorText"
+  | "custom"
 >;
 
 type PromptRequest = Prompt extends infer P
@@ -32,18 +27,6 @@ type PromptRequest = Prompt extends infer P
     ? Omit<P, "id">
     : never
   : never;
-
-export type Explain = (
-  questionId: string,
-  value: string,
-  question: string | null,
-) => Promise<string>;
-
-export type AskQuestions = (
-  questions: readonly Question[],
-  explain: Explain | undefined,
-  signal: AbortSignal | undefined,
-) => Promise<QuestionsAnswer | null>;
 
 export function remoteUI(publish: (event: LiveEvent) => void): {
   readonly ui: RemoteUI;
@@ -151,6 +134,11 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       setEditorText: (value) => {
         publish({ type: "editor_text", text: value });
       },
+      // A custom dialog is a terminal component, which the web can't draw.
+      custom: async () =>
+        Promise.reject(
+          new Error("Pi Cloud's web UI can't show custom terminal dialogs"),
+        ),
     },
     questions: async (questions, explain, signal) => {
       const value = await ask(

@@ -3,7 +3,7 @@
   "include": [
     "apps/pi-cloud/src",
     "packages/*/src",
-    "pi-extensions/*/src",
+    "plugins/*/src",
     "**/*.test.ts",
     "test-setup.ts"
   ],

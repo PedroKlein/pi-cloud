@@ -1,7 +1,10 @@
+import { changes } from "@pi-cloud/changes/web";
 import type { Unmount, WebContext, WebPlugin } from "@pi-cloud/plugins/web";
+import type { SessionEvent } from "@pi-cloud/protocol";
+import { usage } from "@pi-cloud/usage/web";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
-const webPlugins: readonly WebPlugin[] = [];
+const webPlugins: readonly WebPlugin[] = [usage, changes];
 
 let enabled: readonly WebPlugin[] = [];
 
@@ -49,27 +52,53 @@ function slot(parent: HTMLElement, name: string): HTMLElement {
   return element;
 }
 
+// The Session view hands every event it receives to dispatch, so plugins
+// share its stream instead of opening their own.
 export function mountSession(
   sessionId: string,
   header: HTMLElement,
   panels: HTMLElement,
-): Unmount {
+): {
+  readonly dispatch: (event: SessionEvent) => void;
+  readonly unmount: Unmount;
+} {
+  const listeners = new Set<(event: SessionEvent) => void>();
+
+  const session = {
+    id: sessionId,
+    events: (listener: (event: SessionEvent) => void) => {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+
   const unmounts = enabled.flatMap(({ name, sessionHeader, sessionPanel }) => [
     ...(sessionHeader
-      ? [sessionHeader(slot(header, name), context(name), sessionId)]
+      ? [sessionHeader(slot(header, name), context(name), session)]
       : []),
     ...(sessionPanel
-      ? [sessionPanel(slot(panels, name), context(name), sessionId)]
+      ? [sessionPanel(slot(panels, name), context(name), session)]
       : []),
   ]);
 
-  return () => {
-    unmounts.forEach((unmount) => {
-      unmount();
-    });
+  return {
+    dispatch: (event) => {
+      listeners.forEach((listener) => {
+        listener(event);
+      });
+    },
+    unmount: () => {
+      unmounts.forEach((unmount) => {
+        unmount();
+      });
 
-    header.replaceChildren();
-    panels.replaceChildren();
+      listeners.clear();
+      header.replaceChildren();
+      panels.replaceChildren();
+    },
   };
 }
 

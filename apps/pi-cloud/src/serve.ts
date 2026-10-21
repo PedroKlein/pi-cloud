@@ -3,7 +3,7 @@ import type { Log } from "@pi-cloud/providers";
 import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
-import { serverPlugins, startPlugins } from "./plugins";
+import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
@@ -26,6 +26,10 @@ export function serve(options: ServeOptions): {
   const plugins = options.plugins ?? serverPlugins;
   const disabled = options.disabledPlugins ?? [];
 
+  const enabled = (
+    options.plugins?.map(({ name }) => name) ?? builtInPlugins
+  ).filter((name) => !disabled.includes(name));
+
   const events = eventBus((type, error) => {
     options.log("event listener failed", { type, error: String(error) });
   });
@@ -33,12 +37,10 @@ export function serve(options: ServeOptions): {
   const sessions = new Sessions(store, {
     ...options.sessions,
     events: events.publish,
-    sessionPlugins: plugins
-      .map(({ name }) => name)
-      .filter((name) => !disabled.includes(name)),
+    sessionPlugins: enabled,
   });
 
-  const pluginHost = startPlugins(plugins, disabled, {
+  const pluginHost = startPlugins(plugins, enabled, {
     sessions,
     events,
     store: store.plugin,

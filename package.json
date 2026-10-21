@@ -5,7 +5,7 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "pi-extensions/*"
+    "plugins/*"
   ],
   "scripts": {
     "build": "bun run --cwd apps/pi-cloud build",

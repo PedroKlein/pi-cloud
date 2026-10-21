@@ -3,11 +3,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type {
   AgentSession,
   AgentSessionEvent,
-  ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
+import type { SessionPlugin } from "@pi-cloud/plugins";
 import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
-import { askUserTool } from "./ask";
-import { workspaceChanges } from "./changes";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
@@ -26,7 +24,7 @@ export interface SessionStream {
 }
 
 export interface HostOptions extends SessionOptions {
-  readonly extensions?: readonly ExtensionFactory[];
+  readonly plugins?: readonly SessionPlugin[];
   readonly firstMessage?: string | null;
 }
 
@@ -59,7 +57,7 @@ const resent: readonly LiveEvent["type"][] = [
   "widget",
   "title",
   "queue",
-  "changes",
+  "plugin",
 ];
 
 export type TerminalCommand = Extract<Command, { type: "terminal" }>;
@@ -117,10 +115,29 @@ export async function hostSession(
 
   const calls = serverTools(await stream.tools(), stream.callTool);
 
+  const plugins = (options.plugins ?? []).map((plugin) => ({
+    plugin,
+    cloud: {
+      publish: (key: string, data: unknown) => {
+        live.push({ type: "plugin", plugin: plugin.name, key, data });
+      },
+      askQuestions: prompts.questions,
+      base: options.base ?? null,
+      log: (message: string, fields?: Readonly<Record<string, unknown>>) => {
+        log(message, { plugin: plugin.name, ...fields });
+      },
+    },
+  }));
+
   const session = await startSession(options, {
     ui: prompts.ui,
-    tools: [askUserTool(prompts.questions), ...calls.tools],
-    extensions: options.extensions ?? [],
+    tools: [
+      ...plugins.flatMap(({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
+      ...calls.tools,
+    ],
+    extensions: plugins.flatMap(({ plugin, cloud }) =>
+      plugin.extension ? [plugin.extension(cloud)] : [],
+    ),
     onError: (error) => {
       log("extension error", {
         extension: error.extensionPath,
@@ -132,23 +149,10 @@ export async function hostSession(
 
   const transcript = transcriptSync(session, stream, log);
 
-  const changes = changesPublisher(
-    session.sessionManager.getCwd(),
-    options.base ?? null,
-    (event) => {
-      live.push(event);
-    },
-    log,
-  );
-
   const unsubscribe = session.subscribe((event) => {
     const liveEvent = toLiveEvent(event);
     if (liveEvent) {
       live.push(liveEvent);
-    }
-
-    if (event.type === "agent_settled") {
-      changes.refresh();
     }
 
     if (
@@ -202,7 +206,6 @@ export async function hostSession(
 
   live.push({ type: "status", status: "idle" });
   transcript.sync();
-  changes.refresh();
 
   const firstMessage = options.firstMessage ?? null;
   if (
@@ -224,7 +227,6 @@ export async function hostSession(
       await stopSession(session);
       unsubscribe();
       transcript.sync();
-      await changes.close();
       await Promise.all([transcript.close(), live.close()]);
     },
   };
@@ -340,45 +342,6 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
   }
 
   return undefined;
-}
-
-function changesPublisher(
-  cwd: string,
-  base: string | null,
-  publish: (event: LiveEvent) => void,
-  log: Log,
-): { refresh: () => void; close: () => Promise<void> } {
-  let running = Promise.resolve();
-  let queued = false;
-
-  const collect = async (): Promise<void> => {
-    queued = false;
-    const started = Date.now();
-    try {
-      const changes = await workspaceChanges(cwd, base);
-      if (changes) {
-        publish(changes);
-
-        log("workspace changes", {
-          files: changes.files.length,
-          truncated: changes.truncated,
-          ms: Date.now() - started,
-        });
-      }
-    } catch (error) {
-      log("workspace changes failed", { error: String(error) });
-    }
-  };
-
-  return {
-    refresh: () => {
-      if (!queued) {
-        queued = true;
-        running = running.then(collect);
-      }
-    },
-    close: async () => running,
-  };
 }
 
 function liveQueue(

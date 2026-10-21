@@ -1,5 +1,7 @@
 export { type EventBus, eventBus } from "./events";
 export type {
+  AskQuestions,
+  Explain,
   KernelEvent,
   PluginEvent,
   PluginRoute,
@@ -7,6 +9,7 @@ export type {
   ServerPlugin,
   ServerPluginContext,
   ServerTool,
+  SessionCloud,
   SessionPlugin,
   StartRequest,
   ToolCaller,
