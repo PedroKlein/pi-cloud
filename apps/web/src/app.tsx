@@ -129,6 +129,9 @@ function Empty({
         <MenuButton onMenu={onMenu} />
       </div>
       <div className="m-auto flex max-w-sm flex-col items-center gap-4 p-8 text-center">
+        <span className="grid size-14 place-items-center rounded-xl bg-accent font-mono text-display text-on-accent shadow-card">
+          π
+        </span>
         <h1 className="text-display font-semibold text-fg-strong">Pi Cloud</h1>
         <p className="text-fg-dim">
           Pick a session, or start a new one on one of your machines.
@@ -167,7 +170,7 @@ function PluginPage({
       <div
         id="plugin-page"
         ref={host}
-        className="legacy mx-auto max-w-5xl px-4 py-6 md:px-8"
+        className="legacy mx-auto max-w-5xl px-4 py-8 md:px-10"
       />
     </div>
   );

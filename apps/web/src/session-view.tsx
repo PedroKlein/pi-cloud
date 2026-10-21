@@ -5,14 +5,14 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import { api } from "./api";
 import { Composer } from "./composer";
-import { emptyFeed, type Feed, type FeedItem, follow } from "./feed";
-import { describe, sessionBadge, workspaceName } from "./names";
+import { ChatView } from "./chat-view";
+import { emptyFeed, type Feed, follow } from "./feed";
+import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { mountSession } from "./plugins";
 import { openTerminal } from "./terminal";
 
@@ -69,8 +69,8 @@ export function SessionView({
 
   const { session } = feed;
 
-  const title =
-    feed.title ?? (session ? workspaceName(session.workspace) : sessionId);
+  const place = session ? shortName(session.workspace) : "";
+  const title = feed.title ?? place;
 
   const archived = session !== undefined && session.archivedAt !== null;
 
@@ -114,6 +114,7 @@ export function SessionView({
             <span className="truncate font-mono">
               {session ? sessionCrumb(session, environments) : ""}
             </span>
+            <span aria-hidden="true">·</span>
             <span id="status" className="shrink-0">
               {statusText(feed)}
             </span>
@@ -179,7 +180,7 @@ export function SessionView({
         <TerminalView sessionId={sessionId} />
       ) : (
         <>
-          <ChatView feed={feed} />
+          <ChatView feed={feed} place={place} />
           <Composer
             sessionId={sessionId}
             feed={feed}
@@ -257,73 +258,6 @@ function ViewSwitch({
     >
       {option("chat", "Chat", "chat")}
       {option("terminal", "Terminal", "terminal")}
-    </div>
-  );
-}
-
-const itemStyles: Record<FeedItem["role"], string> = {
-  user: "self-end max-w-[80%] rounded-lg border border-line bg-elevated px-4 py-2 text-prose",
-  assistant: "text-prose",
-  tool: "font-mono text-code-sm text-fg-dim",
-  error: "font-mono text-code-sm text-failed",
-};
-
-function ChatView({ feed }: { readonly feed: Feed }): ReactElement {
-  const scroller = useRef<HTMLDivElement>(null);
-  const atBottom = useRef(true);
-
-  useLayoutEffect(() => {
-    const box = scroller.current;
-    if (box && atBottom.current) {
-      box.scrollTop = box.scrollHeight;
-    }
-  }, [feed.items, feed.streaming, feed.tools, feed.prompts]);
-
-  return (
-    <div
-      ref={scroller}
-      onScroll={(event) => {
-        const box = event.currentTarget;
-
-        atBottom.current =
-          box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-      }}
-      className="min-h-0 flex-1 overflow-y-auto"
-    >
-      <ol
-        id="chat"
-        className="mx-auto flex max-w-chat flex-col gap-3 px-4 py-6"
-      >
-        {feed.items.map((item) => (
-          <li
-            key={item.key}
-            data-role={item.role}
-            className={cn(
-              "whitespace-pre-wrap [content-visibility:auto]",
-              itemStyles[item.role],
-            )}
-          >
-            {item.text}
-          </li>
-        ))}
-        {feed.streaming !== undefined && (
-          <li
-            data-role="assistant"
-            className={cn("whitespace-pre-wrap", itemStyles.assistant)}
-          >
-            {feed.streaming}
-          </li>
-        )}
-        {feed.tools.map(({ id, name }) => (
-          <li
-            key={id}
-            data-role="tool"
-            className={cn("text-working", itemStyles.tool)}
-          >
-            {name} running…
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }

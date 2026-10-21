@@ -1,7 +1,14 @@
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { Badge, Button, cn, Icon } from "@pi-cloud/ui";
 import type { ReactElement } from "react";
-import { modelName, sessionBadge, workspaceName } from "./names";
+import { useNow } from "./hooks";
+import {
+  ago,
+  modelName,
+  sessionBadge,
+  shortName,
+  workspaceName,
+} from "./names";
 import type { NavEntry } from "./plugins";
 
 export interface SidebarProps {
@@ -26,7 +33,10 @@ export function Sidebar({
   return (
     <nav aria-label="Pi Cloud" className="flex h-full flex-col bg-panel">
       <div className="flex items-center justify-between gap-2 py-3 pr-3 pl-4">
-        <span className="text-title font-semibold text-fg-strong">
+        <span className="flex items-center gap-2.5 text-title font-semibold text-fg-strong">
+          <span className="grid size-7 place-items-center rounded-md bg-accent font-mono text-ui text-on-accent">
+            π
+          </span>
           Pi Cloud
         </span>
         <Button
@@ -40,22 +50,30 @@ export function Sidebar({
       </div>
 
       {nav.length > 0 && (
-        <div id="plugin-nav" className="flex flex-col gap-0.5 px-2">
+        <div id="plugin-nav" className="flex flex-col gap-0.5 px-2 pb-1">
           {nav.map(({ name, label }) => (
             <a
               key={name}
               href={`#plugin/${name}`}
               aria-current={route === `plugin/${name}` ? "page" : undefined}
-              className="rounded-md px-3 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
+              className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
             >
+              <span
+                aria-hidden="true"
+                className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
+              >
+                {label.slice(0, 1)}
+              </span>
               {label}
             </a>
           ))}
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 pt-4 pb-1">
-        <h2 className="text-label font-medium text-fg-dim">Sessions</h2>
+      <div className="mt-2 flex items-center justify-between border-t border-line px-4 pt-4 pb-2">
+        <h2 className="text-caption font-semibold tracking-wide text-fg-dim uppercase">
+          Sessions
+        </h2>
         <label className="flex cursor-pointer items-center gap-1.5 text-caption text-fg-dim">
           <input
             id="show-archived"
@@ -101,11 +119,12 @@ function SessionRow({
   readonly current: boolean;
 }): ReactElement {
   const badge = sessionBadge(session);
+  const now = useNow();
 
   const meta = [
     environment?.name ?? session.provider,
     ...(session.model ? [modelName(session.model)] : []),
-    ...(session.archivedAt === null ? [] : ["archived"]),
+    session.archivedAt === null ? ago(session.createdAt, now) : "archived",
   ].join(" · ");
 
   return (
@@ -113,15 +132,16 @@ function SessionRow({
       <a
         href={`#${session.id}`}
         aria-current={current ? "page" : undefined}
-        className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-3 py-2 text-fg hover:bg-hover aria-[current=page]:bg-hover"
+        className="relative grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-3 py-2 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:w-0.5 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-accent"
       >
         <span
+          title={workspaceName(session.workspace)}
           className={cn(
             "truncate text-ui font-medium",
             current && "text-fg-strong",
           )}
         >
-          {workspaceName(session.workspace)}
+          {shortName(session.workspace)}
         </span>
         {badge ? <Badge state={badge.state}>{badge.label}</Badge> : <span />}
         <span className="col-span-2 truncate text-caption text-fg-dim">

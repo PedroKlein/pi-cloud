@@ -74,3 +74,44 @@ export function sessionBadge(session: Session): SessionBadge | undefined {
       return undefined;
   }
 }
+
+function lastSegment(path: string): string {
+  const parts = path
+    .replace(/\.git$/, "")
+    .split(/[/:]/)
+    .filter((part) => part !== "");
+
+  return parts.at(-1) ?? path;
+}
+
+// The few words that name a workspace in a list: its folder or repository.
+export function shortName(workspace: Workspace): string {
+  switch (workspace.kind) {
+    case "folder":
+    case "worktree":
+      return lastSegment(workspace.path);
+    case "clone":
+      return lastSegment(workspace.repository);
+    case "repositories": {
+      const [first, ...rest] = workspace.repositories;
+      const name = first ? lastSegment(first.repository) : "repositories";
+
+      return rest.length === 0 ? name : `${name} +${String(rest.length)}`;
+    }
+  }
+}
+
+const units = [
+  ["d", 86_400_000],
+  ["h", 3_600_000],
+  ["m", 60_000],
+] as const;
+
+export function ago(time: string, now: number): string {
+  const elapsed = now - Date.parse(time);
+  const unit = units.find(([, ms]) => elapsed >= ms);
+
+  return unit
+    ? `${String(Math.floor(elapsed / unit[1]))}${unit[0]} ago`
+    : "just now";
+}

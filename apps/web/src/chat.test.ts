@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chatItems } from "./chat";
+import { chatItems, describeTool, turns } from "./chat";
 
 const line = (message: unknown): string =>
   JSON.stringify({ type: "message", id: "1", message });
@@ -37,18 +37,23 @@ test("shows tool calls and their results", () => {
         ],
       }),
     ),
-  ).toEqual([{ role: "tool", text: 'bash {"command":"ls"}' }]);
+  ).toEqual([
+    { role: "tool", id: "t1", name: "bash", args: { command: "ls" } },
+  ]);
 
   expect(
     chatItems(
       line({
         role: "toolResult",
+        toolCallId: "t1",
         toolName: "bash",
         isError: true,
         content: [{ type: "text", text: "boom" }],
       }),
     ),
-  ).toEqual([{ role: "error", text: "bash → boom" }]);
+  ).toEqual([
+    { role: "result", id: "t1", name: "bash", text: "boom", failed: true },
+  ]);
 });
 
 test("shows a failed assistant turn", () => {
@@ -74,8 +79,70 @@ test("shows custom messages meant for display", () => {
     });
 
   expect(chatItems(custom(true))).toEqual([
-    { role: "tool", text: "thread finished" },
+    { role: "note", text: "thread finished" },
   ]);
 
   expect(chatItems(custom(false))).toEqual([]);
+});
+
+test("describes a tool call as a verb and its object", () => {
+  expect(describeTool("read", { path: "src/app.ts" })).toEqual({
+    verb: "Read",
+    object: "src/app.ts",
+  });
+
+  expect(describeTool("bash", { command: "bun test\nbun run lint" })).toEqual({
+    verb: "Ran",
+    object: "bun test",
+  });
+
+  expect(describeTool("start_thread", { title: "Docs" })).toEqual({
+    verb: "start_thread",
+    object: "Docs",
+  });
+});
+
+test("groups a turn into its work and its answer", () => {
+  const keyed = [
+    { role: "user", text: "fix it" },
+    { role: "assistant", text: "Looking." },
+    { role: "tool", id: "a", name: "read", args: { path: "x.ts" } },
+    { role: "result", id: "a", name: "read", text: "code", failed: false },
+    { role: "tool", id: "b", name: "bash", args: { command: "bun test" } },
+    { role: "result", id: "b", name: "bash", text: "1 fail", failed: true },
+    { role: "assistant", text: "Fixed." },
+    { role: "user", text: "thanks" },
+  ].map(
+    (item, key) => ({ ...item, key }) as Parameters<typeof turns>[0][number],
+  );
+
+  expect(turns(keyed)).toEqual([
+    {
+      key: 0,
+      user: "fix it",
+      work: [
+        { kind: "narration", text: "Looking." },
+        {
+          kind: "step",
+          step: {
+            id: "a",
+            name: "read",
+            args: { path: "x.ts" },
+            result: { text: "code", failed: false },
+          },
+        },
+        {
+          kind: "step",
+          step: {
+            id: "b",
+            name: "bash",
+            args: { command: "bun test" },
+            result: { text: "1 fail", failed: true },
+          },
+        },
+      ],
+      answer: ["Fixed."],
+    },
+    { key: 7, user: "thanks", work: [], answer: [] },
+  ]);
 });
