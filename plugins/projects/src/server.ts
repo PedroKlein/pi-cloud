@@ -61,7 +61,7 @@ export const projects: ServerPlugin = {
         (session.status === "interrupted" || session.status === "failed")
       ) {
         store.enqueue(project.coordinatorId, "plugin:projects", {
-          kind: "context",
+          kind: "message",
           text: threadNotice(thread, session, `stopped: ${session.status}`, []),
         });
       }
@@ -113,7 +113,7 @@ function deliver(
         case "turn": {
           const thread = store.member(delivery.threadId);
           if (thread) {
-            sessions.notify(
+            sessions.send(
               sessionId,
               threadNotice(
                 thread,

@@ -67,7 +67,7 @@
 
 - Resolved for v1: a Project has one coordinator and thread Sessions, each with its own Workspace holding every Project repository; Project tools are built into the session host ([ADR 0015](adr/0016-projects.md)).
 - Which messages should create a new Thread versus reuse an existing one? The coordinator decides; there is no rule yet.
-- Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, without starting a turn, and threads message the coordinator explicitly ([ADR 0015](adr/0016-projects.md)).
+- Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, and threads message the coordinator explicitly ([ADR 0016](adr/0016-projects.md)). A turn notice starts a coordinator turn; a state change notice doesn't.
 - Resolved for v1: any Project Session may write Project memory; the last write wins, and every write is logged ([ADR 0015](adr/0016-projects.md)).
 - Resolved for v1: the Project library is a writable shared space on the server, where the last write wins, like memory ([vision](vision.md#v1-personal-sessions-and-projects-on-your-own-machines)). Versioned publications may come later.
 - How are overlapping repository or file claims detected before work begins?

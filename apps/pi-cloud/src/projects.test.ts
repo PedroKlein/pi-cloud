@@ -290,6 +290,80 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
   ]);
 }, 30_000);
 
+test("wakes the coordinator with each thread's turn notice", async () => {
+  const a = await repository("app");
+  const notices: string[] = [];
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const seen = JSON.stringify(context.messages);
+    const last = lastUserText(context.messages);
+
+    if (!seen.includes("You are the coordinator")) {
+      return fauxAssistantMessage([
+        fauxText(last.includes("count") ? "counted 3" : "read 7"),
+      ]);
+    }
+
+    if (last.includes("split the work")) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("start_thread", { title: "Count", message: "count" }),
+          fauxToolCall("start_thread", { title: "Read", message: "read" }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (last.includes("finished a turn")) {
+      notices.push(last);
+
+      return fauxAssistantMessage([
+        fauxText(
+          seen.includes("counted 3") && seen.includes("read 7")
+            ? "summary: counted 3, read 7"
+            : "waiting for the other thread",
+        ),
+      ]);
+    }
+
+    return fauxAssistantMessage([fauxText("started two threads")]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Split",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "split the work",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("summary: counted 3, read 7"),
+  );
+
+  expect(notices).toHaveLength(2);
+}, 30_000);
+
 test("refuses a Project without repositories", async () => {
   const response = await api("/api/plugins/projects/projects", {
     name: "Empty",
