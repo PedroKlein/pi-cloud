@@ -417,3 +417,47 @@ test("adds nothing when a session stopped between turns", async () => {
 
   expect(await readFile(String(second.sessionFile), "utf8")).toBe(before);
 });
+
+test("runs a codemode script, as Pi's CLI does", async () => {
+  const { faux, runtime } = await fauxModels();
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("codemode", { code: "return 6 * 7" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  await mkdir(join(root, "agent"));
+
+  await writeFile(
+    join(root, "agent", "settings.json"),
+    JSON.stringify({ defaultTools: ["+codemode"] }),
+  );
+
+  const session = await startSession({
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models: { runtime, model: faux.getModel() },
+  });
+
+  const toolOutputs: string[] = [];
+
+  session.subscribe((event) => {
+    if (event.type === "tool_execution_end") {
+      toolOutputs.push(JSON.stringify(event.result));
+    }
+  });
+
+  await session.prompt("compute");
+  await stopSession(session);
+
+  expect(session.getAllTools().map(({ name }) => name)).toContain(
+    "tool_search",
+  );
+
+  expect(toolOutputs.join()).toContain("Script completed");
+  expect(toolOutputs.join()).toContain("42");
+});
