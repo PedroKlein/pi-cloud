@@ -4,7 +4,8 @@
     "apps/pi-cloud/src",
     "packages/*/src",
     "pi-extensions/*/src",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "test-setup.ts"
   ],
   "exclude": ["node_modules"]
 }
