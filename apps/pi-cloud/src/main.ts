@@ -6,6 +6,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent";
 import { stderrLog } from "./log";
 import { serve } from "./serve";
+import { runSessionProcess } from "./session-process";
 
 const usage = `usage:
   pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
@@ -93,6 +94,10 @@ switch (command) {
 
     break;
   }
+
+  case "session":
+    await runSessionProcess();
+    break;
 
   case undefined:
   default:

@@ -53,10 +53,52 @@ const resent: readonly LiveEvent["type"][] = [
   "changes",
 ];
 
+export type TerminalCommand = Extract<Command, { type: "terminal" }>;
+
+interface Terminals {
+  readonly open: (command: TerminalCommand) => void;
+  readonly close: () => void;
+}
+
+// Opens session terminals in cwd, each over its own socket from stream.
+export function hostTerminals(
+  cwd: string,
+  stream: Pick<SessionStream, "terminal">,
+  log: Log,
+): Terminals {
+  const terminals = new Map<string, () => void>();
+
+  return {
+    open: (command) => {
+      try {
+        terminals.set(
+          command.terminalId,
+          attachTerminal(cwd, command, stream, log, () => {
+            terminals.delete(command.terminalId);
+          }),
+        );
+      } catch (error) {
+        log("terminal failed to start", {
+          terminalId: command.terminalId,
+          error: String(error),
+        });
+
+        stream.terminal(command.terminalId, ignoredPeer).close();
+      }
+    },
+    close: () => {
+      for (const close of terminals.values()) {
+        close();
+      }
+    },
+  };
+}
+
 export async function hostSession(
   options: SessionOptions,
   stream: SessionStream,
   log: Log,
+  openTerminalElsewhere?: (command: TerminalCommand) => void,
 ): Promise<HostedSession> {
   const live = liveQueue(stream, log);
 
@@ -105,7 +147,8 @@ export async function hostSession(
     }
   });
 
-  const terminals = new Map<string, () => void>();
+  const terminals = hostTerminals(session.sessionManager.getCwd(), stream, log);
+  const startTerminal = openTerminalElsewhere ?? terminals.open;
 
   const detach = stream.commands((command) => {
     log("command received", { command: command.type, actor: command.actor });
@@ -123,27 +166,7 @@ export async function hostSession(
     }
 
     if (command.type === "terminal") {
-      try {
-        terminals.set(
-          command.terminalId,
-          attachTerminal(
-            session.sessionManager.getCwd(),
-            command,
-            stream,
-            log,
-            () => {
-              terminals.delete(command.terminalId);
-            },
-          ),
-        );
-      } catch (error) {
-        log("terminal failed to start", {
-          terminalId: command.terminalId,
-          error: String(error),
-        });
-
-        stream.terminal(command.terminalId, ignoredPeer).close();
-      }
+      startTerminal(command);
 
       return;
     }
@@ -166,9 +189,7 @@ export async function hostSession(
   return {
     stop: async () => {
       detach();
-      for (const close of terminals.values()) {
-        close();
-      }
+      terminals.close();
 
       prompts.cancelAll();
       await stopSession(session);
@@ -188,8 +209,8 @@ const ignoredPeer: TerminalPeer = {
 
 function attachTerminal(
   cwd: string,
-  command: Extract<Command, { type: "terminal" }>,
-  stream: SessionStream,
+  command: TerminalCommand,
+  stream: Pick<SessionStream, "terminal">,
   log: Log,
   exited: () => void,
 ): () => void {
