@@ -1,6 +1,6 @@
 # 0008: Monorepo layout
 
-- Status: accepted
+- Status: accepted. `pi-extensions/` is replaced by `plugins/` ([ADR 0015](0015-plugins.md)).
 - Date: 2026-10-19
 
 ## Context
