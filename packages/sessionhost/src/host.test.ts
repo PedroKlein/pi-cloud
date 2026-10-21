@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import {
   fauxAssistantMessage,
   fauxText,
@@ -983,3 +985,140 @@ test.each([
     ]);
   },
 );
+
+async function gitRepository(): Promise<string> {
+  const dir = join(root, "repo");
+  await mkdir(dir);
+
+  const git = async (...args: string[]): Promise<void> => {
+    await promisify(execFile)("git", args, { cwd: dir });
+  };
+
+  await git("init", "--initial-branch=main");
+  await writeFile(join(dir, "README.md"), "hello\n");
+  await git("add", ".");
+
+  await git(
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "first",
+  );
+
+  return dir;
+}
+
+test("publishes what the session changed in its git workspace after a turn", async () => {
+  const { faux, models } = await fauxModels(root);
+  const repo = await gitRepository();
+
+  faux.setResponses([
+    fauxAssistantMessage([
+      fauxToolCall("write", { path: "notes.txt", content: "new notes\n" }),
+    ]),
+    fauxAssistantMessage([fauxText("wrote it")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: repo,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  const changes = (): Extract<LiveEvent, { type: "changes" }>[] =>
+    fake.events.filter((e) => e.type === "changes");
+
+  await fake.waitFor(() => changes().length === 1);
+  fake.send({ type: "message", text: "write notes" });
+  await fake.waitFor(() => changes().length === 2);
+  await hosted.stop();
+
+  expect(changes()[0]).toMatchObject({
+    files: [],
+    patch: "",
+    truncated: false,
+  });
+
+  expect(changes()[1]).toMatchObject({
+    files: [{ status: "A", path: "notes.txt" }],
+    truncated: false,
+  });
+
+  expect(changes()[1]?.patch).toContain("+new notes");
+  expect(changes()[1]?.stat).toContain("notes.txt");
+
+  const { stdout } = await promisify(execFile)(
+    "git",
+    ["status", "--porcelain"],
+    { cwd: repo },
+  );
+
+  expect(stdout).toBe("?? notes.txt\n");
+});
+
+test("sends only the stat when the patch is too large", async () => {
+  const { models } = await fauxModels(root);
+  const repo = await gitRepository();
+
+  await writeFile(
+    join(repo, "big.txt"),
+    "x".repeat(100).concat("\n").repeat(5000),
+  );
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: repo,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "changes"));
+  await hosted.stop();
+
+  expect(fake.events.find((e) => e.type === "changes")).toMatchObject({
+    files: [{ status: "A", path: "big.txt" }],
+    patch: "",
+    truncated: true,
+  });
+});
+
+test("publishes no changes outside a git repository", async () => {
+  const { models } = await fauxModels(root);
+  const logs: string[] = [];
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    (message) => logs.push(message),
+  );
+
+  await hosted.stop();
+
+  expect(fake.events.some((e) => e.type === "changes")).toBe(false);
+  expect(logs).not.toContain("workspace changes failed");
+});

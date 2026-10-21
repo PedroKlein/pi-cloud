@@ -1,0 +1,102 @@
+import { execFile } from "node:child_process";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+import type { LiveEvent } from "@pi-cloud/protocol";
+
+const run = promisify(execFile);
+
+export const patchLimit = 256 * 1024;
+
+const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+export type Changes = Extract<LiveEvent, { type: "changes" }>;
+
+// Diffs a throwaway copy of the index with every file added, so new files
+// show up in the patch without touching the user's own index.
+export async function workspaceChanges(
+  cwd: string,
+  base: string | null,
+): Promise<Changes | undefined> {
+  const index = await git(cwd, {}, "rev-parse", "--git-path", "index").catch(
+    () => undefined,
+  );
+
+  if (index === undefined) {
+    return undefined;
+  }
+
+  const scratch = await mkdtemp(join(tmpdir(), "pi-cloud-changes-"));
+  const env = { GIT_INDEX_FILE: join(scratch, "index") };
+
+  try {
+    await copyFile(resolve(cwd, index), env.GIT_INDEX_FILE).catch(
+      () => undefined,
+    );
+
+    await git(cwd, env, "add", "--all");
+
+    const against =
+      base ??
+      (await git(cwd, env, "rev-parse", "--verify", "--quiet", "HEAD").catch(
+        () => emptyTree,
+      ));
+
+    const diff = ["diff", "--cached", "--no-color", "--no-ext-diff", against];
+    const names = await git(cwd, env, ...diff, "--name-status", "-z");
+    const stat = await git(cwd, env, ...diff, "--stat");
+
+    const patch = await git(cwd, env, ...diff, "--binary").catch(
+      (error: unknown) => {
+        if (
+          (error as { code?: unknown }).code ===
+          "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+        ) {
+          return undefined;
+        }
+
+        throw error;
+      },
+    );
+
+    return {
+      type: "changes",
+      files: parseNameStatus(names),
+      stat,
+      patch: patch ?? "",
+      truncated: patch === undefined,
+    };
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+function parseNameStatus(output: string): Changes["files"] {
+  const fields = output.split("\0").filter((field) => field !== "");
+  const files: { status: string; path: string }[] = [];
+
+  for (let i = 0; i < fields.length;) {
+    const status = fields[i] ?? "";
+    const renamed = status.startsWith("R") || status.startsWith("C");
+    const path = fields[i + (renamed ? 2 : 1)] ?? "";
+    files.push({ status: status.slice(0, 1), path });
+    i += renamed ? 3 : 2;
+  }
+
+  return files;
+}
+
+async function git(
+  cwd: string,
+  env: Readonly<Record<string, string>>,
+  ...args: string[]
+): Promise<string> {
+  const { stdout } = await run("git", args, {
+    cwd,
+    env: { ...process.env, ...env },
+    maxBuffer: patchLimit,
+  });
+
+  return stdout.trimEnd();
+}
