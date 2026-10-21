@@ -74,7 +74,7 @@
 
 ### Future compatibility without premature implementation
 
-- Which ownership and actor fields should exist now to avoid a single-user data-model dead end?
+- Resolved: every Session, Environment and plugin record has an `ownerId`, and every command records its `actor` (`user:<id>`, `session:<id>` or `plugin:<name>`) ([ADR 0015](adr/0015-plugins.md#actors-and-owners)).
 - What common RunRequest can later serve humans, schedules, webhooks, Projects, and automation flows? OpenHands keeps triggers in a separate service that creates conversations through the public API ([research](research.md#openhands)).
 - Which domain events should exist from the beginning?
 - How should personal Cells later federate into a Team Hub without merging their local trust boundaries?

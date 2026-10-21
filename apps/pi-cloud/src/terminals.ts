@@ -7,7 +7,7 @@ import {
   versionHeader,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import type { Sessions } from "@pi-cloud/sessions";
+import { owner, type Sessions } from "@pi-cloud/sessions";
 
 interface SocketData {
   readonly role: "browser" | "host";
@@ -68,6 +68,7 @@ export function terminalBroker(
     const terminalId = randomUUID();
 
     const sent = sessions.send(sessionId, {
+      actor: `user:${owner}`,
       type: "terminal",
       terminalId,
       cols: size(url.searchParams.get("cols"), 80),

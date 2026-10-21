@@ -37,10 +37,17 @@ test("keeps sessions from a database that stored a working directory", () => {
 
   const store = openStore(path);
   const session = store.get("s1");
+  const environments = store.environments();
   store.close();
+
+  expect(environments).toMatchObject([
+    { name: "local", provider: "local", ownerId: "local" },
+  ]);
 
   expect(session).toEqual({
     id: "s1",
+    environmentId: environments[0]?.id ?? "",
+    ownerId: "local",
     provider: "local",
     workspace: { kind: "folder", path: "/home/me/repo" },
     model: null,
@@ -59,9 +66,14 @@ test("opens a migrated database again", () => {
   openStore(path).close();
 
   const store = openStore(path);
+  store.ensureEnvironment("vm");
+  store.ensureEnvironment("vm");
+  const [environment] = store.environments();
 
   store.insert({
     id: "s1",
+    environmentId: environment?.id ?? "",
+    ownerId: "local",
     provider: "vm",
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
@@ -74,7 +86,10 @@ test("opens a migrated database again", () => {
     workspaceRemoval: null,
   });
 
+  expect(store.environments()).toHaveLength(1);
+
   expect(store.get("s1")).toMatchObject({
+    provider: "vm",
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
   });

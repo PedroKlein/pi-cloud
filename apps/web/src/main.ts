@@ -2,7 +2,7 @@ import type {
   Command,
   LiveEvent,
   ModelRef,
-  Provider,
+  Environment,
   Session,
   SessionEvent,
   Workspace,
@@ -14,6 +14,13 @@ import { addUsage, describeUsage, type Usage } from "./usage";
 
 const sessionsRefreshMs = 2000;
 
+// The server adds the actor to everything a browser sends.
+type BrowserCommand = Command extends infer C
+  ? C extends Command
+    ? Omit<C, "actor">
+    : never
+  : never;
+
 function element<T extends HTMLElement>(id: string, type: new () => T): T {
   const found = document.getElementById(id);
   if (!(found instanceof type)) {
@@ -24,7 +31,7 @@ function element<T extends HTMLElement>(id: string, type: new () => T): T {
 }
 
 const createForm = element("create", HTMLFormElement);
-const providerList = element("providers", HTMLDataListElement);
+const environmentList = element("environments", HTMLSelectElement);
 const folderList = element("folders", HTMLDataListElement);
 const modelList = element("models", HTMLDataListElement);
 const sessionList = element("sessions", HTMLUListElement);
@@ -115,7 +122,7 @@ function modelRef(name: string): ModelRef | undefined {
     : undefined;
 }
 
-let providers: readonly Provider[] = [];
+let environments: readonly Environment[] = [];
 
 function option(value: string, label: string): HTMLOptionElement {
   const item = document.createElement("option");
@@ -125,13 +132,24 @@ function option(value: string, label: string): HTMLOptionElement {
   return item;
 }
 
-function renderProviders(): void {
+function renderEnvironments(): void {
   const form = new FormData(createForm);
-  const chosen = providers.find((p) => p.name === form.get("provider"));
+  const previous = environmentList.value;
 
-  providerList.replaceChildren(
-    ...providers.map((p) => option(p.name, p.online ? "online" : "offline")),
+  environmentList.replaceChildren(
+    ...environments.map((e) =>
+      option(
+        e.id,
+        `${e.name} (${e.provider}, ${e.online ? "online" : "offline"})`,
+      ),
+    ),
   );
+
+  if (environments.some((e) => e.id === previous)) {
+    environmentList.value = previous;
+  }
+
+  const chosen = environments.find((e) => e.id === environmentList.value);
 
   folderList.replaceChildren(
     ...(form.get("kind") === "clone" ? [] : (chosen?.folders ?? [])).map(
@@ -146,9 +164,12 @@ function renderProviders(): void {
   );
 }
 
-async function refreshProviders(): Promise<void> {
-  providers = (await (await api("/api/providers")).json()) as Provider[];
-  renderProviders();
+async function refreshEnvironments(): Promise<void> {
+  environments = (await (
+    await api("/api/environments")
+  ).json()) as Environment[];
+
+  renderEnvironments();
 }
 
 async function refreshSessions(): Promise<void> {
@@ -166,7 +187,8 @@ async function refreshSessions(): Promise<void> {
       const details = document.createElement("small");
 
       details.textContent = [
-        session.provider,
+        environments.find((e) => e.id === session.environmentId)?.name ??
+          session.provider,
         ...(session.model ? [modelName(session.model)] : []),
         describe(session),
       ].join(" · ");
@@ -280,7 +302,7 @@ function follow(sessionId: string): () => void {
           return;
         }
 
-        const command = (body: Command): void => {
+        const command = (body: BrowserCommand): void => {
           api(
             `/api/sessions/${encodeURIComponent(sessionId)}/commands`,
             body,
@@ -492,7 +514,7 @@ function report(error: unknown): void {
   addItem({ role: "error", text: String(error) });
 }
 
-createForm.addEventListener("input", renderProviders);
+createForm.addEventListener("input", renderEnvironments);
 
 createForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -516,7 +538,7 @@ createForm.addEventListener("submit", (event) => {
   }
 
   api("/api/sessions", {
-    provider: form.get("provider"),
+    environment: form.get("environment"),
     workspace:
       kind === "clone"
         ? { kind, repository: where, startPoint }
@@ -592,9 +614,9 @@ window.addEventListener("hashchange", () => {
 });
 
 select(location.hash.slice(1) || undefined);
-refreshProviders().catch(() => undefined);
+refreshEnvironments().catch(() => undefined);
 
 setInterval(() => {
   refreshSessions().catch(() => undefined);
-  refreshProviders().catch(() => undefined);
+  refreshEnvironments().catch(() => undefined);
 }, sessionsRefreshMs);

@@ -31,7 +31,7 @@ apps/pi-cloud/dist/pi-cloud server
 apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
 ```
 
-Open http://127.0.0.1:7420, create a session for provider `laptop` with `~/code/my-project`, and start chatting.
+Open http://127.0.0.1:7420, pick the `laptop` Environment, enter `~/code/my-project`, and start chatting. Each provider gets an Environment of the same name the first time it connects, and a session runs in the Environment it was created in ([ADR 0014](docs/adr/0014-concept-map-and-environments.md)).
 
 The agent only runs sessions in the folders you list with `--folder`. By default each session gets its own Git worktree of that folder, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Choose "Folder" instead to run in the folder itself; sessions sharing a folder this way can step on each other's changes.
 

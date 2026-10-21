@@ -4,10 +4,10 @@ import type {
   Attempt,
   Command,
   CreateSession,
+  Environment,
   LiveEvent,
   LivePost,
   ModelRef,
-  Provider,
   Removal,
   RemovalReport,
   Session,
@@ -21,7 +21,17 @@ import type {
 
 export type StoredSession = Omit<Session, "online">;
 
+export type StoredEnvironment = Omit<
+  Environment,
+  "online" | "folders" | "models"
+>;
+
+// v1 has one user, who owns every record (ADR 0015).
+export const owner = "local";
+
 export interface SessionStore {
+  ensureEnvironment: (provider: string) => void;
+  environments: () => readonly StoredEnvironment[];
   insert: (session: StoredSession) => void;
   update: (session: StoredSession) => void;
   get: (id: string) => StoredSession | undefined;
@@ -45,7 +55,8 @@ export type Rejection =
   | "offline"
   | "archived"
   | "not_archived"
-  | "not_kept";
+  | "not_kept"
+  | "unknown_environment";
 
 export type Result<T> =
   | { readonly ok: true; readonly value: T }
@@ -101,12 +112,25 @@ export class Sessions {
     this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
   }
 
-  create(request: CreateSession): Session {
+  create(request: CreateSession): Result<Session> {
+    const environments = this.#store.environments();
+
+    const environment =
+      request.environment === undefined
+        ? environments[0]
+        : environments.find(({ id }) => id === request.environment);
+
+    if (!environment) {
+      return { ok: false, reason: "unknown_environment" };
+    }
+
     const id = randomUUID();
 
     const session: StoredSession = {
       id,
-      provider: request.provider,
+      environmentId: environment.id,
+      ownerId: owner,
+      provider: environment.provider,
       workspace:
         request.workspace.kind === "folder"
           ? request.workspace
@@ -124,7 +148,7 @@ export class Sessions {
     this.#store.insert(session);
     this.#wake(session.provider);
 
-    return this.#view(session);
+    return { ok: true, value: this.#view(session) };
   }
 
   list({ archived = false } = {}): readonly Session[] {
@@ -230,13 +254,17 @@ export class Sessions {
     return session && this.#view(session);
   }
 
-  providers(): readonly Provider[] {
-    return [...this.#providers].map(([name, { folders, models }]) => ({
-      name,
-      online: this.#online(name),
-      folders,
-      models,
-    }));
+  environments(): readonly Environment[] {
+    return this.#store.environments().map((environment) => {
+      const state = this.#providers.get(environment.provider);
+
+      return {
+        ...environment,
+        online: this.#online(environment.provider),
+        folders: state?.folders ?? [],
+        models: state?.models ?? [],
+      };
+    });
   }
 
   async claim(
@@ -244,6 +272,7 @@ export class Sessions {
     { running, folders, models }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
+    this.#store.ensureEnvironment(provider);
     const state = this.#pollStarted(provider);
     state.folders = folders;
     state.models = models;

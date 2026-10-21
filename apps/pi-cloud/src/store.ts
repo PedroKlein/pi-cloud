@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,10 +8,17 @@ import type {
   Workspace,
   WorkspaceRemoval,
 } from "@pi-cloud/protocol";
-import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
+import {
+  owner,
+  type SessionStore,
+  type StoredEnvironment,
+  type StoredSession,
+} from "@pi-cloud/sessions";
 
 interface SessionRow {
   id: string;
+  environment_id: string;
+  owner_id: string;
   provider: string;
   workspace: string;
   model: string | null;
@@ -23,10 +31,29 @@ interface SessionRow {
   workspace_removal: WorkspaceRemoval | null;
 }
 
+interface EnvironmentRow {
+  id: string;
+  name: string;
+  provider: string;
+  owner_id: string;
+  created_at: string;
+}
+
+const environments = `
+create table if not exists environments (
+  id text primary key,
+  name text not null,
+  provider text not null unique,
+  owner_id text not null,
+  created_at text not null
+);
+`;
+
 const schema = `
 create table if not exists sessions (
   id text primary key,
-  provider text not null,
+  environment_id text not null references environments (id),
+  owner_id text not null,
   workspace text not null,
   model text,
   status text not null,
@@ -45,8 +72,11 @@ create table if not exists transcript (
 );
 `;
 
-// Databases from before Sessions had a workspace stored a folder path in cwd.
+// Databases from before Sessions had a workspace stored a folder path in cwd,
+// and ones from before Environments named the provider on each Session.
 function migrate(db: DatabaseSync): void {
+  db.exec(environments);
+
   const columns = db
     .prepare("select name from pragma_table_info('sessions')")
     .all() as { name: string }[];
@@ -66,7 +96,44 @@ function migrate(db: DatabaseSync): void {
     }
   }
 
+  if (columns.some(({ name }) => name === "provider")) {
+    migrateToEnvironments(db);
+  }
+
   db.exec(schema);
+}
+
+function migrateToEnvironments(db: DatabaseSync): void {
+  const providers = db
+    .prepare("select distinct provider from sessions")
+    .all() as { provider: string }[];
+
+  db.exec("begin");
+  try {
+    for (const { provider } of providers) {
+      insertEnvironment(db, provider);
+    }
+
+    db.exec(`
+      alter table sessions add column environment_id text references environments (id);
+      alter table sessions add column owner_id text;
+      update sessions set
+        environment_id = (select id from environments where provider = sessions.provider),
+        owner_id = '${owner}';
+      alter table sessions drop column provider;
+    `);
+
+    db.exec("commit");
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+}
+
+function insertEnvironment(db: DatabaseSync, provider: string): void {
+  db.prepare(
+    "insert into environments (id, name, provider, owner_id, created_at) values (?, ?, ?, ?, ?) on conflict (provider) do nothing",
+  ).run(randomUUID(), provider, provider, owner, new Date().toISOString());
 }
 
 export function openStore(path: string): SessionStore & {
@@ -83,6 +150,8 @@ export function openStore(path: string): SessionStore & {
 
   const toSession = (row: SessionRow): StoredSession => ({
     id: row.id,
+    environmentId: row.environment_id,
+    ownerId: row.owner_id,
     provider: row.provider,
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
@@ -96,7 +165,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, provider, workspace, model, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, workspace, model, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
@@ -104,11 +173,27 @@ export function openStore(path: string): SessionStore & {
   );
 
   const check = db.prepare("select 1 from sessions limit 1");
-  const get = db.prepare("select * from sessions where id = ?");
-  const list = db.prepare("select * from sessions order by created_at desc");
+
+  const withProvider =
+    "select sessions.*, environments.provider from sessions join environments on environments.id = sessions.environment_id";
+
+  const get = db.prepare(`${withProvider} where sessions.id = ?`);
+  const list = db.prepare(`${withProvider} order by sessions.created_at desc`);
 
   const byProvider = db.prepare(
-    "select * from sessions where provider = ? and status in (select value from json_each(?)) order by created_at",
+    `${withProvider} where environments.provider = ? and status in (select value from json_each(?)) order by sessions.created_at`,
+  );
+
+  const toEnvironment = (row: EnvironmentRow): StoredEnvironment => ({
+    id: row.id,
+    name: row.name,
+    provider: row.provider,
+    ownerId: row.owner_id,
+    createdAt: row.created_at,
+  });
+
+  const environmentList = db.prepare(
+    "select * from environments order by created_at, name",
   );
 
   const length = db.prepare(
@@ -127,7 +212,8 @@ export function openStore(path: string): SessionStore & {
     insert: (s) => {
       insert.run(
         s.id,
-        s.provider,
+        s.environmentId,
+        s.ownerId,
         JSON.stringify(s.workspace),
         s.model && JSON.stringify(s.model),
         s.status,
@@ -164,6 +250,11 @@ export function openStore(path: string): SessionStore & {
           JSON.stringify(statuses),
         ) as unknown as SessionRow[]
       ).map(toSession),
+    ensureEnvironment: (provider) => {
+      insertEnvironment(db, provider);
+    },
+    environments: () =>
+      (environmentList.all() as unknown as EnvironmentRow[]).map(toEnvironment),
     transcriptLength: (id) => (length.get(id) as { n: number }).n,
     appendTranscript: (id, start, lines) => {
       db.exec("begin");
