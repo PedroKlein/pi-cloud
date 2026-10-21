@@ -382,6 +382,31 @@ test("rejects commands for a session whose provider is not connected", async () 
   expect(await sent.json()).toEqual({ error: "offline" });
 });
 
+test("rejects commands a browser may not send", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  const statuses = await Promise.all(
+    [
+      { type: "message" },
+      { type: "message", text: "hi", delivery: "later" },
+      { type: "answer", value: "yes" },
+      { type: "terminal", terminalId: "t1", cols: 80, rows: 24 },
+      { type: "reboot" },
+      "abort",
+    ].map(async (command) => {
+      const response = await api(
+        `/api/sessions/${session.id}/commands`,
+        command,
+      );
+
+      return response.status;
+    }),
+  );
+
+  expect(statuses).toEqual([400, 400, 400, 400, 400, 400]);
+});
+
 async function asAgent(
   provider: string,
   path: string,
