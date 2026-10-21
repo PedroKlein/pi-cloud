@@ -34,7 +34,7 @@
 
 ### Session lifecycle
 
-- When may an idle Session unload or stop?
+- Resolved for v1: an idle Session unloads only when it is archived, and unarchiving reloads it from its transcript ([ADR 0013](adr/0013-archive-and-workspace-lifecycle.md)).
 - Does the first version keep active Session processes warm indefinitely?
 - Which state must be persisted before a Runtime can release a Session?
 - Resolved: Sessions keep running while their provider is offline; an attempt is interrupted only when its process dies, and the agent reloads it idle on restart ([ADR 0006](adr/0006-provider-protocol.md)).
@@ -43,7 +43,8 @@
 
 - Resolved: VM Sessions get a fresh clone each; laptop Sessions use a worktree of an existing checkout, or the folder directly ([ADR 0007](adr/0007-session-workspaces.md)).
 - Resolved for v1: a Session's workspace is a folder, a worktree of a folder, or a clone, each of the last two on its own branch, prepared by the provider ([ADR 0012](adr/0012-built-in-provider.md)). How PVCs fit is still open.
-- What is backed up, replicated, exported, and garbage-collected? OpenHands applies a disk budget and retention, with a trash folder before deletion ([research](research.md#openhands)).
+- Resolved for v1: a worktree or clone is removed when its Session is archived, and only if git says nothing would be lost; no age sweep or disk budget yet ([ADR 0013](adr/0013-archive-and-workspace-lifecycle.md)).
+- What is backed up, replicated and exported? OpenHands applies a disk budget and retention, with a trash folder before deletion ([research](research.md#openhands)).
 - Can a Session migrate between providers, or should cross-provider continuation begin as a fork?
 
 ### Profiles and personalization
