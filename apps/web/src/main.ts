@@ -30,6 +30,10 @@ const sessionList = element("sessions", HTMLUListElement);
 const panel = element("session", HTMLElement);
 const title = element("title", HTMLElement);
 const statusLabel = element("status", HTMLElement);
+const changesPanel = element("changes", HTMLDetailsElement);
+const changesSummary = element("changes-summary", HTMLElement);
+const changesStat = element("changes-stat", HTMLElement);
+const changesPatch = element("changes-patch", HTMLElement);
 const chat = element("chat", HTMLOListElement);
 const terminalBox = element("terminal", HTMLElement);
 const terminalButton = element("open-terminal", HTMLButtonElement);
@@ -201,6 +205,7 @@ function follow(sessionId: string): () => void {
     statuses.clear();
     widgets.clear();
     queued.textContent = "";
+    changesPanel.hidden = true;
     renderSurfaces();
   };
 
@@ -320,6 +325,16 @@ function follow(sessionId: string): () => void {
       case "editor_text":
         promptText.value = event.text;
         promptText.focus();
+
+        return;
+      case "changes":
+        changesPanel.hidden = event.files.length === 0;
+        changesSummary.textContent = `Changes (${String(event.files.length)} files)`;
+        changesStat.textContent = event.stat;
+
+        changesPatch.textContent = event.truncated
+          ? "The patch is too large to show."
+          : event.patch;
 
         return;
       case "queue":

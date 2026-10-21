@@ -27,6 +27,7 @@ export interface ModelOptions {
 
 export interface SessionOptions extends ModelOptions {
   readonly cwd: string;
+  readonly base?: string | null;
   readonly sessionDir: string;
   readonly model?: ModelRef;
 }

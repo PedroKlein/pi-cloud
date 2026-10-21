@@ -73,7 +73,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     await stopping.get(sessionId);
     try {
-      const cwd = await prepareWorkspace(
+      const { cwd, base } = await prepareWorkspace(
         assignment.workspace,
         {
           dir: join(options.dataDir, "workspaces", sessionId),
@@ -85,6 +85,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       return await hostSession(
         {
           cwd,
+          base,
           agentDir: options.agentDir,
           sessionDir: join(options.dataDir, "sessions", sessionId),
           extensionPaths: options.extensionPaths,

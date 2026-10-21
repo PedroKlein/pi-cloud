@@ -381,3 +381,10 @@ form#prompt textarea {
 .questions .number small {
   white-space: nowrap;
 }
+
+#changes pre {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0.25rem 0;
+  font-size: 0.8rem;
+}

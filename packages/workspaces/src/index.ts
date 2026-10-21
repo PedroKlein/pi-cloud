@@ -1,1 +1,1 @@
-export { prepareWorkspace } from "./workspace";
+export { type PreparedWorkspace, prepareWorkspace } from "./workspace";

@@ -52,7 +52,7 @@ afterEach(async () => {
 test("uses a folder workspace in place", async () => {
   const dir = join(root, "unused");
 
-  const cwd = await prepareWorkspace(
+  const { cwd } = await prepareWorkspace(
     { kind: "folder", path: repository },
     { dir, folders: [repository] },
     noLog,
@@ -86,7 +86,7 @@ test("refuses folders the provider does not list", async () => {
 test("matches listed folders after expanding ~ and trailing slashes", async () => {
   const home = homedir();
 
-  const cwd = await prepareWorkspace(
+  const { cwd } = await prepareWorkspace(
     { kind: "folder", path: "~/" },
     { dir: join(root, "unused"), folders: [home] },
     noLog,
@@ -98,7 +98,7 @@ test("matches listed folders after expanding ~ and trailing slashes", async () =
 test("gives a worktree session its own branch outside the checkout", async () => {
   const dir = join(root, "workspaces", "s1");
 
-  const cwd = await prepareWorkspace(
+  const { cwd } = await prepareWorkspace(
     { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
     { dir, folders: [repository] },
     noLog,
@@ -162,7 +162,7 @@ test("fails a worktree of a folder that is not a checkout", async () => {
 test("clones the repository onto the session's own branch", async () => {
   const dir = join(root, "workspaces", "s1");
 
-  const cwd = await prepareWorkspace(
+  const { cwd } = await prepareWorkspace(
     { kind: "clone", repository, branch: "pi-cloud/s1" },
     { dir, folders: [] },
     noLog,
@@ -205,4 +205,47 @@ test("fails with git's error and leaves no directory behind", async () => {
   expect(prepared).rejects.toThrow(/does not exist|not a git repository/);
   await prepared.catch(() => undefined);
   expect(stat(dir)).rejects.toThrow();
+});
+
+test("remembers the commit a session branch started from", async () => {
+  const start = await git(repository, "rev-parse", "HEAD");
+
+  for (const workspace of [
+    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "clone", repository, branch: "pi-cloud/s2" },
+  ] as const) {
+    const options = {
+      dir: join(root, "workspaces", workspace.branch),
+      folders: [repository],
+    };
+
+    const first = await prepareWorkspace(workspace, options, noLog);
+    await writeFile(join(first.cwd, "notes.txt"), "work\n");
+    await git(first.cwd, "add", ".");
+
+    await git(
+      first.cwd,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "commit",
+      "-m",
+      "work",
+    );
+
+    const again = await prepareWorkspace(workspace, options, noLog);
+
+    expect([first.base, again.base]).toEqual([start, start]);
+  }
+
+  expect(
+    (
+      await prepareWorkspace(
+        { kind: "folder", path: repository },
+        { dir: join(root, "unused"), folders: [repository] },
+        noLog,
+      )
+    ).base,
+  ).toBeNull();
 });
