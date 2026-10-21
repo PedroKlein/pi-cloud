@@ -8,9 +8,13 @@ import {
   type ToolDefinition,
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createCodemodeExtension,
+  createMcpExtension,
+  createToolSearchExtension,
   type ExtensionError,
   type ExtensionFactory,
   initTheme,
+  type InlineExtension,
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -42,6 +46,14 @@ export interface SessionHost {
   readonly onError: (error: ExtensionError) => void;
 }
 
+// The extensions Pi's CLI builds in, so hosted sessions get the same tools.
+// Its llama.cpp provider isn't exported, so it's left out.
+const builtInExtensions: InlineExtension[] = [
+  { name: "codemode", factory: createCodemodeExtension() },
+  { name: "tool-search", factory: createToolSearchExtension() },
+  { name: "mcp", factory: createMcpExtension() },
+].map((extension) => ({ ...extension, replaceable: true, builtin: true }));
+
 export async function startSession(
   options: SessionOptions,
   host?: SessionHost,
@@ -56,7 +68,7 @@ export async function startSession(
 
   const services = await loadServices(cwd, options, {
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
-    extensionFactories: [...(host?.extensions ?? [])],
+    extensionFactories: [...builtInExtensions, ...(host?.extensions ?? [])],
   });
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
@@ -105,7 +117,7 @@ async function loadServices(
   options: ModelOptions,
   resources: {
     readonly appendSystemPrompt?: string[];
-    readonly extensionFactories?: ExtensionFactory[];
+    readonly extensionFactories?: InlineExtension[];
   } = {},
 ): Promise<AgentSessionServices> {
   const services = await createAgentSessionServices({
