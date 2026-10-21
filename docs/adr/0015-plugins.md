@@ -13,7 +13,7 @@ Pi Cloud is meant to be a foundation that others build on, as extensible as Pi i
 
 Projects, and later Jobs, Workflows, integrations and team features, are features on the same seams, not kernel. Some code in each feature runs on the server, some inside the Pi session, and some in the browser.
 
-Pi's own split is the model. Its extension API (tools, commands, events, `ctx.ui`) is what its built-in behaviour is built from. Claude Code is the same: MCP servers and plugins add tools a session can call without the session knowing who serves them.
+Pi's own split is the model. Its extension API (tools, commands, events, `ctx.ui`) is what its built-in behaviour is built from. Claude Code is the same: [MCP servers](https://code.claude.com/docs/en/mcp) and [plugins](https://code.claude.com/docs/en/plugins) add tools a session can call without the session knowing who serves them.
 
 [ADR 0008](0008-monorepo-layout.md) has a `pi-extensions/` folder for Pi packages loaded into hosted Sessions. It was never created.
 
