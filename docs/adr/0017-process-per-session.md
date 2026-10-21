@@ -30,6 +30,6 @@ How a Runtime isolates Sessions in v2 (shared runner, dedicated pod, Job, harden
 
 - One Session's extension can no longer crash or block the others.
 - Archiving a Session frees its memory by ending its process.
-- Every live Session pays for its own Bun and Pi process, in memory and start time. Both are to be measured on the VM when this is built.
+- Every live Session pays for its own Bun and Pi process, in memory and start time. Measured on the VM on 2026-10-21: 80 to 90 MB resident per Session process, and a new clone Session answered its first message 8 s after it was created.
 - The built-in provider gets the same behaviour, since it runs the same agent code ([ADR 0012](0012-built-in-provider.md)).
 - A TUI view of a Session becomes possible, as a later plugin.
