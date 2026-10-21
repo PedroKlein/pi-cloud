@@ -1,0 +1,11 @@
+{
+  "name": "@pi-cloud/usage",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./web": "./web/index.ts"
+  },
+  "dependencies": {
+    "@pi-cloud/plugins": "workspace:*"
+  }
+}

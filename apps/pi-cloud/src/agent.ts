@@ -15,7 +15,7 @@ import {
   reportRemoval,
   reportStartFailure,
 } from "./client";
-import { sessionExtensions } from "./plugins";
+import { sessionPluginsNamed } from "./plugins";
 import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
@@ -111,7 +111,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
             ...sessionOptions,
             models: options.models,
             firstMessage: assignment.firstMessage,
-            extensions: sessionExtensions(assignment.plugins),
+            plugins: sessionPluginsNamed(assignment.plugins),
           },
           stream,
           sessionLog,

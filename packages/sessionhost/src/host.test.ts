@@ -15,6 +15,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
+import { ask } from "@pi-cloud/ask/session";
+import { type Changes, changes } from "@pi-cloud/changes/session";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
 
@@ -696,7 +698,7 @@ test("forwards extension status, widgets, title and editor text", async () => {
   ]);
 });
 
-test("asks structured questions with the built-in ask_user tool", async () => {
+test("asks structured questions with the ask plugin's ask_user tool", async () => {
   const { faux, models } = await fauxModels(root);
 
   faux.setResponses([
@@ -753,6 +755,7 @@ test("asks structured questions with the built-in ask_user tool", async () => {
       sessionDir: join(root, "sessions"),
       extensionPaths: [],
       models,
+      plugins: [ask],
     },
     fake.stream,
     () => undefined,
@@ -915,6 +918,7 @@ test("explains an option with the session's model while the form is open", async
       sessionDir: join(root, "sessions"),
       extensionPaths: [],
       models,
+      plugins: [ask],
     },
     fake.stream,
     () => undefined,
@@ -990,6 +994,7 @@ test.each([
         sessionDir: join(root, "sessions"),
         extensionPaths: [],
         models,
+        plugins: [ask],
       },
       fake.stream,
       () => undefined,
@@ -1056,6 +1061,14 @@ async function gitRepository(): Promise<string> {
   return dir;
 }
 
+function published(events: readonly LiveEvent[]): Changes[] {
+  return events.flatMap((event) =>
+    event.type === "plugin" && event.plugin === "changes"
+      ? [event.data as Changes]
+      : [],
+  );
+}
+
 test("publishes what the session changed in its git workspace after a turn", async () => {
   const { faux, models } = await fauxModels(root);
   const repo = await gitRepository();
@@ -1076,32 +1089,32 @@ test("publishes what the session changed in its git workspace after a turn", asy
       sessionDir: join(root, "sessions"),
       extensionPaths: [],
       models,
+      plugins: [changes],
     },
     fake.stream,
     () => undefined,
   );
 
-  const changes = (): Extract<LiveEvent, { type: "changes" }>[] =>
-    fake.events.filter((e) => e.type === "changes");
-
-  await fake.waitFor(() => changes().length === 1);
+  await fake.waitFor(() => published(fake.events).length === 1);
   fake.send({ actor: "user:local", type: "message", text: "write notes" });
-  await fake.waitFor(() => changes().length === 2);
+  await fake.waitFor(() => published(fake.events).length === 2);
   await hosted.stop();
 
-  expect(changes()[0]).toMatchObject({
+  const [before, after] = published(fake.events);
+
+  expect(before).toMatchObject({
     files: [],
     patch: "",
     truncated: false,
   });
 
-  expect(changes()[1]).toMatchObject({
+  expect(after).toMatchObject({
     files: [{ status: "A", path: "notes.txt" }],
     truncated: false,
   });
 
-  expect(changes()[1]?.patch).toContain("+new notes");
-  expect(changes()[1]?.stat).toContain("notes.txt");
+  expect(after?.patch).toContain("+new notes");
+  expect(after?.stat).toContain("notes.txt");
 
   const { stdout } = await promisify(execFile)(
     "git",
@@ -1130,15 +1143,16 @@ test("sends only the stat when the patch is too large", async () => {
       sessionDir: join(root, "sessions"),
       extensionPaths: [],
       models,
+      plugins: [changes],
     },
     fake.stream,
     () => undefined,
   );
 
-  await fake.waitFor(() => fake.events.some((e) => e.type === "changes"));
+  await fake.waitFor(() => published(fake.events).length > 0);
   await hosted.stop();
 
-  expect(fake.events.find((e) => e.type === "changes")).toMatchObject({
+  expect(published(fake.events)[0]).toMatchObject({
     files: [{ status: "A", path: "big.txt" }],
     patch: "",
     truncated: true,
@@ -1157,6 +1171,7 @@ test("publishes no changes outside a git repository", async () => {
       sessionDir: join(root, "sessions"),
       extensionPaths: [],
       models,
+      plugins: [changes],
     },
     fake.stream,
     (message) => logs.push(message),
@@ -1164,7 +1179,7 @@ test("publishes no changes outside a git repository", async () => {
 
   await hosted.stop();
 
-  expect(fake.events.some((e) => e.type === "changes")).toBe(false);
+  expect(published(fake.events)).toEqual([]);
   expect(logs).not.toContain("workspace changes failed");
 });
 
@@ -1229,7 +1244,7 @@ test("runs server tools through the stream and gives the model their result", as
   expect(fake.lines.join()).toContain("the server said forty-two");
 });
 
-test("starts with its first message, its system prompt text and plugin extensions", async () => {
+test("starts with its first message, its system prompt text and plugins' extensions", async () => {
   const { faux, models } = await fauxModels(root);
 
   faux.setResponses([fauxAssistantMessage([fauxText("started")])]);
@@ -1242,23 +1257,26 @@ test("starts with its first message, its system prompt text and plugin extension
     models,
     systemPrompt: "You coordinate project X.",
     firstMessage: "kick off",
-    extensions: [
-      (pi: ExtensionAPI) => {
-        pi.on("session_start", () => {
-          pi.sendMessage({
-            customType: "snapshot",
-            content: "notes an extension restores",
-            display: false,
+    plugins: [
+      {
+        name: "tooly",
+        extension: () => (pi: ExtensionAPI) => {
+          pi.on("session_start", () => {
+            pi.sendMessage({
+              customType: "snapshot",
+              content: "notes an extension restores",
+              display: false,
+            });
           });
-        });
 
-        pi.registerTool({
-          name: "plugin_tool",
-          label: "Plugin tool",
-          description: "A tool from a plugin's session part",
-          parameters: Type.Object({}),
-          execute: async () => Promise.resolve({ content: [], details: {} }),
-        });
+          pi.registerTool({
+            name: "plugin_tool",
+            label: "Plugin tool",
+            description: "A tool from a plugin's session part",
+            parameters: Type.Object({}),
+            execute: async () => Promise.resolve({ content: [], details: {} }),
+          });
+        },
       },
     ],
   };

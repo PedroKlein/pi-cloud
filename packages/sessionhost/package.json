@@ -10,6 +10,8 @@
     "@pi-cloud/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@pi-cloud/ask": "workspace:*",
+    "@pi-cloud/changes": "workspace:*",
     "pi-subagents": "0.79.1"
   }
 }

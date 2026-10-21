@@ -383,7 +383,7 @@ form#prompt textarea {
   white-space: nowrap;
 }
 
-#changes pre {
+#plugin-panels pre {
   max-height: 40vh;
   overflow: auto;
   margin: 0.25rem 0;

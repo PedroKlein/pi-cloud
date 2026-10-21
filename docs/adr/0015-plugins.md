@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected)
 - Date: 2026-10-21
 
 ## Context
@@ -34,9 +34,11 @@ Everything else is a plugin. These ship as default plugins, on unless turned off
 | Plugin   | Server part                          | Session part    | Web part                         |
 | -------- | ------------------------------------ | --------------- | -------------------------------- |
 | projects | tools, event subscribers, its tables | none            | nav entry, Project page, notices |
-| ask      | none                                 | `ask_user` tool | question form                    |
-| changes  | turn-end subscriber, diff route      | none            | Session side panel               |
-| usage    | turn-end subscriber                  | none            | header item                      |
+| ask      | none                                 | `ask_user` tool | none                             |
+| changes  | none                                 | turn-end diff   | Session side panel               |
+| usage    | none                                 | none            | header item                      |
+
+The first version of this table put `changes` on the server. That can't work: the workspace lives on the provider, and the server has no git access to it. The diff runs in the Session and reaches the browser as a plugin live event (below). `ask` raises the kernel's questions form, which is one of the dialogs the session bridge forwards, like `select` and `confirm`. `usage` adds up the transcript entries the Session view already receives, so it needs no server part.
 
 Projects is built as a plugin from the start. `ask`, `changes` and `usage` move out of the kernel in their own changes.
 
@@ -44,14 +46,17 @@ Projects is built as a plugin from the start. `ask`, `changes` and `usage` move 
 
 A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, each optional.
 
-- **Server part** (`server.ts`) exports `register(ctx)`, which runs at startup. `ctx` gives it:
+- **Server part** (`src/server.ts`) exports `register(ctx)`, which runs at startup. `ctx` gives it:
   - `tools`: server tools for Sessions, described below.
   - `events`: subscriptions to kernel events.
   - `sessions`: start Sessions through the start request, send them messages (as a turn, or as context that doesn't start one), and read their transcripts.
   - `routes`: HTTP handlers under `/api/plugins/<name>/`.
   - `store`: its own SQLite tables, with its own migrations, named `<plugin>_<table>`.
-- **Session part** (`session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session.
-- **Web part** (`web.ts`) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
+- **Session part** (`src/session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session. The host also hands it a small context:
+  - `publish(key, data)` sends a plugin live event `{plugin, key, data}` to everyone watching the Session. The latest value per key is kept and replayed to anyone who opens the Session later, like extension widgets. This is the only way out of a Session for a plugin's own data, and it's the second generic protocol addition.
+  - `askQuestions` raises the kernel's questions form.
+  - `base`, the commit the Session's workspace started from.
+- **Web part** (`web/index.ts`, with its own browser tsconfig) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
 
 The interfaces live in `packages/plugins/`. The server, the session host and the web app depend on it. Plugins depend only on it and on `packages/protocol/`, never on app code.
 
@@ -80,6 +85,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 - A plugin's web part claims named slots: `nav` (an entry and a page), `session.panel`, `session.header`, and `message.<type>` renderers for its own custom messages.
 - `mount(element, ctx)` renders into the element it's given and returns an unmount function. Inside it, a plugin uses whatever it wants: plain DOM, Preact, Lit, and its own CSS scoped to its root.
 - `ctx` gives it: requests to its own routes, live events for a Session, opening a Session, navigation, and the theme's CSS variables.
+- A `session.panel` or `session.header` mount also gets the open Session's event stream, shared with the Session view, so it sees transcript entries and its own plugin live events without opening another connection.
 - Pi extensions' own UI inside a Session (`ctx.ui` widgets, status and dialogs) is still forwarded as before. Plugin UI is a separate layer around it.
 
 ### Loading and trust
@@ -105,6 +111,6 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 - Projects, `ask`, `changes` and `usage` prove the plugin seam with four real users before it's published.
 - Adding a feature, Jobs or Workflows for example, means adding a plugin, not changing the kernel. If a feature needs something the plugin context doesn't offer, the context grows, and so does every later plugin's.
 - Moving `ask`, `changes` and `usage` out is extra work that doesn't change behaviour.
-- The protocol grows by one generic pair of messages instead of one per feature.
+- The protocol grows by one generic pair of messages and one generic live event instead of one per feature.
 - Plugins can break each other's UI or slow the server, because v1 has no isolation between them.
 - In-process events are lost on restart. A plugin that needs to catch up reads current state from the store.

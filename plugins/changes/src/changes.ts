@@ -3,15 +3,13 @@ import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { LiveEvent } from "@pi-cloud/protocol";
+import type { Changes } from "./report";
 
 const run = promisify(execFile);
 
-export const patchLimit = 256 * 1024;
+const patchLimit = 256 * 1024;
 
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-export type Changes = Extract<LiveEvent, { type: "changes" }>;
 
 // Diffs a throwaway copy of the index with every file added, so new files
 // show up in the patch without touching the user's own index.
@@ -61,7 +59,6 @@ export async function workspaceChanges(
     );
 
     return {
-      type: "changes",
       files: parseNameStatus(names),
       stat,
       patch: patch ?? "",

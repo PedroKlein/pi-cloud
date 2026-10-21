@@ -11,7 +11,6 @@ import { chatItems, type ChatItem } from "./chat";
 import { renderPrompt, type RenderedPrompt } from "./prompt";
 import { loadPlugins, mountPage, mountSession, renderNav } from "./plugins";
 import { openTerminal } from "./terminal";
-import { addUsage, describeUsage, type Usage } from "./usage";
 
 const sessionsRefreshMs = 2000;
 
@@ -39,11 +38,6 @@ const sessionList = element("sessions", HTMLUListElement);
 const panel = element("session", HTMLElement);
 const title = element("title", HTMLElement);
 const statusLabel = element("status", HTMLElement);
-const changesPanel = element("changes", HTMLDetailsElement);
-const changesSummary = element("changes-summary", HTMLElement);
-const changesStat = element("changes-stat", HTMLElement);
-const changesPatch = element("changes-patch", HTMLElement);
-const usageLabel = element("usage", HTMLElement);
 const chat = element("chat", HTMLOListElement);
 const terminalBox = element("terminal", HTMLElement);
 const terminalButton = element("open-terminal", HTMLButtonElement);
@@ -230,9 +224,11 @@ function addItem(item: ChatItem): HTMLLIElement {
   return entry;
 }
 
-function follow(sessionId: string): () => void {
+function follow(
+  sessionId: string,
+  dispatch: (event: SessionEvent) => void,
+): () => void {
   let lines = 0;
-  let usage: ReadonlyMap<string, Usage> = new Map();
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
   const prompts = new Map<string, RenderedPrompt>();
@@ -256,7 +252,6 @@ function follow(sessionId: string): () => void {
     statuses.clear();
     widgets.clear();
     queued.textContent = "";
-    changesPanel.hidden = true;
     renderSurfaces();
   };
 
@@ -378,15 +373,7 @@ function follow(sessionId: string): () => void {
         promptText.focus();
 
         return;
-      case "changes":
-        changesPanel.hidden = event.files.length === 0;
-        changesSummary.textContent = `Changes (${String(event.files.length)} files)`;
-        changesStat.textContent = event.stat;
-
-        changesPatch.textContent = event.truncated
-          ? "The patch is too large to show."
-          : event.patch;
-
+      case "plugin":
         return;
       case "queue":
         queued.textContent = [
@@ -419,6 +406,7 @@ function follow(sessionId: string): () => void {
 
   events.addEventListener("message", (message: MessageEvent<string>) => {
     const event = JSON.parse(message.data) as SessionEvent;
+    dispatch(event);
     switch (event.type) {
       case "session":
         statusLabel.textContent = describe(event.session);
@@ -434,8 +422,6 @@ function follow(sessionId: string): () => void {
         lines = event.line + 1;
         clearLive();
         chatItems(event.entry).forEach(addItem);
-        usage = addUsage(usage, event.entry);
-        renderUsage(describeUsage(usage));
 
         return;
       case "live":
@@ -449,14 +435,6 @@ function follow(sessionId: string): () => void {
     events.close();
     clearSurfaces();
   };
-}
-
-function renderUsage({
-  summary,
-  detail,
-}: ReturnType<typeof describeUsage>): void {
-  usageLabel.textContent = summary;
-  usageLabel.title = detail;
 }
 
 function renderArchived({ archivedAt, workspaceRemoval }: Session): void {
@@ -511,9 +489,9 @@ function select(sessionId: string | undefined): void {
     title.textContent = sessionId;
     document.title = "Pi Cloud";
     statusLabel.textContent = "";
-    renderUsage({ summary: "", detail: "" });
-    closeEvents = follow(sessionId);
-    closePlugins = mountSession(sessionId, pluginHeader, pluginPanels);
+    const plugins = mountSession(sessionId, pluginHeader, pluginPanels);
+    closePlugins = plugins.unmount;
+    closeEvents = follow(sessionId, plugins.dispatch);
   }
 
   refreshSessions().catch(() => undefined);

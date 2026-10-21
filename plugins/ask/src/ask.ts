@@ -15,7 +15,7 @@ import type {
   QuestionAnswer,
   QuestionsAnswer,
 } from "@pi-cloud/protocol";
-import type { AskQuestions, Explain } from "./ui";
+import type { AskQuestions, Explain } from "@pi-cloud/plugins";
 
 const OptionSchema = Type.Object({
   value: Type.String({ description: "Value identifier for this option" }),

@@ -1,4 +1,5 @@
-import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { ask } from "@pi-cloud/ask/session";
+import { changes } from "@pi-cloud/changes/session";
 import type {
   EventBus,
   PluginRoute,
@@ -13,15 +14,14 @@ import type { Sessions } from "@pi-cloud/sessions";
 
 // The plugins built into this binary (ADR 0015). Each app imports its own
 // parts statically, so the compiled binary needs no dynamic loading.
+export const builtInPlugins: readonly string[] = ["ask", "changes", "usage"];
 export const serverPlugins: readonly ServerPlugin[] = [];
-export const sessionPlugins: readonly SessionPlugin[] = [];
+const sessionPlugins: readonly SessionPlugin[] = [ask, changes];
 
-export function sessionExtensions(
+export function sessionPluginsNamed(
   enabled: readonly string[],
-): ExtensionFactory[] {
-  return sessionPlugins
-    .filter(({ name }) => enabled.includes(name))
-    .map(({ extension }) => extension);
+): readonly SessionPlugin[] {
+  return sessionPlugins.filter(({ name }) => enabled.includes(name));
 }
 
 export interface PluginHost {
@@ -37,7 +37,7 @@ export interface PluginHost {
 
 export function startPlugins(
   plugins: readonly ServerPlugin[],
-  disabled: readonly string[],
+  enabled: readonly string[],
   deps: {
     readonly sessions: Sessions;
     readonly events: EventBus;
@@ -47,9 +47,7 @@ export function startPlugins(
 ): PluginHost {
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
   const routes = new Map<string, PluginRoute>();
-  const enabled = plugins.filter(({ name }) => !disabled.includes(name));
-
-  for (const plugin of enabled) {
+  for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
     };
@@ -96,7 +94,7 @@ export function startPlugins(
   }
 
   return {
-    names: enabled.map(({ name }) => name),
+    names: enabled,
     tools: (session) =>
       [...tools.values()]
         .filter(({ tool }) => tool.appliesTo(session))

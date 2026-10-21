@@ -12,12 +12,18 @@ export interface WebContext {
 
 export type Unmount = () => void;
 
+export interface MountedSession {
+  readonly id: string;
+  // Every event the Session view receives, from the start of its stream.
+  readonly events: (listener: (event: SessionEvent) => void) => () => void;
+}
+
 export type PageMount = (element: HTMLElement, context: WebContext) => Unmount;
 
 export type SessionMount = (
   element: HTMLElement,
   context: WebContext,
-  sessionId: string,
+  session: MountedSession,
 ) => Unmount;
 
 export interface WebPlugin {

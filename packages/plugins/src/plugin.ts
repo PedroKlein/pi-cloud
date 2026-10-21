@@ -3,6 +3,8 @@ import type { EventBus } from "./events";
 import type {
   Actor,
   CreateSession,
+  Question,
+  QuestionsAnswer,
   Session,
   ToolResult,
   ToolSpec,
@@ -80,7 +82,32 @@ export interface ServerPlugin {
   readonly register: (context: ServerPluginContext) => void;
 }
 
+export type Explain = (
+  questionId: string,
+  value: string,
+  question: string | null,
+) => Promise<string>;
+
+export type AskQuestions = (
+  questions: readonly Question[],
+  explain: Explain | undefined,
+  signal: AbortSignal | undefined,
+) => Promise<QuestionsAnswer | null>;
+
+// What the session host gives a plugin's Pi extension beyond Pi's own API.
+export interface SessionCloud {
+  // Replaces the plugin's last value under key for everyone watching the
+  // Session, and for anyone who opens it later.
+  readonly publish: (key: string, data: unknown) => void;
+  readonly askQuestions: AskQuestions;
+  readonly base: string | null;
+  readonly log: (
+    message: string,
+    fields?: Readonly<Record<string, unknown>>,
+  ) => void;
+}
+
 export interface SessionPlugin {
   readonly name: string;
-  readonly extension: ExtensionFactory;
+  readonly extension: (cloud: SessionCloud) => ExtensionFactory;
 }

@@ -1,0 +1,12 @@
+{
+  "name": "@pi-cloud/changes",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./session": "./src/session.ts",
+    "./web": "./web/index.ts"
+  },
+  "dependencies": {
+    "@pi-cloud/plugins": "workspace:*"
+  }
+}
