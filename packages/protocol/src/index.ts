@@ -244,6 +244,8 @@ export type LiveEvent =
       readonly placement: "aboveEditor" | "belowEditor";
     }
   | { readonly type: "title"; readonly title: string }
+  // What `/` can run, sent when an attempt starts (ADR 0006).
+  | { readonly type: "commands"; readonly commands: readonly SlashCommand[] }
   | {
       readonly type: "plugin";
       readonly plugin: string;
@@ -283,6 +285,12 @@ export interface LivePost {
 }
 
 export type Actor = `user:${string}` | `session:${string}` | `plugin:${string}`;
+
+export interface SlashCommand {
+  readonly name: string;
+  readonly description: string | null;
+  readonly source: "extension" | "prompt" | "skill";
+}
 
 // Base64 image data sent to the model with a message (ADR 0006).
 export interface ImageAttachment {

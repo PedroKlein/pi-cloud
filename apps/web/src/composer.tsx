@@ -9,6 +9,7 @@ import { command } from "./api";
 import { admit, dataUrl } from "./attachments";
 import type { Feed } from "./feed";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
+import { useSuggestions } from "./suggestions";
 
 export function Composer({
   sessionId,
@@ -23,6 +24,7 @@ export function Composer({
 }): ReactElement {
   const text = useRef<HTMLTextAreaElement>(null);
   const [images, setImages] = useState<readonly Attached[]>([]);
+  const suggestions = useSuggestions(feed);
   const running = feed.session?.status === "running";
   const { steering, followUp } = feed.queue;
 
@@ -120,8 +122,9 @@ export function Composer({
               attach([...event.dataTransfer.files]);
             }
           }}
-          className="flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
+          className="relative flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
         >
+          {suggestions.menu}
           <label htmlFor="prompt-text" className="sr-only">
             Message Pi
           </label>
@@ -159,6 +162,7 @@ export function Composer({
             name="text"
             rows={2}
             placeholder="Message Pi"
+            {...suggestions.box}
             onPaste={(event) => {
               const pasted = [...event.clipboardData.files];
               if (pasted.length > 0) {
@@ -167,6 +171,10 @@ export function Composer({
               }
             }}
             onKeyDown={(event) => {
+              if (suggestions.keyDown(event)) {
+                return;
+              }
+
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 send(event.altKey ? "followUp" : "steer");
@@ -193,7 +201,7 @@ export function Composer({
               />
             </label>
             <span className="flex-1 text-caption text-fg-dim max-sm:hidden">
-              Enter steers · Alt+Enter queues a follow-up
+              Enter steers · Alt+Enter queues a follow-up · / for commands
             </span>
             {running && (
               <Button

@@ -272,7 +272,12 @@ test("keeps the latest status when a live post fails", async () => {
   await hosted.stop();
 
   expect(logs).toContain("live events dropped");
-  expect(fake.events).toEqual([{ type: "status", status: "idle" }]);
+
+  expect(fake.events.filter((e) => e.type !== "commands")).toEqual([
+    { type: "status", status: "idle" },
+  ]);
+
+  expect(fake.events.some((e) => e.type === "commands")).toBe(true);
 });
 
 test("resends extension status and widgets when a live post fails", async () => {
@@ -308,7 +313,9 @@ test("resends extension status and widgets when a live post fails", async () => 
   await fake.waitFor(() => fake.events.length > 0);
   await hosted.stop();
 
-  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+  expect(
+    fake.events.filter((e) => e.type !== "status" && e.type !== "commands"),
+  ).toEqual([
     { type: "extension_status", key: "build", text: "running" },
     {
       type: "widget",
@@ -732,7 +739,9 @@ test("forwards extension status, widgets, title and editor text", async () => {
   await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
   await hosted.stop();
 
-  expect(fake.events.filter((e) => e.type !== "status")).toEqual([
+  expect(
+    fake.events.filter((e) => e.type !== "status" && e.type !== "commands"),
+  ).toEqual([
     { type: "extension_status", key: "build", text: "2 running" },
     {
       type: "widget",

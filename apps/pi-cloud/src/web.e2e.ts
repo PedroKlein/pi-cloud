@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -441,5 +441,47 @@ test("attaches an image to a message and shows it in the chat", async () => {
   await page
     .locator('#chat li[data-role="user"]', { hasText: "what is this?" })
     .getByRole("img", { name: "Image 1 sent with this message" })
+    .waitFor();
+}, 30_000);
+
+test("picks a slash command from the composer's menu", async () => {
+  await mkdir(join(root, ".pi", "prompts"), { recursive: true });
+
+  await writeFile(
+    join(root, ".pi", "prompts", "review.md"),
+    "---\ndescription: Review the diff\n---\nReview the current diff.\n",
+  );
+
+  faux.setResponses([fauxAssistantMessage([fauxText("reviewed")])]);
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const box = page.locator("#prompt-text");
+  await box.pressSequentially("/rev");
+
+  await page
+    .getByRole("listbox", { name: "Commands" })
+    .getByRole("option", { name: /\/review\s+Review the diff/ })
+    .waitFor();
+
+  await box.press("Enter");
+  expect(await box.inputValue()).toBe("/review ");
+  await box.press("Enter");
+
+  await page
+    .locator('#chat li[data-role="user"]', {
+      hasText: "Review the current diff.",
+    })
     .waitFor();
 }, 30_000);
