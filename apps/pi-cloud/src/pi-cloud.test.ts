@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
 import {
+  mkdir,
   mkdtemp,
   readFile,
   realpath,
@@ -1640,3 +1641,176 @@ test("sends browser commands to the session as the owner, whatever the browser c
     `command received ${JSON.stringify({ sessionId: session.id, command: "abort", actor: "user:local" })}`,
   ]);
 });
+
+// An OpenAI-compatible endpoint, since Pi's in-memory faux provider can't
+// reach a Session in another process.
+function fakeModelServer(reply: string): ReturnType<typeof Bun.serve> {
+  const chunk = (choice: object): string =>
+    `data: ${JSON.stringify({
+      id: "c1",
+      object: "chat.completion.chunk",
+      created: 0,
+      model: "fake-model",
+      choices: [{ index: 0, ...choice }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    })}\n\n`;
+
+  return Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        [
+          chunk({ delta: { role: "assistant", content: reply } }),
+          chunk({ delta: {}, finish_reason: "stop" }),
+          "data: [DONE]\n\n",
+        ].join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  });
+}
+
+async function startProcessAgent(
+  model: ReturnType<typeof Bun.serve>,
+): Promise<void> {
+  const agentDir = join(root, "pi-process");
+  await mkdir(agentDir, { recursive: true });
+
+  await writeFile(
+    join(agentDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        fake: {
+          baseUrl: new URL("/v1", model.url).href,
+          api: "openai-completions",
+          apiKey: "fake",
+          models: [{ id: "fake-model" }],
+        },
+      },
+    }),
+  );
+
+  const controller = new AbortController();
+
+  const done = runAgent({
+    server: server.url.href,
+    provider: "process",
+    dataDir: join(root, "process"),
+    agentDir,
+    extensionPaths: [],
+    folders: [root],
+    log: (message, fields) => {
+      agentLogs.push(`${message} ${JSON.stringify(fields)}`);
+    },
+    signal: controller.signal,
+  });
+
+  agents.push(async () => {
+    controller.abort();
+    await done;
+  });
+}
+
+function sessionPids(sessionId: string): number[] {
+  return agentLogs.flatMap((line) => {
+    if (!line.startsWith("session process started")) {
+      return [];
+    }
+
+    const fields = JSON.parse(line.slice(line.indexOf("{"))) as {
+      sessionId: string;
+      pid: number;
+    };
+
+    return fields.sessionId === sessionId ? [fields.pid] : [];
+  });
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test("runs each session in its own process and reloads it when the process dies", async () => {
+  const model = fakeModelServer("hello from a session process");
+  await startProcessAgent(model);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "fake", id: "fake-model" },
+      })
+    ).json()) as Session;
+
+    await follow(session.id, status("idle"));
+
+    await api(`/api/sessions/${session.id}/commands`, {
+      type: "message",
+      text: "hi",
+    });
+
+    const reply = await follow(session.id, (events) =>
+      events.some(
+        (e) =>
+          e.type === "entry" &&
+          e.entry.includes("hello from a session process"),
+      ),
+    );
+
+    const [first] = sessionPids(session.id);
+
+    expect(roles(reply)).toContain("assistant");
+    expect(first !== undefined && alive(first)).toBe(true);
+
+    process.kill(first ?? 0, "SIGKILL");
+
+    await sessionWhere(
+      session.id,
+      (s) => s.generation === 2 && s.status === "idle",
+    );
+
+    const [, second] = sessionPids(session.id);
+
+    expect(second).not.toBe(first);
+    expect(second !== undefined && alive(second)).toBe(true);
+
+    const terminal = await openTerminal(session.id);
+    terminal.socket.send(encoder.encode("echo dir=$(pwd) sum=$((40+2))\n"));
+
+    expect(await terminal.output("sum=42")).toContain(`dir=${root}`);
+
+    await api(`/api/sessions/${session.id}/archive`, {});
+    while (second !== undefined && alive(second)) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);
+
+test("marks a session failed when its process cannot start it", async () => {
+  const model = fakeModelServer("unused");
+  await startProcessAgent(model);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "nowhere", id: "none" },
+      })
+    ).json()) as Session;
+
+    const failed = await sessionWhere(session.id, (s) => s.status === "failed");
+
+    expect(failed.error).toContain("model not available: nowhere/none");
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);

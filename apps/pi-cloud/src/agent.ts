@@ -4,6 +4,7 @@ import { runProvider, type Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
   hostSession,
+  hostTerminals,
   listModels,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
@@ -14,6 +15,7 @@ import {
   reportRemoval,
   reportStartFailure,
 } from "./client";
+import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
   readonly server: string;
@@ -22,6 +24,8 @@ export interface AgentOptions {
   readonly agentDir: string;
   readonly extensionPaths: readonly string[];
   readonly folders: readonly string[];
+  // Models built in this process can't reach a child, so with them Sessions
+  // run in the agent's own process. Tests use this with Pi's faux provider.
   readonly models?: SessionOptions["models"];
   readonly log: Log;
   readonly signal: AbortSignal;
@@ -89,19 +93,47 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         sessionLog,
       );
 
-      return await hostSession(
-        {
-          cwd,
-          base,
-          agentDir: options.agentDir,
-          sessionDir: join(options.dataDir, "sessions", sessionId),
-          extensionPaths: options.extensionPaths,
-          ...(options.models && { models: options.models }),
-          ...(assignment.model && { model: assignment.model }),
-        },
-        httpSessionStream(agent, assignment, sessionLog, fenced),
+      const sessionOptions = {
+        cwd,
+        base,
+        agentDir: options.agentDir,
+        sessionDir: join(options.dataDir, "sessions", sessionId),
+        extensionPaths: options.extensionPaths,
+        ...(assignment.model && { model: assignment.model }),
+      };
+
+      const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
+      if (options.models) {
+        return await hostSession(
+          { ...sessionOptions, models: options.models },
+          stream,
+          sessionLog,
+        );
+      }
+
+      const terminals = hostTerminals(cwd, stream, sessionLog);
+
+      const child = await spawnSession(
+        { ...agent, assignment, options: sessionOptions },
         sessionLog,
+        terminals.open,
       );
+
+      void child.exited.then((code) => {
+        terminals.close();
+        const entry = hosted.get(sessionId);
+        if (entry?.generation === generation) {
+          sessionLog("session process exited", { code });
+          hosted.delete(sessionId);
+        }
+      });
+
+      return {
+        stop: async () => {
+          terminals.close();
+          await child.stop();
+        },
+      };
     } catch (error) {
       sessionLog("session failed to start", { error: String(error) });
 
