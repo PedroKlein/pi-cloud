@@ -3,9 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./web": "./web/index.ts"
+    "./web": "./web/index.tsx"
   },
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*"
+    "@pi-cloud/plugins": "workspace:*",
+    "@pi-cloud/ui": "workspace:*",
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
   }
 }

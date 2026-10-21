@@ -199,7 +199,7 @@ export function NewSessionDialog({
               name="model"
               placeholder="Environment default"
               list="models"
-              className={`${field} font-mono text-code-sm`}
+              className={`${field} font-mono text-mono-sm`}
             />
           </Field>
           <datalist id="models">

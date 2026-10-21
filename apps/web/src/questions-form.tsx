@@ -4,10 +4,10 @@ import type {
   Question,
   QuestionOption,
 } from "@pi-cloud/protocol";
-import { Button, cn, Icon } from "@pi-cloud/ui";
+import { Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
 import type { Explanation } from "./feed";
-import { Actions, fieldClass } from "./fields";
+import { Actions } from "./fields";
 import {
   answered,
   answerOf,

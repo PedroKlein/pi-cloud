@@ -148,7 +148,7 @@ export function Composer({
 
 function Widget({ text }: { readonly text: string }): ReactElement {
   return (
-    <pre className="rounded-md bg-code px-3 py-2 font-mono text-code-sm whitespace-pre-wrap text-fg-dim">
+    <pre className="rounded-md bg-code px-3 py-2 font-mono text-mono-sm whitespace-pre-wrap text-fg-dim">
       {text}
     </pre>
   );
