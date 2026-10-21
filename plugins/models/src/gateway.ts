@@ -10,6 +10,10 @@ const defaultCapStatusCodes = [402];
 const capPattern =
   /insufficient_quota|quota exceeded|out of budget|billing|usage limit/i;
 
+// A per-minute quota reads like a cap ("Quota exceeded ... check your plan and
+// billing details") but clears within a minute.
+const shortWindowPattern = /per.?minute|retry in \d+(\.\d+)?m?s\b/i;
+
 const transientPattern =
   /\b(408|425|429|500|502|503|504)\b|rate.?limit|too many requests|overloaded|unavailable|timed? ?out|network|connection|fetch failed/i;
 
@@ -126,7 +130,7 @@ export function failure(
 
   if (
     statuses.some((status) => codes.includes(status)) ||
-    capPattern.test(errorMessage)
+    (capPattern.test(errorMessage) && !shortWindowPattern.test(errorMessage))
   ) {
     return {
       until: resetAfter(settings.resetSchedule, now).toISOString(),

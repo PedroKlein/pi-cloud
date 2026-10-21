@@ -54,3 +54,17 @@ test("cools a rate limit down for a minute and holds a cap until its reset", () 
 
   expect(failure(config, "google", "context too long", now)).toBeUndefined();
 });
+
+test("cools a per-minute quota down for a minute even when it mentions billing", () => {
+  const gemini =
+    "429 You exceeded your current quota, please check your plan and billing details. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.5-flash-lite Please retry in 23.5s.";
+
+  expect(failure(config, "google", gemini, now)?.until).toBe(
+    "2026-10-21T20:31:00.000Z",
+  );
+
+  expect(
+    failure(config, "google", "429 insufficient_quota: check your billing", now)
+      ?.until,
+  ).toBe("2026-10-22T00:00:00.000Z");
+});
