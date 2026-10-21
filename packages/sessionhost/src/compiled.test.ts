@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,10 +18,15 @@ beforeAll(async () => {
     import.meta.resolve("./testdata/compiled-session.ts"),
   );
 
+  const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+
   await run(process.execPath, [
     "build",
     "--compile",
+    "--root",
+    packageRoot,
     entry,
+    join(packageRoot, "src/extensions/codemode/worker.ts"),
     "--outfile",
     binary,
   ]);
@@ -31,7 +36,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("a compiled binary loads extensions from disk", async () => {
+test("a compiled binary loads extensions from disk and runs codemode", async () => {
   const subagents = dirname(
     fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
   );
@@ -55,13 +60,26 @@ export default function (pi: ExtensionAPI) {
 `,
   );
 
+  await mkdir(join(root, "agent"));
+
+  await writeFile(
+    join(root, "agent", "settings.json"),
+    JSON.stringify({ defaultTools: ["+codemode"] }),
+  );
+
   const { stdout } = await run(binary, [root, subagents, local], {
     cwd: root,
   });
 
-  const result = JSON.parse(stdout) as { tools: string[]; reply: string };
+  const result = JSON.parse(stdout) as {
+    tools: string[];
+    reply: string;
+    toolOutputs: string[];
+  };
 
   expect(result.tools).toContain("subagent");
   expect(result.tools).toContain("local_tool");
   expect(result.reply).toBe("compiled ok");
+  expect(result.toolOutputs.join()).toContain("Script completed");
+  expect(result.toolOutputs.join()).toContain("42");
 }, 30_000);

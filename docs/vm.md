@@ -26,11 +26,11 @@ From a checkout on your laptop, build for the VM's platform and copy it over:
 ```sh
 bun install
 ssh <vm> mkdir -p .local/bin
-bun build --compile --target=bun-linux-x64 apps/pi-cloud/src/main.ts --outfile dist/pi-cloud-linux
+bun run --cwd apps/pi-cloud build --target=bun-linux-x64 --outfile ../../dist/pi-cloud-linux
 scp dist/pi-cloud-linux <vm>:~/.local/bin/pi-cloud
 ```
 
-Use `--target=bun-linux-arm64` for an ARM VM.
+Use `--target=bun-linux-arm64` for an ARM VM. The build script also compiles the worker that runs Pi's `codemode` scripts, which a plain `bun build --compile src/main.ts` leaves out.
 
 ## Install the service
 

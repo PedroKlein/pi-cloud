@@ -21,6 +21,7 @@ import {
 import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef } from "@pi-cloud/protocol";
 import type { RemoteUI } from "./ui";
+import "./codemode";
 
 export interface ModelOptions {
   readonly agentDir: string;
