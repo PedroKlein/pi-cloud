@@ -119,7 +119,7 @@ test("routes an alias to the first backend of the session's Environment", async 
   const started = (await (
     await api("/api/sessions", {
       workspace: { kind: "folder", path: root },
-      model: { provider: "gateway", id: "medium-1" },
+      model: { provider: "alias", id: "medium-1" },
       firstMessage: "hi",
     })
   ).json()) as Session;
@@ -148,7 +148,7 @@ test("takes a backend that hit its cap out of routing for the whole Environment"
   const capped = (await (
     await api("/api/sessions", {
       workspace: { kind: "folder", path: root },
-      model: { provider: "gateway", id: "medium-1" },
+      model: { provider: "alias", id: "medium-1" },
       firstMessage: "hi",
     })
   ).json()) as Session;
@@ -167,7 +167,7 @@ test("takes a backend that hit its cap out of routing for the whole Environment"
   const next = (await (
     await api("/api/sessions", {
       workspace: { kind: "folder", path: root },
-      model: { provider: "gateway", id: "medium-1" },
+      model: { provider: "alias", id: "medium-1" },
       firstMessage: "hi again",
     })
   ).json()) as Session;

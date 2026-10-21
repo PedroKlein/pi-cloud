@@ -58,37 +58,44 @@ export const models: SessionPlugin = {
       }
 
       for (const alias of aliases) {
-        pi.registerVirtualModel({
-          provider: gatewayProvider,
-          id: alias.id,
-          name: alias.id,
-          thinkingLevels,
-          route: (request, ctx) => {
-            const sticky = stickyOf(request);
+        try {
+          pi.registerVirtualModel({
+            provider: gatewayProvider,
+            id: alias.id,
+            name: alias.id,
+            thinkingLevels,
+            route: (request, ctx) => {
+              const sticky = stickyOf(request);
 
-            const now = new Date();
-            if (
-              sticky &&
-              !unhealthy(config.health, sticky.model.provider, now) &&
-              candidates(
-                config.aliases ?? { backends: {} },
-                config.health,
-                alias,
-                now,
-              ).some(({ backend }) => backend === sticky.model.provider)
-            ) {
+              const now = new Date();
+              if (
+                sticky &&
+                !unhealthy(config.health, sticky.model.provider, now) &&
+                candidates(
+                  config.aliases ?? { backends: {} },
+                  config.health,
+                  alias,
+                  now,
+                ).some(({ backend }) => backend === sticky.model.provider)
+              ) {
+                return {
+                  model: sticky.model,
+                  thinkingLevel: request.thinkingLevel,
+                };
+              }
+
               return {
-                model: sticky.model,
+                model: pick(config, alias, ctx, now),
                 thinkingLevel: request.thinkingLevel,
               };
-            }
-
-            return {
-              model: pick(config, alias, ctx, now),
-              thinkingLevel: request.thinkingLevel,
-            };
-          },
-        });
+            },
+          });
+        } catch (error) {
+          cloud.log("model alias not registered", {
+            alias: alias.id,
+            error: String(error),
+          });
+        }
       }
 
       registered = aliases;

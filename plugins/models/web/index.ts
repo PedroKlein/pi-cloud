@@ -1,6 +1,12 @@
 import type { WebContext, WebPlugin } from "@pi-cloud/plugins/web";
 import type { Environment } from "@pi-cloud/protocol";
-import { aliasesOf, candidates, chainOf, unhealthy } from "../src/gateway";
+import {
+  aliasesOf,
+  candidates,
+  chainOf,
+  gatewayProvider,
+  unhealthy,
+} from "../src/gateway";
 import type {
   AliasConfig,
   Backend,
@@ -158,7 +164,7 @@ function routing(config: AliasConfig, health: Health): HTMLElement {
         return el(
           "tr",
           undefined,
-          el("td", `gateway/${alias.id}`),
+          el("td", `${gatewayProvider}/${alias.id}`),
           el(
             "td",
             first ? `${first.backend}/${first.modelId}` : "no healthy backend",

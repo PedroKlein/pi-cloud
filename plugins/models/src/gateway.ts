@@ -1,6 +1,6 @@
 import type { AliasConfig, Backend, Health, Unhealthy } from "./model";
 
-export const gatewayProvider = "gateway";
+export const gatewayProvider = "alias";
 
 const tierOrder = ["heavy", "medium", "light", "xlight", "minimal"];
 const transientCooldownMs = 60_000;

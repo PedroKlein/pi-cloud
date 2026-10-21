@@ -23,7 +23,7 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 - Model aliases are the `models` plugin in `plugins/models/`. It's on by default ([ADR 0015](0015-plugins.md)).
 - pi-cloud has its own gateway. pi-gateway is a reference, as [ADR 0001](0001-own-the-control-plane-and-ui.md) treats other projects. An earlier version of this ADR reused pi-gateway through a `pi.events` seam. That meant an npm release for every change and a guard for Sessions that load both copies.
-- The session part registers each alias as a Pi virtual model, `gateway/<alias>`. Pi calls its `route` before every request, and it returns the first healthy backend's model that has credentials on the machine. Pi keeps the backends' own providers, auth and streaming, so pi-cloud needs no transport of its own.
+- The session part registers each alias as a Pi virtual model, `alias/<alias>`. The provider isn't `gateway`, so a machine that also runs pi-gateway keeps its `gateway/*` models. Pi calls its `route` before every request, and it returns the first healthy backend's model that has credentials on the machine. Pi keeps the backends' own providers, auth and streaming, so pi-cloud needs no transport of its own.
 - A tool follow-up or a retry stays on the model that answered while its backend is healthy, which keeps the prompt cache.
 - pi-gateway replays a failed request on the next backend in the same turn. Pi already retries rate limits and server errors, and that retry routes to the next backend. Pi doesn't retry a quota or billing cap, so that turn ends with the error and the next request goes to the next backend.
 - The alias names follow pi-gateway: `<tier>-<n>`, where the count per tier comes from the first backend in the chain that has the tier.
@@ -44,7 +44,7 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 ### Choosing a model
 
-- Model fields list the Environment's aliases first, as `gateway/<alias>`, then the machine's real models. That covers the new Session form, a Project's coordinator model and the model `start_thread` takes. A real model still works anywhere it did.
+- Model fields list the Environment's aliases first, as `alias/<alias>`, then the machine's real models. That covers the new Session form, a Project's coordinator model and the model `start_thread` takes. A real model still works anywhere it did.
 - An Environment can set a default alias. A Session with no model uses it, and the machine's Pi default applies only when the Environment has none.
 - A Project can set an alias for its coordinator and one for its threads. `start_thread` uses the thread alias unless the coordinator names a model.
 - The order is: the model named on the Session, then the Project's alias for that role, then the Environment's default, then the machine's Pi default.
