@@ -277,9 +277,9 @@ function Editor({
         </select>
       </label>
 
-      <h4 className="text-ui font-semibold text-fg-strong">
+      <h3 className="text-ui font-semibold text-fg-strong">
         Backends, in fallback order
-      </h4>
+      </h3>
       {order.map((name, index) => (
         <BackendEditor
           key={name}
