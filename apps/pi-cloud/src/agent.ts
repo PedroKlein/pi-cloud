@@ -78,6 +78,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         {
           dir: join(options.dataDir, "workspaces", sessionId),
           folders: options.folders,
+          mirrors: join(options.dataDir, "mirrors"),
         },
         sessionLog,
       );

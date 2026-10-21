@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, rename, rm, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -20,11 +21,12 @@ export interface PreparedWorkspace {
 export interface WorkspaceOptions {
   readonly dir: string;
   readonly folders: readonly string[];
+  readonly mirrors?: string;
 }
 
 export async function prepareWorkspace(
   workspace: Workspace,
-  { dir, folders }: WorkspaceOptions,
+  { dir, folders, mirrors }: WorkspaceOptions,
   log: Log,
 ): Promise<PreparedWorkspace> {
   if (workspace.kind !== "clone") {
@@ -60,7 +62,8 @@ export async function prepareWorkspace(
       ...(workspace.startPoint === undefined ? [] : [workspace.startPoint]),
     );
 
-    log("worktree added", { dir });
+    const copied = await copyIncluded(workspace.path, dir);
+    log("worktree added", { dir, copied });
 
     return { cwd: dir, base: await recordBase(dir, branch) };
   }
@@ -74,7 +77,7 @@ export async function prepareWorkspace(
   await mkdir(dirname(dir), { recursive: true });
   await rm(partial, { recursive: true, force: true });
   try {
-    await git(dirname(dir), "clone", "--", repository, partial);
+    await cloneWithMirror(repository, partial, mirrors, log);
 
     await git(
       partial,
@@ -97,6 +100,133 @@ export async function prepareWorkspace(
   log("workspace cloned", { dir, ms: Date.now() - started });
 
   return { cwd: dir, base };
+}
+
+async function cloneWithMirror(
+  repository: string,
+  dir: string,
+  mirrors: string | undefined,
+  log: Log,
+): Promise<void> {
+  if (mirrors === undefined) {
+    await git(dirname(dir), "clone", "--", repository, dir);
+
+    return;
+  }
+
+  const mirror = join(
+    mirrors,
+    `${createHash("sha256").update(repository).digest("hex").slice(0, 16)}.git`,
+  );
+
+  await inTurn(mirror, async () => {
+    const reference = await updateMirror(repository, mirror).then(
+      () => ["--reference", mirror, "--dissociate"],
+      (error: unknown) => {
+        log("mirror failed, cloning without it", {
+          repository,
+          mirror,
+          error: String(error),
+        });
+
+        return [];
+      },
+    );
+
+    await git(dirname(dir), "clone", ...reference, "--", repository, dir);
+  });
+}
+
+async function updateMirror(repository: string, mirror: string): Promise<void> {
+  if (await exists(mirror)) {
+    await git(mirror, "fetch", "--prune", "origin");
+
+    return;
+  }
+
+  await mkdir(dirname(mirror), { recursive: true });
+  try {
+    await git(dirname(mirror), "clone", "--mirror", "--", repository, mirror);
+  } catch (error) {
+    await rm(mirror, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+const turns = new Map<string, Promise<unknown>>();
+
+async function inTurn<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const current = (turns.get(key) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(work);
+
+  const settled = current.catch(() => undefined);
+  turns.set(key, settled);
+  try {
+    return await current;
+  } finally {
+    if (turns.get(key) === settled) {
+      turns.delete(key);
+    }
+  }
+}
+
+// Copies the gitignored files that .worktreeinclude names, the same file and
+// rules Claude Code uses: https://code.claude.com/docs/en/worktrees
+async function copyIncluded(source: string, dir: string): Promise<number> {
+  const top = await git(absolute(source), "rev-parse", "--show-toplevel");
+  const include = join(top, ".worktreeinclude");
+  if (!(await exists(include))) {
+    return 0;
+  }
+
+  const included = paths(
+    await git(
+      top,
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      `--exclude-from=${include}`,
+    ),
+  );
+
+  const ignored = new Set(
+    paths(
+      await git(
+        top,
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+      ),
+    ),
+  );
+
+  const copies = included.filter((path) =>
+    ancestors(path).some((candidate) => ignored.has(candidate)),
+  );
+
+  for (const path of copies) {
+    await cp(join(top, path), join(dir, path), { recursive: true });
+  }
+
+  return copies.length;
+}
+
+function paths(output: string): string[] {
+  return output.split("\0").filter((path) => path !== "");
+}
+
+// A path and each directory above it, as ls-files --directory names them.
+function ancestors(path: string): string[] {
+  const parts = path.split("/");
+
+  return parts.map((_, i) =>
+    i === parts.length - 1 ? path : `${parts.slice(0, i + 1).join("/")}/`,
+  );
 }
 
 // A fresh clone has only the default branch locally, so other branches are
@@ -143,6 +273,7 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
   try {
     const { stdout } = await run("git", args, {
       cwd,
+      maxBuffer: 64 * 1024 * 1024,
       // Under systemd there is nobody to answer a credential prompt, so git
       // must fail instead of waiting for one.
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },

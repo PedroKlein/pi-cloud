@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
@@ -302,4 +303,209 @@ test("starts a session branch from the branch it names", async () => {
     expect(await readFile(join(cwd, "feature.txt"), "utf8")).toBe("feature\n");
     expect(await git(cwd, "branch", "--show-current")).toBe(workspace.branch);
   }
+});
+
+test("clones through a mirror the clone does not depend on", async () => {
+  const mirrors = join(root, "mirrors");
+
+  const workspace = {
+    kind: "clone",
+    repository,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  const { cwd } = await prepareWorkspace(
+    workspace,
+    { dir: join(root, "workspaces", "s1"), folders: [], mirrors },
+    noLog,
+  );
+
+  const [mirror = ""] = await readdir(mirrors);
+
+  expect(
+    await git(join(mirrors, mirror), "rev-parse", "--is-bare-repository"),
+  ).toBe("true");
+
+  expect(
+    stat(join(cwd, ".git", "objects", "info", "alternates")),
+  ).rejects.toThrow();
+
+  await writeFile(join(repository, "later.txt"), "later\n");
+  await git(repository, "add", ".");
+
+  await git(
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "later",
+  );
+
+  await rm(mirrors, { recursive: true });
+
+  expect(await git(cwd, "log", "--oneline")).toContain("first");
+
+  const second = await prepareWorkspace(
+    { ...workspace, branch: "pi-cloud/s2" },
+    { dir: join(root, "workspaces", "s2"), folders: [], mirrors },
+    noLog,
+  );
+
+  expect(await readFile(join(second.cwd, "later.txt"), "utf8")).toBe("later\n");
+  expect(await readdir(mirrors)).toEqual([mirror]);
+});
+
+test("brings a mirror up to date before the next clone", async () => {
+  const mirrors = join(root, "mirrors");
+
+  const options = (name: string): Parameters<typeof prepareWorkspace>[1] => ({
+    dir: join(root, "workspaces", name),
+    folders: [],
+    mirrors,
+  });
+
+  await prepareWorkspace(
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    options("s1"),
+    noLog,
+  );
+
+  await writeFile(join(repository, "later.txt"), "later\n");
+  await git(repository, "add", ".");
+
+  await git(
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "later",
+  );
+
+  const later = await git(repository, "rev-parse", "HEAD");
+
+  await prepareWorkspace(
+    { kind: "clone", repository, branch: "pi-cloud/s2" },
+    options("s2"),
+    noLog,
+  );
+
+  const [mirror = ""] = await readdir(mirrors);
+
+  expect(await git(join(mirrors, mirror), "rev-parse", "main")).toBe(later);
+});
+
+test("clones without a mirror when the mirror cannot be made", async () => {
+  const mirrors = join(root, "mirrors");
+  await writeFile(mirrors, "not a directory\n");
+  const logs: string[] = [];
+
+  const { cwd } = await prepareWorkspace(
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { dir: join(root, "workspaces", "s1"), folders: [], mirrors },
+    (message) => {
+      logs.push(message);
+    },
+  );
+
+  expect(await readFile(join(cwd, "README.md"), "utf8")).toBe("hello\n");
+  expect(logs).toContain("mirror failed, cloning without it");
+});
+
+test("clones the same repository for several sessions at once", async () => {
+  const mirrors = join(root, "mirrors");
+
+  const prepared = await Promise.all(
+    ["s1", "s2", "s3"].map(async (name) =>
+      prepareWorkspace(
+        { kind: "clone", repository, branch: `pi-cloud/${name}` },
+        { dir: join(root, "workspaces", name), folders: [], mirrors },
+        noLog,
+      ),
+    ),
+  );
+
+  for (const { cwd } of prepared) {
+    expect(await readFile(join(cwd, "README.md"), "utf8")).toBe("hello\n");
+  }
+
+  expect(await readdir(mirrors)).toHaveLength(1);
+});
+
+test("copies the gitignored files .worktreeinclude names into a new worktree", async () => {
+  await writeFile(join(repository, ".gitignore"), ".env\nsecrets/\nbuild/\n");
+
+  await writeFile(
+    join(repository, ".worktreeinclude"),
+    ".env\nsecrets/\nnotes.txt\n",
+  );
+
+  await git(repository, "add", ".");
+
+  await git(
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "ignore",
+  );
+
+  await writeFile(join(repository, ".env"), "KEY=1\n");
+  await mkdir(join(repository, "secrets", "nested"), { recursive: true });
+  await writeFile(join(repository, "secrets", "nested", "key.pem"), "pem\n");
+  await mkdir(join(repository, "build"));
+  await writeFile(join(repository, "build", "out.js"), "built\n");
+  await writeFile(join(repository, "notes.txt"), "untracked, not ignored\n");
+  const dir = join(root, "workspaces", "s1");
+
+  await prepareWorkspace(
+    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { dir, folders: [repository] },
+    noLog,
+  );
+
+  expect(await readFile(join(dir, ".env"), "utf8")).toBe("KEY=1\n");
+
+  expect(
+    await readFile(join(dir, "secrets", "nested", "key.pem"), "utf8"),
+  ).toBe("pem\n");
+
+  expect(stat(join(dir, "build"))).rejects.toThrow();
+  expect(stat(join(dir, "notes.txt"))).rejects.toThrow();
+  expect(await git(dir, "status", "--porcelain")).toBe("");
+});
+
+test("copies nothing into a worktree without .worktreeinclude", async () => {
+  await writeFile(join(repository, ".gitignore"), ".env\n");
+  await git(repository, "add", ".");
+
+  await git(
+    repository,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    "ignore",
+  );
+
+  await writeFile(join(repository, ".env"), "KEY=1\n");
+  const dir = join(root, "workspaces", "s1");
+
+  await prepareWorkspace(
+    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { dir, folders: [repository] },
+    noLog,
+  );
+
+  expect(stat(join(dir, ".env"))).rejects.toThrow();
 });
