@@ -38,7 +38,7 @@ These scenarios are the yardstick for scope. A feature that serves none of them 
 - Local and VM Runtime Providers, connected outbound to one Control Plane.
 - A Project file library, as a plugin after Projects: uploads, files published by threads, and files fetched into a thread's workspace.
 - One trusted mode with no sandbox: each Session runs in its own process on the provider's machine ([ADR 0017](adr/0017-process-per-session.md)). An Environment is a name for one provider ([ADR 0014](adr/0014-concept-map-and-environments.md)).
-- A Session stays on the provider it started on. Moving to another provider is an explicit fork.
+- A Session stays on the provider it started on, for its whole life.
 - No authentication. The Control Plane listens on localhost and is reached there or through an SSH tunnel, including from a phone ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
 - A minimal web UI.
 
@@ -50,6 +50,7 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 - Enforced network policy, brokered secrets, and hardened runtimes.
 - Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel ([v2 ideas](v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
 - Fully versioned, portable Profiles for fresh runtimes.
+- Forking a Session to another provider, starting from the server's copy of its transcript ([open question](open-questions.md#workspace-durability)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
 ### Later
