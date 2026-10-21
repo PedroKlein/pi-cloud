@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md)
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions)
 - Date: 2026-10-17
 
 ## Context
@@ -52,6 +52,16 @@ The protocol follows Claude Code's shape: a work channel per provider and a stre
 - While the provider is offline, the server rejects them and the UI says the provider is offline. Nothing is queued for later delivery.
 - Terminal bytes are forwarded live only. They aren't stored or replayed.
 
+### Composer input
+
+Added 2026-10-21. The composer takes images, slash commands and `@` file mentions, like Claude Code's and Pi's own editor. Each one maps onto something Pi already does, so the protocol only carries data and Pi does the work.
+
+- **Images.** The `message` command gains an optional `images` list of `{ mimeType, data }`, with `data` in base64. The Session host passes them to Pi's `prompt(text, { images })`, so they reach the model as image content and land in the JSONL entry for that message. They replicate with the transcript like any other entry, and the chat view shows them from there. PNG, JPEG, GIF and WebP only, at most 5 per message and 5 MB each before encoding. The server rejects anything else with a 400, before it reaches the stream. Images can be pasted, dropped or picked from a file dialog.
+- **Other files** aren't attachments in this amendment. Pi takes only text and images in a prompt, and writing an upload into the Workspace needs a separate path down to the provider. A file can go through the Project library ([ADR 0018](0018-project-library.md)) or be mentioned if it's already in the Workspace.
+- **Slash commands.** Pi's `prompt()` already expands `/name` for extension commands, prompt templates and `/skill:name` skills, so sending the text is enough. What the browser lacks is the list. The Session host publishes a `commands` live event with `{ name, description, source }` for each one, the same list Pi's RPC `get_commands` returns, when an attempt starts and after a reload. The server keeps it as an open surface for the current generation, so a browser that connects later gets it in its replay. Typing `/` at the start of the composer opens a filtered menu of these commands.
+- **File mentions.** Typing `@` opens a filtered menu of Workspace paths and inserts the chosen path as text, as Pi's editor does. The model reads the file with its own tools. The Session host publishes a `files` live event with the Workspace's paths: `git ls-files` with untracked files that aren't ignored, or a walk that skips hidden folders and `node_modules` outside git. It lists at most 5,000 paths and says when it cut the list short. It is published when an attempt starts and again after each turn ends if the list changed, and is kept as an open surface like `commands`. The browser filters it locally, so typing doesn't wait on a round trip to a laptop.
+- Pi's terminal-only commands such as `/model`, `/compact` and `/tree` aren't in the list. They stay in the terminal view until the UI has its own controls for them.
+
 ## Consequences
 
 - No message broker, and SQLite on the server as the only store. Because requests carry no connection state apart from SSE and terminal sockets, the server can later run as several replicas without sticky routing for the work channel.
@@ -59,4 +69,6 @@ The protocol follows Claude Code's shape: a work channel per provider and a stre
 - A laptop that sleeps or loses Wi-Fi doesn't kill its Sessions. Its Sessions show as offline and catch up on wake.
 - Duplicate execution is prevented by the agent's own process supervision plus the generation check, not by lease expiry. Kubernetes and provider pools in v2 can reschedule a Session elsewhere, so they need expiring leases with self-fencing, which returns as a decision then.
 - Server storage grows with every transcript. Retention is not decided.
+- Images make transcripts larger, since they are stored inside the JSONL entries. The 5 × 5 MB cap bounds one message, not a Session.
+- A large repository's mention list is cut at 5,000 paths. A query down the stream would avoid that, but needs request and response matching over SSE, which nothing else uses yet.
 - Relies on Pi appending to its JSONL file rather than rewriting it. The first slice must confirm this, including across compaction and branching.
