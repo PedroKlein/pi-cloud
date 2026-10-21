@@ -8,17 +8,27 @@ export type Workspace =
       readonly kind: "worktree";
       readonly path: string;
       readonly branch: string;
+      readonly startPoint?: string;
     }
   | {
       readonly kind: "clone";
       readonly repository: string;
       readonly branch: string;
+      readonly startPoint?: string;
     };
 
 export type WorkspaceRequest =
   | { readonly kind: "folder"; readonly path: string }
-  | { readonly kind: "worktree"; readonly path: string }
-  | { readonly kind: "clone"; readonly repository: string };
+  | {
+      readonly kind: "worktree";
+      readonly path: string;
+      readonly startPoint?: string;
+    }
+  | {
+      readonly kind: "clone";
+      readonly repository: string;
+      readonly startPoint?: string;
+    };
 
 export interface ModelRef {
   readonly provider: string;

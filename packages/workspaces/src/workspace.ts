@@ -49,7 +49,17 @@ export async function prepareWorkspace(
     log("adding worktree", { folder: workspace.path, branch, dir });
 
     await mkdir(dirname(dir), { recursive: true });
-    await git(absolute(workspace.path), "worktree", "add", "-b", branch, dir);
+
+    await git(
+      absolute(workspace.path),
+      "worktree",
+      "add",
+      "-b",
+      branch,
+      dir,
+      ...(workspace.startPoint === undefined ? [] : [workspace.startPoint]),
+    );
+
     log("worktree added", { dir });
 
     return { cwd: dir, base: await recordBase(dir, branch) };
@@ -65,7 +75,18 @@ export async function prepareWorkspace(
   await rm(partial, { recursive: true, force: true });
   try {
     await git(dirname(dir), "clone", "--", repository, partial);
-    await git(partial, "switch", "--create", branch);
+
+    await git(
+      partial,
+      "switch",
+      "--no-track",
+      "--create",
+      branch,
+      ...(workspace.startPoint === undefined
+        ? []
+        : [await remoteStartPoint(partial, workspace.startPoint)]),
+    );
+
     base = await recordBase(partial, branch);
   } catch (error) {
     await rm(partial, { recursive: true, force: true });
@@ -76,6 +97,26 @@ export async function prepareWorkspace(
   log("workspace cloned", { dir, ms: Date.now() - started });
 
   return { cwd: dir, base };
+}
+
+// A fresh clone has only the default branch locally, so other branches are
+// reached through the remote.
+async function remoteStartPoint(
+  dir: string,
+  startPoint: string,
+): Promise<string> {
+  const remote = `origin/${startPoint}`;
+
+  return git(
+    dir,
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${remote}^{commit}`,
+  ).then(
+    () => remote,
+    () => startPoint,
+  );
 }
 
 // The commit a session branch started from, kept in the branch's git config
