@@ -673,6 +673,51 @@ test("reports a workspace that is already gone as removed", async () => {
   }
 });
 
+test("removes a worktree whose checkout is gone only when forced", async () => {
+  const checkout = await checkoutWithRemote();
+  const dir = join(root, "workspaces", "s1");
+
+  const workspace = {
+    kind: "worktree",
+    path: checkout,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
+  await rm(checkout, { recursive: true, force: true });
+
+  expect(
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({
+    outcome: "kept",
+    reason: "the folder it was checked out from is gone",
+  });
+
+  expect(await removeWorkspace(workspace, { dir, force: true }, noLog)).toEqual(
+    { outcome: "removed", restore: workspace },
+  );
+
+  expect(stat(dir)).rejects.toThrow();
+
+  const several = {
+    kind: "repositories",
+    branch: "pi-cloud/s2",
+    repositories: [{ repository }],
+  } as const;
+
+  const again = await checkoutWithRemote();
+  const other = join(root, "workspaces", "s2");
+  await prepareWorkspace(several, { dir: other, folders: [again] }, noLog);
+  await rm(again, { recursive: true, force: true });
+
+  expect(
+    await removeWorkspace(several, { dir: other, force: false }, noLog),
+  ).toEqual({
+    outcome: "kept",
+    reason: "origin: the folder it was checked out from is gone",
+  });
+});
+
 test("never removes a folder workspace", async () => {
   expect(
     (

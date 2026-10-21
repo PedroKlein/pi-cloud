@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -241,7 +241,10 @@ async function removeCheckout(
 
   const present = await exists(dir);
 
+  const orphaned = workspace.kind === "worktree" && !(await exists(repository));
+
   const hasBranch =
+    !orphaned &&
     (present || workspace.kind === "worktree") &&
     (await git(
       repository,
@@ -261,6 +264,13 @@ async function removeCheckout(
 
       return { outcome: "kept", reason };
     }
+  }
+
+  if (orphaned) {
+    await rm(dir, { recursive: true, force: true });
+    log("workspace removed", { dir, force, restore: null });
+
+    return { outcome: "removed", restore: workspace };
   }
 
   const restore = hasBranch
@@ -294,6 +304,14 @@ async function lossOf(
   present: boolean,
   hasBranch: boolean,
 ): Promise<string | null> {
+  // Without the checkout it came from, git can't tell what a worktree holds.
+  if (
+    workspace.kind === "worktree" &&
+    !(await exists(absolute(workspace.path)))
+  ) {
+    return present ? "the folder it was checked out from is gone" : null;
+  }
+
   if (present && (await git(dir, "status", "--porcelain")) !== "") {
     return "uncommitted changes";
   }
@@ -365,24 +383,15 @@ function repositoryKey(url: string): string {
 
 // The checkout a worktree at path belongs to, or undefined when path is
 // missing or a checkout of its own.
+// Reads the worktree's .git file rather than asking git, which fails once
+// the checkout is gone: it holds "gitdir: <checkout>/.git/worktrees/<name>".
 async function worktreeFolder(path: string): Promise<string | undefined> {
-  const isFile = await stat(join(path, ".git")).then(
-    (entry) => entry.isFile(),
-    () => false,
-  );
+  const link = await readFile(join(path, ".git"), "utf8").catch(() => "");
+  const gitdir = /^gitdir: (.+)$/m.exec(link)?.[1];
 
-  if (!isFile) {
-    return undefined;
-  }
-
-  const common = await git(
-    path,
-    "rev-parse",
-    "--path-format=absolute",
-    "--git-common-dir",
-  );
-
-  return dirname(common);
+  return gitdir === undefined
+    ? undefined
+    : dirname(dirname(dirname(resolve(path, gitdir.trim()))));
 }
 
 async function remoteHolding(
@@ -584,6 +593,13 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 
     return stdout.trim();
   } catch (error) {
+    // Node names git when the directory it runs in is missing.
+    if (!(await exists(cwd))) {
+      throw new Error(`git ${args[0] ?? ""} failed: ${cwd} does not exist`, {
+        cause: error,
+      });
+    }
+
     const stderr = (error as { stderr?: string }).stderr?.trim() ?? "";
 
     throw new Error(
