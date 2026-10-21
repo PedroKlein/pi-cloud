@@ -371,3 +371,30 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("link", { name: "brief.txt" }).waitFor();
   await page.getByText("user:local wrote brief.txt (10 bytes)").waitFor();
 }, 30_000);
+
+test("shows a plugin page's failure without taking the app down", async () => {
+  await page.route("**/api/plugins/projects/projects", async (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "projects store is unreadable" }),
+    }),
+  );
+
+  await page.goto(server.url.href);
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "projects store is unreadable" })
+    .waitFor();
+
+  await page.unroute("**/api/plugins/projects/projects");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await page.getByRole("heading", { name: "New Project" }).waitFor();
+  await page.getByRole("searchbox", { name: "Search sessions" }).waitFor();
+});

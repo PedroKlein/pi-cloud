@@ -138,7 +138,7 @@ function CreateForm({
       return typeof value === "string" ? value : "";
     };
 
-    void json<ProjectView | { error: string }>(
+    json<ProjectView>(
       context.request("projects", {
         name: field("name"),
         environment: field("environment"),
@@ -149,15 +149,14 @@ function CreateForm({
         threadModel: field("threadModel"),
         instructions: field("instructions"),
       }),
-    ).then((body) => {
-      if ("error" in body) {
-        alert(body.error);
-
-        return;
-      }
-
-      onCreated(body.id);
-    });
+    ).then(
+      (project) => {
+        onCreated(project.id);
+      },
+      (error: unknown) => {
+        alert(error instanceof Error ? error.message : String(error));
+      },
+    );
   };
 
   return (
