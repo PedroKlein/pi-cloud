@@ -224,8 +224,8 @@ test("shows the session's changes and usage from their plugins", async () => {
   await page.locator("#prompt-text").press("Enter");
 
   const changes = page.locator('#plugin-panels [data-plugin="changes"]');
-  await changes.getByText("Changes (1 files)").click();
-  await changes.getByText("+new notes").waitFor();
+  await changes.getByText("Changes (1 file)").click();
+  await changes.locator("tr", { hasText: "new notes" }).waitFor();
 
   await page
     .locator('#plugin-header [data-plugin="usage"]', { hasText: "out" })
