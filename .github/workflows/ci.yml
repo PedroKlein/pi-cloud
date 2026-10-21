@@ -19,3 +19,5 @@ jobs:
       - run: bun run typecheck
       - run: bun test
       - run: bun run build
+      - run: bun x playwright-core install --with-deps chromium
+      - run: bun run test:e2e
