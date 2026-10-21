@@ -1,13 +1,15 @@
+import { relative } from "node:path";
 import type { SessionPlugin } from "@pi-cloud/plugins";
 import { workspaceChanges } from "./changes";
-export type { Changes } from "./report";
+import type { CheckoutChanges } from "./report";
+export type { CheckoutChanges } from "./report";
 
-// Publishes what the Session changed in its git workspace when it starts and
-// after every turn.
+// Publishes what the Session changed in each git checkout of its workspace
+// when it starts and after every turn.
 export const changes: SessionPlugin = {
   name: "changes",
   extension:
-    ({ publish, base, log }) =>
+    ({ publish, checkouts, log }) =>
     (pi) => {
       let running = Promise.resolve();
       let queued = false;
@@ -15,19 +17,27 @@ export const changes: SessionPlugin = {
       const collect = async (cwd: string): Promise<void> => {
         queued = false;
         const started = Date.now();
-        try {
-          const found = await workspaceChanges(cwd, base);
-          if (found) {
-            publish("changes", found);
+        const found: CheckoutChanges[] = [];
 
-            log("workspace changes", {
-              files: found.files.length,
-              truncated: found.truncated,
-              ms: Date.now() - started,
-            });
+        for (const { path, base } of checkouts) {
+          try {
+            const checkout = await workspaceChanges(path, base);
+            if (checkout) {
+              found.push({ name: relative(cwd, path), ...checkout });
+            }
+          } catch (error) {
+            log("workspace changes failed", { path, error: String(error) });
           }
-        } catch (error) {
-          log("workspace changes failed", { error: String(error) });
+        }
+
+        if (found.length > 0) {
+          publish("changes", found);
+
+          log("workspace changes", {
+            files: found.reduce((sum, { files }) => sum + files.length, 0),
+            truncated: found.some(({ truncated }) => truncated),
+            ms: Date.now() - started,
+          });
         }
       };
 

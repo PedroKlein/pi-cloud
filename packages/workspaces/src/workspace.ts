@@ -1,10 +1,14 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { RemovalReport, Workspace } from "@pi-cloud/protocol";
+import {
+  checkoutName,
+  type RemovalReport,
+  type Workspace,
+} from "@pi-cloud/protocol";
 
 const run = promisify(execFile);
 
@@ -13,10 +17,19 @@ export type Log = (
   fields?: Readonly<Record<string, unknown>>,
 ) => void;
 
-export interface PreparedWorkspace {
-  readonly cwd: string;
+// A git checkout in a workspace and the commit its session branch started
+// from, if it has one.
+export interface Checkout {
+  readonly path: string;
   readonly base: string | null;
 }
+
+export interface PreparedWorkspace {
+  readonly cwd: string;
+  readonly checkouts: readonly Checkout[];
+}
+
+type SingleWorkspace = Exclude<Workspace, { kind: "repositories" }>;
 
 export interface WorkspaceOptions {
   readonly dir: string;
@@ -26,9 +39,46 @@ export interface WorkspaceOptions {
 
 export async function prepareWorkspace(
   workspace: Workspace,
-  { dir, folders, mirrors }: WorkspaceOptions,
+  options: WorkspaceOptions,
   log: Log,
 ): Promise<PreparedWorkspace> {
+  if (workspace.kind !== "repositories") {
+    const { cwd, base } = await prepareCheckout(workspace, options, log);
+
+    return { cwd, checkouts: [{ path: cwd, base }] };
+  }
+
+  const { dir, folders } = options;
+  const { branch } = workspace;
+  await mkdir(dir, { recursive: true });
+
+  // Each repository becomes a worktree of a listed folder that has it as a
+  // remote, or a clone when none does.
+  const checkouts = await Promise.all(
+    workspace.repositories.map(async ({ repository, startPoint }) => {
+      const folder = await folderOf(repository, folders);
+      const start = startPoint === undefined ? {} : { startPoint };
+
+      const { cwd, base } = await prepareCheckout(
+        folder === undefined
+          ? { kind: "clone", repository, branch, ...start }
+          : { kind: "worktree", path: folder, branch, ...start },
+        { ...options, dir: join(dir, checkoutName(repository)) },
+        log,
+      );
+
+      return { path: cwd, base };
+    }),
+  );
+
+  return { cwd: dir, checkouts };
+}
+
+async function prepareCheckout(
+  workspace: SingleWorkspace,
+  { dir, folders, mirrors }: WorkspaceOptions,
+  log: Log,
+): Promise<{ readonly cwd: string; readonly base: string | null }> {
   if (workspace.kind !== "clone") {
     const folder = absolute(workspace.path);
     if (!folders.some((allowed) => absolute(allowed) === folder)) {
@@ -102,10 +152,83 @@ export async function prepareWorkspace(
   return { cwd: dir, base };
 }
 
-// Removes a session's workspace only when git says nothing would be lost,
-// unless forced. A removed workspace can be prepared again from restore.
+// Removes a session's workspace only when git says nothing would be lost in
+// any of its checkouts, unless forced. A removed workspace can be prepared
+// again from restore.
 export async function removeWorkspace(
   workspace: Workspace,
+  options: { readonly dir: string; readonly force: boolean },
+  log: Log,
+): Promise<RemovalReport> {
+  if (workspace.kind !== "repositories") {
+    return removeCheckout(workspace, options, log);
+  }
+
+  const { dir, force } = options;
+  const { branch } = workspace;
+
+  const checkouts = await Promise.all(
+    workspace.repositories.map(async (checkout) => {
+      const path = join(dir, checkoutName(checkout.repository));
+      const folder = await worktreeFolder(path);
+
+      return {
+        checkout,
+        path,
+        workspace:
+          folder === undefined
+            ? ({
+                kind: "clone",
+                repository: checkout.repository,
+                branch,
+              } as const)
+            : ({ kind: "worktree", path: folder, branch } as const),
+      };
+    }),
+  );
+
+  if (!force) {
+    for (const { checkout, path, workspace: single } of checkouts) {
+      const present = await exists(path);
+      const reason = await lossOf(single, path, present, present);
+      if (reason !== null) {
+        log("workspace kept", { dir, reason, repository: checkout.repository });
+
+        return {
+          outcome: "kept",
+          reason: `${checkoutName(checkout.repository)}: ${reason}`,
+        };
+      }
+    }
+  }
+
+  const repositories = [];
+  for (const { checkout, path, workspace: single } of checkouts) {
+    const report = await removeCheckout(
+      single,
+      { dir: path, force: true },
+      log,
+    );
+
+    const restored =
+      report.outcome === "removed" &&
+      (report.restore.kind === "worktree" || report.restore.kind === "clone")
+        ? report.restore.startPoint
+        : undefined;
+
+    repositories.push({
+      ...checkout,
+      ...(restored !== undefined && { startPoint: restored }),
+    });
+  }
+
+  await rm(dir, { recursive: true, force: true });
+
+  return { outcome: "removed", restore: { ...workspace, repositories } };
+}
+
+async function removeCheckout(
+  workspace: SingleWorkspace,
   { dir, force }: { readonly dir: string; readonly force: boolean },
   log: Log,
 ): Promise<RemovalReport> {
@@ -118,7 +241,10 @@ export async function removeWorkspace(
 
   const present = await exists(dir);
 
+  const orphaned = workspace.kind === "worktree" && !(await exists(repository));
+
   const hasBranch =
+    !orphaned &&
     (present || workspace.kind === "worktree") &&
     (await git(
       repository,
@@ -140,6 +266,13 @@ export async function removeWorkspace(
     }
   }
 
+  if (orphaned) {
+    await rm(dir, { recursive: true, force: true });
+    log("workspace removed", { dir, force, restore: null });
+
+    return { outcome: "removed", restore: workspace };
+  }
+
   const restore = hasBranch
     ? await remoteHolding(repository, workspace.branch)
     : null;
@@ -158,15 +291,27 @@ export async function removeWorkspace(
 
   log("workspace removed", { dir, force, restore });
 
-  return { outcome: "removed", restore };
+  return {
+    outcome: "removed",
+    restore:
+      restore === null ? workspace : { ...workspace, startPoint: restore },
+  };
 }
 
 async function lossOf(
-  workspace: Exclude<Workspace, { kind: "folder" }>,
+  workspace: Exclude<SingleWorkspace, { kind: "folder" }>,
   dir: string,
   present: boolean,
   hasBranch: boolean,
 ): Promise<string | null> {
+  // Without the checkout it came from, git can't tell what a worktree holds.
+  if (
+    workspace.kind === "worktree" &&
+    !(await exists(absolute(workspace.path)))
+  ) {
+    return present ? "the folder it was checked out from is gone" : null;
+  }
+
   if (present && (await git(dir, "status", "--porcelain")) !== "") {
     return "uncommitted changes";
   }
@@ -187,6 +332,66 @@ async function lossOf(
         );
 
   return unpushed === "" ? null : "unpushed commits";
+}
+
+// The listed folder whose remotes include repository, if any.
+async function folderOf(
+  repository: string,
+  folders: readonly string[],
+): Promise<string | undefined> {
+  const wanted = repositoryKey(repository);
+
+  for (const folder of folders) {
+    const urls = await git(
+      absolute(folder),
+      "config",
+      "--get-regexp",
+      "^remote\\..*\\.url$",
+    ).catch(() => "");
+
+    const matches = urls
+      .split("\n")
+      .map((line) => line.slice(line.indexOf(" ") + 1))
+      .some((url) => url !== "" && repositoryKey(url) === wanted);
+
+    if (matches) {
+      return absolute(folder);
+    }
+  }
+
+  return undefined;
+}
+
+// One spelling for the URLs git accepts for a repository, so that
+// git@host:org/repo.git and https://host/org/repo match.
+function repositoryKey(url: string): string {
+  if (url.startsWith("/") || url.startsWith("~")) {
+    return absolute(url)
+      .replace(/\/+$/, "")
+      .replace(/\.git$/, "");
+  }
+
+  return url
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z+]+:\/\//, "")
+    .replace(/^[^@/]+@/, "")
+    .replace(/^([^/:]+):(?!\d)/, "$1/")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "");
+}
+
+// The checkout a worktree at path belongs to, or undefined when path is
+// missing or a checkout of its own.
+// Reads the worktree's .git file rather than asking git, which fails once
+// the checkout is gone: it holds "gitdir: <checkout>/.git/worktrees/<name>".
+async function worktreeFolder(path: string): Promise<string | undefined> {
+  const link = await readFile(join(path, ".git"), "utf8").catch(() => "");
+  const gitdir = /^gitdir: (.+)$/m.exec(link)?.[1];
+
+  return gitdir === undefined
+    ? undefined
+    : dirname(dirname(dirname(resolve(path, gitdir.trim()))));
 }
 
 async function remoteHolding(
@@ -388,6 +593,13 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
 
     return stdout.trim();
   } catch (error) {
+    // Node names git when the directory it runs in is missing.
+    if (!(await exists(cwd))) {
+      throw new Error(`git ${args[0] ?? ""} failed: ${cwd} does not exist`, {
+        cause: error,
+      });
+    }
+
     const stderr = (error as { stderr?: string }).stderr?.trim() ?? "";
 
     throw new Error(

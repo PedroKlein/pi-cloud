@@ -14,6 +14,7 @@ import {
   type ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef } from "@pi-cloud/protocol";
 import type { RemoteUI } from "./ui";
 
@@ -28,7 +29,7 @@ export interface ModelOptions {
 
 export interface SessionOptions extends ModelOptions {
   readonly cwd: string;
-  readonly base?: string | null;
+  readonly checkouts?: readonly Checkout[];
   readonly sessionDir: string;
   readonly model?: ModelRef;
   readonly systemPrompt?: string | null;

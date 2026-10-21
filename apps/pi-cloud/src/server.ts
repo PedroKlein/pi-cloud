@@ -1,9 +1,11 @@
 import {
   type Answer,
   type Command,
+  checkoutName,
   type CreateSession,
   type LivePost,
   type RemovalReport,
+  type RepositoryCheckout,
   type SessionEvent,
   type StartFailure,
   type ToolCall,
@@ -453,10 +455,8 @@ function optionalText<K extends string>(
 }
 
 function workspaceRequest(workspace: unknown): WorkspaceRequest {
-  const { kind, path, repository, startPoint } = (workspace ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const { kind, path, repository, repositories, startPoint } = (workspace ??
+    {}) as Record<string, unknown>;
 
   if (kind === "folder" && typeof path === "string" && path !== "") {
     return { kind, path };
@@ -472,9 +472,36 @@ function workspaceRequest(workspace: unknown): WorkspaceRequest {
     return { kind, repository, ...start };
   }
 
+  if (
+    kind === "repositories" &&
+    Array.isArray(repositories) &&
+    repositories.length > 0
+  ) {
+    const checkouts = repositories.map(repositoryCheckout);
+    const names = checkouts.map((c) => checkoutName(c.repository));
+    if (names.includes("") || new Set(names).size !== names.length) {
+      throw new BadRequest("repositories need different names");
+    }
+
+    return { kind, repositories: checkouts };
+  }
+
   throw new BadRequest(
-    "workspace must be a folder or worktree with a path, or a clone with a repository",
+    "workspace must be a folder or worktree with a path, a clone with a repository, or repositories",
   );
+}
+
+function repositoryCheckout(checkout: unknown): RepositoryCheckout {
+  const { repository, startPoint } = (checkout ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  if (typeof repository !== "string" || repository === "") {
+    throw new BadRequest("each repository needs a URL");
+  }
+
+  return { repository, ...startPointOf(startPoint) };
 }
 
 // Terminal commands come from the server's own terminal socket, never from a

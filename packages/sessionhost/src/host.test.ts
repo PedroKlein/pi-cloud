@@ -16,7 +16,7 @@ import {
 import { Type } from "@earendil-works/pi-ai";
 import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
 import { ask } from "@pi-cloud/ask/session";
-import { type Changes, changes } from "@pi-cloud/changes/session";
+import { type CheckoutChanges, changes } from "@pi-cloud/changes/session";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
 
@@ -1187,10 +1187,12 @@ async function gitRepository(): Promise<string> {
   return dir;
 }
 
-function published(events: readonly LiveEvent[]): Changes[] {
+function published(
+  events: readonly LiveEvent[],
+): (readonly CheckoutChanges[])[] {
   return events.flatMap((event) =>
     event.type === "plugin" && event.plugin === "changes"
-      ? [event.data as Changes]
+      ? [event.data as readonly CheckoutChanges[]]
       : [],
   );
 }
@@ -1216,6 +1218,7 @@ test("publishes what the session changed in its git workspace after a turn", asy
       extensionPaths: [],
       models,
       plugins: [changes],
+      checkouts: [{ path: repo, base: null }],
     },
     fake.stream,
     () => undefined,
@@ -1226,7 +1229,7 @@ test("publishes what the session changed in its git workspace after a turn", asy
   await fake.waitFor(() => published(fake.events).length === 2);
   await hosted.stop();
 
-  const [before, after] = published(fake.events);
+  const [before, after] = published(fake.events).map(([only]) => only);
 
   expect(before).toMatchObject({
     files: [],
@@ -1270,6 +1273,7 @@ test("sends only the stat when the patch is too large", async () => {
       extensionPaths: [],
       models,
       plugins: [changes],
+      checkouts: [{ path: repo, base: null }],
     },
     fake.stream,
     () => undefined,
@@ -1278,7 +1282,7 @@ test("sends only the stat when the patch is too large", async () => {
   await fake.waitFor(() => published(fake.events).length > 0);
   await hosted.stop();
 
-  expect(published(fake.events)[0]).toMatchObject({
+  expect(published(fake.events)[0]?.[0]).toMatchObject({
     files: [{ status: "A", path: "big.txt" }],
     patch: "",
     truncated: true,
@@ -1298,6 +1302,7 @@ test("publishes no changes outside a git repository", async () => {
       extensionPaths: [],
       models,
       plugins: [changes],
+      checkouts: [{ path: root, base: null }],
     },
     fake.stream,
     (message) => logs.push(message),

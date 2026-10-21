@@ -107,6 +107,8 @@ function workspaceName(workspace: Workspace): string {
       return `${workspace.path} (${workspace.branch})`;
     case "clone":
       return `${workspace.repository} (${workspace.branch})`;
+    case "repositories":
+      return `${workspace.repositories.map((r) => r.repository).join(", ")} (${workspace.branch})`;
   }
 }
 
@@ -152,9 +154,10 @@ function renderEnvironments(): void {
   const chosen = environments.find((e) => e.id === environmentList.value);
 
   folderList.replaceChildren(
-    ...(form.get("kind") === "clone" ? [] : (chosen?.folders ?? [])).map(
-      (folder) => option(folder, folder),
-    ),
+    ...(form.get("kind") === "folder" || form.get("kind") === "worktree"
+      ? (chosen?.folders ?? [])
+      : []
+    ).map((folder) => option(folder, folder)),
   );
 
   modelList.replaceChildren(
@@ -517,16 +520,13 @@ createForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(createForm);
 
-  const kind = form.get("kind");
-  const where = form.get("location");
-  const startText = form.get("start-point");
-  const startPoint = typeof startText === "string" ? startText.trim() : "";
-  const modelText = form.get("model");
+  const text = (name: string): string => {
+    const value = form.get(name);
 
-  const model =
-    typeof modelText === "string" && modelText.trim() !== ""
-      ? modelRef(modelText.trim())
-      : null;
+    return typeof value === "string" ? value.trim() : "";
+  };
+
+  const model = text("model") === "" ? null : modelRef(text("model"));
 
   if (model === undefined) {
     alert("model must be provider/id");
@@ -536,10 +536,11 @@ createForm.addEventListener("submit", (event) => {
 
   api("/api/sessions", {
     environment: form.get("environment"),
-    workspace:
-      kind === "clone"
-        ? { kind, repository: where, startPoint }
-        : { kind, path: where, startPoint },
+    workspace: workspaceRequest(
+      text("kind"),
+      text("location"),
+      text("start-point"),
+    ),
     model,
   })
     .then(async (response) => {
@@ -549,6 +550,27 @@ createForm.addEventListener("submit", (event) => {
       alert(String(error));
     });
 });
+
+function workspaceRequest(
+  kind: string,
+  where: string,
+  startPoint: string,
+): unknown {
+  switch (kind) {
+    case "clone":
+      return { kind, repository: where, startPoint };
+    case "repositories":
+      return {
+        kind,
+        repositories: where
+          .split(/\s+/)
+          .filter((url) => url !== "")
+          .map((repository) => ({ repository, startPoint })),
+      };
+    default:
+      return { kind, path: where, startPoint };
+  }
+}
 
 function sendMessage(delivery: "steer" | "followUp"): void {
   const text = promptText.value.trim();

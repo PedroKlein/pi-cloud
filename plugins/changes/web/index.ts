@@ -1,18 +1,10 @@
 import type { WebPlugin } from "@pi-cloud/plugins/web";
-import type { Changes } from "../src/report";
+import type { CheckoutChanges } from "../src/report";
 
 export const changes: WebPlugin = {
   name: "changes",
-  sessionPanel: (element, _context, session) => {
-    const panel = document.createElement("details");
-    const summary = document.createElement("summary");
-    const stat = document.createElement("pre");
-    const patch = document.createElement("pre");
-    panel.hidden = true;
-    panel.append(summary, stat, patch);
-    element.append(panel);
-
-    return session.events((event) => {
+  sessionPanel: (element, _context, session) =>
+    session.events((event) => {
       if (
         event.type !== "live" ||
         event.event.type !== "plugin" ||
@@ -21,14 +13,33 @@ export const changes: WebPlugin = {
         return;
       }
 
-      const found = event.event.data as Changes;
-      panel.hidden = found.files.length === 0;
-      summary.textContent = `Changes (${String(found.files.length)} files)`;
-      stat.textContent = found.stat;
+      const found = event.event.data as readonly CheckoutChanges[];
 
-      patch.textContent = found.truncated
-        ? "The patch is too large to show."
-        : found.patch;
-    });
-  },
+      element.replaceChildren(
+        ...found
+          .filter(({ files }) => files.length > 0)
+          .map((checkout) => panel(checkout)),
+      );
+    }),
 };
+
+function panel({
+  name,
+  files,
+  stat,
+  patch,
+  truncated,
+}: CheckoutChanges): HTMLDetailsElement {
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  const statText = document.createElement("pre");
+  const patchText = document.createElement("pre");
+
+  const label = name === "" ? "Changes" : `Changes in ${name}`;
+  summary.textContent = `${label} (${String(files.length)} files)`;
+  statText.textContent = stat;
+  patchText.textContent = truncated ? "The patch is too large to show." : patch;
+  details.append(summary, statText, patchText);
+
+  return details;
+}

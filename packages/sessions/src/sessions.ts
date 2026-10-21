@@ -249,16 +249,10 @@ export class Sessions {
       return { ok: false, reason: "not_archived" };
     }
 
-    const restored =
-      report.outcome === "removed" &&
-      report.restore !== null &&
-      session.workspace.kind !== "folder"
-        ? { ...session.workspace, startPoint: report.restore }
-        : session.workspace;
-
     this.#update({
       ...session,
-      workspace: restored,
+      workspace:
+        report.outcome === "removed" ? report.restore : session.workspace,
       workspaceRemoval: report.outcome,
     });
 

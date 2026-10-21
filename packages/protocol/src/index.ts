@@ -2,6 +2,23 @@ export const protocolVersion = 1;
 export const versionHeader = "pi-cloud-protocol";
 export const providerHeader = "pi-cloud-provider";
 
+export interface RepositoryCheckout {
+  readonly repository: string;
+  readonly startPoint?: string;
+}
+
+// The directory a repository is checked out into inside a repositories
+// Workspace: the last segment of its URL, without ".git".
+export function checkoutName(repository: string): string {
+  return (
+    repository
+      .replace(/[/\\]+$/, "")
+      .split(/[/:\\]/)
+      .at(-1)
+      ?.replace(/\.git$/, "") ?? ""
+  );
+}
+
 export type Workspace =
   | { readonly kind: "folder"; readonly path: string }
   | {
@@ -15,6 +32,11 @@ export type Workspace =
       readonly repository: string;
       readonly branch: string;
       readonly startPoint?: string;
+    }
+  | {
+      readonly kind: "repositories";
+      readonly repositories: readonly RepositoryCheckout[];
+      readonly branch: string;
     };
 
 export type WorkspaceRequest =
@@ -28,6 +50,10 @@ export type WorkspaceRequest =
       readonly kind: "clone";
       readonly repository: string;
       readonly startPoint?: string;
+    }
+  | {
+      readonly kind: "repositories";
+      readonly repositories: readonly RepositoryCheckout[];
     };
 
 export interface ModelRef {
@@ -87,7 +113,9 @@ export interface Work {
 }
 
 export type RemovalReport =
-  | { readonly outcome: "removed"; readonly restore: string | null }
+  // restore is the Workspace to prepare when the Session comes back, starting
+  // from what the remotes still hold of its branch.
+  | { readonly outcome: "removed"; readonly restore: Workspace }
   | { readonly outcome: "kept"; readonly reason: string };
 
 export interface StartFailure {

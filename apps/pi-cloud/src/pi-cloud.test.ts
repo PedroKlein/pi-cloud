@@ -1548,6 +1548,83 @@ test("removes a clean worktree on archive and brings its pushed work back on una
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
 });
 
+test("checks several repositories out in one workspace and shows each one's changes", async () => {
+  const checkout = await pushedCheckout();
+  const remote = join(root, "remote.git");
+  const tools = join(root, "tools");
+  await run("git", ["init", "--initial-branch=main", tools]);
+  await writeFile(join(tools, "README.md"), "tools\n");
+  await inRepository(tools, "add", ".");
+  await inRepository(tools, "commit", "--quiet", "-m", "first");
+
+  const session = await createSession("laptop", {
+    kind: "repositories",
+    repositories: [{ repository: remote }, { repository: tools }],
+  });
+
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+
+  expect(
+    (await run("git", ["worktree", "list"], { cwd: checkout })).stdout,
+  ).toContain(join(dir, "remote"));
+
+  await writeFile(join(dir, "tools", "draft.txt"), "draft\n");
+  faux.setResponses([fauxAssistantMessage([fauxText("noted")])]);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "look around",
+  });
+
+  const events = await follow(session.id, (seen) =>
+    seen.some(
+      (e) =>
+        e.type === "live" &&
+        e.event.type === "plugin" &&
+        JSON.stringify(e.event.data).includes("draft.txt"),
+    ),
+  );
+
+  const changes = events.flatMap((e) =>
+    e.type === "live" && e.event.type === "plugin" ? [e.event.data] : [],
+  );
+
+  expect(changes.at(-1)).toMatchObject([
+    { name: "remote", files: [] },
+    { name: "tools", files: [{ status: "A", path: "draft.txt" }] },
+  ]);
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const kept = await sessionWhere(
+    session.id,
+    (s) => s.workspaceRemoval === "kept",
+  );
+
+  expect(kept.workspaceRemoval).toBe("kept");
+  expect((await stat(join(dir, "tools", "draft.txt"))).isFile()).toBe(true);
+});
+
+test("rejects repositories that would share a folder", async () => {
+  const response = await api("/api/sessions", {
+    environment: await environmentOf("laptop"),
+    workspace: {
+      kind: "repositories",
+      repositories: [
+        { repository: "https://example.com/a/tool.git" },
+        { repository: "git@example.com:b/tool" },
+      ],
+    },
+  });
+
+  expect(response.status).toBe(400);
+
+  expect(await response.json()).toEqual({
+    error: "repositories need different names",
+  });
+});
+
 test("keeps a worktree with unpushed work on archive until the user forces removal", async () => {
   const checkout = await pushedCheckout();
 
