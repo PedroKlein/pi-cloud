@@ -26,7 +26,7 @@ export function renderPrompt(
     return renderQuestions(prompt, { answer, explain });
   }
 
-  const box = document.createElement("li");
+  const box = document.createElement("section");
   box.dataset["role"] = "prompt";
   const title = document.createElement("strong");
   title.textContent = prompt.title;

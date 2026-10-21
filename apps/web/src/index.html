@@ -7,77 +7,7 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <aside>
-      <h1>Pi Cloud</h1>
-      <nav id="plugin-nav"></nav>
-      <form id="create">
-        <select
-          id="environments"
-          name="environment"
-          aria-label="Environment"
-          required
-        ></select>
-        <select name="kind">
-          <option value="worktree">Worktree of folder</option>
-          <option value="folder">Folder (shared with other sessions)</option>
-          <option value="clone">Clone repository</option>
-          <option value="repositories">
-            Several repositories (URLs separated by spaces)
-          </option>
-        </select>
-        <input
-          name="location"
-          placeholder="directory or repository URL"
-          list="folders"
-          required
-        />
-        <datalist id="folders"></datalist>
-        <input
-          name="start-point"
-          placeholder="start from branch or commit (default: current)"
-        />
-        <input
-          name="model"
-          placeholder="model (provider default)"
-          list="models"
-        />
-        <datalist id="models"></datalist>
-        <button>New session</button>
-      </form>
-      <label><input id="show-archived" type="checkbox" /> Show archived</label>
-      <ul id="sessions"></ul>
-    </aside>
-    <main id="plugin-page" hidden></main>
-    <main id="session" hidden>
-      <header>
-        <span id="title"></span>
-        <span id="status"></span>
-        <button id="abort" type="button">Stop</button>
-        <button id="open-terminal" type="button">Terminal</button>
-        <button id="archive" type="button">Archive</button>
-        <button id="unarchive" type="button" hidden>Unarchive</button>
-        <button id="remove-workspace" type="button" hidden>
-          Delete workspace
-        </button>
-        <span id="plugin-header"></span>
-      </header>
-      <div id="plugin-panels"></div>
-      <ol id="chat"></ol>
-      <div id="terminal" hidden></div>
-      <div id="queued" class="widgets"></div>
-      <div id="widgets-above" class="widgets"></div>
-      <form id="prompt">
-        <textarea
-          id="prompt-text"
-          name="text"
-          rows="3"
-          placeholder="Message (Enter steers, Alt+Enter queues a follow-up)"
-        ></textarea>
-        <button>Send</button>
-      </form>
-      <div id="widgets-below" class="widgets"></div>
-      <footer id="extension-status"></footer>
-    </main>
-    <script type="module" src="./main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
   </body>
 </html>

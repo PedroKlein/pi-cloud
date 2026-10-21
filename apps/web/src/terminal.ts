@@ -7,7 +7,21 @@ export function openTerminal(
   container: HTMLElement,
   onClose: () => void,
 ): () => void {
-  const terminal = new Terminal({ cursorBlink: true });
+  const token = (name: string): string =>
+    getComputedStyle(container).getPropertyValue(name).trim();
+
+  const terminal = new Terminal({
+    cursorBlink: true,
+    fontFamily: token("--font-mono"),
+    fontSize: 13,
+    theme: {
+      background: token("--term-bg"),
+      foreground: token("--term-fg"),
+      cursor: token("--term-fg"),
+      selectionBackground: token("--accent-tint"),
+    },
+  });
+
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(container);
