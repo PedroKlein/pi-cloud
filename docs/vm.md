@@ -60,7 +60,14 @@ journalctl --user -u pi-cloud -f
 
 The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`.
 
-To update, copy a new binary over and run `systemctl --user restart pi-cloud`. Running Sessions are interrupted and reload idle from their transcript.
+To update, copy the new binary next to the old one and move it into place, because the running server keeps the old file busy and `scp` can't overwrite it. Then restart the service:
+
+```sh
+scp dist/pi-cloud-linux <vm>:~/.local/bin/pi-cloud.new
+ssh <vm> 'chmod +x ~/.local/bin/pi-cloud.new && mv ~/.local/bin/pi-cloud.new ~/.local/bin/pi-cloud && systemctl --user restart pi-cloud'
+```
+
+Running Sessions are interrupted and reload idle from their transcript.
 
 ## From the laptop
 
