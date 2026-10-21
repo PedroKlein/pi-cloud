@@ -1,0 +1,194 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { EnvironmentModels } from "@pi-cloud/models/model";
+import type { Environment, Session } from "@pi-cloud/protocol";
+import { serve } from "./serve";
+
+let root: string;
+let primary: ReturnType<typeof fauxProvider>;
+let fallback: ReturnType<typeof fauxProvider>;
+let server: ReturnType<typeof serve> | undefined;
+
+beforeEach(async () => {
+  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-models-")));
+  primary = fauxProvider({ provider: "primary" });
+  fallback = fauxProvider({ provider: "fallback" });
+
+  const runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+
+  runtime.registerNativeProvider(primary.provider);
+  runtime.registerNativeProvider(fallback.provider);
+
+  server = serve({
+    port: 0,
+    database: ":memory:",
+    sessions: { pollWaitMs: 100, offlineAfterMs: 1000 },
+    agent: {
+      provider: "local",
+      dataDir: join(root, "local"),
+      agentDir: join(root, "pi"),
+      extensionPaths: [],
+      folders: [root],
+      models: { runtime, model: primary.getModel() },
+    },
+    log: () => undefined,
+  });
+});
+
+afterEach(async () => {
+  await server?.stop();
+  server = undefined;
+  await rm(root, { recursive: true, force: true });
+});
+
+async function api(path: string, body?: unknown): Promise<Response> {
+  return fetch(new URL(path, server?.url), {
+    method: body === undefined ? "GET" : "POST",
+    ...(body !== undefined && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
+}
+
+async function until<T>(
+  read: () => Promise<T>,
+  done: (value: T) => boolean,
+): Promise<T> {
+  for (;;) {
+    const value = await read();
+    if (done(value)) {
+      return value;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function environment(): Promise<Environment> {
+  const [found] = await until(
+    async () =>
+      (await (await api("/api/environments")).json()) as Environment[],
+    (environments) => environments.length > 0,
+  );
+
+  if (!found) {
+    throw new Error("no environment");
+  }
+
+  return found;
+}
+
+const session = async (id: string): Promise<Session> =>
+  (await (await api(`/api/sessions/${id}`)).json()) as Session;
+
+const settled = (value: Session): boolean =>
+  value.status === "idle" || value.status === "failed";
+
+async function aliases(environmentId: string): Promise<void> {
+  const response = await api(
+    `/api/plugins/models/environments/${environmentId}`,
+    {
+      aliases: {
+        fallbackChain: ["primary", "fallback"],
+        backends: {
+          primary: { tiers: { medium: [primary.getModel().id] } },
+          fallback: { tiers: { medium: [fallback.getModel().id] } },
+        },
+      },
+    },
+  );
+
+  expect(response.status).toBe(200);
+}
+
+test("routes an alias to the first backend of the session's Environment", async () => {
+  const { id: environmentId } = await environment();
+  await aliases(environmentId);
+
+  primary.setResponses([fauxAssistantMessage("from primary")]);
+
+  const started = (await (
+    await api("/api/sessions", {
+      workspace: { kind: "folder", path: root },
+      model: { provider: "alias", id: "medium-1" },
+      firstMessage: "hi",
+    })
+  ).json()) as Session;
+
+  expect((await until(async () => session(started.id), settled)).status).toBe(
+    "idle",
+  );
+
+  expect(primary.state.callCount).toBe(1);
+  expect(fallback.state.callCount).toBe(0);
+});
+
+test("takes a backend that hit its cap out of routing for the whole Environment", async () => {
+  const { id: environmentId } = await environment();
+  await aliases(environmentId);
+
+  primary.setResponses([
+    fauxAssistantMessage("", {
+      stopReason: "error",
+      errorMessage: "402 insufficient_quota",
+    }),
+  ]);
+
+  fallback.setResponses([fauxAssistantMessage("from fallback")]);
+
+  const capped = (await (
+    await api("/api/sessions", {
+      workspace: { kind: "folder", path: root },
+      model: { provider: "alias", id: "medium-1" },
+      firstMessage: "hi",
+    })
+  ).json()) as Session;
+
+  const [models] = await until(
+    async () =>
+      (await (
+        await api("/api/plugins/models/environments")
+      ).json()) as EnvironmentModels[],
+    ([found]) =>
+      found !== undefined && "primary" in found.health.unhealthyUntil,
+  );
+
+  expect(models?.health.unhealthyUntil["primary"]?.reason).toContain("402");
+
+  const next = (await (
+    await api("/api/sessions", {
+      workspace: { kind: "folder", path: root },
+      model: { provider: "alias", id: "medium-1" },
+      firstMessage: "hi again",
+    })
+  ).json()) as Session;
+
+  expect((await until(async () => session(next.id), settled)).status).toBe(
+    "idle",
+  );
+
+  expect(fallback.state.callCount).toBe(1);
+  expect(primary.state.callCount).toBe(1);
+
+  await until(async () => session(capped.id), settled);
+});
+
+test("refuses an alias config without backends", async () => {
+  const { id: environmentId } = await environment();
+
+  const response = await api(
+    `/api/plugins/models/environments/${environmentId}`,
+    { aliases: { backends: {} } },
+  );
+
+  expect(response.status).toBe(400);
+});
