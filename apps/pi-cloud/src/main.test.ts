@@ -44,3 +44,32 @@ test("shuts down cleanly on SIGTERM when another library also handles it", async
   expect({ code, signal }).toEqual({ code: 0, signal: null });
   expect(log).toContain("server stopped");
 });
+
+test("refuses to start an agent with a folder that does not exist", async () => {
+  const agent = spawn(
+    process.execPath,
+    [
+      join(import.meta.dirname, "main.ts"),
+      "agent",
+      "--name",
+      "laptop",
+      "--server",
+      "http://127.0.0.1:9",
+      "--folder",
+      "/no/such/folder",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  let log = "";
+  agent.stderr.setEncoding("utf8");
+
+  agent.stderr.on("data", (chunk: string) => {
+    log += chunk;
+  });
+
+  const [code] = (await once(agent, "exit")) as [number | null];
+
+  expect(code).toBe(2);
+  expect(log).toContain("folder does not exist: /no/such/folder");
+});

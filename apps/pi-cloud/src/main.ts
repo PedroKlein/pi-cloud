@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
@@ -42,6 +43,8 @@ switch (command) {
       },
     });
 
+    await checkFolders(values.folder);
+
     const server = serve({
       port: Number(values.port),
       database: values.database,
@@ -81,6 +84,8 @@ switch (command) {
       process.exit(2);
     }
 
+    await checkFolders(values.folder);
+
     await runAgent({
       server: values.server,
       provider: values.name,
@@ -103,4 +108,19 @@ switch (command) {
   default:
     process.stderr.write(`${usage}\n`);
     process.exit(2);
+}
+
+// A typo in --folder would otherwise only show up as a failed session.
+async function checkFolders(folders: readonly string[]): Promise<void> {
+  for (const folder of folders) {
+    const path = folder.startsWith("~/")
+      ? join(homedir(), folder.slice(2))
+      : folder;
+
+    const info = await stat(path).catch(() => undefined);
+    if (info?.isDirectory() !== true) {
+      process.stderr.write(`folder does not exist: ${folder}\n`);
+      process.exit(2);
+    }
+  }
 }

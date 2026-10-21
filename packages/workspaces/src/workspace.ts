@@ -106,6 +106,18 @@ async function prepareCheckout(
   }
 
   if (workspace.kind === "worktree") {
+    const inCheckout = await git(
+      absolute(workspace.path),
+      "rev-parse",
+      "--is-inside-work-tree",
+    ).catch(() => "false");
+
+    if (inCheckout !== "true") {
+      throw new Error(
+        `${workspace.path} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
+      );
+    }
+
     log("adding worktree", { folder: workspace.path, branch, dir });
 
     await mkdir(dirname(dir), { recursive: true });
