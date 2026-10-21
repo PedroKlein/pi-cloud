@@ -4,7 +4,7 @@ import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { Workspace } from "@pi-cloud/protocol";
+import type { RemovalReport, Workspace } from "@pi-cloud/protocol";
 
 const run = promisify(execFile);
 
@@ -100,6 +100,113 @@ export async function prepareWorkspace(
   log("workspace cloned", { dir, ms: Date.now() - started });
 
   return { cwd: dir, base };
+}
+
+// Removes a session's workspace only when git says nothing would be lost,
+// unless forced. A removed workspace can be prepared again from restore.
+export async function removeWorkspace(
+  workspace: Workspace,
+  { dir, force }: { readonly dir: string; readonly force: boolean },
+  log: Log,
+): Promise<RemovalReport> {
+  if (workspace.kind === "folder") {
+    return { outcome: "kept", reason: "folder workspaces are never removed" };
+  }
+
+  const repository =
+    workspace.kind === "worktree" ? absolute(workspace.path) : dir;
+
+  const present = await exists(dir);
+
+  const hasBranch =
+    (present || workspace.kind === "worktree") &&
+    (await git(
+      repository,
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/heads/${workspace.branch}`,
+    ).then(
+      () => true,
+      () => false,
+    ));
+
+  if (!force) {
+    const reason = await lossOf(workspace, dir, present, hasBranch);
+    if (reason !== null) {
+      log("workspace kept", { dir, reason });
+
+      return { outcome: "kept", reason };
+    }
+  }
+
+  const restore = hasBranch
+    ? await remoteHolding(repository, workspace.branch)
+    : null;
+
+  if (workspace.kind === "clone") {
+    await rm(dir, { recursive: true, force: true });
+  } else {
+    await (present
+      ? git(repository, "worktree", "remove", "--force", "--force", dir)
+      : git(repository, "worktree", "prune"));
+
+    if (hasBranch) {
+      await git(repository, "branch", "--delete", "--force", workspace.branch);
+    }
+  }
+
+  log("workspace removed", { dir, force, restore });
+
+  return { outcome: "removed", restore };
+}
+
+async function lossOf(
+  workspace: Exclude<Workspace, { kind: "folder" }>,
+  dir: string,
+  present: boolean,
+  hasBranch: boolean,
+): Promise<string | null> {
+  if (present && (await git(dir, "status", "--porcelain")) !== "") {
+    return "uncommitted changes";
+  }
+
+  if (!hasBranch) {
+    return null;
+  }
+
+  const unpushed =
+    workspace.kind === "clone"
+      ? await git(dir, "rev-list", "--branches", "--not", "--remotes")
+      : await git(
+          absolute(workspace.path),
+          "rev-list",
+          workspace.branch,
+          "--not",
+          "--remotes",
+        );
+
+  return unpushed === "" ? null : "unpushed commits";
+}
+
+async function remoteHolding(
+  repository: string,
+  branch: string,
+): Promise<string | null> {
+  const refs = paths(
+    await git(
+      repository,
+      "for-each-ref",
+      "--contains",
+      branch,
+      "--format=%(refname:lstrip=2)%00",
+      "refs/remotes",
+    ),
+  )
+    .map((ref) => ref.trim())
+    .filter((ref) => ref !== "" && !ref.endsWith("/HEAD"));
+
+  return refs.find((ref) => ref.endsWith(`/${branch}`)) ?? refs[0] ?? null;
 }
 
 async function cloneWithMirror(

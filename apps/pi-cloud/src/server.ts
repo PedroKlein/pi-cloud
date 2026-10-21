@@ -3,6 +3,7 @@ import {
   type Command,
   type CreateSession,
   type LivePost,
+  type RemovalReport,
   type SessionEvent,
   type StartFailure,
   protocolVersion,
@@ -21,6 +22,9 @@ const rejectionStatus = {
   not_found: 404,
   stale_generation: 409,
   offline: 409,
+  archived: 409,
+  not_archived: 409,
+  not_kept: 409,
 } as const satisfies Record<Rejection, number>;
 
 type Route = (
@@ -60,6 +64,17 @@ export function createHandler(
     };
   };
 
+  const sessionAction =
+    (message: string, act: (id: string) => Result<unknown>): Route =>
+    (_request, [id = ""]) => {
+      const result = act(id);
+      if (result.ok) {
+        log(message, { sessionId: id });
+      }
+
+      return reply(result, 200);
+    };
+
   const routes: readonly (readonly [string, RegExp, Route])[] = [
     [
       "GET",
@@ -78,7 +93,17 @@ export function createHandler(
       },
     ],
     ["GET", /^\/api\/providers$/, () => Response.json(sessions.providers())],
-    ["GET", /^\/api\/sessions$/, () => Response.json(sessions.list())],
+    [
+      "GET",
+      /^\/api\/sessions$/,
+      (request) =>
+        Response.json(
+          sessions.list({
+            archived:
+              new URL(request.url).searchParams.get("archived") === "true",
+          }),
+        ),
+    ],
     [
       "POST",
       /^\/api\/sessions$/,
@@ -137,6 +162,23 @@ export function createHandler(
     ],
     [
       "POST",
+      /^\/api\/sessions\/([^/]+)\/archive$/,
+      sessionAction("session archived", (id) => sessions.archive(id)),
+    ],
+    [
+      "POST",
+      /^\/api\/sessions\/([^/]+)\/unarchive$/,
+      sessionAction("session unarchived", (id) => sessions.unarchive(id)),
+    ],
+    [
+      "POST",
+      /^\/api\/sessions\/([^/]+)\/remove-workspace$/,
+      sessionAction("workspace removal forced", (id) =>
+        sessions.forceRemoval(id),
+      ),
+    ],
+    [
+      "POST",
       /^\/api\/sessions\/([^/]+)\/commands$/,
       async (request, [id = ""]) =>
         reply(
@@ -151,7 +193,7 @@ export function createHandler(
         const provider = request.headers.get(providerHeader) ?? "";
         const poll = await readJson<WorkPoll>(request);
 
-        const { start, interrupted } = await sessions.claim(
+        const { start, unload, remove, interrupted } = await sessions.claim(
           provider,
           poll,
           request.signal,
@@ -165,7 +207,11 @@ export function createHandler(
           log("session assigned", { provider, ...assignment });
         }
 
-        return Response.json({ start });
+        for (const attempt of unload) {
+          log("session unloading", { provider, ...attempt });
+        }
+
+        return Response.json({ start, unload, remove });
       }),
     ],
     [
@@ -188,6 +234,16 @@ export function createHandler(
         log("session failed to start", { sessionId: id, ...failure });
 
         return reply(sessions.fail(id, failure), 204);
+      }),
+    ],
+    [
+      "POST",
+      /^\/agent\/sessions\/([^/]+)\/workspace$/,
+      agent(async (request, [id = ""]) => {
+        const report = await readJson<RemovalReport>(request);
+        log("workspace removal reported", { sessionId: id, ...report });
+
+        return reply(sessions.reportRemoval(id, report), 204);
       }),
     ],
     [

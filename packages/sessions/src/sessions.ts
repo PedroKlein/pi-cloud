@@ -8,6 +8,8 @@ import type {
   LivePost,
   ModelRef,
   Provider,
+  Removal,
+  RemovalReport,
   Session,
   SessionEvent,
   SessionStatus,
@@ -37,7 +39,13 @@ export interface SessionStore {
   transcript: (id: string, from: number) => readonly string[];
 }
 
-export type Rejection = "not_found" | "stale_generation" | "offline";
+export type Rejection =
+  | "not_found"
+  | "stale_generation"
+  | "offline"
+  | "archived"
+  | "not_archived"
+  | "not_kept";
 
 export type Result<T> =
   | { readonly ok: true; readonly value: T }
@@ -50,6 +58,8 @@ export interface SessionsOptions {
 
 export interface Claim {
   readonly start: readonly Assignment[];
+  readonly unload: readonly Attempt[];
+  readonly remove: readonly Removal[];
   readonly interrupted: readonly Attempt[];
 }
 
@@ -107,18 +117,111 @@ export class Sessions {
       createdAt: new Date().toISOString(),
       interruptedAt: null,
       error: null,
+      archivedAt: null,
+      workspaceRemoval: null,
     };
 
     this.#store.insert(session);
-    for (const wake of this.#pollers.get(session.provider) ?? []) {
-      wake();
-    }
+    this.#wake(session.provider);
 
     return this.#view(session);
   }
 
-  list(): readonly Session[] {
-    return this.#store.list().map((session) => this.#view(session));
+  list({ archived = false } = {}): readonly Session[] {
+    return this.#store
+      .list()
+      .filter((session) => archived || session.archivedAt === null)
+      .map((session) => this.#view(session));
+  }
+
+  archive(id: string): Result<Session> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (session.archivedAt !== null) {
+      return { ok: true, value: this.#view(session) };
+    }
+
+    const archived: StoredSession = {
+      ...session,
+      status: "stopped",
+      archivedAt: new Date().toISOString(),
+      workspaceRemoval: session.workspace.kind === "folder" ? null : "pending",
+    };
+
+    this.#hosts.get(id)?.end();
+    this.#update(archived);
+    this.#wake(session.provider);
+
+    return { ok: true, value: this.#view(archived) };
+  }
+
+  unarchive(id: string): Result<Session> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (session.archivedAt === null) {
+      return { ok: true, value: this.#view(session) };
+    }
+
+    const unarchived: StoredSession = {
+      ...session,
+      status: "queued",
+      archivedAt: null,
+      workspaceRemoval: null,
+    };
+
+    this.#update(unarchived);
+    this.#wake(session.provider);
+
+    return { ok: true, value: this.#view(unarchived) };
+  }
+
+  forceRemoval(id: string): Result<Session> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (session.workspaceRemoval !== "kept") {
+      return { ok: false, reason: "not_kept" };
+    }
+
+    const forced: StoredSession = { ...session, workspaceRemoval: "forced" };
+    this.#update(forced);
+    this.#wake(session.provider);
+
+    return { ok: true, value: this.#view(forced) };
+  }
+
+  reportRemoval(id: string, report: RemovalReport): Result<undefined> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (session.archivedAt === null) {
+      return { ok: false, reason: "not_archived" };
+    }
+
+    const restored =
+      report.outcome === "removed" &&
+      report.restore !== null &&
+      session.workspace.kind !== "folder"
+        ? { ...session.workspace, startPoint: report.restore }
+        : session.workspace;
+
+    this.#update({
+      ...session,
+      workspace: restored,
+      workspaceRemoval: report.outcome,
+    });
+
+    return { ok: true, value: undefined };
   }
 
   get(id: string): Session | undefined {
@@ -147,8 +250,9 @@ export class Sessions {
     try {
       const interrupted = this.#interruptMissing(provider, running);
       const start = this.#claimNext(provider);
-      if (start.length > 0 || signal.aborted) {
-        return { start, interrupted };
+      const unload = this.#stale(running);
+      if (start.length > 0 || unload.length > 0 || signal.aborted) {
+        return { start, unload, remove: this.#removals(provider), interrupted };
       }
 
       await this.#waitForWork(provider, signal);
@@ -156,6 +260,8 @@ export class Sessions {
       return {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
         start: signal.aborted ? [] : this.#claimNext(provider),
+        unload: this.#stale(running),
+        remove: this.#removals(provider),
         interrupted,
       };
     } finally {
@@ -261,8 +367,13 @@ export class Sessions {
   }
 
   send(id: string, command: Command): Result<undefined> {
-    if (!this.#store.get(id)) {
+    const session = this.#store.get(id);
+    if (!session) {
       return { ok: false, reason: "not_found" };
+    }
+
+    if (session.archivedAt !== null) {
+      return { ok: false, reason: "archived" };
     }
 
     const host = this.#hosts.get(id);
@@ -357,6 +468,28 @@ export class Sessions {
     }
 
     return interrupted;
+  }
+
+  #stale(running: readonly Attempt[]): readonly Attempt[] {
+    return running.filter(
+      (attempt) => !this.#current(attempt.sessionId, attempt.generation).ok,
+    );
+  }
+
+  #removals(provider: string): readonly Removal[] {
+    return this.#store
+      .byProvider(provider, ["stopped"])
+      .flatMap(({ id, workspace, workspaceRemoval }) =>
+        workspaceRemoval === "pending" || workspaceRemoval === "forced"
+          ? [{ sessionId: id, workspace, force: workspaceRemoval === "forced" }]
+          : [],
+      );
+  }
+
+  #wake(provider: string): void {
+    for (const wake of this.#pollers.get(provider) ?? []) {
+      wake();
+    }
   }
 
   #claimNext(provider: string): Assignment[] {

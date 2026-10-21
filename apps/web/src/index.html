@@ -41,6 +41,7 @@
         <datalist id="models"></datalist>
         <button>New session</button>
       </form>
+      <label><input id="show-archived" type="checkbox" /> Show archived</label>
       <ul id="sessions"></ul>
     </aside>
     <main id="session" hidden>
@@ -50,6 +51,11 @@
         <span id="usage"></span>
         <button id="abort" type="button">Stop</button>
         <button id="open-terminal" type="button">Terminal</button>
+        <button id="archive" type="button">Archive</button>
+        <button id="unarchive" type="button" hidden>Unarchive</button>
+        <button id="remove-workspace" type="button" hidden>
+          Delete workspace
+        </button>
       </header>
       <details id="changes" hidden>
         <summary id="changes-summary"></summary>

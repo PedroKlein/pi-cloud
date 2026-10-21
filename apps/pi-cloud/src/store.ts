@@ -1,7 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { ModelRef, SessionStatus, Workspace } from "@pi-cloud/protocol";
+import type {
+  ModelRef,
+  SessionStatus,
+  Workspace,
+  WorkspaceRemoval,
+} from "@pi-cloud/protocol";
 import type { SessionStore, StoredSession } from "@pi-cloud/sessions";
 
 interface SessionRow {
@@ -14,6 +19,8 @@ interface SessionRow {
   created_at: string;
   interrupted_at: string | null;
   error: string | null;
+  archived_at: string | null;
+  workspace_removal: WorkspaceRemoval | null;
 }
 
 const schema = `
@@ -26,7 +33,9 @@ create table if not exists sessions (
   generation integer not null,
   created_at text not null,
   interrupted_at text,
-  error text
+  error text,
+  archived_at text,
+  workspace_removal text
 );
 create table if not exists transcript (
   session_id text not null references sessions (id),
@@ -51,11 +60,10 @@ function migrate(db: DatabaseSync): void {
     `);
   }
 
-  if (
-    columns.length > 0 &&
-    !columns.some((column) => column.name === "model")
-  ) {
-    db.exec("alter table sessions add column model text");
+  for (const column of ["model", "archived_at", "workspace_removal"]) {
+    if (columns.length > 0 && !columns.some(({ name }) => name === column)) {
+      db.exec(`alter table sessions add column ${column} text`);
+    }
   }
 
   db.exec(schema);
@@ -83,14 +91,16 @@ export function openStore(path: string): SessionStore & {
     createdAt: row.created_at,
     interruptedAt: row.interrupted_at,
     error: row.error,
+    archivedAt: row.archived_at,
+    workspaceRemoval: row.workspace_removal,
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, provider, workspace, model, status, generation, created_at, interrupted_at, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, provider, workspace, model, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
-    "update sessions set status = ?, generation = ?, interrupted_at = ?, error = ? where id = ?",
+    "update sessions set workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ? where id = ?",
   );
 
   const check = db.prepare("select 1 from sessions limit 1");
@@ -125,10 +135,21 @@ export function openStore(path: string): SessionStore & {
         s.createdAt,
         s.interruptedAt,
         s.error,
+        s.archivedAt,
+        s.workspaceRemoval,
       );
     },
     update: (s) => {
-      update.run(s.status, s.generation, s.interruptedAt, s.error, s.id);
+      update.run(
+        JSON.stringify(s.workspace),
+        s.status,
+        s.generation,
+        s.interruptedAt,
+        s.error,
+        s.archivedAt,
+        s.workspaceRemoval,
+        s.id,
+      );
     },
     get: (id) => {
       const row = get.get(id) as SessionRow | undefined;

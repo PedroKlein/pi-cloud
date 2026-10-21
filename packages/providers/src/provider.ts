@@ -3,6 +3,7 @@ import type {
   Assignment,
   Attempt,
   ModelRef,
+  Removal,
   Work,
   WorkPoll,
 } from "@pi-cloud/protocol";
@@ -19,6 +20,8 @@ export type Log = (
 export interface ProviderOptions {
   readonly controlPlane: ControlPlane;
   readonly start: (assignment: Assignment) => void;
+  readonly unload: (attempt: Attempt) => void;
+  readonly remove: (removal: Removal) => void;
   readonly running: () => readonly Attempt[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
@@ -28,8 +31,17 @@ export interface ProviderOptions {
 }
 
 export async function runProvider(options: ProviderOptions): Promise<void> {
-  const { controlPlane, start, running, folders, models, log, signal } =
-    options;
+  const {
+    controlPlane,
+    start,
+    unload,
+    remove,
+    running,
+    folders,
+    models,
+    log,
+    signal,
+  } = options;
 
   const { initialMs, maxMs } = options.retry ?? {
     initialMs: 1000,
@@ -54,6 +66,13 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
         log("starting session", { ...assignment, started });
         start(assignment);
       }
+
+      for (const attempt of work.unload) {
+        log("unloading session", { ...attempt });
+        unload(attempt);
+      }
+
+      work.remove.forEach(remove);
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the await above is pending
       if (signal.aborted) {

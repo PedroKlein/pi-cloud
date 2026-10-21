@@ -3,6 +3,7 @@ import {
   type Assignment,
   type Command,
   type LivePost,
+  type RemovalReport,
   type StartFailure,
   protocolVersion,
   type TerminalResize,
@@ -85,6 +86,18 @@ export async function reportStartFailure(
   await call(agent, `/agent/sessions/${sessionId}/failed`, {
     method: "POST",
     body: failure,
+    signal: AbortSignal.timeout(requestTimeoutMs),
+  });
+}
+
+export async function reportRemoval(
+  agent: Agent,
+  sessionId: string,
+  report: RemovalReport,
+): Promise<void> {
+  await call(agent, `/agent/sessions/${sessionId}/workspace`, {
+    method: "POST",
+    body: report,
     signal: AbortSignal.timeout(requestTimeoutMs),
   });
 }

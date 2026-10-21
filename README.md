@@ -37,6 +37,8 @@ The agent only runs sessions in the folders you list with `--folder`. By default
 
 In a session, Enter sends a message that steers the running turn, and Alt+Enter (Option+Enter on a Mac) queues it as a follow-up for after the turn. The header shows the session's token use and cost, the Changes panel shows what the session changed in its Git workspace, and Terminal opens a shell in the session's directory. For a worktree or clone, "start from" picks the branch, tag or commit the session's branch starts at.
 
+Archive hides a session from the list and stops it on its machine; its transcript stays readable under "Show archived", and Unarchive picks it up again. Archiving a worktree or clone session also deletes its workspace if Git says nothing would be lost: no uncommitted or untracked files, and every commit pushed. Otherwise the workspace is kept and the session shows "unpushed work" until you delete it yourself. A clean workspace comes back from its pushed branch when you unarchive. Files listed in a `.worktreeinclude` at the checkout root, such as `.env`, are copied into new worktrees if Git ignores them.
+
 Options:
 
 ```text

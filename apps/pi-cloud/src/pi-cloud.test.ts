@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1318,3 +1325,236 @@ test("closes a terminal whose browser stops reading while others keep working", 
 
   expect(output).toContain("still=42");
 }, 30_000);
+
+async function sessionWhere(
+  sessionId: string,
+  wanted: (session: Session) => boolean,
+): Promise<Session> {
+  const events = await follow(sessionId, (seen) =>
+    seen.some((e) => e.type === "session" && wanted(e.session)),
+  );
+
+  const found = events.findLast(
+    (e): e is Extract<SessionEvent, { type: "session" }> =>
+      e.type === "session" && wanted(e.session),
+  );
+
+  if (!found) {
+    throw new Error("session never matched");
+  }
+
+  return found.session;
+}
+
+async function listed(query = ""): Promise<string[]> {
+  return ((await (await api(`/api/sessions${query}`)).json()) as Session[]).map(
+    (session) => session.id,
+  );
+}
+
+const run = promisify(execFile);
+
+async function inRepository(cwd: string, ...args: string[]): Promise<void> {
+  await run("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+    cwd,
+  });
+}
+
+// A checkout whose main branch is pushed to a remote, as a real one would be.
+async function pushedCheckout(): Promise<string> {
+  const checkout = await gitRepository();
+  const remote = join(root, "remote.git");
+  await run("git", ["init", "--bare", remote]);
+  await inRepository(checkout, "remote", "add", "origin", remote);
+
+  await inRepository(
+    checkout,
+    "push",
+    "--quiet",
+    "--set-upstream",
+    "origin",
+    "main",
+  );
+
+  return checkout;
+}
+
+test("archives a session: unloads it, hides it, refuses messages and replays it", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello")])]);
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+
+  const archived = await api(`/api/sessions/${session.id}/archive`, {});
+
+  expect(archived.status).toBe(200);
+
+  expect(await archived.json()).toMatchObject({
+    status: "stopped",
+    archivedAt: expect.any(String) as unknown,
+    workspaceRemoval: null,
+  });
+
+  while (!agentLogs.some((line) => line.startsWith("unloading session"))) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  const sent = await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "again",
+  });
+
+  const replay = await follow(session.id, (events) =>
+    roles(events).includes("assistant"),
+  );
+
+  expect(sent.status).toBe(409);
+  expect(await sent.json()).toEqual({ error: "archived" });
+  expect(await listed()).not.toContain(session.id);
+  expect(await listed("?archived=true")).toContain(session.id);
+
+  expect(roles(replay).filter((r) => r !== "system")).toEqual([
+    "user",
+    "assistant",
+  ]);
+});
+
+test("unarchives a session and reloads it idle with its transcript", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes('"one"')
+            ? "remembers one"
+            : "forgot",
+        ),
+      ]),
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "one",
+  });
+
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await api(`/api/sessions/${session.id}/unarchive`, {});
+
+  await sessionWhere(
+    session.id,
+    (s) => s.archivedAt === null && s.generation === 2 && s.status === "idle",
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "two",
+  });
+
+  const replay = await follow(
+    session.id,
+    (events) => roles(events).filter((r) => r === "assistant").length === 2,
+  );
+
+  expect(
+    replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
+  ).toBe(true);
+
+  expect(await listed()).toContain(session.id);
+});
+
+test("removes a clean worktree on archive and brings its pushed work back on unarchive", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+  await writeFile(join(dir, "work.txt"), "work\n");
+  await inRepository(dir, "add", ".");
+  await inRepository(dir, "commit", "--quiet", "-m", "work");
+  await inRepository(dir, "push", "--quiet", "origin", branch);
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const removed = await sessionWhere(
+    session.id,
+    (s) => s.workspaceRemoval === "removed",
+  );
+
+  expect(removed.workspace).toMatchObject({ startPoint: `origin/${branch}` });
+  expect(stat(dir)).rejects.toThrow();
+
+  await api(`/api/sessions/${session.id}/unarchive`, {});
+
+  await sessionWhere(
+    session.id,
+    (s) => s.generation === 2 && s.status === "idle",
+  );
+
+  expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+});
+
+test("keeps a worktree with unpushed work on archive until the user forces removal", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+  await writeFile(join(dir, "work.txt"), "work\n");
+  await inRepository(dir, "add", ".");
+  await inRepository(dir, "commit", "--quiet", "-m", "work");
+
+  const early = await api(`/api/sessions/${session.id}/remove-workspace`, {});
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "kept");
+
+  expect(early.status).toBe(409);
+  expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+
+  const forced = await api(`/api/sessions/${session.id}/remove-workspace`, {});
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+
+  expect(forced.status).toBe(200);
+  expect(stat(dir)).rejects.toThrow();
+});
+
+test("removes an archived session's workspace when its provider comes back", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+
+  await laptop();
+  await api(`/api/sessions/${session.id}/archive`, {});
+  const pending = await api(`/api/sessions/${session.id}`);
+
+  expect(await pending.json()).toMatchObject({ workspaceRemoval: "pending" });
+
+  startAgent("laptop");
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+
+  expect(stat(dir)).rejects.toThrow();
+});

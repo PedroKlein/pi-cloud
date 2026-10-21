@@ -49,6 +49,8 @@ test("keeps sessions from a database that stored a working directory", () => {
     createdAt: "2026-10-19T00:00:00.000Z",
     interruptedAt: null,
     error: null,
+    archivedAt: null,
+    workspaceRemoval: null,
   });
 });
 
@@ -68,6 +70,8 @@ test("opens a migrated database again", () => {
     createdAt: "2026-10-20T00:00:00.000Z",
     interruptedAt: null,
     error: null,
+    archivedAt: null,
+    workspaceRemoval: null,
   });
 
   expect(store.get("s1")).toMatchObject({

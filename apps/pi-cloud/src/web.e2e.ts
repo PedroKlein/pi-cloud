@@ -87,3 +87,32 @@ test("chats with a session, replays it after a reload and opens its terminal", a
     .filter({ hasText: "e2e-42" })
     .waitFor();
 }, 30_000);
+
+test("archives a session, shows it only with archived sessions and unarchives it", async () => {
+  await page.goto(server.url.href);
+
+  const form = page.locator("form#create");
+  await form.locator("[name=provider]").fill("e2e");
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "New session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+  const id = new URL(page.url()).hash.slice(1);
+  const item = page.locator(`#sessions li[data-id="${id}"]`);
+  await item.waitFor();
+
+  await page.getByRole("button", { name: "Archive" }).click();
+  await page.locator("#status", { hasText: "archived" }).waitFor();
+  await page.locator("#prompt").waitFor({ state: "hidden" });
+  await page.reload();
+  await page.locator("#status", { hasText: "archived" }).waitFor();
+
+  await item.waitFor({ state: "detached" });
+  await page.getByLabel("Show archived").check();
+  await item.waitFor();
+  await page.getByRole("button", { name: "Unarchive" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  expect(new URL(page.url()).hash.slice(1)).toBe(id);
+  expect(await page.locator("#prompt").isVisible()).toBe(true);
+}, 30_000);

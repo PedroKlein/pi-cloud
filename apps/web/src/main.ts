@@ -40,6 +40,10 @@ const chat = element("chat", HTMLOListElement);
 const terminalBox = element("terminal", HTMLElement);
 const terminalButton = element("open-terminal", HTMLButtonElement);
 const abortButton = element("abort", HTMLButtonElement);
+const archiveButton = element("archive", HTMLButtonElement);
+const unarchiveButton = element("unarchive", HTMLButtonElement);
+const removeButton = element("remove-workspace", HTMLButtonElement);
+const showArchived = element("show-archived", HTMLInputElement);
 const promptForm = element("prompt", HTMLFormElement);
 const promptText = element("prompt-text", HTMLTextAreaElement);
 const queued = element("queued", HTMLElement);
@@ -69,7 +73,20 @@ async function api(path: string, body?: unknown): Promise<Response> {
   return response;
 }
 
+const removalText = {
+  pending: "removing workspace",
+  forced: "deleting workspace",
+  removed: "workspace removed",
+  kept: "unpushed work",
+} as const;
+
 function describe(session: Session): string {
+  if (session.archivedAt !== null) {
+    return session.workspaceRemoval === null
+      ? "archived"
+      : `archived, ${removalText[session.workspaceRemoval]}`;
+  }
+
   const where = session.online ? "" : ", provider offline";
 
   return `${session.status}${where}${session.error === null ? "" : `: ${session.error}`}`;
@@ -135,11 +152,14 @@ async function refreshProviders(): Promise<void> {
 }
 
 async function refreshSessions(): Promise<void> {
-  const sessions = (await (await api("/api/sessions")).json()) as Session[];
+  const sessions = (await (
+    await api(`/api/sessions?archived=${String(showArchived.checked)}`)
+  ).json()) as Session[];
 
   sessionList.replaceChildren(
     ...sessions.toReversed().map((session) => {
       const item = document.createElement("li");
+      item.dataset["id"] = session.id;
       item.setAttribute("aria-current", String(session.id === selected));
       const name = document.createElement("span");
       name.textContent = workspaceName(session.workspace);
@@ -374,6 +394,7 @@ function follow(sessionId: string): () => void {
     switch (event.type) {
       case "session":
         statusLabel.textContent = describe(event.session);
+        renderArchived(event.session);
         refreshSessions().catch(() => undefined);
 
         return;
@@ -408,6 +429,24 @@ function renderUsage({
 }: ReturnType<typeof describeUsage>): void {
   usageLabel.textContent = summary;
   usageLabel.title = detail;
+}
+
+function renderArchived({ archivedAt, workspaceRemoval }: Session): void {
+  const archived = archivedAt !== null;
+  archiveButton.hidden = archived;
+  unarchiveButton.hidden = !archived;
+  removeButton.hidden = workspaceRemoval !== "kept";
+  promptForm.hidden = archived;
+  abortButton.hidden = archived;
+  terminalButton.hidden = archived;
+}
+
+function sessionAction(action: string): void {
+  if (selected !== undefined) {
+    api(`/api/sessions/${encodeURIComponent(selected)}/${action}`, {}).catch(
+      report,
+    );
+  }
 }
 
 function toggleTerminal(): void {
@@ -529,6 +568,24 @@ abortButton.addEventListener("click", () => {
 });
 
 terminalButton.addEventListener("click", toggleTerminal);
+
+archiveButton.addEventListener("click", () => {
+  sessionAction("archive");
+});
+
+unarchiveButton.addEventListener("click", () => {
+  sessionAction("unarchive");
+});
+
+removeButton.addEventListener("click", () => {
+  if (confirm("Delete this workspace and its unpushed work for good?")) {
+    sessionAction("remove-workspace");
+  }
+});
+
+showArchived.addEventListener("change", () => {
+  refreshSessions().catch(() => undefined);
+});
 
 window.addEventListener("hashchange", () => {
   select(location.hash.slice(1) || undefined);
