@@ -6,6 +6,7 @@ const assignment: Assignment = {
   sessionId: "s1",
   generation: 1,
   workspace: { kind: "folder", path: "/w" },
+  model: null,
 };
 
 test("starts assigned sessions and retries failed polls", async () => {
@@ -41,6 +42,7 @@ test("starts assigned sessions and retries failed polls", async () => {
     },
     running: () => [],
     folders: [],
+    models: [],
     log: (message) => logs.push(message),
     signal: controller.signal,
     retry: { initialMs: 1, maxMs: 1 },
@@ -62,6 +64,7 @@ test("stops while waiting to retry", async () => {
     start: () => undefined,
     running: () => [],
     folders: [],
+    models: [],
     log: (message) => {
       logs.push(message);
     },
@@ -75,7 +78,7 @@ test("stops while waiting to retry", async () => {
   expect(logs.at(-1)).toBe("provider stopped");
 });
 
-test("reports the running attempts and folders with every poll", async () => {
+test("reports the running attempts, folders and models with every poll", async () => {
   const controller = new AbortController();
   const polls: WorkPoll[] = [];
   const running = [{ sessionId: "s1", generation: 2 }];
@@ -95,12 +98,16 @@ test("reports the running attempts and folders with every poll", async () => {
     start: () => undefined,
     running: () => running,
     folders: ["/work"],
+    models: [{ provider: "openai", id: "gpt-5-mini" }],
     log: () => undefined,
     signal: controller.signal,
   });
 
-  expect(polls).toEqual([
-    { running, folders: ["/work"] },
-    { running, folders: ["/work"] },
-  ]);
+  const poll = {
+    running,
+    folders: ["/work"],
+    models: [{ provider: "openai", id: "gpt-5-mini" }],
+  };
+
+  expect(polls).toEqual([poll, poll]);
 });

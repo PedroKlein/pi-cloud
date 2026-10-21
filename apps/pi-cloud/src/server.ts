@@ -9,6 +9,7 @@ import {
   type TranscriptBatch,
   versionHeader,
   type WorkPoll,
+  type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
@@ -265,9 +266,7 @@ async function readJson<T>(request: Request): Promise<T> {
 }
 
 function createSession(body: unknown): CreateSession {
-  const { provider, workspace } = (body ?? {}) as Record<string, unknown>;
-
-  const { kind, path, repository } = (workspace ?? {}) as Record<
+  const { provider, workspace, model } = (body ?? {}) as Record<
     string,
     unknown
   >;
@@ -276,16 +275,44 @@ function createSession(body: unknown): CreateSession {
     throw new BadRequest("provider must be a non-empty string");
   }
 
+  const request = {
+    provider,
+    workspace: workspaceRequest(workspace),
+  };
+
+  if (model === undefined || model === null) {
+    return request;
+  }
+
+  const { provider: modelProvider, id } = model as Record<string, unknown>;
+  if (
+    typeof modelProvider !== "string" ||
+    modelProvider === "" ||
+    typeof id !== "string" ||
+    id === ""
+  ) {
+    throw new BadRequest("model must have a provider and an id");
+  }
+
+  return { ...request, model: { provider: modelProvider, id } };
+}
+
+function workspaceRequest(workspace: unknown): WorkspaceRequest {
+  const { kind, path, repository } = (workspace ?? {}) as Record<
+    string,
+    unknown
+  >;
+
   if (kind === "folder" && typeof path === "string" && path !== "") {
-    return { provider, workspace: { kind, path } };
+    return { kind, path };
   }
 
   if (kind === "worktree" && typeof path === "string" && path !== "") {
-    return { provider, workspace: { kind, path } };
+    return { kind, path };
   }
 
   if (kind === "clone" && typeof repository === "string" && repository !== "") {
-    return { provider, workspace: { kind, repository } };
+    return { kind, repository };
   }
 
   throw new BadRequest(

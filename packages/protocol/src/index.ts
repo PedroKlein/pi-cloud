@@ -20,10 +20,16 @@ export type WorkspaceRequest =
   | { readonly kind: "worktree"; readonly path: string }
   | { readonly kind: "clone"; readonly repository: string };
 
+export interface ModelRef {
+  readonly provider: string;
+  readonly id: string;
+}
+
 export interface Assignment {
   readonly sessionId: string;
   readonly generation: number;
   readonly workspace: Workspace;
+  readonly model: ModelRef | null;
 }
 
 export interface Attempt {
@@ -34,6 +40,7 @@ export interface Attempt {
 export interface WorkPoll {
   readonly running: readonly Attempt[];
   readonly folders: readonly string[];
+  readonly models: readonly ModelRef[];
 }
 
 export interface Work {
@@ -228,6 +235,7 @@ export interface Session {
   readonly id: string;
   readonly provider: string;
   readonly workspace: Workspace;
+  readonly model: ModelRef | null;
   readonly status: SessionStatus;
   readonly generation: number;
   readonly createdAt: string;
@@ -240,11 +248,13 @@ export interface Provider {
   readonly name: string;
   readonly online: boolean;
   readonly folders: readonly string[];
+  readonly models: readonly ModelRef[];
 }
 
 export interface CreateSession {
   readonly provider: string;
   readonly workspace: WorkspaceRequest;
+  readonly model?: ModelRef;
 }
 
 export type SessionEvent =

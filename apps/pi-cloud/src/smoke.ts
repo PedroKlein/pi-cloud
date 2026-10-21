@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import { parseArgs } from "node:util";
+import type { ModelRef, Session, SessionEvent } from "@pi-cloud/protocol";
 import { serve } from "./serve";
 import { readSse } from "./sse";
 
@@ -17,6 +18,11 @@ interface AssistantEntry {
     readonly content?: readonly { type: string; text?: string }[];
   };
 }
+
+const { values } = parseArgs({ options: { model: { type: "string" } } });
+
+const chosenModel =
+  values.model === undefined ? undefined : modelRef(values.model);
 
 const stepTimeoutMs = 120_000;
 const started = performance.now();
@@ -57,6 +63,15 @@ for (const output of [agent.stdout, agent.stderr]) {
 
 const agentExited = new Promise((resolve) => agent.once("exit", resolve));
 let failures = 0;
+
+function modelRef(name: string): ModelRef {
+  const slash = name.indexOf("/");
+  if (slash <= 0 || slash === name.length - 1) {
+    throw new Error(`--model must be provider/id, got ${name}`);
+  }
+
+  return { provider: name.slice(0, slash), id: name.slice(slash + 1) };
+}
 
 function report(ok: boolean, name: string, detail: string): void {
   const seconds = ((performance.now() - started) / 1000).toFixed(1);
@@ -213,6 +228,7 @@ const { id } = (await (
   await api("/api/sessions", {
     provider: "smoke",
     workspace: { kind: "folder", path: cwd },
+    ...(chosenModel && { model: chosenModel }),
   })
 ).json()) as Session;
 

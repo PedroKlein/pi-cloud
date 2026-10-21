@@ -6,6 +6,7 @@ import type {
   CreateSession,
   LiveEvent,
   LivePost,
+  ModelRef,
   Provider,
   Session,
   SessionEvent,
@@ -59,6 +60,7 @@ interface ProviderState {
   lastPoll: number;
   offlineTimer: ReturnType<typeof setTimeout> | undefined;
   folders: readonly string[];
+  models: readonly ModelRef[];
 }
 
 // Enough to catch a browser retrying a send; ids only need to outlive retries.
@@ -99,6 +101,7 @@ export class Sessions {
         request.workspace.kind === "folder"
           ? request.workspace
           : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
+      model: request.model ?? null,
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),
@@ -125,20 +128,22 @@ export class Sessions {
   }
 
   providers(): readonly Provider[] {
-    return [...this.#providers].map(([name, { folders }]) => ({
+    return [...this.#providers].map(([name, { folders, models }]) => ({
       name,
       online: this.#online(name),
       folders,
+      models,
     }));
   }
 
   async claim(
     provider: string,
-    { running, folders }: WorkPoll,
+    { running, folders, models }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
     const state = this.#pollStarted(provider);
     state.folders = folders;
+    state.models = models;
     try {
       const interrupted = this.#interruptMissing(provider, running);
       const start = this.#claimNext(provider);
@@ -369,6 +374,7 @@ export class Sessions {
         sessionId: session.id,
         generation: session.generation,
         workspace: session.workspace,
+        model: session.model,
       };
     });
   }
@@ -397,6 +403,7 @@ export class Sessions {
       lastPoll: 0,
       offlineTimer: undefined,
       folders: [],
+      models: [],
     };
 
     this.#providers.set(provider, state);

@@ -43,6 +43,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     id: "s1",
     provider: "local",
     workspace: { kind: "folder", path: "/home/me/repo" },
+    model: null,
     status: "idle",
     generation: 2,
     createdAt: "2026-10-19T00:00:00.000Z",
@@ -61,6 +62,7 @@ test("opens a migrated database again", () => {
     id: "s1",
     provider: "vm",
     workspace: { kind: "clone", repository: "r", branch: "b" },
+    model: { provider: "openai", id: "gpt-5-mini" },
     status: "queued",
     generation: 0,
     createdAt: "2026-10-20T00:00:00.000Z",
@@ -68,10 +70,9 @@ test("opens a migrated database again", () => {
     error: null,
   });
 
-  expect(store.get("s1")?.workspace).toEqual({
-    kind: "clone",
-    repository: "r",
-    branch: "b",
+  expect(store.get("s1")).toMatchObject({
+    workspace: { kind: "clone", repository: "r", branch: "b" },
+    model: { provider: "openai", id: "gpt-5-mini" },
   });
 
   store.close();

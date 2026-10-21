@@ -76,4 +76,4 @@ bun test
 
 Tests use Pi's faux model provider, so they need no API key. [AGENTS.md](AGENTS.md) has the coding conventions.
 
-`bun run smoke` checks that Pi Cloud works with your own Pi setup: your default model, your extensions and your shell. It starts a server and an agent, creates a session in a temporary directory, sends one short prompt to your default model, runs a command in the terminal, and fails if the agent printed any errors. The prompt costs a few tokens.
+`bun run smoke` checks that Pi Cloud works with your own Pi setup: your default model, your extensions and your shell. It starts a server and an agent, creates a session in a temporary directory, sends one short prompt to your default model, runs a command in the terminal, and fails if the agent printed any errors. The prompt costs a few tokens. Pass `--model provider/id` to use a cheaper model than your default, as in `bun run smoke --model openai/gpt-5-mini`.
