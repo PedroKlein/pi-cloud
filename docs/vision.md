@@ -35,13 +35,14 @@ These scenarios are the yardstick for scope. A feature that serves none of them 
 - Local and VM Runtime Providers, connected outbound to one Control Plane.
 - One trusted shared-process isolation mode. An Environment means which provider and which directory or worktree.
 - A Session stays on the provider it started on. Moving to another provider is an explicit fork.
-- Authentication for the web UI and Provider Agent enrollment.
+- No authentication. The Control Plane listens on localhost and is reached there or through an SSH tunnel, including from a phone ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
 - A minimal web UI.
 
 ### v2: execution platform
 
 - Kubernetes provider, dedicated Session pods, and batch Jobs.
 - Enforced network policy, brokered secrets, and hardened runtimes.
+- Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel ([v2 ideas](v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
 - Fully versioned, portable Profiles for fresh runtimes.
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
