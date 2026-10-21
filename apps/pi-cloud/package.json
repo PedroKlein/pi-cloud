@@ -13,12 +13,13 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",
+    "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",
     "@pi-cloud/providers": "workspace:*",
     "@pi-cloud/sessionhost": "workspace:*",
     "@pi-cloud/sessions": "workspace:*",
-    "@pi-cloud/workspaces": "workspace:*",
-    "@pi-cloud/web": "workspace:*"
+    "@pi-cloud/web": "workspace:*",
+    "@pi-cloud/workspaces": "workspace:*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.3.0",

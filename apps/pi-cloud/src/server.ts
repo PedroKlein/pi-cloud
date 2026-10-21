@@ -6,6 +6,7 @@ import {
   type RemovalReport,
   type SessionEvent,
   type StartFailure,
+  type ToolCall,
   protocolVersion,
   providerHeader,
   type TranscriptBatch,
@@ -21,6 +22,7 @@ import {
   type Sessions,
 } from "@pi-cloud/sessions";
 import { version as serverVersion } from "../package.json";
+import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
 
 const rejectionStatus = {
@@ -40,6 +42,7 @@ type Route = (
 
 export function createHandler(
   sessions: Sessions,
+  plugins: PluginHost,
   checkStore: () => void,
   log: Log,
 ): (request: Request) => Promise<Response> {
@@ -98,6 +101,44 @@ export function createHandler(
         return Response.json({ status: "ok", version: serverVersion });
       },
     ],
+    ["GET", /^\/api\/plugins$/, () => Response.json(plugins.names)],
+    [
+      "ANY",
+      /^\/api\/plugins\/([^/]+)\/(.*)$/,
+      async (request, [name = "", path = ""]) =>
+        (await plugins.route(request, name, path)) ??
+        Response.json({ error: "not_found" }, { status: 404 }),
+    ],
+    [
+      "GET",
+      /^\/agent\/sessions\/([^/]+)\/tools$/,
+      agent((request, [id = ""]) => {
+        const session = sessions.get(id);
+
+        const generation = Number(
+          new URL(request.url).searchParams.get("generation") ?? NaN,
+        );
+
+        return session && sessions.isCurrent(id, generation)
+          ? Response.json(plugins.tools(session))
+          : Response.json({ error: "stale_generation" }, { status: 409 });
+      }),
+    ],
+    [
+      "POST",
+      /^\/agent\/sessions\/([^/]+)\/tool-calls$/,
+      agent(async (request, [id = ""]) => {
+        const call = await readJson<ToolCall>(request);
+        const session = sessions.get(id);
+        if (!session || !sessions.isCurrent(id, call.generation)) {
+          return Response.json({ error: "stale_generation" }, { status: 409 });
+        }
+
+        plugins.call(session, call);
+
+        return new Response(null, { status: 202 });
+      }),
+    ],
     [
       "GET",
       /^\/api\/environments$/,
@@ -118,9 +159,10 @@ export function createHandler(
       "POST",
       /^\/api\/sessions$/,
       async (request) => {
-        const created = sessions.create(
-          createSession(await readJson<unknown>(request)),
-        );
+        const created = sessions.start({
+          ...createSession(await readJson<unknown>(request)),
+          actor: user,
+        });
 
         if (created.ok) {
           log("session created", {
@@ -310,7 +352,7 @@ export function createHandler(
     const { pathname } = new URL(request.url);
     for (const [method, pattern, route] of routes) {
       const match = pattern.exec(pathname);
-      if (match && request.method === method) {
+      if (match && (method === "ANY" || request.method === method)) {
         try {
           return await route(request, match.slice(1));
         } catch (error) {
@@ -360,10 +402,8 @@ async function readJson<T>(request: Request): Promise<T> {
 }
 
 function createSession(body: unknown): CreateSession {
-  const { environment, workspace, model } = (body ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const { environment, workspace, model, systemPrompt, firstMessage } = (body ??
+    {}) as Record<string, unknown>;
 
   if (
     environment !== undefined &&
@@ -376,6 +416,8 @@ function createSession(body: unknown): CreateSession {
   const request = {
     ...(typeof environment === "string" && { environment }),
     workspace: workspaceRequest(workspace),
+    ...optionalText("systemPrompt", systemPrompt),
+    ...optionalText("firstMessage", firstMessage),
   };
 
   if (model === undefined || model === null) {
@@ -393,6 +435,21 @@ function createSession(body: unknown): CreateSession {
   }
 
   return { ...request, model: { provider: modelProvider, id } };
+}
+
+function optionalText<K extends string>(
+  key: K,
+  value: unknown,
+): Partial<Record<K, string>> {
+  if (value === undefined || value === null || value === "") {
+    return {};
+  }
+
+  if (typeof value !== "string") {
+    throw new BadRequest(`${key} must be a string`);
+  }
+
+  return { [key]: value } as Partial<Record<K, string>>;
 }
 
 function workspaceRequest(workspace: unknown): WorkspaceRequest {

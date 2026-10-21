@@ -1,7 +1,9 @@
+import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
 import type { Log } from "@pi-cloud/providers";
 import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
+import { serverPlugins, startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
@@ -11,6 +13,8 @@ export interface ServeOptions {
   readonly database: string;
   readonly sessions?: SessionsOptions;
   readonly agent?: Omit<AgentOptions, "server" | "log" | "signal">;
+  readonly plugins?: readonly ServerPlugin[];
+  readonly disabledPlugins?: readonly string[];
   readonly log: Log;
 }
 
@@ -19,8 +23,29 @@ export function serve(options: ServeOptions): {
   readonly stop: () => Promise<void>;
 } {
   const store = openStore(options.database);
-  const sessions = new Sessions(store, options.sessions);
-  const handler = createHandler(sessions, store.check, options.log);
+  const plugins = options.plugins ?? serverPlugins;
+  const disabled = options.disabledPlugins ?? [];
+
+  const events = eventBus((type, error) => {
+    options.log("event listener failed", { type, error: String(error) });
+  });
+
+  const sessions = new Sessions(store, {
+    ...options.sessions,
+    events: events.publish,
+    sessionPlugins: plugins
+      .map(({ name }) => name)
+      .filter((name) => !disabled.includes(name)),
+  });
+
+  const pluginHost = startPlugins(plugins, disabled, {
+    sessions,
+    events,
+    store: store.plugin,
+    log: options.log,
+  });
+
+  const handler = createHandler(sessions, pluginHost, store.check, options.log);
   const terminals = terminalBroker(sessions, options.log);
 
   const server = Bun.serve({

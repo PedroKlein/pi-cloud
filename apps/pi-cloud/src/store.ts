@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type {
   ModelRef,
   SessionStatus,
   Workspace,
   WorkspaceRemoval,
 } from "@pi-cloud/protocol";
+import type { PluginStore } from "@pi-cloud/plugins";
 import {
   owner,
   type SessionStore,
@@ -22,6 +23,8 @@ interface SessionRow {
   provider: string;
   workspace: string;
   model: string | null;
+  system_prompt: string | null;
+  first_message: string | null;
   status: SessionStatus;
   generation: number;
   created_at: string;
@@ -56,6 +59,8 @@ create table if not exists sessions (
   owner_id text not null,
   workspace text not null,
   model text,
+  system_prompt text,
+  first_message text,
   status text not null,
   generation integer not null,
   created_at text not null,
@@ -90,7 +95,13 @@ function migrate(db: DatabaseSync): void {
     `);
   }
 
-  for (const column of ["model", "archived_at", "workspace_removal"]) {
+  for (const column of [
+    "model",
+    "archived_at",
+    "workspace_removal",
+    "system_prompt",
+    "first_message",
+  ]) {
     if (columns.length > 0 && !columns.some(({ name }) => name === column)) {
       db.exec(`alter table sessions add column ${column} text`);
     }
@@ -139,6 +150,7 @@ function insertEnvironment(db: DatabaseSync, provider: string): void {
 export function openStore(path: string): SessionStore & {
   check: () => void;
   close: () => void;
+  plugin: (name: string) => PluginStore;
 } {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
@@ -155,6 +167,8 @@ export function openStore(path: string): SessionStore & {
     provider: row.provider,
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
+    systemPrompt: row.system_prompt,
+    firstMessage: row.first_message,
     status: row.status,
     generation: row.generation,
     createdAt: row.created_at,
@@ -165,7 +179,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, workspace, model, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
@@ -216,6 +230,8 @@ export function openStore(path: string): SessionStore & {
         s.ownerId,
         JSON.stringify(s.workspace),
         s.model && JSON.stringify(s.model),
+        s.systemPrompt,
+        s.firstMessage,
         s.status,
         s.generation,
         s.createdAt,
@@ -271,8 +287,31 @@ export function openStore(path: string): SessionStore & {
     check: () => {
       check.get();
     },
+    plugin: (name) => pluginStore(db, name),
     close: () => {
       db.close();
+    },
+  };
+}
+
+const createdTable = /create\s+table\s+(?:if\s+not\s+exists\s+)?["`]?(\w+)/gi;
+
+// Plugins are trusted in v1, so this only keeps their tables apart by name.
+function pluginStore(db: DatabaseSync, name: string): PluginStore {
+  return {
+    exec: (sql) => {
+      for (const [, table = ""] of sql.matchAll(createdTable)) {
+        if (!table.startsWith(`${name}_`)) {
+          throw new Error(`plugin ${name} may only create ${name}_ tables`);
+        }
+      }
+
+      db.exec(sql);
+    },
+    all: (sql, ...params) =>
+      db.prepare(sql).all(...(params as SQLInputValue[])),
+    run: (sql, ...params) => {
+      db.prepare(sql).run(...(params as SQLInputValue[]));
     },
   };
 }

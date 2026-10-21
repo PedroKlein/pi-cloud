@@ -1,13 +1,23 @@
 import { expect, test } from "bun:test";
+import { eventBus } from "@pi-cloud/plugins";
 import { Sessions } from "@pi-cloud/sessions";
+import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { openStore } from "./store";
 
 test("reports unhealthy when the database can't be read", async () => {
   const store = openStore(":memory:");
 
+  const sessions = new Sessions(store);
+
   const handler = createHandler(
-    new Sessions(store),
+    sessions,
+    startPlugins([], [], {
+      sessions,
+      events: eventBus(() => undefined),
+      store: store.plugin,
+      log: () => undefined,
+    }),
     store.check,
     () => undefined,
   );

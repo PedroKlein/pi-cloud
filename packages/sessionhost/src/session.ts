@@ -9,6 +9,7 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   type ExtensionError,
+  type ExtensionFactory,
   initTheme,
   type ModelRuntime,
   SessionManager,
@@ -30,11 +31,13 @@ export interface SessionOptions extends ModelOptions {
   readonly base?: string | null;
   readonly sessionDir: string;
   readonly model?: ModelRef;
+  readonly systemPrompt?: string | null;
 }
 
 export interface SessionHost {
   readonly ui: RemoteUI;
   readonly tools: readonly ToolDefinition[];
+  readonly extensions: readonly ExtensionFactory[];
   readonly onError: (error: ExtensionError) => void;
 }
 
@@ -48,7 +51,12 @@ export async function startSession(
   // status text with it even when no terminal renders it.
   initTheme();
 
-  const services = await loadServices(cwd, options);
+  const systemPrompt = options.systemPrompt ?? null;
+
+  const services = await loadServices(cwd, options, {
+    ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
+    extensionFactories: [...(host?.extensions ?? [])],
+  });
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
   recordInterruptedToolCalls(sessionManager);
@@ -94,11 +102,16 @@ export async function listModels(
 async function loadServices(
   cwd: string,
   options: ModelOptions,
+  resources: {
+    readonly appendSystemPrompt?: string[];
+    readonly extensionFactories?: ExtensionFactory[];
+  } = {},
 ): Promise<AgentSessionServices> {
   const services = await createAgentSessionServices({
     cwd,
     agentDir: options.agentDir,
     resourceLoaderOptions: {
+      ...resources,
       additionalExtensionPaths: [...options.extensionPaths],
     },
     ...(options.models && { modelRuntime: options.models.runtime }),

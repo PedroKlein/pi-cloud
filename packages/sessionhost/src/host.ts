@@ -3,13 +3,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type {
   AgentSession,
   AgentSessionEvent,
+  ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
-import type { Command, LiveEvent } from "@pi-cloud/protocol";
+import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
 import { askUserTool } from "./ask";
 import { workspaceChanges } from "./changes";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
+import { serverTools } from "./tools";
 
 export interface SessionStream {
   uploadTranscript: (
@@ -19,6 +21,13 @@ export interface SessionStream {
   publish: (events: readonly LiveEvent[]) => Promise<void>;
   commands: (listener: (command: Command) => void) => () => void;
   terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
+  tools: () => Promise<readonly ToolSpec[]>;
+  callTool: (id: string, name: string, input: unknown) => Promise<void>;
+}
+
+export interface HostOptions extends SessionOptions {
+  readonly extensions?: readonly ExtensionFactory[];
+  readonly firstMessage?: string | null;
 }
 
 export interface TerminalPeer {
@@ -95,7 +104,7 @@ export function hostTerminals(
 }
 
 export async function hostSession(
-  options: SessionOptions,
+  options: HostOptions,
   stream: SessionStream,
   log: Log,
   openTerminalElsewhere?: (command: TerminalCommand) => void,
@@ -106,9 +115,12 @@ export async function hostSession(
     live.push(event);
   });
 
+  const calls = serverTools(await stream.tools(), stream.callTool);
+
   const session = await startSession(options, {
     ui: prompts.ui,
-    tools: [askUserTool(prompts.questions)],
+    tools: [askUserTool(prompts.questions), ...calls.tools],
+    extensions: options.extensions ?? [],
     onError: (error) => {
       log("extension error", {
         extension: error.extensionPath,
@@ -171,6 +183,12 @@ export async function hostSession(
       return;
     }
 
+    if (command.type === "tool_result") {
+      calls.result(command.id, command.result);
+
+      return;
+    }
+
     run(session, command).catch((error: unknown) => {
       log("command failed", { command: command.type, error: String(error) });
 
@@ -186,12 +204,23 @@ export async function hostSession(
   transcript.sync();
   changes.refresh();
 
+  const firstMessage = options.firstMessage ?? null;
+  if (
+    firstMessage !== null &&
+    !session.sessionManager.getEntries().some(({ type }) => type === "message")
+  ) {
+    session.prompt(firstMessage).catch((error: unknown) => {
+      log("first message failed", { error: String(error) });
+    });
+  }
+
   return {
     stop: async () => {
       detach();
       terminals.close();
 
       prompts.cancelAll();
+      calls.cancelAll();
       await stopSession(session);
       unsubscribe();
       transcript.sync();
@@ -254,7 +283,7 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Exclude<Command, { type: "terminal" | "answer" | "explain" }>,
+  command: Extract<Command, { type: "message" | "abort" }>,
 ): Promise<void> {
   switch (command.type) {
     case "message":

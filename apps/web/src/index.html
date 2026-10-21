@@ -9,6 +9,7 @@
   <body>
     <aside>
       <h1>Pi Cloud</h1>
+      <nav id="plugin-nav"></nav>
       <form id="create">
         <select
           id="environments"
@@ -43,6 +44,7 @@
       <label><input id="show-archived" type="checkbox" /> Show archived</label>
       <ul id="sessions"></ul>
     </aside>
+    <main id="plugin-page" hidden></main>
     <main id="session" hidden>
       <header>
         <span id="title"></span>
@@ -55,7 +57,9 @@
         <button id="remove-workspace" type="button" hidden>
           Delete workspace
         </button>
+        <span id="plugin-header"></span>
       </header>
+      <div id="plugin-panels"></div>
       <details id="changes" hidden>
         <summary id="changes-summary"></summary>
         <pre id="changes-stat"></pre>

@@ -6,6 +6,7 @@
     "./index.html": "./src/index.html"
   },
   "dependencies": {
+    "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0"
