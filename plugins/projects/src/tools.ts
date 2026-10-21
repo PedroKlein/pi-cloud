@@ -133,6 +133,7 @@ export function projectTools(
 
         const model =
           modelRef(optional(input, "model")) ??
+          modelRef(project.threadModel ?? undefined) ??
           sessions.get(project.coordinatorId)?.model ??
           undefined;
 

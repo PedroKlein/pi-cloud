@@ -2,6 +2,8 @@
 // each backend is a Pi provider on that Environment's machine.
 export interface AliasConfig {
   readonly fallbackChain?: readonly string[];
+  // The alias a Session in this Environment gets when it names no model.
+  readonly defaultAlias?: string;
   readonly backends: Readonly<Record<string, Backend>>;
 }
 
@@ -73,6 +75,11 @@ export function aliasProblem(value: unknown): string | undefined {
         return `tier ${tier} of ${name} must be a model id or a list of them`;
       }
     }
+  }
+
+  const defaultAlias = value["defaultAlias"];
+  if (defaultAlias !== undefined && typeof defaultAlias !== "string") {
+    return "defaultAlias must be an alias name";
   }
 
   const chain = value["fallbackChain"];

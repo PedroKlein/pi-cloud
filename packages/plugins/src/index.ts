@@ -4,6 +4,8 @@ export type {
   Checkout,
   Explain,
   KernelEvent,
+  ModelOffer,
+  OfferedModels,
   PluginEvent,
   PluginRoute,
   PluginStore,

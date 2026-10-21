@@ -1,4 +1,9 @@
-import type { PluginStore, ServerPlugin } from "@pi-cloud/plugins";
+import type {
+  OfferedModels,
+  PluginStore,
+  ServerPlugin,
+} from "@pi-cloud/plugins";
+import { aliasesOf, gatewayProvider } from "./gateway";
 import {
   type AliasConfig,
   aliasProblem,
@@ -17,6 +22,10 @@ export const models: ServerPlugin = {
   register: (context) => {
     const store = modelsStore(context.store);
     const versions = changes(context.signal);
+
+    context.models.offer((environmentId) =>
+      offered(store.get(environmentId).aliases),
+    );
 
     context.routes.handle(async (request, path, caller) => {
       const method = request.method;
@@ -96,6 +105,21 @@ export const models: ServerPlugin = {
     });
   },
 };
+
+function offered(aliases: AliasConfig | null): OfferedModels {
+  if (aliases === null) {
+    return { models: [] };
+  }
+
+  const refs = aliasesOf(aliases).map(({ id }) => ({
+    provider: gatewayProvider,
+    id,
+  }));
+
+  const fallback = refs.find(({ id }) => id === aliases.defaultAlias);
+
+  return { models: refs, ...(fallback && { default: fallback }) };
+}
 
 interface ModelsStore {
   readonly all: () => readonly EnvironmentModels[];

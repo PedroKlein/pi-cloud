@@ -7,6 +7,8 @@ import { models } from "@pi-cloud/models/server";
 import { projects } from "@pi-cloud/projects/server";
 import type {
   EventBus,
+  ModelOffer,
+  OfferedModels,
   PluginRoute,
   PluginStore,
   ServerPlugin,
@@ -52,6 +54,7 @@ export interface PluginHost {
   readonly names: readonly string[];
   readonly tools: (session: Session) => readonly ToolSpec[];
   readonly call: (session: Session, call: ToolCall) => void;
+  readonly offeredModels: (environmentId: string) => OfferedModels;
   readonly route: (
     request: Request,
     name: string,
@@ -73,6 +76,7 @@ export function startPlugins(
 ): PluginHost {
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
   const routes = new Map<string, PluginRoute>();
+  const offers: ModelOffer[] = [];
   for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
@@ -125,6 +129,11 @@ export function startPlugins(
           routes.set(plugin.name, route);
         },
       },
+      models: {
+        offer: (offer) => {
+          offers.push(offer);
+        },
+      },
       store: deps.store(plugin.name),
       signal: deps.signal,
       log,
@@ -172,6 +181,15 @@ export function startPlugins(
             result: reply,
           });
         });
+    },
+    offeredModels: (environmentId) => {
+      const offered = offers.map((offer) => offer(environmentId));
+      const fallback = offered.find((each) => each.default)?.default;
+
+      return {
+        models: offered.flatMap((each) => each.models),
+        ...(fallback && { default: fallback }),
+      };
     },
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),

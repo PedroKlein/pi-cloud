@@ -192,3 +192,35 @@ test("refuses an alias config without backends", async () => {
 
   expect(response.status).toBe(400);
 });
+
+test("lists an Environment's aliases first and gives a session with no model its default alias", async () => {
+  const { id: environmentId } = await environment();
+
+  await api(`/api/plugins/models/environments/${environmentId}`, {
+    aliases: {
+      defaultAlias: "medium-1",
+      backends: { primary: { tiers: { medium: [primary.getModel().id] } } },
+    },
+  });
+
+  const [listed] = (await (
+    await api("/api/environments")
+  ).json()) as Environment[];
+
+  expect(listed?.models[0]).toEqual({ provider: "alias", id: "medium-1" });
+
+  primary.setResponses([fauxAssistantMessage("from primary")]);
+
+  const started = (await (
+    await api("/api/sessions", {
+      workspace: { kind: "folder", path: root },
+      firstMessage: "hi",
+    })
+  ).json()) as Session;
+
+  expect(started.model).toEqual({ provider: "alias", id: "medium-1" });
+
+  expect((await until(async () => session(started.id), settled)).status).toBe(
+    "idle",
+  );
+});

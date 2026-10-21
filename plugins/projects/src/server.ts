@@ -260,8 +260,8 @@ function create(
   { sessions, log }: ServerPluginContext,
   user: Actor,
 ): Project {
-  const { name, instructions, repositories, environment, model } = (body ??
-    {}) as Record<string, unknown>;
+  const { name, instructions, repositories, environment, model, threadModel } =
+    (body ?? {}) as Record<string, unknown>;
 
   if (typeof name !== "string" || name.trim() === "") {
     throw new BadRequest("name is required");
@@ -290,9 +290,19 @@ function create(
       typeof environment === "string" && environment !== ""
         ? environment
         : null,
+    threadModel:
+      typeof threadModel === "string" && threadModel.trim() !== ""
+        ? threadModel.trim()
+        : null,
     coordinatorId: "",
     createdAt: new Date().toISOString(),
   };
+
+  try {
+    modelRef(draft.threadModel ?? undefined);
+  } catch (error) {
+    throw new BadRequest(`thread model: ${(error as Error).message}`);
+  }
 
   let coordinator;
   try {
@@ -353,6 +363,7 @@ function view(
     instructions: project.instructions,
     repositories: project.repositories,
     environmentId: project.environmentId,
+    threadModel: project.threadModel,
     coordinatorId: project.coordinatorId,
     coordinatorState: runState(sessions.get(project.coordinatorId)),
     threads: store.threads(project.id).map((thread) => {

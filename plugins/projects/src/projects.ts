@@ -9,6 +9,8 @@ export interface Project {
   readonly instructions: string;
   readonly repositories: readonly string[];
   readonly environmentId: string | null;
+  // provider/id for threads that start_thread gives no model.
+  readonly threadModel: string | null;
   readonly coordinatorId: string;
   readonly createdAt: string;
 }
@@ -41,6 +43,7 @@ interface ProjectRow {
   instructions: string;
   repositories: string;
   environment_id: string | null;
+  thread_model: string | null;
   coordinator_id: string;
   created_at: string;
 }
@@ -93,6 +96,14 @@ export function projectStore(store: PluginStore): {
     created_at text not null
   )`);
 
+  const columns = store.all("pragma table_info(projects_projects)") as {
+    name: string;
+  }[];
+
+  if (!columns.some(({ name }) => name === "thread_model")) {
+    store.exec("alter table projects_projects add column thread_model text");
+  }
+
   store.exec(`create table if not exists projects_members (
     session_id text primary key,
     project_id text not null,
@@ -133,6 +144,7 @@ export function projectStore(store: PluginStore): {
     instructions: row.instructions,
     repositories: JSON.parse(row.repositories) as string[],
     environmentId: row.environment_id,
+    threadModel: row.thread_model,
     coordinatorId: row.coordinator_id,
     createdAt: row.created_at,
   });
@@ -150,14 +162,15 @@ export function projectStore(store: PluginStore): {
     create: (project) => {
       store.run(
         `insert into projects_projects
-          (id, owner_id, name, instructions, repositories, environment_id, coordinator_id, created_at)
-          values (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, owner_id, name, instructions, repositories, environment_id, thread_model, coordinator_id, created_at)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         project.id,
         project.ownerId,
         project.name,
         project.instructions,
         JSON.stringify(project.repositories),
         project.environmentId,
+        project.threadModel,
         project.coordinatorId,
         project.createdAt,
       );

@@ -52,6 +52,7 @@ A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, 
   - `sessions`: start Sessions through the start request, send them messages (as a turn, or as context that doesn't start one), and read their transcripts.
   - `routes`: HTTP handlers under `/api/plugins/<name>/`.
   - `store`: its own SQLite tables, with its own migrations, named `<plugin>_<table>`.
+  - `models`: offers models for an Environment. The kernel lists them before the machine's own models, and a Session that names no model gets the offered default ([ADR 0019](0019-model-aliases.md)).
 - **Session part** (`src/session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session. The host also hands it a small context:
   - `publish(key, data)` sends a plugin live event `{plugin, key, data}` to everyone watching the Session. The latest value per key is kept and replayed to anyone who opens the Session later, like extension widgets. It's the second generic protocol addition.
   - `askQuestions` raises the kernel's questions form.
@@ -75,7 +76,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 
 - The server has an in-process event bus. Kernel code publishes `SessionCreated`, `SessionStateChanged`, `TurnStarted`, `TurnEnded`, `SessionArchived` and `ToolCalled`.
 - Plugins subscribe to it and publish their own events, named `<plugin>.<Event>`.
-- Kernel code never calls a plugin. A feature reacts to events or serves tools and routes.
+- Kernel code never calls a plugin. A feature reacts to events or serves tools, routes and model offers.
 - Events are in-process and not stored in v1. Current state in SQLite stays authoritative, as [extensibility.md](../extensibility.md#domain-events) says.
 
 ### One start request

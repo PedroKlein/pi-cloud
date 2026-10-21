@@ -203,7 +203,7 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
     name: "Release",
     instructions: "Keep commits small.",
     repositories: [a, b],
-    model: `${faux.getModel().provider}/${faux.getModel().id}`,
+    threadModel: `${faux.getModel().provider}/${faux.getModel().id}`,
   });
 
   const { id, coordinatorId } = (await created.json()) as ProjectView;
@@ -221,10 +221,7 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
 
   expect(coordinator.systemPrompt).toContain("Keep commits small.");
 
-  expect(coordinator.model).toEqual({
-    provider: faux.getModel().provider,
-    id: faux.getModel().id,
-  });
+  expect(coordinator.model).toBeNull();
 
   await until(
     async () =>
@@ -251,7 +248,11 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
   expect(thread).toMatchObject({ title: "Bump version" });
   expect(threadSession.systemPrompt).toContain("- release is v2");
   expect(threadSession.firstMessage).toBe("bump the version");
-  expect(threadSession.model).toEqual(coordinator.model);
+
+  expect(threadSession.model).toEqual({
+    provider: faux.getModel().provider,
+    id: faux.getModel().id,
+  });
 
   expect(threadSession.workspace).toMatchObject({
     kind: "repositories",

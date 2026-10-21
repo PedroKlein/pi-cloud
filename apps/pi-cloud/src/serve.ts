@@ -38,6 +38,7 @@ export function serve(options: ServeOptions): {
     ...options.sessions,
     events: events.publish,
     sessionPlugins: enabled,
+    offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
   });
 
   const pluginsStop = new AbortController();

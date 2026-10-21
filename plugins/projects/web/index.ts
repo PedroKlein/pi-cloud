@@ -151,6 +151,31 @@ async function listPage(
   const model = el("input");
   model.name = "model";
   model.placeholder = "Coordinator model as provider/id (optional)";
+  model.setAttribute("list", "project-models");
+
+  const threadModel = el("input");
+  threadModel.name = "threadModel";
+  threadModel.placeholder = "Thread model as provider/id (optional)";
+  threadModel.setAttribute("list", "project-models");
+
+  const models = el(
+    "datalist",
+    undefined,
+    ...[
+      ...new Set(
+        environments.flatMap((option) =>
+          option.models.map(({ provider, id }) => `${provider}/${id}`),
+        ),
+      ),
+    ].map((ref) => {
+      const item = el("option");
+      item.value = ref;
+
+      return item;
+    }),
+  );
+
+  models.id = "project-models";
 
   const instructions = el("textarea");
   instructions.name = "instructions";
@@ -158,7 +183,17 @@ async function listPage(
 
   const submit = el("button", "New Project");
   submit.type = "submit";
-  form.append(name, environment, model, repositories, instructions, submit);
+
+  form.append(
+    name,
+    environment,
+    model,
+    threadModel,
+    models,
+    repositories,
+    instructions,
+    submit,
+  );
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -169,6 +204,7 @@ async function listPage(
         environment: environment.value,
         repositories: repositories.value.split(/\s+/).filter((url) => url),
         model: model.value,
+        threadModel: threadModel.value,
         instructions: instructions.value,
       })
       .then(async (response) => {
