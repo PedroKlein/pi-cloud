@@ -1,6 +1,11 @@
 import { Button, cn, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
-import { useEnvironments, useHash, useSessions } from "./hooks";
+import {
+  useEnvironments,
+  useHash,
+  useSessions,
+  useSettledNotices,
+} from "./hooks";
 import { NewSessionDialog } from "./new-session";
 import { enabledPlugins, type NavEntry, pluginContext } from "./plugins";
 import { SessionView } from "./session-view";
@@ -17,6 +22,7 @@ export function App({
   const [drawer, setDrawer] = useState(false);
   const sessions = useSessions(showArchived);
   const environments = useEnvironments();
+  useSettledNotices(sessions.value, route);
 
   const page = route.startsWith("plugin/")
     ? route.slice("plugin/".length)

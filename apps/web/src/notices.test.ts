@@ -1,0 +1,54 @@
+import { expect, test } from "bun:test";
+import type { Session } from "@pi-cloud/protocol";
+import { matches, noticeText, settled } from "./notices";
+
+const session = (change: Partial<Session>): Session => ({
+  id: "s",
+  environmentId: "e",
+  ownerId: "o",
+  provider: "laptop",
+  workspace: { kind: "folder", path: "/home/me/site" },
+  model: { provider: "github-copilot", id: "gpt-5.3-codex" },
+  systemPrompt: null,
+  firstMessage: null,
+  status: "idle",
+  generation: 1,
+  createdAt: "2026-10-21T00:00:00Z",
+  interruptedAt: null,
+  error: null,
+  archivedAt: null,
+  workspaceRemoval: null,
+  online: true,
+  ...change,
+});
+
+test("only sessions that stop working have settled", () => {
+  const before = [
+    session({ id: "a", status: "running" }),
+    session({ id: "b", status: "idle" }),
+    session({ id: "c", status: "starting" }),
+  ];
+
+  const after = [
+    session({ id: "a", status: "idle" }),
+    session({ id: "b", status: "idle" }),
+    session({ id: "c", status: "running" }),
+    session({ id: "d", status: "idle" }),
+  ];
+
+  expect(settled(before, after).map(({ id }) => id)).toEqual(["a"]);
+});
+
+test("a notice says how the session ended and where", () => {
+  expect(noticeText(session({ status: "idle" }))).toBe("Pi finished in site");
+  expect(noticeText(session({ status: "failed" }))).toBe("Pi failed in site");
+});
+
+test("search matches every word against name, path, environment and model", () => {
+  const found = session({});
+
+  expect(matches(found, "site laptop", "laptop")).toBe(true);
+  expect(matches(found, "HOME/ME codex", "laptop")).toBe(true);
+  expect(matches(found, "site vm", "laptop")).toBe(false);
+  expect(matches(found, "  ", "laptop")).toBe(true);
+});

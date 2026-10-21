@@ -1,7 +1,8 @@
 import type { Environment, Session } from "@pi-cloud/protocol";
-import { Badge, Button, cn, Icon } from "@pi-cloud/ui";
-import type { ReactElement } from "react";
+import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
+import { type ReactElement, useState } from "react";
 import { useNow } from "./hooks";
+import { matches } from "./notices";
 import {
   ago,
   modelName,
@@ -30,6 +31,16 @@ export function Sidebar({
   onShowArchived,
   onNewSession,
 }: SidebarProps): ReactElement {
+  const [query, setQuery] = useState("");
+
+  const environmentName = (session: Session): string =>
+    environments.find((e) => e.id === session.environmentId)?.name ??
+    session.provider;
+
+  const shown = sessions.filter((session) =>
+    matches(session, query, environmentName(session)),
+  );
+
   return (
     <nav aria-label="Pi Cloud" className="flex h-full flex-col bg-panel">
       <div className="flex items-center justify-between gap-2 py-3 pr-3 pl-4">
@@ -88,11 +99,29 @@ export function Sidebar({
         </label>
       </div>
 
+      <div className="px-3 pb-2">
+        <input
+          type="search"
+          aria-label="Search sessions"
+          placeholder="Search sessions"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+          }}
+          className={cn(fieldClass, "w-full py-1 text-label")}
+        />
+      </div>
+
       <ul
         id="sessions"
         className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2"
       >
-        {sessions.toReversed().map((session) => (
+        {shown.length === 0 && (
+          <li className="px-3 py-2 text-caption text-fg-dim">
+            {query === "" ? "No sessions yet." : "No sessions match."}
+          </li>
+        )}
+        {shown.toReversed().map((session) => (
           <SessionRow
             key={session.id}
             session={session}
@@ -104,6 +133,7 @@ export function Sidebar({
         ))}
       </ul>
 
+      <NotifyButton />
       <EnvironmentStatus environments={environments} />
     </nav>
   );
@@ -171,5 +201,30 @@ function EnvironmentStatus({
         </li>
       ))}
     </ul>
+  );
+}
+
+function NotifyButton(): ReactElement | null {
+  const [permission, setPermission] = useState(() =>
+    typeof Notification === "undefined" ? "denied" : Notification.permission,
+  );
+
+  if (permission !== "default") {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-line px-2 py-2">
+      <Button
+        variant="ghost"
+        onClick={() => {
+          void Notification.requestPermission().then(setPermission);
+        }}
+        className="w-full justify-start text-label"
+      >
+        <Icon name="bell" />
+        Notify me when sessions finish
+      </Button>
+    </div>
   );
 }

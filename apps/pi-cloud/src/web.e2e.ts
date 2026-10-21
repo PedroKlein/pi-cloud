@@ -129,6 +129,75 @@ test("archives a session, shows it only with archived sessions and unarchives it
   expect(await page.locator("#prompt").isVisible()).toBe(true);
 }, 30_000);
 
+test("finds sessions by search and notifies when one finishes", async () => {
+  await page.context().grantPermissions(["notifications"]);
+
+  await page.addInitScript(() => {
+    const shown: string[] = [];
+
+    Object.assign(globalThis, {
+      shown,
+      Notification: Object.assign(
+        class {
+          constructor(title: string) {
+            shown.push(title);
+          }
+
+          addEventListener(): void {
+            return undefined;
+          }
+        },
+        { permission: "granted" },
+      ),
+    });
+  });
+
+  // Long enough for the two-second session poll to see it working.
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 3" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("done here")]),
+  ]);
+
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+  const id = new URL(page.url()).hash.slice(1);
+  const item = page.locator(`#sessions li[data-id="${id}"]`);
+
+  const search = page.getByLabel("Search sessions");
+  await search.fill("no-such-session");
+  await item.waitFor({ state: "detached" });
+  await page.getByText("No sessions match.").waitFor();
+  await search.fill("pi-cloud-e2e");
+  await item.waitFor();
+
+  await page.locator("#prompt-text").fill("finish");
+  await page.locator("#prompt-text").press("Enter");
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  await page.waitForFunction(() =>
+    (globalThis as unknown as { shown: string[] }).shown.some((title) =>
+      title.startsWith("Pi finished in"),
+    ),
+  );
+}, 30_000);
+
 test("answers the agent's questions in the prompt card", async () => {
   faux.setResponses([
     fauxAssistantMessage(
