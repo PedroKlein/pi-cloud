@@ -129,6 +129,72 @@ test("archives a session, shows it only with archived sessions and unarchives it
   expect(await page.locator("#prompt").isVisible()).toBe(true);
 }, 30_000);
 
+test("answers the agent's questions in the prompt card", async () => {
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxText("Two quick questions."),
+        fauxToolCall("ask_user", {
+          questions: [
+            {
+              id: "size",
+              label: "Size",
+              prompt: "Which size?",
+              type: "single",
+              options: [
+                { value: "s", label: "Small", description: "Cheap" },
+                { value: "l", label: "Large", description: "Fast" },
+              ],
+            },
+          ],
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("going large")]),
+  ]);
+
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.locator("#prompt-text").fill("pick a size");
+  await page.locator("#prompt-text").press("Enter");
+
+  const card = page.locator('[data-role="prompt"]');
+  await card.getByLabel("Large").check();
+
+  expect(
+    await page.locator("#chat").getByText("Two quick questions.").count(),
+  ).toBe(1);
+
+  await card.getByText("Fast").waitFor();
+  await card.getByRole("button", { name: "Review answers" }).click();
+  await card.locator("dd", { hasText: "Large" }).waitFor();
+  await card.getByRole("button", { name: "Submit" }).click();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "going large" })
+    .waitFor();
+
+  await card.waitFor({ state: "detached" });
+
+  const work = page.locator('#chat li[data-role="work"]');
+  await work.locator("summary").first().click();
+  await work.getByText("Asked").click();
+  await work.locator("pre", { hasText: "Large" }).waitFor();
+}, 30_000);
+
 test("shows the session's changes and usage from their plugins", async () => {
   execFileSync("git", ["init", "--quiet"], { cwd: root });
   await writeFile(join(root, ".git/info/exclude"), "/*\n!/notes.txt\n");

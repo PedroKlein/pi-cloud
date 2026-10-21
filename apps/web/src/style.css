@@ -107,18 +107,15 @@
     & form {
       display: grid;
       gap: calc(var(--spacing) * 2.5);
-      margin-bottom: calc(var(--spacing) * 4);
-    }
-
-    &:not(.prompt-card) form {
       max-width: 40rem;
+      margin-bottom: calc(var(--spacing) * 4);
       padding: calc(var(--spacing) * 5);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       background: var(--bg-panel);
     }
 
-    &:not(.prompt-card) form button[type="submit"] {
+    & form button[type="submit"] {
       justify-self: start;
       margin-top: var(--spacing);
       border-color: var(--accent);
@@ -126,7 +123,7 @@
       color: var(--on-accent);
     }
 
-    &:not(.prompt-card) form button[type="submit"]:hover {
+    & form button[type="submit"]:hover {
       background: var(--accent);
       filter: brightness(1.1);
     }
@@ -304,221 +301,6 @@
     & th {
       background: var(--bg-panel);
       font-weight: 600;
-    }
-  }
-
-  .prompt-card > section {
-    display: grid;
-    gap: calc(var(--spacing) * 3);
-    padding: calc(var(--spacing) * 4);
-    border: 1px solid var(--border-strong);
-    border-top: 3px solid var(--status-waiting);
-    border-radius: var(--radius-xl);
-    background: var(--bg-elevated);
-    white-space: normal;
-
-    & > strong {
-      color: var(--status-waiting);
-      font-size: var(--text-label);
-    }
-
-    &:not(.questions) > div {
-      display: flex;
-      flex-wrap: wrap;
-      gap: calc(var(--spacing) * 2);
-    }
-  }
-
-  .questions {
-    & .tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing);
-    }
-
-    & .tab {
-      height: 28px;
-      border-radius: 999px;
-      background: transparent;
-    }
-
-    & .tab.current {
-      background: var(--accent-tint);
-      border-color: var(--accent);
-      color: var(--text-strong);
-    }
-
-    & .context,
-    & .hint {
-      margin: 0;
-      color: var(--text-dim);
-    }
-
-    & .split {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: calc(var(--spacing) * 4);
-    }
-
-    @media (width < 700px) {
-      & .split {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    & .options {
-      display: grid;
-      gap: calc(var(--spacing) * 1.5);
-    }
-
-    & .options li {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: calc(var(--spacing) * 1.5);
-      padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-    }
-
-    & .options li.chosen {
-      border-color: var(--accent);
-      background: var(--accent-tint);
-    }
-
-    & .options .choice {
-      flex: 1;
-      height: auto;
-      padding: calc(var(--spacing) * 0.5) 0;
-      border: none;
-      background: none;
-      text-align: left;
-    }
-
-    & .options input,
-    & .annotation {
-      flex: 1 1 100%;
-    }
-
-    & .rank li {
-      cursor: grab;
-    }
-
-    & .rank .grip {
-      color: var(--text-dim);
-    }
-
-    & .detail {
-      display: grid;
-      align-content: start;
-      gap: calc(var(--spacing) * 2);
-      padding-left: calc(var(--spacing) * 3);
-      border-left: 3px solid var(--border);
-    }
-
-    & .star {
-      color: var(--status-waiting);
-      font-weight: 600;
-    }
-
-    & .explanation {
-      padding: calc(var(--spacing) * 2);
-      border-radius: var(--radius-md);
-      background: var(--bg-code);
-    }
-
-    & .explanation p {
-      white-space: pre-wrap;
-    }
-
-    & .ask {
-      display: flex;
-      gap: calc(var(--spacing) * 1.5);
-    }
-
-    & .scale,
-    & .number {
-      display: grid;
-      align-content: start;
-      gap: calc(var(--spacing) * 2);
-    }
-
-    & input[type="range"] {
-      width: 100%;
-      accent-color: var(--accent);
-    }
-
-    & .ticks {
-      display: flex;
-      justify-content: space-between;
-      gap: var(--spacing);
-    }
-
-    & .tick {
-      height: auto;
-      padding: 0;
-      border: none;
-      background: none;
-      color: var(--text-dim);
-      font-size: var(--text-caption);
-    }
-
-    & .tick.current {
-      color: var(--text-strong);
-      font-weight: 600;
-    }
-
-    & .number .row {
-      display: flex;
-      align-items: center;
-      gap: calc(var(--spacing) * 2);
-    }
-
-    & .number input[type="number"] {
-      width: 6rem;
-    }
-
-    & .number > button {
-      justify-self: start;
-    }
-
-    & .number small {
-      white-space: nowrap;
-    }
-
-    & .review {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: calc(var(--spacing) * 1.5) calc(var(--spacing) * 4);
-      margin: 0;
-    }
-
-    & .review dt {
-      color: var(--text-dim);
-    }
-
-    & .actions {
-      display: flex;
-      gap: calc(var(--spacing) * 2);
-    }
-
-    & .primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--on-accent);
-    }
-
-    & .primary:hover {
-      background: var(--accent);
-      filter: brightness(1.1);
-    }
-
-    & .quiet {
-      background: transparent;
-    }
-
-    & .error {
-      color: var(--status-failed);
     }
   }
 }
