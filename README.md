@@ -35,6 +35,8 @@ Open http://127.0.0.1:7420, create a session for provider `laptop` with `~/code/
 
 The agent only runs sessions in the folders you list with `--folder`. By default each session gets its own Git worktree of that folder, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Choose "Folder" instead to run in the folder itself; sessions sharing a folder this way can step on each other's changes.
 
+In a session, Enter sends a message that steers the running turn, and Alt+Enter (Option+Enter on a Mac) queues it as a follow-up for after the turn. The header shows the session's token use and cost, the Changes panel shows what the session changed in its Git workspace, and Terminal opens a shell in the session's directory. For a worktree or clone, "start from" picks the branch, tag or commit the session's branch starts at.
+
 Options:
 
 ```text
