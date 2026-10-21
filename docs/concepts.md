@@ -32,7 +32,7 @@ A live realization of an Environment capable of hosting one or more sessions. De
 
 ### Repository
 
-A Git repository a Session works on, identified by its clone URL. A Session may have several, checked out side by side in its Workspace ([ADR 0015](adr/0015-projects.md)).
+A Git repository a Session works on, identified by its clone URL. A Session may have several, checked out side by side in its Workspace ([ADR 0015](adr/0016-projects.md)).
 
 ### Workspace
 
@@ -50,11 +50,15 @@ One Runtime assignment for a Session. A replacement Runtime creates a new attemp
 
 ### Project
 
-A long-running goal with one coordinator Session, zero or more thread Sessions, shared instructions, memory, one or more repositories, and a default Environment ([ADR 0015](adr/0015-projects.md)). The coordinator is model-driven and interprets the goal; it is not the deterministic Control Plane.
+A long-running goal with one coordinator Session, zero or more thread Sessions, shared instructions, memory, one or more repositories, and a default Environment ([ADR 0015](adr/0016-projects.md)). The coordinator is model-driven and interprets the goal; it is not the deterministic Control Plane.
 
 ### Thread
 
 A full Session attached to a Project to own one area of work. A Thread can run its own subagents and workflows. Its detailed transcript stays in the Thread. The coordinator gets a short notice when the Thread finishes a turn or changes state, and the Thread can message the coordinator directly. The user can also talk to a Thread directly.
+
+### Kernel and Plugin
+
+The kernel is what every installation needs: Sessions, Environments, providers, Workspaces, terminals, events, server tools, the start request and the web shell. Every other feature, Projects included, is a Plugin with up to three parts: on the server, inside the Pi session as a Pi extension, and in the web UI ([ADR 0015](adr/0015-plugins.md)).
 
 ### Subagent
 

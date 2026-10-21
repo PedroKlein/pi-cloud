@@ -1,6 +1,6 @@
 # Pi Cloud extensibility
 
-> Status: working model. Pi personalization and platform extensibility are foundational requirements, but the extension contracts are not yet designed.
+> Status: working model. Pi personalization and platform extensibility are foundational requirements. The v1 plugin interface is in [ADR 0015](adr/0015-plugins.md); the public contracts are not yet designed.
 
 ## Two extension systems
 

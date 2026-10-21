@@ -65,10 +65,10 @@
 
 ### Projects and shared state
 
-- Resolved for v1: a Project has one coordinator and thread Sessions, each with its own Workspace holding every Project repository; Project tools are built into the session host ([ADR 0015](adr/0015-projects.md)).
+- Resolved for v1: a Project has one coordinator and thread Sessions, each with its own Workspace holding every Project repository; Project tools are built into the session host ([ADR 0015](adr/0016-projects.md)).
 - Which messages should create a new Thread versus reuse an existing one? The coordinator decides; there is no rule yet.
-- Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, without starting a turn, and threads message the coordinator explicitly ([ADR 0015](adr/0015-projects.md)).
-- Resolved for v1: any Project Session may write Project memory; the last write wins, and every write is logged ([ADR 0015](adr/0015-projects.md)).
+- Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, without starting a turn, and threads message the coordinator explicitly ([ADR 0015](adr/0016-projects.md)).
+- Resolved for v1: any Project Session may write Project memory; the last write wins, and every write is logged ([ADR 0015](adr/0016-projects.md)).
 - Are Library artifacts immutable publications, versioned files, or a writable shared space?
 - How are overlapping repository or file claims detected before work begins?
 
@@ -102,7 +102,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Extension system
 
-- What is the smallest stable Pi Cloud extension interface?
+- What is the smallest stable Pi Cloud extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
 - May a Session install extensions, or only propose them? OpenHands installs UI extensions disabled and lets only the user enable them ([research](research.md#openhands)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - What capabilities must an extension declare?

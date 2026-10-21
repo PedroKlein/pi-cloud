@@ -4,7 +4,9 @@
 
 ## Goal
 
-Pi Cloud should make full Pi sessions available from a browser, phone, terminal, or editor while the work runs in the environment best suited to it.
+Pi Cloud is a foundation for running Pi at scale. It is a small kernel that runs full Pi sessions wherever the work fits best, plus a plugin system as open as Pi's own. Every feature on top is a plugin: Projects first, later Jobs, Workflows, integrations and team features.
+
+The kernel makes full Pi sessions available from a browser, phone, terminal, or editor while the work runs on a laptop, a VM, or later Kubernetes. Plugins decide what that work is for.
 
 One personal installation should be able to manage:
 
@@ -15,7 +17,7 @@ One personal installation should be able to manage:
 - the user's complete Pi personalization;
 - extension-provided capabilities.
 
-A later team product may federate personal installations or introduce shared control-plane resources, but the first product is a control plane for one user.
+The first product is a control plane for one user. The same foundation is meant to carry what comes after: automations for a team, multiplayer Projects, and software factories built for specific apps. Those are plugins and policies on the same kernel, not a second system.
 
 ## Use cases
 
@@ -32,6 +34,7 @@ These scenarios are the yardstick for scope. A feature that serves none of them 
 ### v1: personal sessions and Projects on your own machines
 
 - Independent Sessions and Projects with full Thread Sessions.
+- An internal plugin interface. Projects and the other first-party features are default plugins on it ([ADR 0015](adr/0015-plugins.md)).
 - Local and VM Runtime Providers, connected outbound to one Control Plane.
 - One trusted shared-process isolation mode. An Environment means which provider and which directory or worktree.
 - A Session stays on the provider it started on. Moving to another provider is an explicit fork.
@@ -59,6 +62,18 @@ Independent sessions remain first-class. A user does not need to create a Projec
 An Environment is a reusable execution definition. A session binds to an Environment revision; a scheduler assigns it to a compatible Runtime supplied by a Runtime Provider. This allows the same control plane to dispatch work locally, to an always-on VM, or to Kubernetes.
 
 ## Principles
+
+### Small kernel, everything else is a plugin
+
+The kernel runs Sessions: Environments, providers, Workspaces, transcripts, terminals, events, server tools and one way to start work. Projects, Jobs, Workflows, integrations and team features are plugins. First-party plugins ship on by default and use only the seams any plugin gets, so a feature can be turned off, replaced, or written by someone else ([ADR 0015](adr/0015-plugins.md)).
+
+### The UI is extensible too
+
+A plugin can bring its own pages, panels and message views, built with whatever it likes. The kernel UI is a shell around Sessions.
+
+### One way to start work
+
+A person, a Project coordinator, a schedule, a webhook and a software factory all start Sessions through the same start request. Nothing gets a separate agent runtime.
 
 ### Pi remains Pi
 
@@ -88,7 +103,7 @@ A personal Pi Cloud Cell should have one logical control plane. Provider Agents 
 
 ### Extension seams are product architecture
 
-First-party Kubernetes, Git, scheduling, notifications, and future automation capabilities should use the same public interfaces available to third-party extensions. Trusted in-process extensions are acceptable for the personal product; external process or service adapters should remain possible for stronger isolation.
+First-party Kubernetes, Git, scheduling, notifications, and future automation capabilities should use the same public interfaces available to third-party extensions. Data records who owns it and who acted from the start, so team features don't need a migration. Trusted in-process extensions are acceptable for the personal product; external process or service adapters should remain possible for stronger isolation.
 
 ### State and execution are honest
 

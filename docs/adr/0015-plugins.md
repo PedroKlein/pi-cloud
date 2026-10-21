@@ -1,0 +1,110 @@
+# 0015: Plugins
+
+- Status: accepted
+- Date: 2026-10-21
+
+## Context
+
+Pi Cloud is meant to be a foundation that others build on, as extensible as Pi itself ([vision.md](../vision.md#small-kernel-everything-else-is-a-plugin)). [extensibility.md](../extensibility.md) says first-party features should use the same public seams a third party would, with no private paths. Nothing in the code does that yet:
+
+- `ask_user` is wired straight into the session host.
+- The Changes panel and the usage totals are wired into the server and the web UI.
+- Projects would have been next, with their own protocol messages ([ADR 0016](0016-projects.md)).
+
+Projects, and later Jobs, Workflows, integrations and team features, are features on the same seams, not kernel. Some code in each feature runs on the server, some inside the Pi session, and some in the browser.
+
+Pi's own split is the model. Its extension API (tools, commands, events, `ctx.ui`) is what its built-in behaviour is built from. Claude Code is the same: MCP servers and plugins add tools a session can call without the session knowing who serves them.
+
+[ADR 0008](0008-monorepo-layout.md) has a `pi-extensions/` folder for Pi packages loaded into hosted Sessions. It was never created.
+
+## Decision
+
+### Kernel and plugins
+
+The kernel is what every installation needs:
+
+- Sessions and transcripts.
+- Environments and providers, and the provider protocol.
+- Workspaces and terminals.
+- The server tool registry, the event bus, the start request and the plugin host below.
+- The web shell: navigation, the Session list, the Session view and the terminal.
+
+Everything else is a plugin. These ship as default plugins, on unless turned off:
+
+| Plugin   | Server part                          | Session part    | Web part                         |
+| -------- | ------------------------------------ | --------------- | -------------------------------- |
+| projects | tools, event subscribers, its tables | none            | nav entry, Project page, notices |
+| ask      | none                                 | `ask_user` tool | question form                    |
+| changes  | turn-end subscriber, diff route      | none            | Session side panel               |
+| usage    | turn-end subscriber                  | none            | header item                      |
+
+Projects is built as a plugin from the start. `ask`, `changes` and `usage` move out of the kernel in their own changes.
+
+### Plugin shape
+
+A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, each optional.
+
+- **Server part** (`server.ts`) exports `register(ctx)`, which runs at startup. `ctx` gives it:
+  - `tools`: server tools for Sessions, described below.
+  - `events`: subscriptions to kernel events.
+  - `sessions`: start Sessions through the start request, send them messages (as a turn, or as context that doesn't start one), and read their transcripts.
+  - `routes`: HTTP handlers under `/api/plugins/<name>/`.
+  - `store`: its own SQLite tables, with its own migrations, named `<plugin>_<table>`.
+- **Session part** (`session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session.
+- **Web part** (`web.ts`) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
+
+The interfaces live in `packages/plugins/`. The server, the session host and the web app depend on it. Plugins depend only on it and on `packages/protocol/`, never on app code.
+
+### Server tools
+
+- A server tool has a name, a parameter schema, a filter that picks the Sessions that get it (for example, "has a Project and the coordinator role"), and a handler that runs on the server.
+- When a Session starts, the session host asks the server for that Session's tools and registers them with Pi.
+- A call goes up the Session's stream as `tool.call` with an id, and the server answers with a `tool.result` command ([ADR 0006](0006-provider-protocol.md)). This pair is the only protocol addition. It knows nothing about Projects.
+- If the provider can't reach the server, the call fails at once with an error the model can read.
+- A tool's handler gets the calling Session and its actor, so the plugin can check what the caller may do.
+
+### Events
+
+- The server has an in-process event bus. Kernel code publishes `SessionCreated`, `SessionStateChanged`, `TurnStarted`, `TurnEnded`, `SessionArchived` and `ToolCalled`.
+- Plugins subscribe to it and publish their own events, named `<plugin>.<Event>`.
+- Kernel code never calls a plugin. A feature reacts to events or serves tools and routes.
+- Events are in-process and not stored in v1. Current state in SQLite stays authoritative, as [extensibility.md](../extensibility.md#domain-events) says.
+
+### One start request
+
+- Every new Session starts through one internal start request: actor, Environment, Workspace, model, text to append to the system prompt, and the first message. It knows nothing about Projects. A plugin that starts a Session records its own link to it in its own tables.
+- The web UI's "new Session" uses it, and so do `start_thread` and any later plugin: schedules, webhooks, factories. This is the common execution request from [extensibility.md](../extensibility.md#common-execution-request).
+
+### Web UI
+
+- A plugin's web part claims named slots: `nav` (an entry and a page), `session.panel`, `session.header`, and `message.<type>` renderers for its own custom messages.
+- `mount(element, ctx)` renders into the element it's given and returns an unmount function. Inside it, a plugin uses whatever it wants: plain DOM, Preact, Lit, and its own CSS scoped to its root.
+- `ctx` gives it: requests to its own routes, live events for a Session, opening a Session, navigation, and the theme's CSS variables.
+- Pi extensions' own UI inside a Session (`ctx.ui` widgets, status and dialogs) is still forwarded as before. Plugin UI is a separate layer around it.
+
+### Loading and trust
+
+- v1 plugins live in this repository. The binary and the web bundle import them statically, so the compiled binary needs no dynamic loading.
+- A config list turns plugins off. A plugin that is off registers nothing, and its tables stay untouched.
+- Plugins are trusted and run in the server process, the Session process and the page, like Pi extensions do.
+- The plugin interfaces are internal in v1 and may change. The public SDK and third-party plugins come in v2. Untrusted web parts can then run in a sandboxed iframe that gets the same `ctx` over `postMessage`, so plugins written against `ctx` don't change.
+
+### Actors and owners
+
+- Every Session, Project and plugin record has an `ownerId`. v1 has one user, so it always holds the same value.
+- Every message, command, tool call and memory write records its `actor`: `user:<id>`, `session:<id>` or `plugin:<name>`.
+- This is what multiplayer Projects and team automations need later, without a migration. Permissions and UI for more than one user are not part of v1.
+
+### Layout
+
+- `plugins/<name>/` replaces `pi-extensions/` from ADR 0008. A Pi extension is now the session part of a plugin.
+- The mandatory session bridge stays in the kernel, inside the session host.
+
+## Consequences
+
+- Projects, `ask`, `changes` and `usage` prove the plugin seam with four real users before it's published.
+- Adding a feature, Jobs or Workflows for example, means adding a plugin, not changing the kernel. If a feature needs something the plugin context doesn't offer, the context grows, and so does every later plugin's.
+- Moving `ask`, `changes` and `usage` out is extra work that doesn't change behaviour.
+- The protocol grows by one generic pair of messages instead of one per feature.
+- Plugins can break each other's UI or slow the server, because v1 has no isolation between them.
+- In-process events are lost on restart. A plugin that needs to catch up reads current state from the store.

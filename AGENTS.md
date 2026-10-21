@@ -21,7 +21,7 @@ Pi Cloud is a self-hosted control plane for durable Pi sessions and Projects on 
 ```text
 apps/            thin entry points: the pi-cloud binary (with its adapters) and web
 packages/        domain packages: protocol, sessions, workspaces, providers, sessionhost
-pi-extensions/   Pi packages loaded into hosted sessions, such as cloud-bridge
+plugins/         features built on the kernel, such as projects (ADR 0015)
 ```
 
 - Name packages for what they provide. No `core`, `common`, `utils` or layer-named packages.
