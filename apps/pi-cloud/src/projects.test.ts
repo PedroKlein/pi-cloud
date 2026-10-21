@@ -290,9 +290,9 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
   ]);
 }, 30_000);
 
-test("wakes the coordinator with each thread's turn notice", async () => {
+test("wakes the coordinator once for each thread turn", async () => {
   const a = await repository("app");
-  const notices: string[] = [];
+  const wakes: string[] = [];
 
   const reply = (context: {
     messages: readonly { role: string; content: unknown }[];
@@ -301,9 +301,16 @@ test("wakes the coordinator with each thread's turn notice", async () => {
     const last = lastUserText(context.messages);
 
     if (!seen.includes("You are the coordinator")) {
-      return fauxAssistantMessage([
-        fauxText(last.includes("count") ? "counted 3" : "read 7"),
-      ]);
+      if (last.includes("count")) {
+        return fauxAssistantMessage([fauxText("counted 3")]);
+      }
+
+      return last.includes("Message queued")
+        ? fauxAssistantMessage([fauxText("read 7")])
+        : fauxAssistantMessage(
+            [fauxToolCall("message_coordinator", { text: "read 7" })],
+            { stopReason: "toolUse" },
+          );
     }
 
     if (last.includes("split the work")) {
@@ -316,8 +323,8 @@ test("wakes the coordinator with each thread's turn notice", async () => {
       );
     }
 
-    if (last.includes("finished a turn")) {
-      notices.push(last);
+    if (last.includes("finished a turn") || last.includes("[Thread")) {
+      wakes.push(last);
 
       return fauxAssistantMessage([
         fauxText(
@@ -361,7 +368,10 @@ test("wakes the coordinator with each thread's turn notice", async () => {
     (text) => text.includes("summary: counted 3, read 7"),
   );
 
-  expect(notices).toHaveLength(2);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  expect(wakes).toHaveLength(2);
+  expect(wakes.filter((wake) => wake.includes("[Thread"))).toHaveLength(1);
 }, 30_000);
 
 test("refuses a Project without repositories", async () => {

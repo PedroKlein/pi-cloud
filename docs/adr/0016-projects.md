@@ -75,7 +75,7 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 - A thread's turn notice starts a coordinator turn, like a message, and waits as a follow-up while the coordinator is busy. So does a notice that a thread stopped as interrupted or failed, since no turn notice follows it.
 - A work state change from `set_status` comes in the middle of a thread's turn, so its notice is context that doesn't start a turn (Pi's `sendMessage` with `triggerTurn: false`). The turn notice that follows starts the turn.
 - This replaces an earlier rule that no notice started a turn. In the v1 acceptance run a coordinator told "when they're all done, summarize" had no turn to do it in: it polled with `list_threads` and `sleep`, then ended its turn before the last thread finished. The cost is a coordinator turn per thread turn, and the prompts tell both sides not to answer only to acknowledge.
-- `message_coordinator` sends the thread's own words and starts a coordinator turn the same way.
+- `message_coordinator` sends the thread's own words and starts a coordinator turn the same way. If a thread used it during a turn, that turn's notice is only context, so one thread turn never starts two coordinator turns.
 - If the coordinator's provider is offline, the plugin keeps its notices and messages and delivers them in order once the provider polls again. [ADR 0006](0006-provider-protocol.md) rejects input to an offline provider. These come from the server, not the user, so holding them doesn't change that.
 - Transcripts stay in the threads. The coordinator uses `read_thread` when a notice isn't enough.
 

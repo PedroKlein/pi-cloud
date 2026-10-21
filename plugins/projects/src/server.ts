@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
 import { type Actor, checkoutName } from "@pi-cloud/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
-import { coordinatorPrompt, runState, threadNotice } from "./prompts";
+import {
+  coordinatorPrompt,
+  messagedCoordinator,
+  runState,
+  threadNotice,
+} from "./prompts";
 import { type Project, type ProjectStore, projectStore } from "./projects";
 import { modelRef, projectTools, workState } from "./tools";
 
@@ -113,16 +118,22 @@ function deliver(
         case "turn": {
           const thread = store.member(delivery.threadId);
           if (thread) {
-            sessions.send(
-              sessionId,
-              threadNotice(
-                thread,
-                sessions.get(thread.sessionId),
-                "finished a turn",
-                sessions.transcript(thread.sessionId),
-              ),
-              actor,
+            const transcript = sessions.transcript(thread.sessionId);
+
+            const notice = threadNotice(
+              thread,
+              sessions.get(thread.sessionId),
+              "finished a turn",
+              transcript,
             );
+
+            // A thread that messaged the coordinator this turn already
+            // started a coordinator turn, so its notice is only context.
+            if (messagedCoordinator(transcript)) {
+              sessions.notify(sessionId, notice, actor);
+            } else {
+              sessions.send(sessionId, notice, actor);
+            }
           }
         }
       }

@@ -94,8 +94,31 @@ interface Entry {
   readonly type: string;
   readonly message?: {
     readonly role: string;
-    readonly content: string | readonly { type: string; text?: string }[];
+    readonly content:
+      string | readonly { type: string; text?: string; name?: string }[];
   };
+}
+
+export function messagedCoordinator(transcript: readonly string[]): boolean {
+  for (const line of transcript.toReversed()) {
+    const { message } = JSON.parse(line) as Entry;
+    if (message?.role === "user") {
+      return false;
+    }
+
+    if (
+      message?.role === "assistant" &&
+      typeof message.content !== "string" &&
+      message.content.some(
+        (part) =>
+          part.type === "toolCall" && part.name === "message_coordinator",
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function messageText(line: string): {
