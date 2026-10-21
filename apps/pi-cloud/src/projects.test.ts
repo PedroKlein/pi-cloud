@@ -13,20 +13,22 @@ import {
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { ProjectView } from "@pi-cloud/projects/model";
-import type { Session, ToolSpec } from "@pi-cloud/protocol";
+import type { Environment, Session, ToolSpec } from "@pi-cloud/protocol";
+import { runAgent } from "./agent";
 import { serve } from "./serve";
 
 const run = promisify(execFile);
 
 let root: string;
 let faux: ReturnType<typeof fauxProvider>;
+let runtime: ModelRuntime;
 let server: ReturnType<typeof serve> | undefined;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-projects-")));
   faux = fauxProvider();
 
-  const runtime = await ModelRuntime.create({
+  runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
@@ -522,4 +524,167 @@ test("shares files between the user and Project sessions through the library", a
   ]);
 
   expect(await (await api(`${files}/readme.md`)).text()).toBe("app\n");
+}, 30_000);
+
+test("runs a Project's threads across two machines and two repositories", async () => {
+  const app = await repository("app");
+  const lib = await repository("lib");
+  const laptop = new AbortController();
+
+  const laptopDone = runAgent({
+    server: server?.url.href ?? "",
+    provider: "laptop",
+    dataDir: join(root, "laptop"),
+    agentDir: join(root, "pi"),
+    extensionPaths: [],
+    folders: [],
+    models: { runtime, model: faux.getModel() },
+    log: () => undefined,
+    signal: laptop.signal,
+  });
+
+  const environments = await until(
+    async () =>
+      (await (await api("/api/environments")).json()) as Environment[],
+    (list) => list.length === 2,
+  );
+
+  const local = environments.find(({ provider }) => provider === "local");
+  const onLaptop = environments.find(({ provider }) => provider === "laptop");
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const coordinator = context.messages.some(
+      (message) =>
+        message.role === "system" &&
+        JSON.stringify(message).includes("You are the coordinator"),
+    );
+
+    const last = lastUserText(context.messages);
+
+    if (coordinator && last.includes("split the release")) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("start_thread", {
+            title: "App",
+            message: "work on the app",
+            repositories: [app],
+          }),
+          fauxToolCall("start_thread", {
+            title: "Lib",
+            message: "work on the lib",
+            repositories: [lib],
+            environment: onLaptop?.id ?? "",
+          }),
+          fauxToolCall("start_thread", {
+            title: "Both",
+            message: "work on both",
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (coordinator && last.includes("summarize")) {
+      const said = JSON.stringify(context.messages);
+
+      return fauxAssistantMessage([
+        fauxText(
+          ["app", "lib", "both"]
+            .filter((name) => said.includes(`${name} is ready`))
+            .join(", ") + " reported",
+        ),
+      ]);
+    }
+
+    if (coordinator) {
+      return fauxAssistantMessage([fauxText("threads started")]);
+    }
+
+    if (last.includes("work on ") && !last.includes("Work state set")) {
+      return fauxAssistantMessage(
+        [fauxToolCall("set_status", { state: "review_ready" })],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    const thread = /work on (?:the )?(\w+)/.exec(
+      JSON.stringify(context.messages),
+    )?.[1];
+
+    return fauxAssistantMessage([fauxText(`${thread ?? "?"} is ready`)]);
+  };
+
+  faux.setResponses(Array.from({ length: 30 }, () => reply));
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Release",
+      environment: local?.id,
+      repositories: [app, lib],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "split the release",
+  });
+
+  const { threads } = await until(
+    async () => project(id),
+    (view) =>
+      view.threads.length === 3 &&
+      view.threads.every(
+        ({ workState, runState }) =>
+          workState === "review_ready" && runState === "idle",
+      ),
+  );
+
+  const sessions = await Promise.all(
+    threads.map(
+      async ({ sessionId }) =>
+        (await (await api(`/api/sessions/${sessionId}`)).json()) as Session,
+    ),
+  );
+
+  const byTitle = Object.fromEntries(
+    threads.map((thread, index) => [thread.title, sessions[index]]),
+  );
+
+  expect(byTitle["App"]?.environmentId).toBe(local?.id ?? "");
+  expect(byTitle["Lib"]?.environmentId).toBe(onLaptop?.id ?? "");
+  expect(byTitle["Lib"]?.provider).toBe("laptop");
+
+  expect(byTitle["Both"]?.workspace).toMatchObject({
+    repositories: [{ repository: app }, { repository: lib }],
+  });
+
+  expect(new Set(threads.map(({ branch }) => branch)).size).toBe(3);
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => (text.match(/finished a turn/g) ?? []).length >= 3,
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "summarize",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("app, lib, both reported"),
+  );
+
+  expect(await transcript(coordinatorId)).not.toMatch(/toolName\W+read_thread/);
+
+  laptop.abort();
+  await laptopDone;
 }, 30_000);
