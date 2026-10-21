@@ -400,3 +400,46 @@ test("shows a plugin page's failure without taking the app down", async () => {
   await page.getByRole("heading", { name: "New Project" }).waitFor();
   await page.getByRole("searchbox", { name: "Search sessions" }).waitFor();
 });
+
+test("attaches an image to a message and shows it in the chat", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("a tiny pixel")])]);
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.getByLabel("Attach images").setInputFiles({
+    name: "pixel.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  });
+
+  await page.getByRole("img", { name: "pixel.png" }).waitFor();
+  await page.locator("#prompt-text").fill("what is this?");
+  await page.locator("#prompt-text").press("Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "a tiny pixel" })
+    .waitFor();
+
+  expect(await page.getByRole("img", { name: "pixel.png" }).count()).toBe(0);
+
+  await page.reload();
+
+  await page
+    .locator('#chat li[data-role="user"]', { hasText: "what is this?" })
+    .getByRole("img", { name: "Image 1 sent with this message" })
+    .waitFor();
+}, 30_000);

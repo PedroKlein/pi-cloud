@@ -22,6 +22,33 @@ test("shows user and assistant text", () => {
   ).toEqual([{ role: "assistant", text: "hello" }]);
 });
 
+test("keeps the images a user sent and drops unknown image types", () => {
+  const png = { type: "image", mimeType: "image/png", data: "AAAA" };
+  const svg = { type: "image", mimeType: "image/svg+xml", data: "BBBB" };
+
+  const items = chatItems(
+    line({ role: "user", content: [{ type: "text", text: "look" }, png, svg] }),
+  );
+
+  expect(items).toEqual([
+    {
+      role: "user",
+      text: "look",
+      images: [{ mimeType: "image/png", data: "AAAA" }],
+    },
+  ]);
+
+  expect(turns(items.map((item, key) => ({ ...item, key })))).toEqual([
+    {
+      key: 0,
+      user: "look",
+      images: [{ mimeType: "image/png", data: "AAAA" }],
+      work: [],
+      answer: [],
+    },
+  ]);
+});
+
 test("shows tool calls and their results", () => {
   expect(
     chatItems(

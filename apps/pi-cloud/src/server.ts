@@ -3,6 +3,9 @@ import {
   type Command,
   checkoutName,
   type CreateSession,
+  type ImageAttachment,
+  imageLimits,
+  imageTypes,
   type LivePost,
   type RemovalReport,
   type RepositoryCheckout,
@@ -557,10 +560,14 @@ function browserCommand(body: unknown): Command {
         throw new BadRequest('delivery must be "steer" or "followUp"');
       }
 
+      const images =
+        fields["images"] === undefined ? undefined : imagesOf(fields["images"]);
+
       return {
         actor: user,
         type: "message",
         text: text("text"),
+        ...(images !== undefined && { images }),
         ...(requestId !== undefined && { requestId }),
         ...(delivery !== undefined && { delivery }),
       };
@@ -595,6 +602,39 @@ function browserCommand(body: unknown): Command {
       throw new BadRequest("type must be message, abort, answer or explain");
   }
 }
+
+function imagesOf(value: unknown): readonly ImageAttachment[] {
+  if (!Array.isArray(value) || value.length > imageLimits.count) {
+    throw new BadRequest(
+      `images must be a list of at most ${String(imageLimits.count)}`,
+    );
+  }
+
+  return value.map((image: unknown): ImageAttachment => {
+    const { mimeType, data } = (
+      typeof image === "object" && image !== null ? image : {}
+    ) as Record<string, unknown>;
+
+    const type = imageTypes.find((known) => known === mimeType);
+    if (type === undefined) {
+      throw new BadRequest(`images must be ${imageTypes.join(", ")}`);
+    }
+
+    if (typeof data !== "string" || !base64.test(data)) {
+      throw new BadRequest("image data must be base64");
+    }
+
+    if (Buffer.byteLength(data, "base64") > imageLimits.bytes) {
+      throw new BadRequest(
+        `each image must be at most ${String(imageLimits.bytes / 1024 / 1024)} MB`,
+      );
+    }
+
+    return { mimeType: type, data };
+  });
+}
+
+const base64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
 function startPointOf(startPoint: unknown): { startPoint?: string } {
   if (startPoint === undefined || startPoint === null || startPoint === "") {

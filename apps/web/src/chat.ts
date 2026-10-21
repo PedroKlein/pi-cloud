@@ -1,6 +1,13 @@
+import { type ImageAttachment, imageTypes } from "@pi-cloud/protocol";
+
 export type ChatItem =
   | {
-      readonly role: "user" | "assistant" | "error" | "note";
+      readonly role: "user";
+      readonly text: string;
+      readonly images?: readonly ImageAttachment[];
+    }
+  | {
+      readonly role: "assistant" | "error" | "note";
       readonly text: string;
     }
   | {
@@ -20,6 +27,8 @@ export type ChatItem =
 interface Part {
   readonly type: string;
   readonly text?: string;
+  readonly mimeType?: string;
+  readonly data?: string;
   readonly id?: string;
   readonly name?: string;
   readonly arguments?: unknown;
@@ -64,8 +73,20 @@ export function chatItems(line: string): readonly ChatItem[] {
     .join("");
 
   switch (message.role) {
-    case "user":
-      return [{ role: "user", text }];
+    case "user": {
+      const images = parts.flatMap((part): ImageAttachment[] => {
+        const mimeType = imageTypes.find((known) => known === part.mimeType);
+
+        return part.type === "image" &&
+          mimeType !== undefined &&
+          part.data !== undefined
+          ? [{ mimeType, data: part.data }]
+          : [];
+      });
+
+      return [{ role: "user", text, ...(images.length > 0 && { images }) }];
+    }
+
     case "assistant":
       return [
         ...(text === "" ? [] : [{ role: "assistant", text } as const]),
@@ -147,6 +168,7 @@ export type Work =
 export interface Turn {
   readonly key: number;
   readonly user: string | undefined;
+  readonly images?: readonly ImageAttachment[];
   readonly work: readonly Work[];
   readonly answer: readonly string[];
 }
@@ -156,8 +178,12 @@ export interface Turn {
 export function turns(
   items: readonly (ChatItem & { readonly key: number })[],
 ): readonly Turn[] {
-  const result: { key: number; user: string | undefined; items: ChatItem[] }[] =
-    [];
+  const result: {
+    key: number;
+    user: string | undefined;
+    images: readonly ImageAttachment[] | undefined;
+    items: ChatItem[];
+  }[] = [];
 
   for (const item of items) {
     const current = result.at(-1);
@@ -165,6 +191,7 @@ export function turns(
       result.push({
         key: item.key,
         user: item.role === "user" ? item.text : undefined,
+        images: item.role === "user" ? item.images : undefined,
         items: item.role === "user" ? [] : [item],
       });
     } else {
@@ -172,7 +199,7 @@ export function turns(
     }
   }
 
-  return result.map(({ key, user, items: inTurn }) => {
+  return result.map(({ key, user, images, items: inTurn }) => {
     const lastTool = inTurn.findLastIndex(
       (item) => item.role === "tool" || item.role === "result",
     );
@@ -220,6 +247,7 @@ export function turns(
     return {
       key,
       user,
+      ...(images && { images }),
       work: [
         ...work,
         ...tail.flatMap((item): Work[] =>

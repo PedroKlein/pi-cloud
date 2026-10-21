@@ -1,5 +1,6 @@
 import { cn, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useLayoutEffect, useRef } from "react";
+import { dataUrl } from "./attachments";
 import { describeTool, type Step, turns, type Work } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
@@ -52,6 +53,18 @@ export function ChatView({
                 data-role="user"
                 className="max-w-[85%] self-end rounded-xl rounded-br-sm bg-elevated px-4 py-2.5 text-prose whitespace-pre-wrap text-fg-strong shadow-card [content-visibility:auto]"
               >
+                {turn.images && (
+                  <span className="mb-2 flex flex-wrap justify-end gap-2">
+                    {turn.images.map((image, at) => (
+                      <img
+                        key={`${String(at)}-${image.data.slice(-16)}`}
+                        src={dataUrl(image)}
+                        alt={`Image ${String(at + 1)} sent with this message`}
+                        className="max-h-48 max-w-full rounded-md border border-line object-contain"
+                      />
+                    ))}
+                  </span>
+                )}
                 {turn.user}
               </li>
             ),

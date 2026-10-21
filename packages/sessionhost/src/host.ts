@@ -310,6 +310,12 @@ async function run(
     case "message":
       await session.prompt(command.text, {
         streamingBehavior: command.delivery ?? "steer",
+        ...(command.images && {
+          images: command.images.map((image) => ({
+            type: "image" as const,
+            ...image,
+          })),
+        }),
       });
 
       return;

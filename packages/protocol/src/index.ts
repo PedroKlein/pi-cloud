@@ -284,10 +284,26 @@ export interface LivePost {
 
 export type Actor = `user:${string}` | `session:${string}` | `plugin:${string}`;
 
+// Base64 image data sent to the model with a message (ADR 0006).
+export interface ImageAttachment {
+  readonly mimeType: (typeof imageTypes)[number];
+  readonly data: string;
+}
+
+export const imageTypes = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+] as const;
+
+export const imageLimits = { count: 5, bytes: 5 * 1024 * 1024 } as const;
+
 export type Command = { readonly actor: Actor } & (
   | {
       readonly type: "message";
       readonly text: string;
+      readonly images?: readonly ImageAttachment[];
       readonly requestId?: string;
       readonly delivery?: "steer" | "followUp";
     }
