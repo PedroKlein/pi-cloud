@@ -40,6 +40,27 @@ export interface Assignment {
   readonly generation: number;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
+  readonly systemPrompt: string | null;
+  readonly firstMessage: string | null;
+  readonly plugins: readonly string[];
+}
+
+export interface ToolSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
+}
+
+export interface ToolCall {
+  readonly generation: number;
+  readonly id: string;
+  readonly name: string;
+  readonly input: unknown;
+}
+
+export interface ToolResult {
+  readonly text: string;
+  readonly isError: boolean;
 }
 
 export interface Attempt {
@@ -249,6 +270,11 @@ export type Command = { readonly actor: Actor } & (
   | { readonly type: "abort" }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }
   | {
+      readonly type: "tool_result";
+      readonly id: string;
+      readonly result: ToolResult;
+    }
+  | {
       readonly type: "explain";
       readonly id: string;
       readonly questionId: string;
@@ -281,6 +307,8 @@ export interface Session {
   readonly provider: string;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
+  readonly systemPrompt: string | null;
+  readonly firstMessage: string | null;
   readonly status: SessionStatus;
   readonly generation: number;
   readonly createdAt: string;
@@ -306,6 +334,8 @@ export interface CreateSession {
   readonly environment?: string;
   readonly workspace: WorkspaceRequest;
   readonly model?: ModelRef;
+  readonly systemPrompt?: string;
+  readonly firstMessage?: string;
 }
 
 export type SessionEvent =

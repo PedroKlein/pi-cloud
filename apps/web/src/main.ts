@@ -9,6 +9,7 @@ import type {
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 import { renderPrompt, type RenderedPrompt } from "./prompt";
+import { loadPlugins, mountPage, mountSession, renderNav } from "./plugins";
 import { openTerminal } from "./terminal";
 import { addUsage, describeUsage, type Usage } from "./usage";
 
@@ -51,6 +52,10 @@ const archiveButton = element("archive", HTMLButtonElement);
 const unarchiveButton = element("unarchive", HTMLButtonElement);
 const removeButton = element("remove-workspace", HTMLButtonElement);
 const showArchived = element("show-archived", HTMLInputElement);
+const pluginNav = element("plugin-nav", HTMLElement);
+const pluginPage = element("plugin-page", HTMLElement);
+const pluginHeader = element("plugin-header", HTMLElement);
+const pluginPanels = element("plugin-panels", HTMLElement);
 const promptForm = element("prompt", HTMLFormElement);
 const promptText = element("prompt-text", HTMLTextAreaElement);
 const queued = element("queued", HTMLElement);
@@ -60,6 +65,7 @@ const extensionStatus = element("extension-status", HTMLElement);
 
 let selected: string | undefined;
 let closeEvents = (): void => undefined;
+let closePlugins = (): void => undefined;
 let closeTerminal: (() => void) | undefined;
 let terminalLive = false;
 
@@ -491,6 +497,8 @@ function toggleTerminal(): void {
 
 function select(sessionId: string | undefined): void {
   closeEvents();
+  closePlugins();
+  closePlugins = () => undefined;
   closeTerminal?.();
   closeTerminal = undefined;
   terminalLive = false;
@@ -505,9 +513,20 @@ function select(sessionId: string | undefined): void {
     statusLabel.textContent = "";
     renderUsage({ summary: "", detail: "" });
     closeEvents = follow(sessionId);
+    closePlugins = mountSession(sessionId, pluginHeader, pluginPanels);
   }
 
   refreshSessions().catch(() => undefined);
+}
+
+function route(): void {
+  const hash = location.hash.slice(1);
+  const page = hash.startsWith("plugin/") ? hash.slice(7) : undefined;
+  select(page === undefined ? hash || undefined : undefined);
+  pluginPage.hidden = page === undefined;
+  if (page !== undefined) {
+    closePlugins = mountPage(page, pluginPage);
+  }
 }
 
 function report(error: unknown): void {
@@ -609,11 +628,15 @@ showArchived.addEventListener("change", () => {
   refreshSessions().catch(() => undefined);
 });
 
-window.addEventListener("hashchange", () => {
-  select(location.hash.slice(1) || undefined);
-});
+window.addEventListener("hashchange", route);
 
-select(location.hash.slice(1) || undefined);
+loadPlugins()
+  .then(() => {
+    renderNav(pluginNav);
+  })
+  .catch(() => undefined)
+  .finally(route);
+
 refreshEnvironments().catch(() => undefined);
 
 setInterval(() => {

@@ -15,6 +15,7 @@ import {
   reportRemoval,
   reportStartFailure,
 } from "./client";
+import { sessionExtensions } from "./plugins";
 import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
@@ -99,13 +100,19 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         agentDir: options.agentDir,
         sessionDir: join(options.dataDir, "sessions", sessionId),
         extensionPaths: options.extensionPaths,
+        systemPrompt: assignment.systemPrompt,
         ...(assignment.model && { model: assignment.model }),
       };
 
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
       if (options.models) {
         return await hostSession(
-          { ...sessionOptions, models: options.models },
+          {
+            ...sessionOptions,
+            models: options.models,
+            firstMessage: assignment.firstMessage,
+            extensions: sessionExtensions(assignment.plugins),
+          },
           stream,
           sessionLog,
         );

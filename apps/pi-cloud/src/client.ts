@@ -5,6 +5,8 @@ import {
   type LivePost,
   type RemovalReport,
   type StartFailure,
+  type ToolCall,
+  type ToolSpec,
   protocolVersion,
   type TerminalResize,
   providerHeader,
@@ -156,6 +158,16 @@ export function httpSessionStream(
       return () => {
         controller.abort();
       };
+    },
+    tools: async () =>
+      (await (
+        await call(agent, `${base}/tools?generation=${String(generation)}`, {
+          signal: AbortSignal.timeout(requestTimeoutMs),
+        })
+      ).json()) as ToolSpec[],
+    callTool: async (id, name, input) => {
+      const toolCall: ToolCall = { generation, id, name, input };
+      await post("tool-calls", toolCall);
     },
     terminal: (terminalId, peer) =>
       openTerminalSocket(

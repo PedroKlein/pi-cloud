@@ -13,6 +13,9 @@ const assignment: Assignment = {
   generation: 1,
   workspace: { kind: "folder", path: "/w" },
   model: null,
+  systemPrompt: null,
+  firstMessage: null,
+  plugins: [],
 };
 
 const none: Work = { start: [], unload: [], remove: [] };

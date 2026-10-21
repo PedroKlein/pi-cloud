@@ -9,8 +9,12 @@ import {
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Command, LiveEvent } from "@pi-cloud/protocol";
+import {
+  type ExtensionAPI,
+  ModelRuntime,
+} from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
 
@@ -25,9 +29,14 @@ afterEach(async () => {
 });
 
 function fakeStream(
-  options: { failUploads?: number; failPublishes?: number } = {},
+  options: {
+    failUploads?: number;
+    failPublishes?: number;
+    tools?: readonly ToolSpec[];
+  } = {},
 ): {
   stream: SessionStream;
+  toolCalls: { id: string; name: string; input: unknown }[];
   send: (command: Command) => void;
   events: LiveEvent[];
   lines: string[];
@@ -49,6 +58,7 @@ function fakeStream(
   const events: LiveEvent[] = [];
   const lines: string[] = [];
   const uploads: number[] = [];
+  const toolCalls: { id: string; name: string; input: unknown }[] = [];
 
   const stream: SessionStream = {
     uploadTranscript: async (start, batch) => {
@@ -93,10 +103,16 @@ function fakeStream(
         },
       };
     },
+    tools: async () => Promise.resolve(options.tools ?? []),
+    callTool: async (id, name, input) => {
+      await Promise.resolve();
+      toolCalls.push({ id, name, input });
+    },
   };
 
   return {
     stream,
+    toolCalls,
     send: (command) => listener?.(command),
     events,
     lines,
@@ -1150,4 +1166,112 @@ test("publishes no changes outside a git repository", async () => {
 
   expect(fake.events.some((e) => e.type === "changes")).toBe(false);
   expect(logs).not.toContain("workspace changes failed");
+});
+
+test("runs server tools through the stream and gives the model their result", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("lookup", { key: "answer" })], {
+      stopReason: "toolUse",
+    }),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes("forty-two")
+            ? "the server said forty-two"
+            : "no result",
+        ),
+      ]),
+  ]);
+
+  const fake = fakeStream({
+    tools: [
+      {
+        name: "lookup",
+        description: "Looks a key up on the server",
+        parameters: {
+          type: "object",
+          properties: { key: { type: "string" } },
+          required: ["key"],
+        },
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "look it up" });
+  await fake.waitFor(() => fake.toolCalls.length > 0);
+  const [call] = fake.toolCalls;
+
+  fake.send({
+    actor: "plugin:test",
+    type: "tool_result",
+    id: call?.id ?? "",
+    result: { text: "forty-two", isError: false },
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes("the server said"));
+  await hosted.stop();
+
+  expect(call).toMatchObject({ name: "lookup", input: { key: "answer" } });
+  expect(fake.lines.join()).toContain("the server said forty-two");
+});
+
+test("starts with its first message, its system prompt text and plugin extensions", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([fauxAssistantMessage([fauxText("started")])]);
+
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models,
+    systemPrompt: "You coordinate project X.",
+    firstMessage: "kick off",
+    extensions: [
+      (pi: ExtensionAPI) => {
+        pi.registerTool({
+          name: "plugin_tool",
+          label: "Plugin tool",
+          description: "A tool from a plugin's session part",
+          parameters: Type.Object({}),
+          execute: async () => Promise.resolve({ content: [], details: {} }),
+        });
+      },
+    ],
+  };
+
+  const fake = fakeStream();
+  const first = await hostSession(options, fake.stream, () => undefined);
+  await fake.waitFor(() => roles(fake.lines).includes("assistant"));
+  await first.stop();
+
+  const again = fakeStream();
+  const second = await hostSession(options, again.stream, () => undefined);
+  await again.waitFor(() => again.lines.length >= fake.lines.length);
+  await second.stop();
+
+  const system = fake.lines
+    .map((line) => JSON.parse(line) as { message?: { role: string } })
+    .find((entry) => entry.message?.role === "system");
+
+  expect(roles(fake.lines)).toEqual(["system", "user", "assistant"]);
+  expect(fake.lines.join()).toContain("kick off");
+  expect(JSON.stringify(system)).toContain("You coordinate project X.");
+  expect(JSON.stringify(system)).toContain('"name":"plugin_tool"');
+  expect(roles(again.lines).filter((role) => role === "user")).toHaveLength(1);
 });

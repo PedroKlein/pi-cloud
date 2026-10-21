@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
+import type { KernelEvent, StartRequest } from "@pi-cloud/plugins";
 import type {
   Assignment,
   Attempt,
   Command,
-  CreateSession,
   Environment,
   LiveEvent,
   LivePost,
@@ -65,6 +65,8 @@ export type Result<T> =
 export interface SessionsOptions {
   readonly pollWaitMs?: number;
   readonly offlineAfterMs?: number;
+  readonly events?: (event: KernelEvent) => void;
+  readonly sessionPlugins?: readonly string[];
 }
 
 export interface Claim {
@@ -93,6 +95,8 @@ export class Sessions {
   readonly #store: SessionStore;
   readonly #pollWaitMs: number;
   readonly #offlineAfterMs: number;
+  readonly #events: (event: KernelEvent) => void;
+  readonly #sessionPlugins: readonly string[];
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
@@ -110,9 +114,12 @@ export class Sessions {
     this.#store = store;
     this.#pollWaitMs = options.pollWaitMs ?? 10_000;
     this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
+    this.#events = options.events ?? (() => undefined);
+    this.#sessionPlugins = options.sessionPlugins ?? [];
   }
 
-  create(request: CreateSession): Result<Session> {
+  // The one way a Session starts, for the UI and plugins alike (ADR 0015).
+  start(request: StartRequest): Result<Session> {
     const environments = this.#store.environments();
 
     const environment =
@@ -136,6 +143,8 @@ export class Sessions {
           ? request.workspace
           : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
       model: request.model ?? null,
+      systemPrompt: request.systemPrompt ?? null,
+      firstMessage: request.firstMessage ?? null,
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),
@@ -147,8 +156,15 @@ export class Sessions {
 
     this.#store.insert(session);
     this.#wake(session.provider);
+    const view = this.#view(session);
 
-    return { ok: true, value: this.#view(session) };
+    this.#events({
+      type: "SessionCreated",
+      session: view,
+      actor: request.actor,
+    });
+
+    return { ok: true, value: view };
   }
 
   list({ archived = false } = {}): readonly Session[] {
@@ -178,6 +194,7 @@ export class Sessions {
     this.#hosts.get(id)?.end();
     this.#update(archived);
     this.#wake(session.provider);
+    this.#events({ type: "SessionArchived", session: this.#view(archived) });
 
     return { ok: true, value: this.#view(archived) };
   }
@@ -342,8 +359,20 @@ export class Sessions {
     let session = current.value;
     for (const event of post.events) {
       if (event.type === "status") {
+        const turnStarted =
+          session.status !== "running" && event.status === "running";
+
+        const turnEnded =
+          session.status === "running" && event.status === "idle";
+
         session = { ...session, status: event.status };
         this.#update(session);
+        if (turnStarted || turnEnded) {
+          this.#events({
+            type: turnStarted ? "TurnStarted" : "TurnEnded",
+            session: this.#view(session),
+          });
+        }
       }
 
       this.#trackSurface(id, post.generation, event);
@@ -462,6 +491,10 @@ export class Sessions {
     };
   }
 
+  transcript(id: string): readonly string[] {
+    return this.#store.transcript(id, 0);
+  }
+
   isCurrent(id: string, generation: number): boolean {
     return this.#current(id, generation).ok;
   }
@@ -537,6 +570,9 @@ export class Sessions {
         generation: session.generation,
         workspace: session.workspace,
         model: session.model,
+        systemPrompt: session.systemPrompt,
+        firstMessage: session.firstMessage,
+        plugins: this.#sessionPlugins,
       };
     });
   }
@@ -654,8 +690,13 @@ export class Sessions {
   }
 
   #update(session: StoredSession): void {
+    const previous = this.#store.get(session.id)?.status;
     this.#store.update(session);
-    this.#emit(session.id, { type: "session", session: this.#view(session) });
+    const view = this.#view(session);
+    this.#emit(session.id, { type: "session", session: view });
+    if (previous !== undefined && previous !== session.status) {
+      this.#events({ type: "SessionStateChanged", session: view, previous });
+    }
   }
 
   #view(session: StoredSession): Session {
