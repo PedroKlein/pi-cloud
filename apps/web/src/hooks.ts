@@ -54,3 +54,19 @@ export function useSessions(archived: boolean): Polled<Session> {
 export function useEnvironments(): Polled<Environment> {
   return usePolled("/api/environments") as Polled<Environment>;
 }
+
+export function useNow(everyMs = 30_000): number {
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, everyMs);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [everyMs]);
+
+  return now;
+}

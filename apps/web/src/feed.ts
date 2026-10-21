@@ -5,9 +5,7 @@ import { renderPrompt, type RenderedPrompt } from "./prompt";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
 
-export interface FeedItem extends ChatItem {
-  readonly key: number;
-}
+export type FeedItem = ChatItem & { readonly key: number };
 
 // What the Session view shows, rebuilt from the Session's event stream.
 export interface Feed {
@@ -166,7 +164,7 @@ export function follow(
         return;
       case "notify":
         add({
-          role: event.level === "error" ? "error" : "tool",
+          role: event.level === "error" ? "error" : "note",
           text: event.message,
         });
 
