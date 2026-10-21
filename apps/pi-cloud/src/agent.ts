@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Assignment } from "@pi-cloud/protocol";
+import type { Assignment, Removal } from "@pi-cloud/protocol";
 import { runProvider, type Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
@@ -7,10 +7,11 @@ import {
   listModels,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
-import { prepareWorkspace } from "@pi-cloud/workspaces";
+import { prepareWorkspace, removeWorkspace } from "@pi-cloud/workspaces";
 import {
   httpControlPlane,
   httpSessionStream,
+  reportRemoval,
   reportStartFailure,
 } from "./client";
 
@@ -36,6 +37,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const agent = { server: options.server, provider: options.provider };
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
+  const removing = new Map<string, Promise<void>>();
+
+  const workspaceDir = (sessionId: string): string =>
+    join(options.dataDir, "workspaces", sessionId);
 
   const retire = async (sessionId: string, entry: Hosted): Promise<void> => {
     const stopped = (stopping.get(sessionId) ?? Promise.resolve())
@@ -72,11 +77,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     };
 
     await stopping.get(sessionId);
+    await removing.get(sessionId);
     try {
       const { cwd, base } = await prepareWorkspace(
         assignment.workspace,
         {
-          dir: join(options.dataDir, "workspaces", sessionId),
+          dir: workspaceDir(sessionId),
           folders: options.folders,
           mirrors: join(options.dataDir, "mirrors"),
         },
@@ -116,6 +122,28 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     }
   };
 
+  const remove = async (removal: Removal, sessionLog: Log): Promise<void> => {
+    const { sessionId, workspace, force } = removal;
+    await stopping.get(sessionId);
+    try {
+      const report = await removeWorkspace(
+        workspace,
+        { dir: workspaceDir(sessionId), force },
+        sessionLog,
+      );
+
+      await reportRemoval(agent, sessionId, report);
+    } catch (error) {
+      sessionLog("workspace removal failed", { error: String(error) });
+    }
+  };
+
+  const sessionLogger =
+    (sessionId: string): Log =>
+    (message, fields) => {
+      log(message, { sessionId, ...fields });
+    };
+
   const models = await listModels({
     agentDir: options.agentDir,
     extensionPaths: options.extensionPaths,
@@ -141,10 +169,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       })),
     start: (assignment) => {
       const { sessionId } = assignment;
-
-      const sessionLog: Log = (message, fields) => {
-        log(message, { sessionId, ...fields });
-      };
+      const sessionLog = sessionLogger(sessionId);
 
       const previous = hosted.get(sessionId);
       if (previous) {
@@ -156,6 +181,25 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         session: start(assignment, sessionLog),
       });
     },
+    unload: ({ sessionId, generation }) => {
+      const entry = hosted.get(sessionId);
+      if (entry?.generation === generation) {
+        hosted.delete(sessionId);
+        void retire(sessionId, entry);
+      }
+    },
+    remove: (removal) => {
+      const { sessionId } = removal;
+      if (removing.has(sessionId) || hosted.has(sessionId)) {
+        return;
+      }
+
+      const removed = remove(removal, sessionLogger(sessionId)).finally(() => {
+        removing.delete(sessionId);
+      });
+
+      removing.set(sessionId, removed);
+    },
   });
 
   log("stopping sessions", { count: hosted.size });
@@ -164,5 +208,5 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     [...hosted].map(async ([sessionId, entry]) => retire(sessionId, entry)),
   );
 
-  await Promise.all(stopping.values());
+  await Promise.all([...stopping.values(), ...removing.values()]);
 }

@@ -53,9 +53,21 @@ export interface WorkPoll {
   readonly models: readonly ModelRef[];
 }
 
+export interface Removal {
+  readonly sessionId: string;
+  readonly workspace: Workspace;
+  readonly force: boolean;
+}
+
 export interface Work {
   readonly start: readonly Assignment[];
+  readonly unload: readonly Attempt[];
+  readonly remove: readonly Removal[];
 }
+
+export type RemovalReport =
+  | { readonly outcome: "removed"; readonly restore: string | null }
+  | { readonly outcome: "kept"; readonly reason: string };
 
 export interface StartFailure {
   readonly generation: number;
@@ -255,7 +267,9 @@ export interface TerminalResize {
 }
 
 export type SessionStatus =
-  "queued" | "starting" | ActivityStatus | "interrupted" | "failed";
+  "queued" | "starting" | ActivityStatus | "interrupted" | "failed" | "stopped";
+
+export type WorkspaceRemoval = "pending" | "forced" | "removed" | "kept";
 
 export interface Session {
   readonly id: string;
@@ -267,6 +281,8 @@ export interface Session {
   readonly createdAt: string;
   readonly interruptedAt: string | null;
   readonly error: string | null;
+  readonly archivedAt: string | null;
+  readonly workspaceRemoval: WorkspaceRemoval | null;
   readonly online: boolean;
 }
 

@@ -12,7 +12,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { prepareWorkspace } from "./workspace";
+import { prepareWorkspace, removeWorkspace } from "./workspace";
 
 const run = promisify(execFile);
 
@@ -508,4 +508,171 @@ test("copies nothing into a worktree without .worktreeinclude", async () => {
   );
 
   expect(stat(join(dir, ".env"))).rejects.toThrow();
+});
+
+async function commit(cwd: string, file: string): Promise<void> {
+  await writeFile(join(cwd, file), `${file}\n`);
+  await git(cwd, "add", ".");
+
+  await git(
+    cwd,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-m",
+    file,
+  );
+}
+
+async function checkoutWithRemote(): Promise<string> {
+  const checkout = join(root, "checkout");
+  await git(root, "clone", repository, checkout);
+
+  return checkout;
+}
+
+test("removes a clean worktree and its branch and brings it back from the pushed branch", async () => {
+  const checkout = await checkoutWithRemote();
+  const dir = join(root, "workspaces", "s1");
+  const options = { dir, folders: [checkout] };
+
+  const workspace = {
+    kind: "worktree",
+    path: checkout,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  await prepareWorkspace(workspace, options, noLog);
+  await commit(dir, "work.txt");
+  await git(dir, "push", "origin", "pi-cloud/s1");
+
+  const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
+
+  expect(report).toEqual({ outcome: "removed", restore: "origin/pi-cloud/s1" });
+  expect(stat(dir)).rejects.toThrow();
+  expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(checkout, "worktree", "list")).not.toContain(dir);
+
+  await prepareWorkspace(
+    { ...workspace, startPoint: "origin/pi-cloud/s1" },
+    options,
+    noLog,
+  );
+
+  expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work.txt\n");
+  expect(await git(dir, "branch", "--show-current")).toBe("pi-cloud/s1");
+});
+
+test("keeps a worktree with work git would lose unless forced", async () => {
+  const checkout = await checkoutWithRemote();
+
+  const losses = [
+    {
+      reason: "uncommitted changes",
+      make: async (dir: string) =>
+        writeFile(join(dir, "README.md"), "edited\n"),
+    },
+    {
+      reason: "uncommitted changes",
+      make: async (dir: string) => writeFile(join(dir, "new.txt"), "new\n"),
+    },
+    {
+      reason: "unpushed commits",
+      make: async (dir: string) => commit(dir, "local.txt"),
+    },
+  ];
+
+  for (const [i, { reason, make }] of losses.entries()) {
+    const dir = join(root, "workspaces", `s${String(i)}`);
+
+    const workspace = {
+      kind: "worktree",
+      path: checkout,
+      branch: `pi-cloud/s${String(i)}`,
+    } as const;
+
+    await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
+    await make(dir);
+
+    expect(
+      await removeWorkspace(workspace, { dir, force: false }, noLog),
+    ).toEqual({
+      outcome: "kept",
+      reason,
+    });
+
+    expect((await stat(dir)).isDirectory()).toBe(true);
+
+    expect(
+      (await removeWorkspace(workspace, { dir, force: true }, noLog)).outcome,
+    ).toBe("removed");
+
+    expect(stat(dir)).rejects.toThrow();
+    expect(await git(checkout, "branch", "--list", workspace.branch)).toBe("");
+  }
+});
+
+test("removes a clean clone and keeps one with unpushed commits", async () => {
+  const workspace = {
+    kind: "clone",
+    repository,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  const clean = join(root, "workspaces", "clean");
+  await prepareWorkspace(workspace, { dir: clean, folders: [] }, noLog);
+  await mkdir(join(clean, "build"));
+  await writeFile(join(clean, ".git", "info", "exclude"), "build/\n");
+  await writeFile(join(clean, "build", "out.js"), "built\n");
+
+  expect(
+    await removeWorkspace(workspace, { dir: clean, force: false }, noLog),
+  ).toEqual({ outcome: "removed", restore: "origin/main" });
+
+  expect(stat(clean)).rejects.toThrow();
+
+  const dirty = join(root, "workspaces", "dirty");
+  await prepareWorkspace(workspace, { dir: dirty, folders: [] }, noLog);
+  await commit(dirty, "local.txt");
+
+  expect(
+    await removeWorkspace(workspace, { dir: dirty, force: false }, noLog),
+  ).toEqual({ outcome: "kept", reason: "unpushed commits" });
+
+  expect(
+    await removeWorkspace(workspace, { dir: dirty, force: true }, noLog),
+  ).toEqual({ outcome: "removed", restore: null });
+
+  expect(stat(dirty)).rejects.toThrow();
+});
+
+test("reports a workspace that is already gone as removed", async () => {
+  const checkout = await checkoutWithRemote();
+
+  for (const workspace of [
+    { kind: "worktree", path: checkout, branch: "pi-cloud/s1" },
+    { kind: "clone", repository, branch: "pi-cloud/s2" },
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+
+    expect(
+      await removeWorkspace(workspace, { dir, force: false }, noLog),
+    ).toEqual({ outcome: "removed", restore: null });
+  }
+});
+
+test("never removes a folder workspace", async () => {
+  expect(
+    (
+      await removeWorkspace(
+        { kind: "folder", path: repository },
+        { dir: repository, force: true },
+        noLog,
+      )
+    ).outcome,
+  ).toBe("kept");
+
+  expect(await readFile(join(repository, "README.md"), "utf8")).toBe("hello\n");
 });

@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import type { Assignment, Work, WorkPoll } from "@pi-cloud/protocol";
+import type {
+  Assignment,
+  Attempt,
+  Removal,
+  Work,
+  WorkPoll,
+} from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
 const assignment: Assignment = {
@@ -9,18 +15,34 @@ const assignment: Assignment = {
   model: null,
 };
 
-test("starts assigned sessions and retries failed polls", async () => {
+const none: Work = { start: [], unload: [], remove: [] };
+
+const removal: Removal = {
+  sessionId: "s2",
+  workspace: { kind: "clone", repository: "r", branch: "b" },
+  force: false,
+};
+
+const ignore = { unload: () => undefined, remove: () => undefined };
+
+test("starts, unloads and removes what the server asks and retries failed polls", async () => {
   const controller = new AbortController();
 
   const responses: (() => Work)[] = [
     () => {
       throw new Error("connection refused");
     },
-    () => ({ start: [] }),
-    () => ({ start: [assignment] }),
+    () => none,
+    () => ({
+      start: [assignment],
+      unload: [{ sessionId: "s3", generation: 4 }],
+      remove: [removal],
+    }),
   ];
 
   const started: Assignment[] = [];
+  const unloaded: Attempt[] = [];
+  const removed: Removal[] = [];
   const logs: string[] = [];
 
   await runProvider({
@@ -31,7 +53,7 @@ test("starts assigned sessions and retries failed polls", async () => {
         if (!next) {
           controller.abort();
 
-          return { start: [] };
+          return none;
         }
 
         return next();
@@ -39,6 +61,12 @@ test("starts assigned sessions and retries failed polls", async () => {
     },
     start: (a) => {
       started.push(a);
+    },
+    unload: (a) => {
+      unloaded.push(a);
+    },
+    remove: (r) => {
+      removed.push(r);
     },
     running: () => [],
     folders: [],
@@ -49,6 +77,8 @@ test("starts assigned sessions and retries failed polls", async () => {
   });
 
   expect(started).toEqual([assignment]);
+  expect(unloaded).toEqual([{ sessionId: "s3", generation: 4 }]);
+  expect(removed).toEqual([removal]);
   expect(logs).toContain("work poll failed");
   expect(logs.at(-1)).toBe("provider stopped");
 });
@@ -62,6 +92,7 @@ test("stops while waiting to retry", async () => {
       work: async () => Promise.reject(new Error("down")),
     },
     start: () => undefined,
+    ...ignore,
     running: () => [],
     folders: [],
     models: [],
@@ -92,10 +123,11 @@ test("reports the running attempts, folders and models with every poll", async (
           controller.abort();
         }
 
-        return { start: [] };
+        return none;
       },
     },
     start: () => undefined,
+    ...ignore,
     running: () => running,
     folders: ["/work"],
     models: [{ provider: "openai", id: "gpt-5-mini" }],

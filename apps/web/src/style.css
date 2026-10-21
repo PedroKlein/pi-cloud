@@ -55,7 +55,8 @@ main {
   min-width: 0;
 }
 
-main[hidden] {
+main[hidden],
+form#prompt[hidden] {
   display: none;
 }
 
