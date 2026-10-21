@@ -177,6 +177,9 @@ function optionsFor(typed: Trigger, feed: Feed): readonly Option[] {
         ({ name, description }) => ({ value: `/${name}`, detail: description }),
       );
     case "file":
-      return [];
+      return ranked(feed.files, typed.query, (path) => path).map((path) => ({
+        value: `@${path}`,
+        detail: null,
+      }));
   }
 }

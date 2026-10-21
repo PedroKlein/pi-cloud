@@ -201,7 +201,7 @@ export function Composer({
               />
             </label>
             <span className="flex-1 text-caption text-fg-dim max-sm:hidden">
-              Enter steers · Alt+Enter queues a follow-up · / for commands
+              Enter steers · Alt+Enter queues a follow-up · / commands · @ files
             </span>
             {running && (
               <Button

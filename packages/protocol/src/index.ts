@@ -246,6 +246,12 @@ export type LiveEvent =
   | { readonly type: "title"; readonly title: string }
   // What `/` can run, sent when an attempt starts (ADR 0006).
   | { readonly type: "commands"; readonly commands: readonly SlashCommand[] }
+  // Workspace paths `@` can mention, at most 5,000 (ADR 0006).
+  | {
+      readonly type: "files";
+      readonly paths: readonly string[];
+      readonly truncated: boolean;
+    }
   | {
       readonly type: "plugin";
       readonly plugin: string;

@@ -729,6 +729,8 @@ function surfaceOf(
       return { key: "title", open: true };
     case "commands":
       return { key: "commands", open: true };
+    case "files":
+      return { key: "files", open: true };
     case "plugin":
       return { key: `plugin:${event.plugin}:${event.key}`, open: true };
     case "queue":
