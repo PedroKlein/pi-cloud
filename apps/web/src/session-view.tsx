@@ -13,6 +13,7 @@ import { Composer } from "./composer";
 import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, follow } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
+import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
 import { openTerminal } from "./terminal";
 
@@ -116,10 +117,12 @@ export function SessionView({
           {enabledPlugins().map(({ name, SessionHeader }) =>
             SessionHeader ? (
               <span key={name} data-plugin={name}>
-                <SessionHeader
-                  context={pluginContext(name)}
-                  session={channel.session}
-                />
+                <PluginBoundary name={name}>
+                  <SessionHeader
+                    context={pluginContext(name)}
+                    session={channel.session}
+                  />
+                </PluginBoundary>
               </span>
             ) : null,
           )}
@@ -175,10 +178,12 @@ export function SessionView({
         {enabledPlugins().map(({ name, SessionPanel }) =>
           SessionPanel ? (
             <div key={name} data-plugin={name} className="empty:hidden">
-              <SessionPanel
-                context={pluginContext(name)}
-                session={channel.session}
-              />
+              <PluginBoundary name={name}>
+                <SessionPanel
+                  context={pluginContext(name)}
+                  session={channel.session}
+                />
+              </PluginBoundary>
             </div>
           ) : null,
         )}

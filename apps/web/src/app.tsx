@@ -7,6 +7,7 @@ import {
   useSettledNotices,
 } from "./hooks";
 import { NewSessionDialog } from "./new-session";
+import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, type NavEntry, pluginContext } from "./plugins";
 import { SessionView } from "./session-view";
 import { Sidebar } from "./sidebar";
@@ -172,7 +173,9 @@ function PluginPage({
         className="mx-auto flex max-w-5xl flex-col px-4 py-8 md:px-10"
       >
         {Page ? (
-          <Page context={pluginContext(name)} />
+          <PluginBoundary key={name} name={name}>
+            <Page context={pluginContext(name)} />
+          </PluginBoundary>
         ) : (
           <p className="text-fg-dim">This page isn&apos;t available.</p>
         )}
