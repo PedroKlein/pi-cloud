@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected)
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes)
 - Date: 2026-10-21
 
 ## Context
@@ -53,10 +53,12 @@ A plugin is a workspace package in `plugins/<name>/`. It has up to three parts, 
   - `routes`: HTTP handlers under `/api/plugins/<name>/`.
   - `store`: its own SQLite tables, with its own migrations, named `<plugin>_<table>`.
 - **Session part** (`src/session.ts`) is a plain Pi extension. The session host loads it into every hosted Session, or only into Sessions that match a filter the plugin declares. Anything a Pi extension can do, a plugin can do inside a Session. The host also hands it a small context:
-  - `publish(key, data)` sends a plugin live event `{plugin, key, data}` to everyone watching the Session. The latest value per key is kept and replayed to anyone who opens the Session later, like extension widgets. This is the only way out of a Session for a plugin's own data, and it's the second generic protocol addition.
+  - `publish(key, data)` sends a plugin live event `{plugin, key, data}` to everyone watching the Session. The latest value per key is kept and replayed to anyone who opens the Session later, like extension widgets. It's the second generic protocol addition.
   - `askQuestions` raises the kernel's questions form.
   - A session part can also give tools that replace any extension tool of the same name. `ask` gives `ask_user` this way: a user's own terminal `ask_user` draws a `custom()` dialog, which the web can't show. The session host fails `custom()` with an error the extension can read.
-  - `base`, the commit the Session's workspace started from.
+  - `request(path, init)` sends an HTTP request to the plugin's own server routes as this Session. The agent forwards it to `/agent/sessions/<id>/plugins/<name>/<path>`, fenced by the Session's generation like every other Session call, and the route handler gets the calling Session and its actor. It carries bytes a tool call can't, like files ([ADR 0018](0018-project-library.md)).
+  - A session part's tools are asked for once when the Session starts, and may be async, so a part can ask its server part whether this Session gets them at all.
+  - `checkouts`, each git checkout in the workspace and the commit its branch started from.
 - **Web part** (`web/index.ts`, with its own browser tsconfig) exports `mount(element, ctx)` for each slot or page it claims. See the web section below.
 
 The interfaces live in `packages/plugins/`. The server, the session host and the web app depend on it. Plugins depend only on it and on `packages/protocol/`, never on app code.

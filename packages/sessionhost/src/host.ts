@@ -21,6 +21,11 @@ export interface SessionStream {
   terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
   tools: () => Promise<readonly ToolSpec[]>;
   callTool: (id: string, name: string, input: unknown) => Promise<void>;
+  pluginRequest: (
+    plugin: string,
+    path: string,
+    init?: RequestInit,
+  ) => Promise<Response>;
 }
 
 export interface HostOptions extends SessionOptions {
@@ -123,18 +128,21 @@ export async function hostSession(
       },
       askQuestions: prompts.questions,
       checkouts: options.checkouts ?? [],
+      request: async (path: string, init?: RequestInit) =>
+        stream.pluginRequest(plugin.name, path, init),
       log: (message: string, fields?: Readonly<Record<string, unknown>>) => {
         log(message, { plugin: plugin.name, ...fields });
       },
     },
   }));
 
+  const pluginTools = await Promise.all(
+    plugins.map(async ({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
+  );
+
   const session = await startSession(options, {
     ui: prompts.ui,
-    tools: [
-      ...plugins.flatMap(({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
-      ...calls.tools,
-    ],
+    tools: [...pluginTools.flat(), ...calls.tools],
     extensions: plugins.flatMap(({ plugin, cloud }) =>
       plugin.extension ? [plugin.extension(cloud)] : [],
     ),

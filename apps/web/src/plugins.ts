@@ -1,11 +1,12 @@
 import { changes } from "@pi-cloud/changes/web";
+import { library } from "@pi-cloud/library/web";
 import type { Unmount, WebContext, WebPlugin } from "@pi-cloud/plugins/web";
 import { projects } from "@pi-cloud/projects/web";
 import type { SessionEvent } from "@pi-cloud/protocol";
 import { usage } from "@pi-cloud/usage/web";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
-const webPlugins: readonly WebPlugin[] = [usage, changes, projects];
+const webPlugins: readonly WebPlugin[] = [usage, changes, projects, library];
 
 let enabled: readonly WebPlugin[] = [];
 

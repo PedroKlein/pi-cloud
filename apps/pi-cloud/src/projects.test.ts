@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -298,3 +298,75 @@ test("refuses a Project without repositories", async () => {
 
   expect(response.status).toBe(400);
 });
+
+test("shares files between the user and Project sessions through the library", async () => {
+  const a = await repository("app");
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("fetch_file", {
+          name: "brief.txt",
+          path: "app/brief.txt",
+        }),
+        fauxToolCall("publish_file", {
+          path: "app/README.md",
+          name: "readme.md",
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("shared")]),
+  ]);
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Docs",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  const files = `/api/plugins/library/projects/${id}/files`;
+
+  const uploaded = await fetch(new URL(`${files}/brief.txt`, server?.url), {
+    method: "PUT",
+    body: "the brief\n",
+  });
+
+  expect(uploaded.status).toBe(200);
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "share the readme",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("shared"),
+  );
+
+  expect(
+    await readFile(
+      join(root, "local", "workspaces", coordinatorId, "app", "brief.txt"),
+      "utf8",
+    ),
+  ).toBe("the brief\n");
+
+  expect(await (await api(files)).json()).toMatchObject([
+    { name: "brief.txt", size: 10, actor: "user:local" },
+    { name: "readme.md", size: 4, actor: `session:${coordinatorId}` },
+  ]);
+
+  expect(await (await api(`${files}/readme.md`)).text()).toBe("app\n");
+}, 30_000);

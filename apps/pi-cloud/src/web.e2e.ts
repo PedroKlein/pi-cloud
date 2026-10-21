@@ -162,3 +162,46 @@ test("shows the session's changes and usage from their plugins", async () => {
     .locator('#plugin-header [data-plugin="usage"]', { hasText: "out" })
     .waitFor();
 }, 30_000);
+
+test("creates a Project and shares a file through its library", async () => {
+  const repository = join(root, "site");
+  execFileSync("git", ["init", "--quiet", "--initial-branch=main", repository]);
+  await writeFile(join(repository, "README.md"), "site\n");
+  execFileSync("git", ["add", "."], { cwd: repository });
+
+  execFileSync(
+    "git",
+    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first"],
+    { cwd: repository },
+  );
+
+  await page.goto(server.url.href);
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  const form = page.locator("form.project-create");
+  await form.locator("[name=name]").fill("Site");
+  await form.locator("[name=repositories]").fill(repository);
+  await form.getByRole("button", { name: "New Project" }).click();
+  await page.getByRole("heading", { name: "Site" }).waitFor();
+  await page.getByText("No threads yet.").waitFor();
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Library" })
+    .click();
+
+  await page.getByText("No files yet.").waitFor();
+
+  await page.getByLabel("Upload files").setInputFiles({
+    name: "brief.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("the brief\n"),
+  });
+
+  await page.getByRole("link", { name: "brief.txt" }).waitFor();
+  await page.getByText("user:local wrote brief.txt (10 bytes)").waitFor();
+}, 30_000);

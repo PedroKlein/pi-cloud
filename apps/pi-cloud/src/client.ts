@@ -169,6 +169,16 @@ export function httpSessionStream(
       const toolCall: ToolCall = { generation, id, name, input };
       await post("tool-calls", toolCall);
     },
+    pluginRequest: async (plugin, path, init = {}) => {
+      const url = new URL(`${base}/plugins/${plugin}/${path}`, agent.server);
+      url.searchParams.set("generation", String(generation));
+
+      const headers = new Headers(init.headers);
+      headers.set(versionHeader, String(protocolVersion));
+      headers.set(providerHeader, agent.provider);
+
+      return fetch(url, { ...init, headers });
+    },
     terminal: (terminalId, peer) =>
       openTerminalSocket(
         agent,

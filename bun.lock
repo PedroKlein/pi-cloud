@@ -24,6 +24,7 @@
         "@earendil-works/pi-coding-agent": "1.3.0",
         "@pi-cloud/ask": "workspace:*",
         "@pi-cloud/changes": "workspace:*",
+        "@pi-cloud/library": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
@@ -42,6 +43,7 @@
       "name": "@pi-cloud/web",
       "dependencies": {
         "@pi-cloud/changes": "workspace:*",
+        "@pi-cloud/library": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
@@ -106,6 +108,15 @@
       "name": "@pi-cloud/changes",
       "dependencies": {
         "@pi-cloud/plugins": "workspace:*",
+      },
+    },
+    "plugins/library": {
+      "name": "@pi-cloud/library",
+      "dependencies": {
+        "@earendil-works/pi-ai": "1.3.0",
+        "@earendil-works/pi-coding-agent": "1.3.0",
+        "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/protocol": "workspace:*",
       },
     },
     "plugins/projects": {
@@ -220,6 +231,8 @@
     "@pi-cloud/ask": ["@pi-cloud/ask@workspace:plugins/ask"],
 
     "@pi-cloud/changes": ["@pi-cloud/changes@workspace:plugins/changes"],
+
+    "@pi-cloud/library": ["@pi-cloud/library@workspace:plugins/library"],
 
     "@pi-cloud/pi-cloud": ["@pi-cloud/pi-cloud@workspace:apps/pi-cloud"],
 

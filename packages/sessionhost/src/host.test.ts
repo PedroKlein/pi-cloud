@@ -10,10 +10,12 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import {
+  defineTool,
   type ExtensionAPI,
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import type { SessionPlugin } from "@pi-cloud/plugins";
 import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
 import { ask } from "@pi-cloud/ask/session";
 import { type CheckoutChanges, changes } from "@pi-cloud/changes/session";
@@ -110,6 +112,10 @@ function fakeStream(
       await Promise.resolve();
       toolCalls.push({ id, name, input });
     },
+    pluginRequest: async (plugin, path, init) =>
+      Promise.resolve(
+        Response.json({ plugin, path, body: init?.body ?? null }),
+      ),
   };
 
   return {
@@ -1416,6 +1422,68 @@ test("runs server tools through the stream and gives the model their result", as
 
   expect(call).toMatchObject({ name: "lookup", input: { key: "answer" } });
   expect(fake.lines.join()).toContain("the server said forty-two");
+});
+
+test("lets a plugin's tools reach its own server routes", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("echo", { text: "hi" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  const echo: SessionPlugin = {
+    name: "echo",
+    tools: async ({ request }) =>
+      (await request("member")).ok
+        ? [
+            defineTool({
+              name: "echo",
+              label: "Echo",
+              description: "Sends text to the plugin's server routes",
+              parameters: Type.Object({ text: Type.String() }),
+              async execute(_id, params) {
+                const response = await request("echo", {
+                  method: "PUT",
+                  body: params.text,
+                });
+
+                return {
+                  content: [{ type: "text", text: await response.text() }],
+                  details: undefined,
+                };
+              },
+            }),
+          ]
+        : [],
+  };
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [echo],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "echo hi" });
+  await fake.waitFor(() => fake.lines.join().includes("done"));
+  await hosted.stop();
+
+  expect(fake.lines.join()).toContain(
+    JSON.stringify(
+      JSON.stringify({ plugin: "echo", path: "echo", body: "hi" }),
+    ).slice(1, -1),
+  );
 });
 
 test("starts with its first message, its system prompt text and plugins' extensions", async () => {
