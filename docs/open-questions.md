@@ -69,7 +69,7 @@
 - Which messages should create a new Thread versus reuse an existing one? The coordinator decides; there is no rule yet.
 - Resolved for v1: the coordinator gets a short notice when a thread finishes a turn or changes state, without starting a turn, and threads message the coordinator explicitly ([ADR 0015](adr/0016-projects.md)).
 - Resolved for v1: any Project Session may write Project memory; the last write wins, and every write is logged ([ADR 0015](adr/0016-projects.md)).
-- Are Library artifacts immutable publications, versioned files, or a writable shared space?
+- Resolved for v1: the Project library is a writable shared space on the server, where the last write wins, like memory ([vision](vision.md#v1-personal-sessions-and-projects-on-your-own-machines)). Versioned publications may come later.
 - How are overlapping repository or file claims detected before work begins?
 
 ### Future compatibility without premature implementation
@@ -87,7 +87,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 - When Sessions can move between machines, do they follow Claude Code cloud sessions (resume on fresh compute from the server transcript and a fresh clone), and how does a provider that loses its lease stop its own Sessions? pi-durable resumes mid-turn from its own storage, and OpenHands fences writes with a generation lease ([research](research.md#pi-durable)).
 - What is the default Environment isolation mode for a personal Cell?
-- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod? OpenHands runs a container per conversation behind a proxy in the host server ([research](research.md#openhands)).
+- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod? In v1 each Session is its own process on a shared machine ([ADR 0017](adr/0017-process-per-session.md)). OpenHands runs a container per conversation behind a proxy in the host server ([research](research.md#openhands)).
 - Where do subagents run when the parent Session has a dedicated pod?
 - What resource and concurrency limits prevent nested work from starving other Sessions?
 

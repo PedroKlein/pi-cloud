@@ -36,10 +36,13 @@ These scenarios are the yardstick for scope. A feature that serves none of them 
 - Independent Sessions and Projects with full Thread Sessions.
 - An internal plugin interface. Projects and the other first-party features are default plugins on it ([ADR 0015](adr/0015-plugins.md)).
 - Local and VM Runtime Providers, connected outbound to one Control Plane.
-- One trusted shared-process isolation mode. An Environment means which provider and which directory or worktree.
+- A Project file library, as a plugin after Projects: uploads, files published by threads, and files fetched into a thread's workspace.
+- One trusted mode with no sandbox: each Session runs in its own process on the provider's machine ([ADR 0017](adr/0017-process-per-session.md)). An Environment is a name for one provider ([ADR 0014](adr/0014-concept-map-and-environments.md)).
 - A Session stays on the provider it started on. Moving to another provider is an explicit fork.
 - No authentication. The Control Plane listens on localhost and is reached there or through an SSH tunnel, including from a phone ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
 - A minimal web UI.
+
+v1 is done when all five use cases above pass on the laptop and the VM with a cheap real model, as much of each as possible also runs in CI on the faux model, and no v1 issue is open. Each run is written up with its logs or screenshots.
 
 ### v2: execution platform
 
