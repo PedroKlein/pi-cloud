@@ -521,6 +521,11 @@ function surfaceOf(
       return { key: `widget:${event.key}`, open: event.lines !== null };
     case "title":
       return { key: "title", open: true };
+    case "queue":
+      return {
+        key: "queue",
+        open: event.steering.length > 0 || event.followUp.length > 0,
+      };
     case "status":
     case "notify":
     case "editor_text":

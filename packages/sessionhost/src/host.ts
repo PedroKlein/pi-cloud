@@ -48,6 +48,7 @@ const resent: readonly LiveEvent["type"][] = [
   "extension_status",
   "widget",
   "title",
+  "queue",
 ];
 
 export async function hostSession(
@@ -217,7 +218,9 @@ async function run(
 ): Promise<void> {
   switch (command.type) {
     case "message":
-      await session.prompt(command.text, { streamingBehavior: "steer" });
+      await session.prompt(command.text, {
+        streamingBehavior: command.delivery ?? "steer",
+      });
 
       return;
     case "abort":
@@ -241,6 +244,14 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
     event.assistantMessageEvent.type === "text_delta"
   ) {
     return { type: "text", delta: event.assistantMessageEvent.delta };
+  }
+
+  if (event.type === "queue_update") {
+    return {
+      type: "queue",
+      steering: event.steering,
+      followUp: event.followUp,
+    };
   }
 
   if (event.type === "tool_execution_start") {
