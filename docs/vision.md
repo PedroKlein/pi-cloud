@@ -42,7 +42,7 @@ These scenarios are the yardstick for scope. A feature that serves none of them 
 - No authentication. The Control Plane listens on localhost and is reached there or through an SSH tunnel, including from a phone ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
 - A minimal web UI.
 
-v1 is done when all five use cases above pass on the laptop and the VM with a cheap real model, as much of each as possible also runs in CI on the faux model, and no v1 issue is open. Each run is written up with its logs or screenshots.
+v1 is done when all five use cases above pass on the laptop and the VM with a cheap real model, as much of each as possible also runs in CI on the faux model, and no v1 issue is open. Each run is written up with its logs or screenshots. The v1 runs are in [acceptance/v1.md](acceptance/v1.md).
 
 ### v2: execution platform
 
