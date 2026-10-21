@@ -38,6 +38,7 @@ const terminalButton = element("open-terminal", HTMLButtonElement);
 const abortButton = element("abort", HTMLButtonElement);
 const promptForm = element("prompt", HTMLFormElement);
 const promptText = element("prompt-text", HTMLTextAreaElement);
+const queued = element("queued", HTMLElement);
 const widgetsAbove = element("widgets-above", HTMLElement);
 const widgetsBelow = element("widgets-below", HTMLElement);
 const extensionStatus = element("extension-status", HTMLElement);
@@ -202,6 +203,7 @@ function follow(sessionId: string): () => void {
   const clearSurfaces = (): void => {
     statuses.clear();
     widgets.clear();
+    queued.textContent = "";
     renderSurfaces();
   };
 
@@ -321,6 +323,13 @@ function follow(sessionId: string): () => void {
       case "editor_text":
         promptText.value = event.text;
         promptText.focus();
+
+        return;
+      case "queue":
+        queued.textContent = [
+          ...event.steering.map((text) => `Steering: ${text}`),
+          ...event.followUp.map((text) => `Follow-up: ${text}`),
+        ].join("\n");
 
         return;
     }
@@ -464,8 +473,7 @@ createForm.addEventListener("submit", (event) => {
     });
 });
 
-promptForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+function sendMessage(delivery: "steer" | "followUp"): void {
   const text = promptText.value.trim();
   if (selected === undefined || text === "") {
     return;
@@ -477,13 +485,19 @@ promptForm.addEventListener("submit", (event) => {
     type: "message",
     text,
     requestId: crypto.randomUUID(),
+    delivery,
   }).catch(report);
+}
+
+promptForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendMessage("steer");
 });
 
 promptForm.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
-    promptForm.requestSubmit();
+    sendMessage(event.altKey ? "followUp" : "steer");
   }
 });
 

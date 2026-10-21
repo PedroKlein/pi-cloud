@@ -13,6 +13,7 @@ import {
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
+import { version as serverVersion } from "../package.json";
 import { sseResponse } from "./sse";
 
 const rejectionStatus = {
@@ -28,6 +29,7 @@ type Route = (
 
 export function createHandler(
   sessions: Sessions,
+  checkStore: () => void,
   log: Log,
 ): (request: Request) => Promise<Response> {
   const agent = (route: Route): Route => {
@@ -58,6 +60,22 @@ export function createHandler(
   };
 
   const routes: readonly (readonly [string, RegExp, Route])[] = [
+    [
+      "GET",
+      /^\/healthz$/,
+      () => {
+        try {
+          checkStore();
+        } catch (error) {
+          return Response.json(
+            { status: "unavailable", error: String(error) },
+            { status: 503 },
+          );
+        }
+
+        return Response.json({ status: "ok", version: serverVersion });
+      },
+    ],
     ["GET", /^\/api\/providers$/, () => Response.json(sessions.providers())],
     ["GET", /^\/api\/sessions$/, () => Response.json(sessions.list())],
     [

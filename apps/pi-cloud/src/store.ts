@@ -61,7 +61,10 @@ function migrate(db: DatabaseSync): void {
   db.exec(schema);
 }
 
-export function openStore(path: string): SessionStore & { close: () => void } {
+export function openStore(path: string): SessionStore & {
+  check: () => void;
+  close: () => void;
+} {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
@@ -90,6 +93,7 @@ export function openStore(path: string): SessionStore & { close: () => void } {
     "update sessions set status = ?, generation = ?, interrupted_at = ?, error = ? where id = ?",
   );
 
+  const check = db.prepare("select 1 from sessions limit 1");
   const get = db.prepare("select * from sessions where id = ?");
   const list = db.prepare("select * from sessions order by created_at desc");
 
@@ -152,6 +156,9 @@ export function openStore(path: string): SessionStore & { close: () => void } {
     },
     transcript: (id, from) =>
       (transcript.all(id, from) as { entry: string }[]).map((r) => r.entry),
+    check: () => {
+      check.get();
+    },
     close: () => {
       db.close();
     },

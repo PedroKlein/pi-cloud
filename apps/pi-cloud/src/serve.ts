@@ -20,7 +20,7 @@ export function serve(options: ServeOptions): {
 } {
   const store = openStore(options.database);
   const sessions = new Sessions(store, options.sessions);
-  const handler = createHandler(sessions, options.log);
+  const handler = createHandler(sessions, store.check, options.log);
   const terminals = terminalBroker(sessions, options.log);
 
   const server = Bun.serve({
