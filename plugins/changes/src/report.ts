@@ -7,3 +7,9 @@ export interface Changes {
   readonly patch: string;
   readonly truncated: boolean;
 }
+
+// What one checkout of the workspace changed. name is the checkout's folder
+// in a workspace of several repositories, and empty otherwise.
+export interface CheckoutChanges extends Changes {
+  readonly name: string;
+}

@@ -1,6 +1,7 @@
 export { type EventBus, eventBus } from "./events";
 export type {
   AskQuestions,
+  Checkout,
   Explain,
   KernelEvent,
   PluginEvent,

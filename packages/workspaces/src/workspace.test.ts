@@ -237,7 +237,10 @@ test("remembers the commit a session branch started from", async () => {
 
     const again = await prepareWorkspace(workspace, options, noLog);
 
-    expect([first.base, again.base]).toEqual([start, start]);
+    expect([first.checkouts, again.checkouts]).toEqual([
+      [{ path: first.cwd, base: start }],
+      [{ path: first.cwd, base: start }],
+    ]);
   }
 
   expect(
@@ -247,8 +250,8 @@ test("remembers the commit a session branch started from", async () => {
         { dir: join(root, "unused"), folders: [repository] },
         noLog,
       )
-    ).base,
-  ).toBeNull();
+    ).checkouts,
+  ).toEqual([{ path: repository, base: null }]);
 });
 
 test("starts a session branch from the branch it names", async () => {
@@ -290,7 +293,7 @@ test("starts a session branch from the branch it names", async () => {
       startPoint: feature,
     },
   ] as const) {
-    const { cwd, base } = await prepareWorkspace(
+    const { cwd, checkouts } = await prepareWorkspace(
       workspace,
       {
         dir: join(root, "workspaces", workspace.branch),
@@ -299,7 +302,7 @@ test("starts a session branch from the branch it names", async () => {
       noLog,
     );
 
-    expect(base).toBe(feature);
+    expect(checkouts).toEqual([{ path: cwd, base: feature }]);
     expect(await readFile(join(cwd, "feature.txt"), "utf8")).toBe("feature\n");
     expect(await git(cwd, "branch", "--show-current")).toBe(workspace.branch);
   }
@@ -550,7 +553,11 @@ test("removes a clean worktree and its branch and brings it back from the pushed
 
   const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
 
-  expect(report).toEqual({ outcome: "removed", restore: "origin/pi-cloud/s1" });
+  expect(report).toEqual({
+    outcome: "removed",
+    restore: { ...workspace, startPoint: "origin/pi-cloud/s1" },
+  });
+
   expect(stat(dir)).rejects.toThrow();
   expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
   expect(await git(checkout, "worktree", "list")).not.toContain(dir);
@@ -629,7 +636,10 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
 
   expect(
     await removeWorkspace(workspace, { dir: clean, force: false }, noLog),
-  ).toEqual({ outcome: "removed", restore: "origin/main" });
+  ).toEqual({
+    outcome: "removed",
+    restore: { ...workspace, startPoint: "origin/main" },
+  });
 
   expect(stat(clean)).rejects.toThrow();
 
@@ -643,7 +653,7 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
 
   expect(
     await removeWorkspace(workspace, { dir: dirty, force: true }, noLog),
-  ).toEqual({ outcome: "removed", restore: null });
+  ).toEqual({ outcome: "removed", restore: workspace });
 
   expect(stat(dirty)).rejects.toThrow();
 });
@@ -659,7 +669,7 @@ test("reports a workspace that is already gone as removed", async () => {
 
     expect(
       await removeWorkspace(workspace, { dir, force: false }, noLog),
-    ).toEqual({ outcome: "removed", restore: null });
+    ).toEqual({ outcome: "removed", restore: workspace });
   }
 });
 
@@ -675,4 +685,133 @@ test("never removes a folder workspace", async () => {
   ).toBe("kept");
 
   expect(await readFile(join(repository, "README.md"), "utf8")).toBe("hello\n");
+});
+
+async function repositoryAt(path: string): Promise<void> {
+  await run("git", ["init", "--initial-branch=main", path]);
+  await commit(path, "README.md");
+}
+
+test("checks several repositories out side by side on the session's branch", async () => {
+  const second = join(root, "second");
+  await repositoryAt(second);
+  const checkout = await checkoutWithRemote();
+  await git(checkout, "remote", "set-url", "origin", `${repository}/`);
+
+  const dir = join(root, "workspaces", "s1");
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pi-cloud/s1",
+    repositories: [{ repository }, { repository: second }],
+  } as const;
+
+  const { cwd, checkouts } = await prepareWorkspace(
+    workspace,
+    { dir, folders: [checkout] },
+    noLog,
+  );
+
+  expect(cwd).toBe(dir);
+
+  expect(checkouts.map(({ path }) => path)).toEqual([
+    join(dir, "origin"),
+    join(dir, "second"),
+  ]);
+
+  for (const { path, base } of checkouts) {
+    expect(await git(path, "branch", "--show-current")).toBe("pi-cloud/s1");
+    expect(base).toBe(await git(path, "rev-parse", "HEAD"));
+  }
+
+  expect(await git(checkout, "worktree", "list")).toContain(
+    join(dir, "origin"),
+  );
+
+  expect((await stat(join(dir, "second", ".git"))).isDirectory()).toBe(true);
+
+  const again = await prepareWorkspace(
+    workspace,
+    { dir, folders: [checkout] },
+    noLog,
+  );
+
+  expect(again.checkouts).toEqual(checkouts);
+});
+
+test("matches a folder whose remote names the repository another way", async () => {
+  const checkout = await checkoutWithRemote();
+
+  await git(
+    checkout,
+    "remote",
+    "set-url",
+    "origin",
+    "git@github.com:Example/Tool.git",
+  );
+
+  const dir = join(root, "workspaces", "s1");
+
+  await prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: "https://github.com/example/tool" }],
+    },
+    { dir, folders: [checkout] },
+    noLog,
+  );
+
+  expect(await git(checkout, "worktree", "list")).toContain(join(dir, "tool"));
+});
+
+test("removes several repositories only when none of them would lose work", async () => {
+  const second = join(root, "second");
+  await repositoryAt(second);
+  const checkout = await checkoutWithRemote();
+  const dir = join(root, "workspaces", "s1");
+  const options = { dir, folders: [checkout] };
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pi-cloud/s1",
+    repositories: [{ repository }, { repository: second }],
+  } as const;
+
+  await prepareWorkspace(workspace, options, noLog);
+  await writeFile(join(dir, "second", "draft.txt"), "draft\n");
+
+  expect(
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({ outcome: "kept", reason: "second: uncommitted changes" });
+
+  expect((await stat(join(dir, "origin"))).isDirectory()).toBe(true);
+
+  await rm(join(dir, "second", "draft.txt"));
+  await commit(join(dir, "origin"), "work.txt");
+  await git(join(dir, "origin"), "push", "origin", "pi-cloud/s1");
+
+  const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
+
+  expect(report).toEqual({
+    outcome: "removed",
+    restore: {
+      ...workspace,
+      repositories: [
+        { repository, startPoint: "origin/pi-cloud/s1" },
+        { repository: second, startPoint: "origin/main" },
+      ],
+    },
+  });
+
+  expect(stat(dir)).rejects.toThrow();
+  expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
+
+  if (report.outcome === "removed") {
+    await prepareWorkspace(report.restore, options, noLog);
+  }
+
+  expect(await readFile(join(dir, "origin", "work.txt"), "utf8")).toBe(
+    "work.txt\n",
+  );
 });

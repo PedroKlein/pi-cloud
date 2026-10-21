@@ -122,7 +122,7 @@ export async function hostSession(
         live.push({ type: "plugin", plugin: plugin.name, key, data });
       },
       askQuestions: prompts.questions,
-      base: options.base ?? null,
+      checkouts: options.checkouts ?? [],
       log: (message: string, fields?: Readonly<Record<string, unknown>>) => {
         log(message, { plugin: plugin.name, ...fields });
       },

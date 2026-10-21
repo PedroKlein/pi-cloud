@@ -97,13 +97,20 @@ export type AskQuestions = (
   signal: AbortSignal | undefined,
 ) => Promise<QuestionsAnswer | null>;
 
+// A git checkout in the Session's workspace, and the commit its session
+// branch started from when it has one.
+export interface Checkout {
+  readonly path: string;
+  readonly base: string | null;
+}
+
 // What the session host gives a plugin's Pi extension beyond Pi's own API.
 export interface SessionCloud {
   // Replaces the plugin's last value under key for everyone watching the
   // Session, and for anyone who opens it later.
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
-  readonly base: string | null;
+  readonly checkouts: readonly Checkout[];
   readonly log: (
     message: string,
     fields?: Readonly<Record<string, unknown>>,
