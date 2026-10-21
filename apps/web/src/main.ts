@@ -10,6 +10,7 @@ import type {
 import { chatItems, type ChatItem } from "./chat";
 import { renderPrompt, type RenderedPrompt } from "./prompt";
 import { openTerminal } from "./terminal";
+import { addUsage, describeUsage, type Usage } from "./usage";
 
 const sessionsRefreshMs = 2000;
 
@@ -30,6 +31,7 @@ const sessionList = element("sessions", HTMLUListElement);
 const panel = element("session", HTMLElement);
 const title = element("title", HTMLElement);
 const statusLabel = element("status", HTMLElement);
+const usageLabel = element("usage", HTMLElement);
 const chat = element("chat", HTMLOListElement);
 const terminalBox = element("terminal", HTMLElement);
 const terminalButton = element("open-terminal", HTMLButtonElement);
@@ -177,6 +179,7 @@ function addItem(item: ChatItem): HTMLLIElement {
 
 function follow(sessionId: string): () => void {
   let lines = 0;
+  let usage: ReadonlyMap<string, Usage> = new Map();
   let streaming: HTMLLIElement | undefined;
   const tools = new Map<string, HTMLLIElement>();
   const prompts = new Map<string, RenderedPrompt>();
@@ -358,6 +361,8 @@ function follow(sessionId: string): () => void {
         lines = event.line + 1;
         clearLive();
         chatItems(event.entry).forEach(addItem);
+        usage = addUsage(usage, event.entry);
+        renderUsage(describeUsage(usage));
 
         return;
       case "live":
@@ -371,6 +376,14 @@ function follow(sessionId: string): () => void {
     events.close();
     clearSurfaces();
   };
+}
+
+function renderUsage({
+  summary,
+  detail,
+}: ReturnType<typeof describeUsage>): void {
+  usageLabel.textContent = summary;
+  usageLabel.title = detail;
 }
 
 function toggleTerminal(): void {
@@ -405,6 +418,7 @@ function select(sessionId: string | undefined): void {
     title.textContent = sessionId;
     document.title = "Pi Cloud";
     statusLabel.textContent = "";
+    renderUsage({ summary: "", detail: "" });
     closeEvents = follow(sessionId);
   }
 
