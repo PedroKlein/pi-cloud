@@ -174,6 +174,16 @@ export type LiveEvent =
     }
   | { readonly type: "title"; readonly title: string }
   | {
+      readonly type: "changes";
+      readonly files: readonly {
+        readonly status: string;
+        readonly path: string;
+      }[];
+      readonly stat: string;
+      readonly patch: string;
+      readonly truncated: boolean;
+    }
+  | {
       readonly type: "queue";
       readonly steering: readonly string[];
       readonly followUp: readonly string[];

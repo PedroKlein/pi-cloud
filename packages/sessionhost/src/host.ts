@@ -6,6 +6,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Command, LiveEvent } from "@pi-cloud/protocol";
 import { askUserTool } from "./ask";
+import { workspaceChanges } from "./changes";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
@@ -49,6 +50,7 @@ const resent: readonly LiveEvent["type"][] = [
   "widget",
   "title",
   "queue",
+  "changes",
 ];
 
 export async function hostSession(
@@ -76,10 +78,23 @@ export async function hostSession(
 
   const transcript = transcriptSync(session, stream, log);
 
+  const changes = changesPublisher(
+    session.sessionManager.getCwd(),
+    options.base ?? null,
+    (event) => {
+      live.push(event);
+    },
+    log,
+  );
+
   const unsubscribe = session.subscribe((event) => {
     const liveEvent = toLiveEvent(event);
     if (liveEvent) {
       live.push(liveEvent);
+    }
+
+    if (event.type === "agent_settled") {
+      changes.refresh();
     }
 
     if (
@@ -144,6 +159,7 @@ export async function hostSession(
 
   live.push({ type: "status", status: "idle" });
   transcript.sync();
+  changes.refresh();
 
   return {
     stop: async () => {
@@ -156,6 +172,7 @@ export async function hostSession(
       await stopSession(session);
       unsubscribe();
       transcript.sync();
+      await changes.close();
       await Promise.all([transcript.close(), live.close()]);
     },
   };
@@ -271,6 +288,45 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
   }
 
   return undefined;
+}
+
+function changesPublisher(
+  cwd: string,
+  base: string | null,
+  publish: (event: LiveEvent) => void,
+  log: Log,
+): { refresh: () => void; close: () => Promise<void> } {
+  let running = Promise.resolve();
+  let queued = false;
+
+  const collect = async (): Promise<void> => {
+    queued = false;
+    const started = Date.now();
+    try {
+      const changes = await workspaceChanges(cwd, base);
+      if (changes) {
+        publish(changes);
+
+        log("workspace changes", {
+          files: changes.files.length,
+          truncated: changes.truncated,
+          ms: Date.now() - started,
+        });
+      }
+    } catch (error) {
+      log("workspace changes failed", { error: String(error) });
+    }
+  };
+
+  return {
+    refresh: () => {
+      if (!queued) {
+        queued = true;
+        running = running.then(collect);
+      }
+    },
+    close: async () => running,
+  };
 }
 
 function liveQueue(
