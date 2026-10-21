@@ -135,7 +135,7 @@ test("streams a turn as live events and transcript lines", async () => {
     () => undefined,
   );
 
-  fake.send({ type: "message", text: "hello" });
+  fake.send({ actor: "user:local", type: "message", text: "hello" });
   await fake.waitFor(() => roles(fake.lines).includes("assistant"));
   await hosted.stop();
 
@@ -183,7 +183,7 @@ test("tells clients when a message cannot be sent to the model", async () => {
       () => undefined,
     );
 
-    fake.send({ type: "message", text: "hello" });
+    fake.send({ actor: "user:local", type: "message", text: "hello" });
     await fake.waitFor(() => fake.events.some((e) => e.type === "notify"));
     await hosted.stop();
   } finally {
@@ -217,7 +217,7 @@ test("resends the transcript from the last acknowledged line after a failure", a
     (message) => logs.push(message),
   );
 
-  fake.send({ type: "message", text: "hello" });
+  fake.send({ actor: "user:local", type: "message", text: "hello" });
   await fake.waitFor(() => roles(fake.lines).includes("assistant"));
   await hosted.stop();
 
@@ -310,7 +310,7 @@ test("uploads lines the server is missing as soon as it starts", async () => {
 
   const first = fakeStream();
   const before = await hostSession(options, first.stream, () => undefined);
-  first.send({ type: "message", text: "hello" });
+  first.send({ actor: "user:local", type: "message", text: "hello" });
   await first.waitFor(() => roles(first.lines).includes("assistant"));
   await before.stop();
 
@@ -338,7 +338,14 @@ test("opens a terminal in the session directory on command", async () => {
     () => undefined,
   );
 
-  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
+  fake.send({
+    actor: "user:local",
+    type: "terminal",
+    terminalId: "t1",
+    cols: 80,
+    rows: 24,
+  });
+
   const terminal = fake.terminals.get("t1");
   terminal?.peer.input(new TextEncoder().encode("pwd; exit\n"));
   await fake.waitFor(() => terminal?.closed === true);
@@ -395,11 +402,11 @@ test("asks the user through prompt events and waits for the answer", async () =>
     () => undefined,
   );
 
-  fake.send({ type: "message", text: "ship it" });
+  fake.send({ actor: "user:local", type: "message", text: "ship it" });
   await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
   const prompt = fake.events.find((e) => e.type === "prompt");
   const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
-  fake.send({ type: "answer", id, value: true });
+  fake.send({ actor: "user:local", type: "answer", id, value: true });
   await fake.waitFor(() => fake.lines.join().includes("deployed"));
   await hosted.stop();
 
@@ -441,7 +448,7 @@ test("cancels open prompts when the session stops", async () => {
     () => undefined,
   );
 
-  fake.send({ type: "message", text: "ship it" });
+  fake.send({ actor: "user:local", type: "message", text: "ship it" });
   await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
   await hosted.stop();
 
@@ -470,8 +477,15 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
 
   await rm(cwd, { recursive: true });
 
-  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
-  fake.send({ type: "message", text: "hello" });
+  fake.send({
+    actor: "user:local",
+    type: "terminal",
+    terminalId: "t1",
+    cols: 80,
+    rows: 24,
+  });
+
+  fake.send({ actor: "user:local", type: "message", text: "hello" });
   await fake.waitFor(() => fake.lines.join().includes("still here"));
   await hosted.stop();
 
@@ -532,7 +546,14 @@ test("opens the terminal in the home directory when the path is ~", async () => 
     () => undefined,
   );
 
-  fake.send({ type: "terminal", terminalId: "t1", cols: 80, rows: 24 });
+  fake.send({
+    actor: "user:local",
+    type: "terminal",
+    terminalId: "t1",
+    cols: 80,
+    rows: 24,
+  });
+
   await fake.waitFor(() => fake.terminals.has("t1"));
   fake.terminals.get("t1")?.peer.input(new TextEncoder().encode("pwd\n"));
 
@@ -721,12 +742,13 @@ test("asks structured questions with the built-in ask_user tool", async () => {
     () => undefined,
   );
 
-  fake.send({ type: "message", text: "set it up" });
+  fake.send({ actor: "user:local", type: "message", text: "set it up" });
   await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
   const prompt = fake.events.find((e) => e.type === "prompt");
   const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
 
   fake.send({
+    actor: "user:local",
     type: "answer",
     id,
     value: {
@@ -882,12 +904,13 @@ test("explains an option with the session's model while the form is open", async
     () => undefined,
   );
 
-  fake.send({ type: "message", text: "set it up" });
+  fake.send({ actor: "user:local", type: "message", text: "set it up" });
   await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
   const prompt = fake.events.find((e) => e.type === "prompt");
   const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
 
   fake.send({
+    actor: "user:local",
     type: "explain",
     id,
     questionId: "db",
@@ -896,7 +919,7 @@ test("explains an option with the session's model while the form is open", async
   });
 
   await fake.waitFor(() => fake.events.some((e) => e.type === "explanation"));
-  fake.send({ type: "answer", id, value: null });
+  fake.send({ actor: "user:local", type: "answer", id, value: null });
   await fake.waitFor(() => fake.lines.join().includes("noted"));
   await hosted.stop();
 
@@ -956,9 +979,15 @@ test.each([
       () => undefined,
     );
 
-    fake.send({ type: "message", text: "first" });
+    fake.send({ actor: "user:local", type: "message", text: "first" });
     await fake.waitFor(() => faux.state.callCount === 1);
-    fake.send({ type: "message", text: "second", delivery });
+
+    fake.send({
+      actor: "user:local",
+      type: "message",
+      text: "second",
+      delivery,
+    });
 
     await fake.waitFor(() => fake.events.some((e) => e.type === "queue"));
     release();
@@ -1040,7 +1069,7 @@ test("publishes what the session changed in its git workspace after a turn", asy
     fake.events.filter((e) => e.type === "changes");
 
   await fake.waitFor(() => changes().length === 1);
-  fake.send({ type: "message", text: "write notes" });
+  fake.send({ actor: "user:local", type: "message", text: "write notes" });
   await fake.waitFor(() => changes().length === 2);
   await hosted.stop();
 

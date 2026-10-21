@@ -59,7 +59,11 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   await page.goto(server.url.href);
 
   const form = page.locator("form#create");
-  await form.locator("[name=provider]").fill("e2e");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
   await form.getByRole("button", { name: "New session" }).click();
@@ -92,7 +96,11 @@ test("archives a session, shows it only with archived sessions and unarchives it
   await page.goto(server.url.href);
 
   const form = page.locator("form#create");
-  await form.locator("[name=provider]").fill("e2e");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
   await form.getByRole("button", { name: "New session" }).click();

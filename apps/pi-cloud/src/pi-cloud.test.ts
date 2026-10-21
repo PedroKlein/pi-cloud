@@ -21,7 +21,7 @@ import {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type {
   CreateSession,
-  Provider,
+  Environment,
   Session,
   SessionEvent,
 } from "@pi-cloud/protocol";
@@ -127,12 +127,41 @@ async function api(path: string, body?: unknown): Promise<Response> {
   });
 }
 
+// The server creates a provider's Environment on its first poll. Providers
+// without a running agent poll once here, as a test agent would.
+async function environmentOf(provider: string): Promise<string> {
+  const find = async (): Promise<Environment | undefined> =>
+    ((await (await api("/api/environments")).json()) as Environment[]).find(
+      (environment) => environment.provider === provider,
+    );
+
+  let found = await find();
+  if (!found) {
+    await asAgent(provider, "/agent/work", {
+      running: [],
+      folders: [],
+      models: [],
+    });
+
+    found = await find();
+  }
+
+  if (!found) {
+    throw new Error(`no environment for ${provider}`);
+  }
+
+  return found.id;
+}
+
 async function createSession(
   provider: string,
   workspace: CreateSession["workspace"] = { kind: "folder", path: root },
 ): Promise<Session> {
   return (await (
-    await api("/api/sessions", { provider, workspace })
+    await api("/api/sessions", {
+      environment: await environmentOf(provider),
+      workspace,
+    })
   ).json()) as Session;
 }
 
@@ -527,15 +556,16 @@ test("rejects malformed requests with 400", async () => {
     `/agent/sessions/${session.id}/commands`,
   );
 
-  const noWorkspace = await api("/api/sessions", { provider: "vm" });
+  const environment = await environmentOf("vm");
+  const noWorkspace = await api("/api/sessions", { environment });
 
   const unknownWorkspace = await api("/api/sessions", {
-    provider: "vm",
+    environment,
     workspace: { kind: "volume", path: root },
   });
 
   const optionStartPoint = await api("/api/sessions", {
-    provider: "vm",
+    environment,
     workspace: {
       kind: "clone",
       repository: root,
@@ -923,17 +953,26 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   expect(output).toContain(`branch=${branch}`);
 });
 
-test("lists each provider with the folders and models its agent offers", async () => {
-  let providers: Provider[] = [];
-  while (!providers.some((p) => p.name === "laptop")) {
-    providers = (await (await api("/api/providers")).json()) as Provider[];
+test("lists an Environment for each provider with the folders and models its agent offers", async () => {
+  let environments: Environment[] = [];
+  while (!environments.some((e) => e.provider === "laptop")) {
+    environments = (await (
+      await api("/api/environments")
+    ).json()) as Environment[];
   }
 
-  expect(providers).toMatchObject([
-    { name: "laptop", online: true, folders: [root, join(root, "origin")] },
+  expect(environments).toMatchObject([
+    {
+      id: expect.any(String) as unknown,
+      name: "laptop",
+      provider: "laptop",
+      ownerId: "local",
+      online: true,
+      folders: [root, join(root, "origin")],
+    },
   ]);
 
-  expect(providers[0]?.models).toContainEqual({
+  expect(environments[0]?.models).toContainEqual({
     provider: faux.getModel().provider,
     id: "faux-large",
   });
@@ -945,7 +984,7 @@ test("runs a session on the model it was created with", async () => {
 
   const session = (await (
     await api("/api/sessions", {
-      provider: "laptop",
+      environment: await environmentOf("laptop"),
       workspace: { kind: "folder", path: root },
       model,
     })
@@ -981,7 +1020,7 @@ test("runs a session on the model it was created with", async () => {
 test("fails a session whose model its provider cannot use", async () => {
   const session = (await (
     await api("/api/sessions", {
-      provider: "laptop",
+      environment: await environmentOf("laptop"),
       workspace: { kind: "folder", path: root },
       model: { provider: "nowhere", id: "none" },
     })
@@ -997,7 +1036,7 @@ test("fails a session whose model its provider cannot use", async () => {
 
 test("rejects a session request with a malformed model", async () => {
   const response = await api("/api/sessions", {
-    provider: "laptop",
+    environment: await environmentOf("laptop"),
     workspace: { kind: "folder", path: root },
     model: "faux-large",
   });
@@ -1557,4 +1596,47 @@ test("removes an archived session's workspace when its provider comes back", asy
   await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
 
   expect(stat(dir)).rejects.toThrow();
+});
+
+test("creates a session in the first Environment unless the request names one", async () => {
+  const laptopEnvironment = await environmentOf("laptop");
+  await environmentOf("vm");
+
+  const first = (await (
+    await api("/api/sessions", { workspace: { kind: "folder", path: root } })
+  ).json()) as Session;
+
+  const unknown = await api("/api/sessions", {
+    environment: "nowhere",
+    workspace: { kind: "folder", path: root },
+  });
+
+  expect(first).toMatchObject({
+    environmentId: laptopEnvironment,
+    provider: "laptop",
+    ownerId: "local",
+  });
+
+  expect(unknown.status).toBe(400);
+  expect(await unknown.json()).toEqual({ error: "unknown_environment" });
+});
+
+test("sends browser commands to the session as the owner, whatever the browser claims", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "abort",
+    actor: "plugin:impostor",
+  });
+
+  while (!agentLogs.some((line) => line.startsWith("command received"))) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  expect(
+    agentLogs.filter((line) => line.startsWith("command received")),
+  ).toEqual([
+    `command received ${JSON.stringify({ sessionId: session.id, command: "abort", actor: "user:local" })}`,
+  ]);
 });

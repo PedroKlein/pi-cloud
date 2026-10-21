@@ -108,6 +108,8 @@ export async function hostSession(
   const terminals = new Map<string, () => void>();
 
   const detach = stream.commands((command) => {
+    log("command received", { command: command.type, actor: command.actor });
+
     if (command.type === "answer") {
       prompts.answer(command.id, command.value);
 

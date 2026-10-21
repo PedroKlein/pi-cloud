@@ -10,13 +10,12 @@
     <aside>
       <h1>Pi Cloud</h1>
       <form id="create">
-        <input
-          name="provider"
-          placeholder="provider"
-          list="providers"
+        <select
+          id="environments"
+          name="environment"
+          aria-label="Environment"
           required
-        />
-        <datalist id="providers"></datalist>
+        ></select>
         <select name="kind">
           <option value="worktree">Worktree of folder</option>
           <option value="folder">Folder (shared with other sessions)</option>

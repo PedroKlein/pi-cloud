@@ -3,8 +3,14 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
-import type { ModelRef, Session, SessionEvent } from "@pi-cloud/protocol";
+import type {
+  Environment,
+  ModelRef,
+  Session,
+  SessionEvent,
+} from "@pi-cloud/protocol";
 import { serve } from "./serve";
 import { readSse } from "./sse";
 
@@ -224,9 +230,19 @@ async function terminalPrints(
 
 process.stdout.write(`smoke test in ${cwd} with your Pi setup\n`);
 
+// The smoke provider's Environment appears once its agent first polls.
+let environments: Environment[] = [];
+while (environments.length === 0) {
+  environments = (await (
+    await api("/api/environments")
+  ).json()) as Environment[];
+
+  await sleep(50);
+}
+
 const { id } = (await (
   await api("/api/sessions", {
-    provider: "smoke",
+    environment: environments[0]?.id,
     workspace: { kind: "folder", path: cwd },
     ...(chosenModel && { model: chosenModel }),
   })

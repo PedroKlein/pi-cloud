@@ -14,7 +14,12 @@ import {
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
+import {
+  owner,
+  type Rejection,
+  type Result,
+  type Sessions,
+} from "@pi-cloud/sessions";
 import { version as serverVersion } from "../package.json";
 import { sseResponse } from "./sse";
 
@@ -25,6 +30,7 @@ const rejectionStatus = {
   archived: 409,
   not_archived: 409,
   not_kept: 409,
+  unknown_environment: 400,
 } as const satisfies Record<Rejection, number>;
 
 type Route = (
@@ -92,7 +98,11 @@ export function createHandler(
         return Response.json({ status: "ok", version: serverVersion });
       },
     ],
-    ["GET", /^\/api\/providers$/, () => Response.json(sessions.providers())],
+    [
+      "GET",
+      /^\/api\/environments$/,
+      () => Response.json(sessions.environments()),
+    ],
     [
       "GET",
       /^\/api\/sessions$/,
@@ -108,16 +118,19 @@ export function createHandler(
       "POST",
       /^\/api\/sessions$/,
       async (request) => {
-        const session = sessions.create(
+        const created = sessions.create(
           createSession(await readJson<unknown>(request)),
         );
 
-        log("session created", {
-          sessionId: session.id,
-          provider: session.provider,
-        });
+        if (created.ok) {
+          log("session created", {
+            sessionId: created.value.id,
+            environmentId: created.value.environmentId,
+            provider: created.value.provider,
+          });
+        }
 
-        return Response.json(session, { status: 201 });
+        return reply(created, 201);
       },
     ],
     [
@@ -335,6 +348,9 @@ function reply(result: Result<unknown>, status: number): Response {
 
 class BadRequest extends Error {}
 
+// v1 has no auth, so every browser request acts as the one owner.
+const user = `user:${owner}` as const;
+
 async function readJson<T>(request: Request): Promise<T> {
   try {
     return (await request.json()) as T;
@@ -344,17 +360,21 @@ async function readJson<T>(request: Request): Promise<T> {
 }
 
 function createSession(body: unknown): CreateSession {
-  const { provider, workspace, model } = (body ?? {}) as Record<
+  const { environment, workspace, model } = (body ?? {}) as Record<
     string,
     unknown
   >;
 
-  if (typeof provider !== "string" || provider === "") {
-    throw new BadRequest("provider must be a non-empty string");
+  if (
+    environment !== undefined &&
+    environment !== null &&
+    (typeof environment !== "string" || environment === "")
+  ) {
+    throw new BadRequest("environment must be a non-empty string");
   }
 
   const request = {
-    provider,
+    ...(typeof environment === "string" && { environment }),
     workspace: workspaceRequest(workspace),
   };
 
@@ -432,6 +452,7 @@ function browserCommand(body: unknown): Command {
       }
 
       return {
+        actor: user,
         type: "message",
         text: text("text"),
         ...(requestId !== undefined && { requestId }),
@@ -440,9 +461,10 @@ function browserCommand(body: unknown): Command {
     }
 
     case "abort":
-      return { type: "abort" };
+      return { actor: user, type: "abort" };
     case "answer":
       return {
+        actor: user,
         type: "answer",
         id: text("id"),
         value: fields["value"] as Answer,
@@ -454,6 +476,7 @@ function browserCommand(body: unknown): Command {
       }
 
       return {
+        actor: user,
         type: "explain",
         id: text("id"),
         questionId: text("questionId"),

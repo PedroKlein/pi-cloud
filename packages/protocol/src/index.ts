@@ -237,7 +237,9 @@ export interface LivePost {
   readonly events: readonly LiveEvent[];
 }
 
-export type Command =
+export type Actor = `user:${string}` | `session:${string}` | `plugin:${string}`;
+
+export type Command = { readonly actor: Actor } & (
   | {
       readonly type: "message";
       readonly text: string;
@@ -258,7 +260,8 @@ export type Command =
       readonly terminalId: string;
       readonly cols: number;
       readonly rows: number;
-    };
+    }
+);
 
 export interface TerminalResize {
   readonly type: "resize";
@@ -273,6 +276,8 @@ export type WorkspaceRemoval = "pending" | "forced" | "removed" | "kept";
 
 export interface Session {
   readonly id: string;
+  readonly environmentId: string;
+  readonly ownerId: string;
   readonly provider: string;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
@@ -286,15 +291,19 @@ export interface Session {
   readonly online: boolean;
 }
 
-export interface Provider {
+export interface Environment {
+  readonly id: string;
   readonly name: string;
+  readonly provider: string;
+  readonly ownerId: string;
+  readonly createdAt: string;
   readonly online: boolean;
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
 }
 
 export interface CreateSession {
-  readonly provider: string;
+  readonly environment?: string;
   readonly workspace: WorkspaceRequest;
   readonly model?: ModelRef;
 }
