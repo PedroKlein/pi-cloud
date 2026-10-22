@@ -153,6 +153,7 @@ function SessionRow({
   const now = useNow();
 
   const meta = [
+    ...(session.title === null ? [] : [shortName(session.workspace)]),
     environment?.name ?? session.provider,
     ...(session.model ? [modelName(session.model)] : []),
     session.archivedAt === null ? ago(session.createdAt, now) : "archived",
@@ -172,7 +173,7 @@ function SessionRow({
             current && "text-fg-strong",
           )}
         >
-          {shortName(session.workspace)}
+          {session.title ?? shortName(session.workspace)}
         </span>
         {badge ? <Badge state={badge.state}>{badge.label}</Badge> : <span />}
         <span className="col-span-2 truncate text-caption text-fg-dim">

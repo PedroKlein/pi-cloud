@@ -11,6 +11,7 @@ const session = (change: Partial<Session>): Session => ({
   model: { provider: "github-copilot", id: "gpt-5.3-codex" },
   systemPrompt: null,
   firstMessage: null,
+  title: null,
   status: "idle",
   generation: 1,
   createdAt: "2026-10-21T00:00:00Z",

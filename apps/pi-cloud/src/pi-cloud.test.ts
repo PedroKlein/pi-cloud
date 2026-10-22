@@ -614,6 +614,62 @@ test("keeps transcript lines once and in order across resends", async () => {
   ]);
 });
 
+test("titles a session with its first user message until Pi names it", async () => {
+  const session = await createSession("vm");
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+
+  const generation = work.start[0]?.generation;
+  const path = `/agent/sessions/${session.id}/transcript`;
+
+  const titled = async (): Promise<string | null> =>
+    (
+      (await (await api(`/api/sessions/${session.id}`)).json()) as {
+        title: string | null;
+      }
+    ).title;
+
+  expect(await titled()).toBeNull();
+
+  const entry = (value: unknown): string => JSON.stringify(value);
+
+  await asAgent("vm", path, {
+    generation,
+    start: 0,
+    lines: [
+      entry({ type: "session", version: 3 }),
+      entry({
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: " fix the login bug " }],
+        },
+      }),
+      entry({
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "and the tests" }],
+        },
+      }),
+    ],
+  });
+
+  expect(await titled()).toBe("fix the login bug");
+
+  await asAgent("vm", path, {
+    generation,
+    start: 3,
+    lines: [entry({ type: "session_info", name: "Login fix" })],
+  });
+
+  expect(await titled()).toBe("Login fix");
+});
+
 test("drops messages from an older generation", async () => {
   const session = await createSession("vm");
   await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
