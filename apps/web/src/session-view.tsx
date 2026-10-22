@@ -402,7 +402,7 @@ function PiViewNotice({
     >
       <span className="min-w-0 flex-1">
         {dialog === null
-          ? "Pi is open in a Pi view, so its dialogs show there."
+          ? "Pi is open in a Pi view, so extension dialogs show there."
           : `Pi is asking in the Pi view: ${dialog}`}
       </span>
       <Button variant="ghost" onClick={onOpen}>
