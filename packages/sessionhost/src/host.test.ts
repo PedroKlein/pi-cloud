@@ -1831,6 +1831,49 @@ test("sends the file list and stat when they alone are larger than the patch lim
   expect(checkout?.stat).toContain(`${String(count)} files changed`);
 });
 
+test("caps the published file list and stat but reports the real file count", async () => {
+  const { models } = await fauxModels(root);
+  const repo = await gitRepository();
+  const folder = join(repo, "node_modules", "@scope", "package", "dist", "esm");
+  const limit = 5000;
+  const count = limit + 1000;
+
+  await mkdir(folder, { recursive: true });
+
+  for (let i = 0; i < count; i++) {
+    await writeFile(join(folder, `module-${String(i)}.js`), "a\n");
+  }
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, {
+      cwd: repo,
+      models,
+      plugins: [changes],
+      checkouts: [{ path: repo, base: null }],
+    }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => published(fake.events).length > 0);
+  await hosted.stop();
+
+  const [checkout] = published(fake.events)[0] ?? [];
+
+  expect(checkout).toMatchObject({
+    fileCount: count,
+    patch: "",
+    truncated: true,
+  });
+
+  expect(checkout?.files).toHaveLength(limit);
+  expect(checkout?.stat).toContain(`${String(count)} files changed`);
+  expect(checkout?.stat.split("\n").length).toBeLessThanOrEqual(limit + 2);
+});
+
 // A session branch on a clone whose origin looks like GitHub but is a bare
 // repository under root, and a gh on PATH that answers with reply.
 async function pullRequestSetup(reply: string): Promise<{
