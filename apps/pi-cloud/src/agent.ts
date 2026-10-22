@@ -224,7 +224,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       ? held.report
       : await removeWorkspace(
           workspace,
-          { dir: workspaceDir(sessionId), force },
+          { dir: workspaceDir(sessionId), force, folders: options.folders },
           sessionLog,
         ).catch((error: unknown): RemovalReport => {
           sessionLog("workspace removal failed", { error: String(error) });
