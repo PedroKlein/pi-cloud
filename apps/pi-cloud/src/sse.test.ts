@@ -9,6 +9,41 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 }
 
+function chunked(text: string, size: number): Response {
+  const bytes = new TextEncoder().encode(text);
+
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let offset = 0; offset < bytes.length; offset += size) {
+          controller.enqueue(bytes.subarray(offset, offset + size));
+        }
+
+        controller.close();
+      },
+    }),
+  );
+}
+
+test("reads the same events wherever the stream is split into chunks", async () => {
+  const text = [
+    ": open\n\n",
+    'data: {"n":1}\n\n',
+    'id: 7\ndata: {"text":\ndata: "two lines"}\n\n',
+    'data: {"n":3}\n\n',
+    'data: {"n":4}',
+  ].join("");
+
+  for (let size = 1; size <= text.length; size++) {
+    const events: unknown[] = [];
+    for await (const event of readSse(chunked(text, size))) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{ n: 1 }, { text: "two lines" }, { n: 3 }]);
+  }
+});
+
 test("stops reading a stream that goes quiet", async () => {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {

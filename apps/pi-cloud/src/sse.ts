@@ -87,7 +87,10 @@ export async function* readSse(
     return;
   }
 
-  let buffer = "";
+  // A command can carry megabytes of base64 images. Searching only the new
+  // chunk, and joining the parts once an event ends, keeps reading it linear.
+  let pending: string[] = [];
+  let lastChar = "";
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
 
   const idle = (): void => {
@@ -104,7 +107,15 @@ export async function* readSse(
 
       clearTimeout(watchdog);
       watchdog = setTimeout(idle, idleMs);
-      buffer += value;
+
+      const scanned = lastChar + value;
+      lastChar = scanned.slice(-1);
+      pending.push(value);
+      if (!scanned.includes("\n\n")) {
+        continue;
+      }
+
+      let buffer = pending.join("");
       let end = buffer.indexOf("\n\n");
       while (end !== -1) {
         const data = buffer
@@ -121,6 +132,8 @@ export async function* readSse(
 
         end = buffer.indexOf("\n\n");
       }
+
+      pending = [buffer];
     }
   } finally {
     clearTimeout(watchdog);
