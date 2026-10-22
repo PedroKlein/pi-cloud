@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted
+- Status: accepted, amended 2026-10-22 (views the agent can use)
 - Date: 2026-10-22
 
 ## Context
@@ -32,6 +32,14 @@ v1 code doesn't change because of this ADR. Each part below is built when v2 nee
 - The cost is that Chromium must be installed in the Environment, and the user sees frames instead of a real DOM.
 
 The kernel pieces it needs follow. Each one is generic, and none of them knows about browsers.
+
+### Views the agent can use
+
+The browser is one case of a wider rule: a plugin can give the agent the same view it gives the user, so the agent can work in it and show things there. Not every plugin needs this, and a view that only displays data does without it.
+
+- The view's state lives in the plugin's Session part, or its server part, never only in the page. The agent changes it through the plugin's tools and the user through the web part. The web part draws what the Session part publishes or streams, so both always see the same thing.
+- A Session part can ask the UI to show one of its views with `cloud.reveal(view)`. Every browser watching the Session gets it as a live event the shell understands, and it isn't replayed later. A wide screen opens or focuses the tab next to the chat. A phone shows a notice with a button instead, so it doesn't pull the user away from the chat.
+- What the user does in a view can reach the agent. The web part sends it to the Session as a message that starts a turn, or as context for the next turn. For example, the browser's element picker tells the agent which element the user meant. Context uses the same path as a server part's `sessions.notify`.
 
 ### Plugin channels
 
@@ -111,6 +119,7 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 
 ## Consequences
 
+- Any plugin can make a view the agent works in and shows the user things in, as the browser does. Plugins that don't need it pay nothing.
 - An integrated browser can be built as a plugin from the generic pieces here, with no browser code in the kernel and no browser library dependency.
 - The provider protocol grows by channels and previews. Both reuse the terminal pairing.
 - Previews add a second origin per exposed port and an `Origin` check on the API. That adds a constraint on how v2 authentication handles cookies and hosts.
