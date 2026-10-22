@@ -12,6 +12,7 @@ import {
   healthFrom,
   mergeHealth,
   noHealth,
+  type SessionConfig,
 } from "./model";
 
 // Below the server's 30 second idle timeout.
@@ -43,10 +44,12 @@ export const models: ServerPlugin = {
             );
           }
 
-          return Response.json({
+          const config = {
             version: versions.of(environmentId),
             ...store.get(environmentId),
-          });
+          } satisfies SessionConfig;
+
+          return Response.json(config);
         }
 
         if (method === "POST" && path === "health") {
