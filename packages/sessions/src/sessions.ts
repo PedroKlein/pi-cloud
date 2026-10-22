@@ -332,9 +332,15 @@ export class Sessions {
   }
 
   appendTranscript(id: string, batch: TranscriptBatch): Result<TranscriptAck> {
-    const current = this.#current(id, batch.generation);
-    if (!current.ok) {
-      return current;
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    // An archived attempt still flushes its last lines while it unloads, so a
+    // batch is stale only before the first attempt or after a newer one.
+    if (session.generation === 0 || session.generation !== batch.generation) {
+      return { ok: false, reason: "stale_generation" };
     }
 
     const length = this.#store.transcriptLength(id);
@@ -343,13 +349,13 @@ export class Sessions {
       if (fresh.length > 0) {
         this.#store.appendTranscript(id, length, fresh);
 
-        const title = titleAfter(current.value.title, fresh);
-        if (title !== current.value.title && title !== null) {
+        const title = titleAfter(session.title, fresh);
+        if (title !== session.title && title !== null) {
           this.#store.setTitle(id, title);
 
           this.#emit(id, {
             type: "session",
-            session: this.#view({ ...current.value, title }),
+            session: this.#view({ ...session, title }),
           });
         }
 

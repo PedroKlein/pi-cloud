@@ -690,6 +690,59 @@ test("drops messages from an older generation", async () => {
   expect(await stale.json()).toEqual({ error: "stale_generation" });
 });
 
+test("drops transcript lines for a session no attempt has claimed", async () => {
+  const session = await createSession("vm");
+
+  const early = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/transcript`,
+    { generation: 0, start: 0, lines: ["early"] },
+  );
+
+  expect(early.status).toBe(409);
+});
+
+test("keeps transcript lines the current attempt sends after its session is archived", async () => {
+  const session = await createSession("vm");
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+
+  const generation = work.start[0]?.generation ?? 0;
+  const path = `/agent/sessions/${session.id}/transcript`;
+  await asAgent("vm", path, { generation, start: 0, lines: ["a"] });
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const late = await asAgent("vm", path, {
+    generation,
+    start: 1,
+    lines: ["b"],
+  });
+
+  const older = await asAgent("vm", path, {
+    generation: generation - 1,
+    start: 2,
+    lines: ["old"],
+  });
+
+  expect(late.status).toBe(200);
+  expect(await late.json()).toEqual({ acked: 2 });
+  expect(older.status).toBe(409);
+
+  const replay = await follow(
+    session.id,
+    (events) => events.filter((e) => e.type === "entry").length === 2,
+  );
+
+  expect(replay.flatMap((e) => (e.type === "entry" ? e.entry : []))).toEqual([
+    "a",
+    "b",
+  ]);
+});
+
 test("rejects agent requests with another protocol version or provider", async () => {
   const session = await createSession("vm");
 
@@ -1627,6 +1680,39 @@ test("archives a session: unloads it, hides it, refuses messages and replays it"
   expect(await sent.json()).toEqual({ error: "archived" });
   expect(await listed()).not.toContain(session.id);
   expect(await listed("?archived=true")).toContain(session.id);
+
+  expect(roles(replay).filter((r) => r !== "system")).toEqual([
+    "user",
+    "assistant",
+  ]);
+});
+
+test("keeps the end of a turn that was running when its session was archived", async () => {
+  faux.setResponses([
+    async (_context, options) => {
+      await new Promise((resolve) => {
+        options?.signal?.addEventListener("abort", resolve);
+      });
+
+      return fauxAssistantMessage([fauxText("too late")]);
+    },
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const watching = await watch(session.id);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await watching(status("running"));
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const replay = await follow(session.id, (events) =>
+    roles(events).includes("assistant"),
+  );
 
   expect(roles(replay).filter((r) => r !== "system")).toEqual([
     "user",
