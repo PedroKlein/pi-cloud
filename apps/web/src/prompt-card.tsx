@@ -116,6 +116,7 @@ function SimplePrompt({
         </Actions>
       );
     case "input":
+    case "secret":
     case "editor":
       return (
         <form
@@ -125,18 +126,32 @@ function SimplePrompt({
           }}
           className="flex flex-col gap-3"
         >
-          <textarea
-            aria-label={prompt.title}
-            rows={prompt.kind === "editor" ? 8 : 1}
-            placeholder={
-              prompt.kind === "input" ? (prompt.placeholder ?? "") : ""
-            }
-            value={text}
-            onChange={(event) => {
-              setText(event.target.value);
-            }}
-            className={fieldClass}
-          />
+          {prompt.kind === "secret" ? (
+            <input
+              type="password"
+              aria-label={prompt.title}
+              autoComplete="off"
+              placeholder={prompt.placeholder ?? ""}
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value);
+              }}
+              className={fieldClass}
+            />
+          ) : (
+            <textarea
+              aria-label={prompt.title}
+              rows={prompt.kind === "editor" ? 8 : 1}
+              placeholder={
+                prompt.kind === "input" ? (prompt.placeholder ?? "") : ""
+              }
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value);
+              }}
+              className={fieldClass}
+            />
+          )}
           <Actions>
             <Button variant="primary" type="submit">
               Submit

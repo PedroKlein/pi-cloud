@@ -262,3 +262,14 @@ export function turns(
     };
   });
 }
+
+// Login notes carry the URLs to open (ADR 0024). A URL doesn't end with the
+// sentence's punctuation.
+export function linkParts(
+  text: string,
+): { readonly text: string; readonly link: boolean }[] {
+  return text
+    .split(/(https?:\/\/\S*[^\s.,;:!?)])/)
+    .map((part, at) => ({ text: part, link: at % 2 === 1 }))
+    .filter((part) => part.text !== "");
+}

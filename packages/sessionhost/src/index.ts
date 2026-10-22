@@ -7,4 +7,4 @@ export {
   type TerminalChannel,
   type TerminalPeer,
 } from "./host";
-export { listModels, type SessionOptions } from "./session";
+export { modelLister, type SessionOptions } from "./session";

@@ -74,7 +74,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
     },
     running: () => [],
     folders: [],
-    models: [],
+    models: () => [],
     log: (message) => logs.push(message),
     signal: controller.signal,
     retry: { initialMs: 1, maxMs: 1 },
@@ -99,7 +99,7 @@ test("stops while waiting to retry", async () => {
     ...ignore,
     running: () => [],
     folders: [],
-    models: [],
+    models: () => [],
     log: (message) => {
       logs.push(message);
     },
@@ -113,10 +113,11 @@ test("stops while waiting to retry", async () => {
   expect(logs.at(-1)).toBe("provider stopped");
 });
 
-test("reports the running attempts, folders and models with every poll", async () => {
+test("reports the running attempts, folders and current models with every poll", async () => {
   const controller = new AbortController();
   const polls: WorkPoll[] = [];
   const running = [{ sessionId: "s1", generation: 2 }];
+  const mini = { provider: "openai", id: "gpt-5-mini" };
 
   await runProvider({
     controlPlane: {
@@ -134,16 +135,20 @@ test("reports the running attempts, folders and models with every poll", async (
     ...ignore,
     running: () => running,
     folders: ["/work"],
-    models: [{ provider: "openai", id: "gpt-5-mini" }],
+    models: () =>
+      polls.length === 0
+        ? [mini]
+        : [mini, { provider: "anthropic", id: "claude-haiku" }],
     log: () => undefined,
     signal: controller.signal,
   });
 
-  const poll = {
-    running,
-    folders: ["/work"],
-    models: [{ provider: "openai", id: "gpt-5-mini" }],
-  };
-
-  expect(polls).toEqual([poll, poll]);
+  expect(polls).toEqual([
+    { running, folders: ["/work"], models: [mini] },
+    {
+      running,
+      folders: ["/work"],
+      models: [mini, { provider: "anthropic", id: "claude-haiku" }],
+    },
+  ]);
 });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -2777,12 +2777,14 @@ test("switches the session's model and reasoning level on command", async () => 
 
   await fake.waitFor(() => settings().length > 0);
 
-  expect(settings()[0]).toEqual({
+  expect(settings()[0]).toMatchObject({
     type: "settings",
     model: { provider, id: "quick" },
     thinking: "off",
     levels: ["off"],
   });
+
+  expect(settings()[0]?.models).toContainEqual({ provider, id: "deep" });
 
   fake.send({
     actor: "user:local",
@@ -2892,4 +2894,76 @@ test("runs Pi's built-in commands instead of sending them to the model", async (
     description: "Compact the context now, with optional instructions",
     source: "builtin",
   });
+});
+
+test("logs in to a provider with an API key, and keeps the key out of events and logs", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const logs: string[] = [];
+  const key = "sk-test-not-for-events";
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    (message, fields) => logs.push(`${message} ${JSON.stringify(fields)}`),
+    noTerminal,
+  );
+
+  const say = (text: string): void => {
+    fake.send({ actor: "user:local", type: "message", text });
+  };
+
+  const notices = (): string[] =>
+    fake.events.flatMap((event) =>
+      event.type === "notify" ? [event.message] : [],
+    );
+
+  const answer = async (kind: string, value: string): Promise<void> => {
+    await fake.waitFor(() =>
+      fake.events.some(
+        (event) => event.type === "prompt" && event.prompt.kind === kind,
+      ),
+    );
+
+    const prompt = fake.events.find(
+      (event) => event.type === "prompt" && event.prompt.kind === kind,
+    );
+
+    fake.send({
+      actor: "user:local",
+      type: "answer",
+      id: prompt?.type === "prompt" ? prompt.prompt.id : "",
+      value,
+    });
+  };
+
+  say("/login openai");
+  await answer("select", "Sign in with an API key");
+  await answer("secret", key);
+
+  await fake.waitFor(() =>
+    notices().some((notice) => notice.startsWith("Saved the API key for")),
+  );
+
+  await fake.waitFor(() =>
+    fake.events.some(
+      (event) =>
+        event.type === "settings" &&
+        event.models.some(({ provider }) => provider === "openai"),
+    ),
+  );
+
+  expect(await readFile(join(root, "auth.json"), "utf8")).toContain(key);
+
+  say("/logout openai");
+
+  await fake.waitFor(() =>
+    notices().some((notice) => notice.startsWith("Logged out of")),
+  );
+
+  await hosted.stop();
+
+  expect(await readFile(join(root, "auth.json"), "utf8")).not.toContain(key);
+  expect(JSON.stringify(fake.events)).not.toContain(key);
+  expect(logs.join("\n")).not.toContain(key);
 });

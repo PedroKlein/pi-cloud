@@ -31,6 +31,11 @@ type PromptRequest = Prompt extends infer P
 export function remoteUI(publish: (event: LiveEvent) => void): {
   readonly ui: RemoteUI;
   readonly questions: AskQuestions;
+  readonly secret: (
+    title: string,
+    placeholder: string | undefined,
+    signal: AbortSignal | undefined,
+  ) => Promise<string | undefined>;
   readonly answer: (id: string, value: Answer) => void;
   readonly explain: (command: Extract<Command, { type: "explain" }>) => void;
   readonly cancelAll: () => void;
@@ -155,6 +160,13 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
 
       return typeof value === "object" ? value : null;
     },
+    secret: async (title, placeholder, signal) =>
+      text(
+        await ask(
+          { kind: "secret", title, placeholder: placeholder ?? null },
+          signal ? { signal } : undefined,
+        ),
+      ),
     answer: (id, value) => {
       openPrompts.get(id)?.done(value);
     },
