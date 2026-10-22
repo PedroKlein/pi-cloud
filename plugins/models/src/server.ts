@@ -215,13 +215,15 @@ function changes(signal: AbortSignal): {
       waiting.delete(environmentId);
     },
     changed: async (environmentId, seen, request) => {
-      if (of(environmentId) !== seen) {
+      if (of(environmentId) !== seen || request.aborted || signal.aborted) {
         return;
       }
 
       await new Promise<void>((resolve) => {
         const wake = (): void => {
           clearTimeout(timer);
+          request.removeEventListener("abort", wake);
+          signal.removeEventListener("abort", wake);
           waiting.get(environmentId)?.delete(wake);
           resolve();
         };
