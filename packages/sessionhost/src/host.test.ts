@@ -382,6 +382,93 @@ test("resends extension status and widgets when a live post fails", async () => 
   ]);
 });
 
+test("sends only the latest of each surface after live posts keep failing", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 2 });
+
+  const progress: SessionPlugin = {
+    name: "progress",
+    extension: (cloud) => (pi: ExtensionAPI) => {
+      pi.on("session_start", (_event, ctx) => {
+        cloud.publish("done", 1);
+        ctx.ui.setStatus("build", "1 running");
+        cloud.publish("done", 2);
+        ctx.ui.setStatus("build", "2 running");
+        ctx.ui.setStatus("lint", "failing");
+        ctx.ui.setStatus("lint", undefined);
+      });
+    },
+  };
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [progress],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.length > 0);
+  await hosted.stop();
+
+  expect(
+    fake.events.filter(
+      (e) => e.type !== "status" && !listings.includes(e.type),
+    ),
+  ).toEqual([
+    { type: "plugin", plugin: "progress", key: "done", data: 2 },
+    { type: "extension_status", key: "build", text: "2 running" },
+    { type: "extension_status", key: "lint", text: null },
+  ]);
+});
+
+test("resends only the end of a prompt that closed while its live post failed", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 1 });
+
+  const asking: SessionPlugin = {
+    name: "asking",
+    extension: () => (pi: ExtensionAPI) => {
+      pi.on("session_start", (_event, ctx) => {
+        const cancel = new AbortController();
+
+        void ctx.ui.confirm("Deploy?", "This ships to production", {
+          signal: cancel.signal,
+        });
+
+        cancel.abort();
+      });
+    },
+  };
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [asking],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => fake.events.length > 0);
+  await hosted.stop();
+
+  const prompts = fake.events.flatMap((e) =>
+    e.type === "prompt" || e.type === "prompt_end" ? e.type : [],
+  );
+
+  expect(prompts).toEqual(["prompt_end"]);
+});
+
 test("uploads lines the server is missing as soon as it starts", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);

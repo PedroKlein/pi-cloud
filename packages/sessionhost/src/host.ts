@@ -6,12 +6,13 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionPlugin } from "@pi-cloud/plugins";
-import type {
-  Command,
-  ImageAttachment,
-  LiveEvent,
-  SlashCommand,
-  ToolSpec,
+import {
+  type Command,
+  type ImageAttachment,
+  type LiveEvent,
+  liveSurface,
+  type SlashCommand,
+  type ToolSpec,
 } from "@pi-cloud/protocol";
 import { workspaceFiles } from "./files";
 import { remoteUI } from "./ui";
@@ -63,18 +64,6 @@ export interface HostedSession {
 }
 
 const retryMs = 1000;
-
-const resent: readonly LiveEvent["type"][] = [
-  "prompt",
-  "prompt_end",
-  "extension_status",
-  "widget",
-  "title",
-  "commands",
-  "files",
-  "queue",
-  "plugin",
-];
 
 export type TerminalCommand = Extract<Command, { type: "terminal" }>;
 
@@ -529,10 +518,7 @@ function liveQueue(
         ? undefined
         : events.findLast((event) => event.type === "status");
 
-      const retry = [
-        ...(status ? [status] : []),
-        ...events.filter((event) => resent.includes(event.type)),
-      ];
+      const retry = [...(status ? [status] : []), ...latestSurfaces(events)];
 
       log("live events dropped", {
         count: events.length - retry.length,
@@ -558,6 +544,22 @@ function liveQueue(
       await sending;
     },
   };
+}
+
+// The server keeps only the latest event for each surface, so a failed post
+// needs to resend no more than that.
+function latestSurfaces(events: readonly LiveEvent[]): LiveEvent[] {
+  const latest = new Map<string, LiveEvent>();
+
+  for (const event of events) {
+    const surface = liveSurface(event);
+    if (surface) {
+      latest.delete(surface.key);
+      latest.set(surface.key, event);
+    }
+  }
+
+  return [...latest.values()];
 }
 
 function transcriptSync(
