@@ -162,3 +162,67 @@ test("refuses a detached checkout", async () => {
     error: "the checkout is on a detached HEAD, not its session branch",
   });
 });
+
+// Commits a submodule at lib on the session branch, as the agent would, and
+// returns its folder.
+async function addLibrary({ path }: Checkout): Promise<string> {
+  const library = join(root, "library");
+
+  await git(root, "init", "--quiet", "--initial-branch=main", library);
+  await writeFile(join(library, "lib.txt"), "v1\n");
+  await git(library, "add", "--all");
+  await git(library, "commit", "--quiet", "-m", "first");
+
+  await git(
+    path,
+    "-c",
+    "protocol.file.allow=always",
+    "submodule",
+    "add",
+    "--quiet",
+    library,
+    "lib",
+  );
+
+  await git(path, "commit", "--quiet", "-m", "Add the library");
+
+  return join(path, "lib");
+}
+
+test("pushes the branch's commits when the only uncommitted work is inside a submodule", async () => {
+  const { origin, checkout } = await sessionCheckout();
+  const lib = await addLibrary(checkout);
+
+  await writeFile(join(lib, "lib.txt"), "edited inside\n");
+  await writeFile(join(lib, "build.log"), "built\n");
+
+  expect(await pr(checkout, "")).toEqual({
+    name: "",
+    status: "pushed",
+    branch: "pi-cloud/session",
+  });
+
+  expect(await git(origin, "log", "--format=%s", "pi-cloud/session")).toBe(
+    "Add the library\nfirst",
+  );
+});
+
+test("commits a submodule moved to a new commit", async () => {
+  const { origin, checkout } = await sessionCheckout();
+  const lib = await addLibrary(checkout);
+
+  await writeFile(join(lib, "lib.txt"), "v2\n");
+  await git(lib, "commit", "--quiet", "-am", "v2");
+
+  const reply = async () => Promise.resolve("Move the library\n\nWhy.");
+
+  expect(await pr(checkout, "", reply)).toEqual({
+    name: "",
+    status: "pushed",
+    branch: "pi-cloud/session",
+  });
+
+  expect(await git(origin, "log", "--format=%s", "pi-cloud/session")).toBe(
+    "Move the library\nAdd the library\nfirst",
+  );
+});

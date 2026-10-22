@@ -149,7 +149,11 @@ async function openPullRequest(
     .split("\n")
     .filter((subject) => subject !== "");
 
-  const dirty = (await git(path, "status", "--porcelain")) !== "";
+  // Uncommitted work inside a submodule is left out, like the diff view does,
+  // since git add can't commit it from here.
+  const dirty =
+    (await git(path, "status", "--porcelain", "--ignore-submodules=dirty")) !==
+    "";
 
   if (existing !== undefined) {
     if (dirty) {
