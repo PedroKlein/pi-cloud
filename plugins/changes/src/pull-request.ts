@@ -33,6 +33,8 @@ type Outcome = PullRequest extends infer P
     : never
   : never;
 
+const baseKey = (branch: string): string => `branch.${branch}.piCloudBase`;
+
 const pullRequestKey = (branch: string): string =>
   `branch.${branch}.piCloudPullRequest`;
 
@@ -137,11 +139,7 @@ async function openPullRequest(
   mode: Mode,
   complete: Complete,
 ): Promise<Outcome> {
-  const branch = await git(path, "symbolic-ref", "--short", "HEAD").catch(
-    () => {
-      throw new Error("the checkout is not on a branch");
-    },
-  );
+  const branch = await sessionBranch(path, base);
 
   const existing = await recordedPullRequest(path, branch);
 
@@ -159,7 +157,7 @@ async function openPullRequest(
       await commitAll(path, title);
     }
 
-    await git(path, "push", "--quiet", "--set-upstream", "origin", "HEAD");
+    await push(path, branch);
 
     return { status: "open", url: existing };
   }
@@ -174,7 +172,7 @@ async function openPullRequest(
     await commitAll(path, description.title);
   }
 
-  await git(path, "push", "--quiet", "--set-upstream", "origin", "HEAD");
+  await push(path, branch);
 
   const repository = gitHubRepository(
     await git(path, "config", "--get", "remote.origin.url").catch(() => ""),
@@ -219,6 +217,43 @@ async function openPullRequest(
   await git(path, "config", pullRequestKey(branch), url);
 
   return { status: "open", url };
+}
+
+// The branch the checkout is on, which has to be the session branch base was
+// recorded for: /pr commits to and pushes no other branch.
+async function sessionBranch(path: string, base: string): Promise<string> {
+  const branch = await git(path, "symbolic-ref", "--short", "HEAD").catch(
+    () => {
+      throw new Error(
+        "the checkout is on a detached HEAD, not its session branch",
+      );
+    },
+  );
+
+  const recorded = await git(path, "config", "--get", baseKey(branch)).catch(
+    () => undefined,
+  );
+
+  if (recorded !== base) {
+    throw new Error(`the checkout is on ${branch}, not its session branch`);
+  }
+
+  return branch;
+}
+
+// Names the branch on both sides, so switching branches while /pr runs can't
+// push another one.
+async function push(path: string, branch: string): Promise<void> {
+  const ref = `refs/heads/${branch}`;
+
+  await git(
+    path,
+    "push",
+    "--quiet",
+    "--set-upstream",
+    "origin",
+    `${ref}:${ref}`,
+  );
 }
 
 // The pull request opened earlier for the checkout's branch, if any.
