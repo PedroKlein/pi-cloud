@@ -221,7 +221,7 @@ export type Prompt =
     }
   | {
       readonly id: string;
-      readonly kind: "input";
+      readonly kind: "input" | "secret";
       readonly title: string;
       readonly placeholder: string | null;
     }
@@ -273,13 +273,14 @@ export type LiveEvent =
       readonly followUp: readonly string[];
     }
   | { readonly type: "editor_text"; readonly text: string }
-  // The Session's model and reasoning level, and the levels its model takes
-  // (ADR 0023).
+  // The Session's model and reasoning level, the levels its model takes
+  // (ADR 0023), and the models it has credentials for (ADR 0024).
   | {
       readonly type: "settings";
       readonly model: ModelRef | null;
       readonly thinking: ThinkingLevel;
       readonly levels: readonly ThinkingLevel[];
+      readonly models: readonly ModelRef[];
     }
   | {
       readonly type: "explanation";

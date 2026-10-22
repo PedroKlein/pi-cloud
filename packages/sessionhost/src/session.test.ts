@@ -17,7 +17,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { listModels, startSession, stopSession } from "./session";
+import { modelLister, startSession, stopSession } from "./session";
 import { fauxModels } from "./testdata/models";
 import { sessionOptions } from "./testdata/options";
 
@@ -298,14 +298,26 @@ test("keeps a resumed session on the model it last used", async () => {
   expect(modelName(resumed)).toBe(`${second.provider}/${second.id}`);
 });
 
-test("lists the models Pi can use, with the ones extensions register", async () => {
-  const models = await listModels({
-    agentDir: join(root, "agent"),
+test("lists the models Pi can use, with the ones extensions register and later logins", async () => {
+  const agentDir = join(root, "agent");
+
+  const list = await modelLister({
+    agentDir,
     extensionPaths: [await proxyExtension()],
   });
 
-  expect(models).toContainEqual({ provider: "proxy", id: "proxy-small" });
-  expect(models).toContainEqual({ provider: "proxy", id: "proxy-large" });
+  const before = await list();
+  expect(before).toContainEqual({ provider: "proxy", id: "proxy-small" });
+  expect(before).toContainEqual({ provider: "proxy", id: "proxy-large" });
+  expect(before.some(({ provider }) => provider === "openai")).toBe(false);
+
+  await writeFile(
+    join(agentDir, "auth.json"),
+    JSON.stringify({ openai: { type: "api_key", key: "sk-test" } }),
+  );
+
+  const after = await list();
+  expect(after.some(({ provider }) => provider === "openai")).toBe(true);
 });
 
 test("records an interrupted result for a tool call cut off by a crash", async () => {

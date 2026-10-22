@@ -233,12 +233,13 @@ export async function hostSession(
       command.type === "message" ? builtinOf(session, command.text) : undefined;
 
     if (builtin) {
-      runBuiltin(session, builtin).then(
-        (reply) => {
-          if (reply) {
-            live.push(reply);
-          }
-
+      runBuiltin(session, builtin, {
+        prompts,
+        push: (event) => {
+          live.push(event);
+        },
+      }).then(
+        () => {
           if (builtin.name === "reload") {
             live.push({ type: "commands", commands: slashCommands(session) });
           }
@@ -261,9 +262,9 @@ export async function hostSession(
     }
 
     run(session, command).then(
-      () => {
+      async () => {
         if (command.type === "set_model" || command.type === "set_thinking") {
-          live.push(settings(session));
+          live.push(await settings(session));
         }
       },
       (error: unknown) => {
@@ -280,7 +281,7 @@ export async function hostSession(
 
   live.push({ type: "status", status: "idle" });
   live.push({ type: "commands", commands: slashCommands(session) });
-  live.push(settings(session));
+  live.push(await settings(session));
   files.refresh();
   transcript.sync();
 

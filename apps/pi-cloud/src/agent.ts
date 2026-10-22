@@ -1,11 +1,16 @@
 import { join } from "node:path";
-import type { Assignment, Removal, RemovalReport } from "@pi-cloud/protocol";
+import type {
+  Assignment,
+  ModelRef,
+  Removal,
+  RemovalReport,
+} from "@pi-cloud/protocol";
 import { runProvider, type Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
   hostSession,
   hostTerminals,
-  listModels,
+  modelLister,
   type SessionOptions,
 } from "@pi-cloud/sessionhost";
 import {
@@ -35,6 +40,8 @@ export interface AgentOptions {
   readonly log: Log;
   readonly signal: AbortSignal;
 }
+
+const relistMs = 60_000;
 
 interface Hosted {
   readonly generation: number;
@@ -217,17 +224,42 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       log(message, { sessionId, ...fields });
     };
 
-  const models = await listModels({
+  const listModels = await modelLister({
     agentDir: options.agentDir,
     extensionPaths: options.extensionPaths,
     ...(options.models && { models: options.models }),
   }).catch((error: unknown) => {
     log("models not listed", { error: String(error) });
 
-    return [];
+    return async (): Promise<readonly ModelRef[]> => Promise.resolve([]);
   });
 
-  log("models listed", { count: models.length });
+  let models: readonly ModelRef[] = [];
+
+  const relist = async (): Promise<void> => {
+    const listed = await listModels().catch((error: unknown) => {
+      log("models not listed", { error: String(error) });
+
+      return models;
+    });
+
+    if (listed.length !== models.length) {
+      log("models listed", { count: listed.length });
+    }
+
+    models = listed;
+  };
+
+  await relist();
+
+  // A login in any of its Sessions adds models to the machine (ADR 0024).
+  const relisting = setInterval(() => {
+    void relist();
+  }, relistMs);
+
+  options.signal.addEventListener("abort", () => {
+    clearInterval(relisting);
+  });
 
   // The roots and the checkouts found under them, for the UI to suggest.
   const checkouts = await findCheckouts(options.folders);
@@ -238,7 +270,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     log,
     signal: options.signal,
     folders: [...new Set([...options.folders, ...checkouts])],
-    models,
+    models: () => models,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({
         sessionId,

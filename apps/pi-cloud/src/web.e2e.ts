@@ -865,3 +865,40 @@ test("runs Pi's built-in commands from the composer", async () => {
 
   expect(await page.locator('#chat li[data-role="user"]').count()).toBe(0);
 }, 30_000);
+
+test("logs in to a provider from the model menu", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const model = page.locator("form#prompt").getByLabel("Model");
+
+  await model.selectOption({ label: "Log in to a provider…" });
+  await page.getByRole("button", { name: "Sign in with an API key" }).click();
+  await page.getByRole("button", { name: "OpenAI", exact: true }).click();
+  await page.locator("input[type=password]").fill("sk-e2e");
+  await page.getByRole("button", { name: "Submit" }).click();
+
+  await page
+    .locator("#chat", { hasText: "Saved the API key for OpenAI." })
+    .waitFor();
+
+  await model.locator("option[value^='openai/']").first().waitFor({
+    state: "attached",
+  });
+
+  const box = page.locator("#prompt-text");
+
+  await box.fill("/logout openai");
+  await box.press("Enter");
+  await page.locator("#chat", { hasText: "Logged out of OpenAI." }).waitFor();
+}, 30_000);

@@ -272,6 +272,14 @@ export function Composer({
                     report,
                   );
                 }}
+                onLogin={() => {
+                  command(sessionId, {
+                    type: "message",
+                    text: "/login",
+                    requestId: crypto.randomUUID(),
+                    delivery: "followUp",
+                  }).catch(report);
+                }}
                 onThinking={(level) => {
                   command(sessionId, { type: "set_thinking", level }).catch(
                     report,
@@ -360,12 +368,15 @@ const picker =
 
 // Claude Code's model and effort menus, on Pi's model and reasoning level
 // (ADR 0023).
+const login = "login";
+
 function SettingsPickers({
   settings,
   models,
   modelMenu,
   reasoningMenu,
   onModel,
+  onLogin,
   onThinking,
 }: {
   readonly settings: Settings;
@@ -373,13 +384,18 @@ function SettingsPickers({
   readonly modelMenu: RefObject<HTMLSelectElement | null>;
   readonly reasoningMenu: RefObject<HTMLSelectElement | null>;
   readonly onModel: (model: ModelRef) => void;
+  readonly onLogin: () => void;
   readonly onThinking: (level: Settings["thinking"]) => void;
 }): ReactElement {
   const current = settings.model ? modelName(settings.model) : "";
 
-  const names = [...new Set([current, ...models.map(modelName)])].filter(
-    (name) => name !== "",
-  );
+  const names = [
+    ...new Set([
+      current,
+      ...models.map(modelName),
+      ...settings.models.map(modelName),
+    ]),
+  ].filter((name) => name !== "");
 
   return (
     <>
@@ -388,6 +404,12 @@ function SettingsPickers({
         aria-label="Model"
         value={current}
         onChange={(event) => {
+          if (event.target.value === login) {
+            onLogin();
+
+            return;
+          }
+
           const model = modelRef(event.target.value);
           if (model) {
             onModel(model);
@@ -400,6 +422,7 @@ function SettingsPickers({
             {name}
           </option>
         ))}
+        <option value={login}>Log in to a provider…</option>
       </select>
       {settings.levels.length > 1 && (
         <select

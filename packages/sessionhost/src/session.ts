@@ -102,13 +102,17 @@ export async function startSession(
   return session;
 }
 
-export async function listModels(
+// Pi rereads its auth file, so each call sees logins made since.
+export async function modelLister(
   options: ModelOptions,
-): Promise<readonly ModelRef[]> {
-  const services = await loadServices(homedir(), options);
-  const models = await services.modelRuntime.getAvailable();
+): Promise<() => Promise<readonly ModelRef[]>> {
+  const { modelRuntime } = await loadServices(homedir(), options);
 
-  return models.map(({ provider, id }) => ({ provider, id }));
+  return async () =>
+    (await modelRuntime.getAvailable()).map(({ provider, id }) => ({
+      provider,
+      id,
+    }));
 }
 
 // Services register the providers extensions add before the default model is

@@ -1,7 +1,12 @@
 import { cn, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useLayoutEffect, useRef } from "react";
+import {
+  type ReactElement,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { dataUrl } from "./attachments";
-import { describeTool, type Step, turns, type Work } from "./chat";
+import { describeTool, linkParts, type Step, turns, type Work } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
 
@@ -299,7 +304,25 @@ function WorkNote({
       {kind === "note" && (
         <Icon name="info" className="mt-0.5 size-4 shrink-0" />
       )}
-      {text}
+      <span className="min-w-0 break-words">{linked(text)}</span>
     </p>
+  );
+}
+
+function linked(text: string): ReactNode[] {
+  return linkParts(text).map((part, at) =>
+    part.link ? (
+      <a
+        key={at}
+        href={part.text}
+        target="_blank"
+        rel="noreferrer"
+        className="text-fg underline"
+      >
+        {part.text}
+      </a>
+    ) : (
+      part.text
+    ),
   );
 }

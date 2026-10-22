@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chatItems, describeTool, turns } from "./chat";
+import { chatItems, describeTool, linkParts, turns } from "./chat";
 
 const line = (message: unknown): string =>
   JSON.stringify({ type: "message", id: "1", message });
@@ -171,5 +171,19 @@ test("groups a turn into its work and its answer", () => {
       answer: ["Fixed."],
     },
     { key: 7, user: "thanks", work: [], answer: [] },
+  ]);
+});
+
+test("finds the URLs in a note, without the punctuation after them", () => {
+  expect(
+    linkParts("Enter the code AB-12 at https://github.com/login/device."),
+  ).toEqual([
+    { text: "Enter the code AB-12 at ", link: false },
+    { text: "https://github.com/login/device", link: true },
+    { text: ".", link: false },
+  ]);
+
+  expect(linkParts("No links here")).toEqual([
+    { text: "No links here", link: false },
   ]);
 });
