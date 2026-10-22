@@ -12,7 +12,6 @@ import {
   createMcpExtension,
   createToolSearchExtension,
   type ExtensionError,
-  type ExtensionFactory,
   initTheme,
   type InlineExtension,
   type ModelRuntime,
@@ -44,7 +43,7 @@ export interface SessionOptions extends ModelOptions {
 export interface SessionHost {
   readonly ui: RemoteUI;
   readonly tools: readonly ToolDefinition[];
-  readonly extensions: readonly ExtensionFactory[];
+  readonly extensions: readonly InlineExtension[];
   readonly onError: (error: ExtensionError) => void;
 }
 

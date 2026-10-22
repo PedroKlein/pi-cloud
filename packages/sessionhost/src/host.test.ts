@@ -3227,3 +3227,22 @@ test("refuses to replace the session from the TUI", async () => {
 
   expect(pi.screen()).not.toContain("New session started");
 }, 20_000);
+
+test("lists Pi Cloud's own extensions by name in the TUI", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  await hosted.stop();
+
+  expect(pi.screen()).toContain("<inline:pi-view>");
+  expect(pi.screen()).not.toContain("<inline:1>");
+}, 20_000);
