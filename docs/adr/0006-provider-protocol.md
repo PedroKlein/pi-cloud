@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message)
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands)
 - Date: 2026-10-17
 
 ## Context
