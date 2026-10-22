@@ -403,9 +403,12 @@ test("shows the session's changes and usage from their plugins", async () => {
   await page.locator("#prompt-text").fill("write notes");
   await page.locator("#prompt-text").press("Enter");
 
-  const changes = page.locator('#plugin-panels [data-plugin="changes"]');
-  await changes.getByText("Changes (1 file)").click();
+  await page.getByRole("button", { name: "Diff, 1 file changed" }).click();
+  const changes = page.getByRole("dialog", { name: "Changes" });
+  await changes.getByText("Changes (1 file)").waitFor();
   await changes.locator("tr", { hasText: "new notes" }).waitFor();
+  await page.keyboard.press("Escape");
+  await changes.waitFor({ state: "hidden" });
 
   await page
     .locator('#plugin-header [data-plugin="usage"]', { hasText: "out" })
@@ -713,7 +716,8 @@ test("creates a pull request from the Changes panel", async () => {
     await page.locator("#prompt-text").fill("add a widget");
     await page.locator("#prompt-text").press("Enter");
 
-    const changes = page.locator('#plugin-panels [data-plugin="changes"]');
+    await page.getByRole("button", { name: "Diff, 1 file changed" }).click();
+    const changes = page.getByRole("dialog", { name: "Changes" });
     await changes.getByText("Changes (1 file)").waitFor();
 
     await changes
@@ -858,8 +862,9 @@ test("sends comments on diff lines to Pi as one message", async () => {
   await page.locator("#prompt-text").fill("rewrite the notes");
   await page.locator("#prompt-text").press("Enter");
 
-  const changes = page.locator('#plugin-panels [data-plugin="changes"]');
-  await changes.getByText("Changes (1 file)").click();
+  await page.getByRole("button", { name: "Diff, 1 file changed" }).click();
+  const changes = page.getByRole("dialog", { name: "Changes" });
+  await changes.getByText("Changes (1 file)").waitFor();
 
   await changes
     .getByRole("button", { name: "Comment on notes.txt line 1" })
