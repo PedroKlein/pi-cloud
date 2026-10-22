@@ -274,9 +274,11 @@ export async function hostSession(
     ui: prompts.ui,
     tools: [...pluginTools.flat(), ...calls.tools],
     extensions: [
-      view.extension,
+      { name: "pi-view", factory: view.extension },
       ...plugins.flatMap(({ plugin, cloud }) =>
-        plugin.extension ? [plugin.extension(cloud)] : [],
+        plugin.extension
+          ? [{ name: plugin.name, factory: plugin.extension(cloud) }]
+          : [],
       ),
     ],
     onError,
