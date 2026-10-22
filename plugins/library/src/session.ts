@@ -6,7 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
-import type { LibraryFile } from "./model";
+import { type LibraryFile, nameRule, validName } from "./model";
 
 // Only Sessions in a Project get the library tools.
 export const library: SessionPlugin = {
@@ -28,6 +28,14 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
     }
 
     return response;
+  };
+
+  const libraryPath = (name: string): string => {
+    if (!validName(name)) {
+      throw new Error(nameRule);
+    }
+
+    return `files/${encodeURIComponent(name)}`;
   };
 
   const text = (
@@ -82,7 +90,7 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
         const content = await readFile(path);
 
         await ok(
-          await request(`files/${encodeURIComponent(name)}`, {
+          await request(libraryPath(name), {
             method: "PUT",
             body: content,
             ...(signal && { signal }),
@@ -110,7 +118,7 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
       }),
       async execute(_id, params, signal, _update, ctx) {
         const response = await ok(
-          await request(`files/${encodeURIComponent(params.name)}`, {
+          await request(libraryPath(params.name), {
             ...(signal && { signal }),
           }),
         );
