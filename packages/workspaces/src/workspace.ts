@@ -229,8 +229,7 @@ export async function removeWorkspace(
     }
 
     for (const { checkout, path, workspace: single } of checkouts) {
-      const present = await exists(path);
-      const reason = await lossOf(single, path, present, present);
+      const reason = await lossOf(single, path, await exists(path));
       if (reason !== null) {
         log("workspace kept", { dir, reason, repository: checkout.repository });
 
@@ -287,19 +286,10 @@ async function removeCheckout(
   const hasBranch =
     !orphaned &&
     (present || workspace.kind === "worktree") &&
-    (await git(
-      repository,
-      "rev-parse",
-      "--verify",
-      "--quiet",
-      `refs/heads/${workspace.branch}`,
-    ).then(
-      () => true,
-      () => false,
-    ));
+    (await branchExists(repository, workspace.branch));
 
   if (!force) {
-    const reason = await lossOf(workspace, dir, present, hasBranch);
+    const reason = await lossOf(workspace, dir, present);
     if (reason !== null) {
       log("workspace kept", { dir, reason });
 
@@ -343,7 +333,6 @@ async function lossOf(
   workspace: Exclude<SingleWorkspace, { kind: "folder" }>,
   dir: string,
   present: boolean,
-  hasBranch: boolean,
 ): Promise<string | null> {
   // Without the checkout it came from, git can't tell what a worktree holds.
   if (
@@ -359,7 +348,11 @@ async function lossOf(
 
   // Deleting a clone drops all of its branches and HEAD, whatever became of
   // the session branch. Removing a worktree deletes only the session branch.
-  if (workspace.kind === "clone" ? !present : !hasBranch) {
+  if (
+    workspace.kind === "clone"
+      ? !present
+      : !(await branchExists(absolute(workspace.path), workspace.branch))
+  ) {
     return null;
   }
 
@@ -384,6 +377,22 @@ async function lossOf(
         );
 
   return unpushed === "" ? null : "unpushed commits";
+}
+
+async function branchExists(
+  repository: string,
+  branch: string,
+): Promise<boolean> {
+  return git(
+    repository,
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `refs/heads/${branch}`,
+  ).then(
+    () => true,
+    () => false,
+  );
 }
 
 // A folder is allowed when it is a listed root or inside one. Symlinks are

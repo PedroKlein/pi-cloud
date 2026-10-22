@@ -2001,6 +2001,30 @@ test("keeps a worktree with unpushed work on archive until the user forces remov
   expect(stat(dir)).rejects.toThrow();
 });
 
+test("keeps a workspace whose removal fails until the user forces removal", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+  await rm(join(checkout, ".git"), { recursive: true, force: true });
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "kept");
+
+  expect((await stat(dir)).isDirectory()).toBe(true);
+
+  const forced = await api(`/api/sessions/${session.id}/remove-workspace`, {});
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+
+  expect(forced.status).toBe(200);
+  expect(stat(dir)).rejects.toThrow();
+});
+
 test("removes an archived session's workspace when its provider comes back", async () => {
   const checkout = await pushedCheckout();
 

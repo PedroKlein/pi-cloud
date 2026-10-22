@@ -1153,6 +1153,32 @@ test("removes several repositories only when none of them would lose work", asyn
   );
 });
 
+test("removes a repository worktree whose session branch was renamed and leaves the renamed branch", async () => {
+  const checkout = await checkoutWithRemote();
+  const dir = join(root, "workspaces", "s1");
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pi-cloud/s1",
+    repositories: [{ repository }],
+  } as const;
+
+  await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
+  await commit(join(dir, "origin"), "work.txt");
+  await git(join(dir, "origin"), "branch", "--move", "feature/nice");
+
+  expect(
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({ outcome: "removed", restore: workspace });
+
+  expect(stat(dir)).rejects.toThrow();
+  expect(await git(checkout, "worktree", "list")).not.toContain(dir);
+
+  expect(await git(checkout, "branch", "--list", "feature/nice")).toContain(
+    "feature/nice",
+  );
+});
+
 test("keeps several repositories while files sit beside them", async () => {
   const dir = join(root, "workspaces", "s1");
 
