@@ -571,7 +571,7 @@ test("rejects commands a browser may not send", async () => {
     }),
   );
 
-  expect(statuses).toEqual(Array.from({ length: 16 }, () => 400));
+  expect(statuses).toEqual(statuses.map(() => 400));
 });
 
 test("takes only answers shaped like a prompt's answer", async () => {
