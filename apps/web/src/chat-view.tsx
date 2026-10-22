@@ -32,7 +32,12 @@ export function ChatView({
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const shown = turns(feed.items);
-  const live = feed.streaming !== undefined || feed.tools.length > 0;
+
+  const live =
+    feed.session?.status === "running" ||
+    feed.streaming !== undefined ||
+    feed.tools.length > 0;
+
   const now = useNow();
 
   useLayoutEffect(() => {
