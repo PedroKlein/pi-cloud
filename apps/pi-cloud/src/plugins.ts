@@ -110,24 +110,15 @@ export function startPlugins(
           return started.value;
         },
         get: (id) => deps.sessions.get(id),
-        send: (id, text, actor) => {
-          const sent = deps.sessions.send(id, {
+        send: (id, text, actor) =>
+          deps.sessions.send(id, {
             actor,
             type: "message",
             text,
             delivery: "followUp",
-          });
-
-          if (!sent.ok) {
-            throw new Error(`message not sent: ${sent.reason}`);
-          }
-        },
-        notify: (id, text, actor) => {
-          const sent = deps.sessions.send(id, { actor, type: "context", text });
-          if (!sent.ok) {
-            throw new Error(`context not sent: ${sent.reason}`);
-          }
-        },
+          }),
+        notify: (id, text, actor) =>
+          deps.sessions.send(id, { actor, type: "context", text }),
         transcript: (id) => deps.sessions.transcript(id),
       },
       routes: {

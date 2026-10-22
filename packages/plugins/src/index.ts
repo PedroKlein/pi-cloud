@@ -9,6 +9,7 @@ export type {
   PluginEvent,
   PluginRoute,
   PluginStore,
+  SendOutcome,
   ServerPlugin,
   ServerPluginContext,
   ServerTool,

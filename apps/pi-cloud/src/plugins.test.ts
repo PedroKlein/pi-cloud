@@ -9,7 +9,11 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { KernelEvent, ServerPlugin } from "@pi-cloud/plugins";
+import type {
+  KernelEvent,
+  ServerPlugin,
+  ServerPluginContext,
+} from "@pi-cloud/plugins";
 import type { Session, SessionEvent } from "@pi-cloud/protocol";
 import { serve } from "./serve";
 import { readSse } from "./sse";
@@ -283,6 +287,41 @@ test("publishes kernel events and starts sessions for plugins", async () => {
     "TurnStarted",
     "TurnEnded",
     "SessionArchived",
+  ]);
+});
+
+test("tells a plugin why a message did not reach a session", async () => {
+  let sessions: ServerPluginContext["sessions"] | undefined;
+
+  await start([
+    {
+      name: "sender",
+      register: (context) => {
+        sessions = context.sessions;
+      },
+    },
+  ]);
+
+  const session = await createSession();
+  await follow(session.id, idle);
+  const reached = sessions?.notify(session.id, "a note", "plugin:sender");
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+  const archived = sessions?.send(session.id, "hello", "plugin:sender");
+  const unknown = sessions?.send("missing", "hello", "plugin:sender");
+
+  const started = sessions?.start({
+    actor: "plugin:sender",
+    workspace: { kind: "folder", path: root },
+  });
+
+  const offline = sessions?.send(started?.id ?? "", "hello", "plugin:sender");
+
+  expect([reached, archived, unknown, offline]).toEqual([
+    { ok: true },
+    { ok: false, reason: "archived" },
+    { ok: false, reason: "not_found" },
+    { ok: false, reason: "offline" },
   ]);
 });
 
