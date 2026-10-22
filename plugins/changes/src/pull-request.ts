@@ -15,7 +15,7 @@ const modes: Readonly<Record<string, Mode>> = {
   compose: "compose",
 };
 
-const describePrompt = `Write a pull request title and description for the commits and patch below.
+const describePrompt = `Write a pull request title and description for the commits, changed files and patch below. A long patch is cut short.
 Reply with the title alone on the first line, then a blank line, then the description in Markdown.
 Keep the title under 72 characters. Describe what changed and why, not each file.`;
 
@@ -278,8 +278,8 @@ async function recordedPullRequest(
   );
 }
 
-// The model's title and description for the commits and patch, or the
-// commits alone when it gives none.
+// The model's title and description for the commits, the changed files and
+// the head of the patch, or the commits alone when it gives none.
 async function described(
   path: string,
   base: string,
@@ -288,10 +288,11 @@ async function described(
   complete: Complete,
 ): Promise<Description> {
   const changes = await workspaceChanges(path, base);
+  const files = (changes?.stat ?? "").slice(0, 10_000);
   const patch = (changes?.patch ?? "").slice(0, 40_000);
 
   const reply = await complete(
-    `${describePrompt}\n\nCommits:\n${commits.join("\n")}\n\nPatch:\n${patch}`,
+    `${describePrompt}\n\nCommits:\n${commits.join("\n")}\n\nFiles:\n${files}\n\nPatch:\n${patch}`,
   ).catch(() => undefined);
 
   const [title = "", ...rest] = (reply ?? "").trim().split("\n");

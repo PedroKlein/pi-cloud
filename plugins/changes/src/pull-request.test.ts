@@ -226,3 +226,33 @@ test("commits a submodule moved to a new commit", async () => {
     "Move the library\nAdd the library\nfirst",
   );
 });
+
+test("describes a change set too large for the diff view from the head of its patch and its files", async () => {
+  const { checkout } = await sessionCheckout();
+  const prompts: string[] = [];
+
+  await writeFile(
+    join(checkout.path, "README.md"),
+    "hello\nRetry failed uploads.\n",
+  );
+
+  await writeFile(
+    join(checkout.path, "data.json"),
+    Array.from({ length: 40_000 }, (_, i) => `"row ${String(i)}",`).join("\n"),
+  );
+
+  const outcome = await pr(checkout, "", async (prompt) => {
+    prompts.push(prompt);
+
+    return Promise.resolve("Retry failed uploads\n\nWhy.");
+  });
+
+  expect(outcome).toMatchObject({ status: "pushed" });
+
+  const [prompt = ""] = prompts;
+
+  expect(prompt).toContain("+Retry failed uploads.");
+  expect(prompt).toContain("data.json");
+  expect(prompt).toContain("2 files changed");
+  expect(prompt.length).toBeLessThan(60_000);
+});

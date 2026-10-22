@@ -83,6 +83,9 @@ function trackChanges({ publish, checkouts, log }: SessionCloud): {
             name: relative(cwd, path),
             branched: base !== null,
             ...checkout,
+            // The view doesn't show a patch it can't show whole, so its head
+            // stays off the live queue.
+            patch: checkout.truncated ? "" : checkout.patch,
           });
         }
       } catch (error) {
