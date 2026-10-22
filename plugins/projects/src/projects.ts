@@ -164,6 +164,18 @@ export function projectStore(
     lastActivity: row.last_activity,
   });
 
+  // A delivery marked delivered is never read back, even when its delete
+  // failed: the delete is tried again before the queue is read, so nothing is
+  // sent twice.
+  const deliveredIds = new Set<number>();
+
+  const deleteDelivered = (): void => {
+    for (const id of deliveredIds) {
+      store.run("delete from projects_outbox where id = ?", id);
+      deliveredIds.delete(id);
+    }
+  };
+
   return {
     create: (project) => {
       store.run(
@@ -313,8 +325,10 @@ export function projectStore(
         JSON.stringify(delivery),
       );
     },
-    queued: () =>
-      (
+    queued: () => {
+      deleteDelivered();
+
+      return (
         store.all("select * from projects_outbox order by id") as {
           id: number;
           session_id: string;
@@ -326,9 +340,11 @@ export function projectStore(
         sessionId: row.session_id,
         actor: row.actor,
         delivery: JSON.parse(row.delivery) as Delivery,
-      })),
+      }));
+    },
     delivered: (id) => {
-      store.run("delete from projects_outbox where id = ?", id);
+      deliveredIds.add(id);
+      deleteDelivered();
     },
   };
 }
