@@ -701,7 +701,11 @@ export class Sessions {
   }
 
   #waiting(session: StoredSession): boolean {
-    return this.#openSurfaces(session).some(({ type }) => type === "prompt");
+    return this.#openSurfaces(session).some(
+      (event) =>
+        event.type === "prompt" ||
+        (event.type === "pi_view" && event.dialog !== null),
+    );
   }
 
   #emit(id: string, event: SessionEvent): void {

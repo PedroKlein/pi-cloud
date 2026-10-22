@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import {
   fauxAssistantMessage,
   type FauxResponseFactory,
@@ -3071,3 +3071,159 @@ test("logs in to a provider with an API key, and keeps the key out of events and
   expect(JSON.stringify(fake.events)).not.toContain(key);
   expect(logs.join("\n")).not.toContain(key);
 });
+
+function openPiView(fake: ReturnType<typeof fakeStream>): {
+  readonly type: (text: string) => void;
+  readonly screen: () => string;
+} {
+  fake.send({
+    actor: "user:local",
+    type: "terminal",
+    terminalId: "pi",
+    cols: 100,
+    rows: 30,
+  });
+
+  const terminal = fake.terminals.get("pi");
+
+  return {
+    type: (text) => {
+      terminal?.peer.input(new TextEncoder().encode(text));
+    },
+    screen: () => stripVTControlCharacters(terminal?.output.join("") ?? ""),
+  };
+}
+
+test("shows Pi's own TUI in the pi terminal and sends what is typed there to the session", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hello from the tui")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  pi.type("hi there");
+  await Bun.sleep(50);
+  pi.type("\r");
+  await fake.waitFor(() => pi.screen().includes("hello from the tui"));
+  await fake.waitFor(() => fake.lines.join().includes("hello from the tui"));
+  await hosted.stop();
+
+  expect(fake.lines.join()).toContain("hi there");
+
+  expect(fake.events).toContainEqual({
+    type: "pi_view",
+    attached: true,
+    dialog: null,
+  });
+}, 20_000);
+
+test("shows extension dialogs in the TUI while it is open and in the web after it closes", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("deploy", {})], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("first done")]),
+    fauxAssistantMessage([fauxToolCall("deploy", {})], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("second done")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { extensionPaths: [await confirmTool()], models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  fake.send({ actor: "user:local", type: "message", text: "ship it" });
+  await fake.waitFor(() => pi.screen().includes("Deploy?"));
+
+  await fake.waitFor(() =>
+    fake.events.some((e) => e.type === "pi_view" && e.dialog === "Deploy?"),
+  );
+
+  pi.type("\r");
+  await fake.waitFor(() => fake.lines.join().includes("first done"));
+  fake.terminals.get("pi")?.peer.closed();
+  fake.send({ actor: "user:local", type: "message", text: "again" });
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  const prompt = fake.events.find((e) => e.type === "prompt");
+  const id = prompt?.type === "prompt" ? prompt.prompt.id : "";
+  fake.send({ actor: "user:local", type: "answer", id, value: false });
+  await fake.waitFor(() => fake.lines.join().includes("second done"));
+  await hosted.stop();
+
+  expect(fake.lines.join()).toContain("confirmed: true");
+  expect(fake.lines.join()).toContain("confirmed: false");
+
+  expect(fake.events).toContainEqual({
+    type: "pi_view",
+    attached: false,
+    dialog: null,
+  });
+}, 20_000);
+
+test("closes the Pi view on quit and keeps the session running", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("still here")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  pi.type("\x04");
+  await fake.waitFor(() => fake.terminals.get("pi")?.closed === true);
+  fake.send({ actor: "user:local", type: "message", text: "are you there" });
+  await fake.waitFor(() => fake.lines.join().includes("still here"));
+  await hosted.stop();
+
+  expect(fake.events.at(-1)).not.toEqual({ type: "status", status: "failed" });
+
+  expect(fake.events).toContainEqual({
+    type: "pi_view",
+    attached: false,
+    dialog: null,
+  });
+}, 20_000);
+
+test("refuses to replace the session from the TUI", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  pi.type("/new");
+  await Bun.sleep(50);
+  pi.type("\r");
+  await fake.waitFor(() => pi.screen().includes("one Pi session per session"));
+  await hosted.stop();
+
+  expect(pi.screen()).not.toContain("New session started");
+}, 20_000);

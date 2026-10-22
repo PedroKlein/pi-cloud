@@ -1,7 +1,13 @@
-import type { Environment, Session, TerminalTab } from "@pi-cloud/protocol";
+import {
+  type Environment,
+  piTerminal,
+  type Session,
+  type TerminalTab,
+} from "@pi-cloud/protocol";
 import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
 import {
   type ReactElement,
+  type RefObject,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -18,7 +24,7 @@ import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
 import { keyBar, type Modifier, modified } from "./keys";
 import { openTerminal } from "./terminal";
 
-type View = "chat" | "terminal";
+type View = "chat" | "pi" | "terminal";
 
 export function SessionView({
   sessionId,
@@ -64,6 +70,7 @@ export function SessionView({
   const title = named ?? place;
 
   const archived = session !== undefined && session.archivedAt !== null;
+  const shown = archived ? "chat" : view;
 
   useEffect(() => {
     document.title = named === undefined ? "Pi Cloud" : `${named} · Pi Cloud`;
@@ -84,7 +91,7 @@ export function SessionView({
       <header
         className={cn(
           "flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2",
-          view === "terminal" && "bg-term-bg",
+          shown !== "chat" && "bg-term-bg",
         )}
       >
         <Button
@@ -188,11 +195,29 @@ export function SessionView({
         )}
       </div>
 
-      {view === "terminal" && !archived ? (
+      {shown === "terminal" && (
         <TerminalView sessionId={sessionId} terminals={feed.terminals} />
-      ) : (
+      )}
+      {shown === "pi" && (
+        <TerminalScreen
+          sessionId={sessionId}
+          terminalId={piTerminal}
+          onClosed={() => {
+            setView("chat");
+          }}
+        />
+      )}
+      {shown === "chat" && (
         <>
           <ChatView feed={feed} place={place} />
+          {!archived && (
+            <PiViewNotice
+              piView={feed.piView}
+              onOpen={() => {
+                setView("pi");
+              }}
+            />
+          )}
           <Composer
             sessionId={sessionId}
             feed={feed}
@@ -328,11 +353,7 @@ function ViewSwitch({
   readonly view: View;
   readonly onChange: (view: View) => void;
 }): ReactElement {
-  const option = (
-    value: View,
-    label: string,
-    icon: "chat" | "terminal",
-  ): ReactElement => (
+  const option = (value: View, label: string, icon: IconName): ReactElement => (
     <button
       type="button"
       aria-pressed={view === value}
@@ -356,8 +377,38 @@ function ViewSwitch({
       className="inline-flex gap-0.5 rounded-full border border-line bg-panel p-0.5"
     >
       {option("chat", "Chat", "chat")}
+      {option("pi", "Pi", "monitor")}
       {option("terminal", "Terminal", "terminal")}
     </div>
+  );
+}
+
+// While a browser shows Pi's TUI, extension dialogs open there (ADR 0027).
+function PiViewNotice({
+  piView: { attached, dialog },
+  onOpen,
+}: {
+  readonly piView: Feed["piView"];
+  readonly onOpen: () => void;
+}): ReactElement | null {
+  if (!attached && dialog === null) {
+    return null;
+  }
+
+  return (
+    <p
+      role="status"
+      className="mx-auto flex w-full max-w-chat items-center gap-3 px-4 pb-2 text-label text-fg-dim"
+    >
+      <span className="min-w-0 flex-1">
+        {dialog === null
+          ? "Pi is open in a Pi view, so its dialogs show there."
+          : `Pi is asking in the Pi view: ${dialog}`}
+      </span>
+      <Button variant="ghost" onClick={onOpen}>
+        Open Pi view
+      </Button>
+    </p>
   );
 }
 
@@ -368,10 +419,7 @@ function TerminalView({
   readonly sessionId: string;
   readonly terminals: readonly TerminalTab[];
 }): ReactElement {
-  const box = useRef<HTMLDivElement>(null);
-  const send = useRef<(data: string) => void>(() => undefined);
   const end = useRef<() => void>(() => undefined);
-  const [modifier, setModifier] = useState<Modifier>();
 
   const [active, setActive] = useState(
     () => terminals[0]?.id ?? crypto.randomUUID(),
@@ -380,38 +428,6 @@ function TerminalView({
   const tabs = terminals.some(({ id }) => id === active)
     ? terminals
     : [...terminals, { id: active, label: "New terminal" }];
-
-  const typed = useEffectEvent((data: string): string => {
-    setModifier(undefined);
-
-    return modified(data, modifier);
-  });
-
-  useEffect(() => {
-    if (!box.current) {
-      return undefined;
-    }
-
-    const terminal = openTerminal(sessionId, active, box.current, (data) =>
-      typed(data),
-    );
-
-    send.current = terminal.send;
-    end.current = terminal.end;
-
-    return terminal.close;
-  }, [sessionId, active]);
-
-  const keys: readonly {
-    readonly label: string;
-    readonly data?: string;
-    readonly modifier?: Modifier;
-  }[] = [
-    ...keyBar.slice(0, 2),
-    { label: "Ctrl", modifier: "ctrl" },
-    { label: "Alt", modifier: "alt" },
-    ...keyBar.slice(2),
-  ];
 
   return (
     <>
@@ -467,6 +483,74 @@ function TerminalView({
           <Icon name="plus" className="size-4" />
         </Button>
       </div>
+      <TerminalScreen sessionId={sessionId} terminalId={active} endRef={end} />
+    </>
+  );
+}
+
+function TerminalScreen({
+  sessionId,
+  terminalId,
+  endRef,
+  onClosed,
+}: {
+  readonly sessionId: string;
+  readonly terminalId: string;
+  readonly endRef?: RefObject<() => void>;
+  // Pi's TUI was quit, or its socket closed.
+  readonly onClosed?: () => void;
+}): ReactElement {
+  const box = useRef<HTMLDivElement>(null);
+  const send = useRef<(data: string) => void>(() => undefined);
+  const [modifier, setModifier] = useState<Modifier>();
+
+  const typed = useEffectEvent((data: string): string => {
+    setModifier(undefined);
+
+    return modified(data, modifier);
+  });
+
+  const closed = useEffectEvent(() => {
+    onClosed?.();
+  });
+
+  useEffect(() => {
+    if (!box.current) {
+      return undefined;
+    }
+
+    const terminal = openTerminal(
+      sessionId,
+      terminalId,
+      box.current,
+      (data) => typed(data),
+      () => {
+        closed();
+      },
+    );
+
+    send.current = terminal.send;
+
+    if (endRef) {
+      endRef.current = terminal.end;
+    }
+
+    return terminal.close;
+  }, [sessionId, terminalId, endRef]);
+
+  const keys: readonly {
+    readonly label: string;
+    readonly data?: string;
+    readonly modifier?: Modifier;
+  }[] = [
+    ...keyBar.slice(0, 2),
+    { label: "Ctrl", modifier: "ctrl" },
+    { label: "Alt", modifier: "alt" },
+    ...keyBar.slice(2),
+  ];
+
+  return (
+    <>
       <div className="min-h-0 flex-1 bg-term-bg px-3 py-2">
         <div id="terminal" ref={box} className="h-full" />
       </div>

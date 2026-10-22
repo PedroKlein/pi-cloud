@@ -41,6 +41,10 @@ export interface Feed {
   readonly files: readonly string[];
   readonly settings: Settings | undefined;
   readonly terminals: readonly TerminalTab[];
+  readonly piView: {
+    readonly attached: boolean;
+    readonly dialog: string | null;
+  };
 }
 
 export const emptyFeed: Feed = {
@@ -60,6 +64,7 @@ export const emptyFeed: Feed = {
   files: [],
   settings: undefined,
   terminals: [],
+  piView: { attached: false, dialog: null },
 };
 
 export interface FollowOptions {
@@ -223,6 +228,10 @@ export function follow(
         update({ terminals: event.terminals });
 
         return;
+      case "pi_view":
+        update({ piView: { attached: event.attached, dialog: event.dialog } });
+
+        return;
       case "settings":
         update({ settings: event });
 
@@ -261,6 +270,7 @@ export function follow(
       prompts: [],
       queue: emptyFeed.queue,
       terminals: [],
+      piView: emptyFeed.piView,
     });
   });
 

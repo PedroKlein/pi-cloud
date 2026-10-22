@@ -1893,6 +1893,26 @@ test("ignores terminal control frames that are not resizes", async () => {
   expect(await terminal.output("size=20 90")).toContain("size=20 90");
 });
 
+test("shows each session's own Pi TUI under the same terminal id", async () => {
+  const first = await createSession("laptop");
+  const second = await createSession("laptop");
+  await follow(first.id, status("idle"));
+  await follow(second.id, status("idle"));
+  const firstPi = await openTerminal(first.id, "pi");
+  const secondPi = await openTerminal(second.id, "pi");
+
+  const [firstScreen, secondScreen] = await Promise.all([
+    firstPi.output("Pi can explain"),
+    secondPi.output("Pi can explain"),
+  ]);
+
+  firstPi.socket.close();
+  secondPi.socket.close();
+
+  expect(firstScreen).toContain("Pi can explain");
+  expect(secondScreen).toContain("Pi can explain");
+});
+
 test("does not let a host take another session's terminal", async () => {
   const first = await createSession("laptop");
   const second = await createSession("laptop");

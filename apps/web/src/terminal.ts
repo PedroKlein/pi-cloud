@@ -7,6 +7,7 @@ export function openTerminal(
   terminalId: string,
   container: HTMLElement,
   typed: (data: string) => string,
+  onClosed: () => void = () => undefined,
 ): {
   readonly send: (data: string) => void;
   // Leaves the shell running for the next socket.
@@ -80,6 +81,8 @@ export function openTerminal(
     terminal.write(
       `\r\n[terminal closed${event.reason === "" ? "" : `: ${event.reason}`}]\r\n`,
     );
+
+    onClosed();
   };
 
   socket.addEventListener("close", closed);

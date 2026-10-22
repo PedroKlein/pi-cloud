@@ -254,6 +254,13 @@ export type LiveEvent =
   | { readonly type: "prompt_end"; readonly id: string }
   // The Session's shells that are still running (ADR 0026).
   | { readonly type: "terminals"; readonly terminals: readonly TerminalTab[] }
+  // Whether a browser shows Pi's TUI, which then takes the dialogs, and the
+  // dialog open in it (ADR 0027).
+  | {
+      readonly type: "pi_view";
+      readonly attached: boolean;
+      readonly dialog: string | null;
+    }
   | {
       readonly type: "notify";
       readonly message: string;
@@ -343,6 +350,8 @@ export function liveSurface(
       return { key: "files", open: true };
     case "terminals":
       return { key: "terminals", open: event.terminals.length > 0 };
+    case "pi_view":
+      return { key: "pi_view", open: event.attached || event.dialog !== null };
     case "settings":
       return { key: "settings", open: true };
     case "plugin":
@@ -446,6 +455,9 @@ export type Command = { readonly actor: Actor } & (
       readonly rows: number;
     }
 );
+
+// The terminal id that opens Pi's own TUI instead of a shell (ADR 0027).
+export const piTerminal = "pi";
 
 export interface TerminalTab {
   readonly id: string;

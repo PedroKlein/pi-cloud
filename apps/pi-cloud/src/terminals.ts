@@ -11,11 +11,11 @@ import { owner, type Sessions } from "@pi-cloud/sessions";
 
 interface SocketData {
   readonly role: "browser" | "host";
-  readonly terminalId: string;
+  // The Session and terminal ids, since terminal ids are per Session.
+  readonly key: string;
 }
 
 interface Pair {
-  readonly sessionId: string;
   browser?: ServerWebSocket<SocketData>;
   host?: ServerWebSocket<SocketData>;
   readonly pending: (string | Buffer)[];
@@ -43,17 +43,17 @@ export function terminalBroker(
 } {
   const pairs = new Map<string, Pair>();
 
-  const end = (terminalId: string, reason: string): void => {
-    const pair = pairs.get(terminalId);
+  const end = (key: string, reason: string): void => {
+    const pair = pairs.get(key);
     if (!pair) {
       return;
     }
 
-    pairs.delete(terminalId);
+    pairs.delete(key);
     clearTimeout(pair.timeout);
     pair.browser?.close(1000, reason);
     pair.host?.close(1000, reason);
-    log("terminal closed", { terminalId, reason });
+    log("terminal closed", { terminal: key, reason });
   };
 
   const openBrowser = (
@@ -69,11 +69,7 @@ export function terminalBroker(
     const asked = url.searchParams.get("terminal");
 
     const terminalId =
-      asked !== null &&
-      terminalIdPattern.test(asked) &&
-      (pairs.get(asked)?.sessionId ?? sessionId) === sessionId
-        ? asked
-        : randomUUID();
+      asked !== null && terminalIdPattern.test(asked) ? asked : randomUUID();
 
     const sent = sessions.send(sessionId, {
       actor: `user:${owner}`,
@@ -90,22 +86,22 @@ export function terminalBroker(
       );
     }
 
-    end(terminalId, "opened elsewhere");
+    const key = `${sessionId}/${terminalId}`;
+    end(key, "opened elsewhere");
 
-    pairs.set(terminalId, {
-      sessionId,
+    pairs.set(key, {
       pending: [],
       timeout: setTimeout(() => {
-        end(terminalId, "session host did not open the terminal");
+        end(key, "session host did not open the terminal");
       }, hostTimeoutMs),
     });
 
     log("terminal requested", { sessionId, terminalId });
-    if (server.upgrade(request, { data: { role: "browser", terminalId } })) {
+    if (server.upgrade(request, { data: { role: "browser", key } })) {
       return "upgraded";
     }
 
-    end(terminalId, "browser upgrade failed");
+    end(key, "browser upgrade failed");
 
     return Response.json({ error: "expected a websocket" }, { status: 400 });
   };
@@ -121,9 +117,10 @@ export function terminalBroker(
     );
 
     const provider = request.headers.get(providerHeader);
-    const pair = pairs.get(terminalId);
+    const key = `${sessionId}/${terminalId}`;
+    const pair = pairs.get(key);
     if (
-      pair?.sessionId !== sessionId ||
+      pair === undefined ||
       pair.host !== undefined ||
       request.headers.get(versionHeader) !== String(protocolVersion) ||
       sessions.get(sessionId)?.provider !== provider ||
@@ -132,7 +129,7 @@ export function terminalBroker(
       return Response.json({ error: "not_found" }, { status: 404 });
     }
 
-    return server.upgrade(request, { data: { role: "host", terminalId } })
+    return server.upgrade(request, { data: { role: "host", key } })
       ? "upgraded"
       : Response.json({ error: "expected a websocket" }, { status: 400 });
   };
@@ -154,7 +151,7 @@ export function terminalBroker(
     },
     websocket: {
       open: (ws) => {
-        const pair = pairs.get(ws.data.terminalId);
+        const pair = pairs.get(ws.data.key);
         if (!pair) {
           ws.close(1000, "terminal closed");
 
@@ -174,7 +171,7 @@ export function terminalBroker(
         }
       },
       message: (ws, message) => {
-        const pair = pairs.get(ws.data.terminalId);
+        const pair = pairs.get(ws.data.key);
         if (pair?.browser !== ws && pair?.host !== ws) {
           return;
         }
@@ -182,7 +179,7 @@ export function terminalBroker(
         if (ws.data.role === "host") {
           const { browser } = pair;
           if ((browser?.getBufferedAmount() ?? 0) > maxBufferedBytes) {
-            end(ws.data.terminalId, "browser fell behind");
+            end(ws.data.key, "browser fell behind");
             browser?.terminate();
 
             return;
@@ -207,9 +204,9 @@ export function terminalBroker(
         }
       },
       close: (ws) => {
-        const pair = pairs.get(ws.data.terminalId);
+        const pair = pairs.get(ws.data.key);
         if (pair?.browser === ws || pair?.host === ws) {
-          end(ws.data.terminalId, `${ws.data.role} disconnected`);
+          end(ws.data.key, `${ws.data.role} disconnected`);
         }
       },
     },

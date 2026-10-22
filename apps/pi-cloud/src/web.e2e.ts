@@ -134,6 +134,39 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   await rows.filter({ hasText: "survived=yes" }).waitFor();
 }, 30_000);
 
+test("chats from Pi's own TUI and goes back to the chat when Pi quits", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello from the tui")])]);
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.getByRole("button", { name: "Pi", exact: true }).click();
+  const rows = page.locator("#terminal .xterm-rows");
+  await rows.filter({ hasText: "Pi can explain" }).waitFor();
+  await page.locator("#terminal .xterm").click();
+  await page.keyboard.type("hi from the web tui");
+  await page.keyboard.press("Enter");
+  await rows.filter({ hasText: "hello from the tui" }).waitFor();
+  await page.keyboard.press("Control+d");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', {
+      hasText: "hello from the tui",
+    })
+    .waitFor();
+
+  expect(
+    await page.locator('#chat li[data-role="user"]').allTextContents(),
+  ).toEqual(["hi from the web tui"]);
+}, 30_000);
+
 test("starts a session with the task from the New session form", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("on it")])]);
   await page.goto(server.url.href);

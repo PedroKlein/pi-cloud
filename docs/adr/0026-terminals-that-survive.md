@@ -1,6 +1,6 @@
 # 0026: Terminals that survive their tab
 
-- Status: accepted
+- Status: accepted, amended by [ADR 0027](0027-pi-tui-view.md) (terminal ids are per Session, and `pi` opens Pi's TUI)
 - Date: 2026-10-22
 
 ## Context
@@ -12,7 +12,7 @@ A Session's terminal was a shell tied to one socket ([ADR 0006](0006-provider-pr
 ### The Session host keeps the shell
 
 - A shell runs until it exits, its tab is closed, or its Session generation stops. Losing the socket only detaches it.
-- The browser names each terminal with an id it makes up and passes it when it opens the socket (`?terminal=<id>`). An id the Session host already runs a shell for reattaches to it; a new id starts a new shell. The server replaces an id that another Session's open socket is using with a fresh one.
+- The browser names each terminal with an id it makes up and passes it when it opens the socket (`?terminal=<id>`). An id the Session host already runs a shell for reattaches to it; a new id starts a new shell. Ids are per Session, so two Sessions can use the same one.
 - The host keeps the last 64 KB of each shell's output in memory and sends it to the next socket before live output, so the screen comes back. Nothing is written to disk and the server stores nothing.
 - Opening a terminal that another socket is attached to moves it to the new socket, and the old one closes with "opened elsewhere".
 - The socket's text frames are `TerminalControl`: a `resize`, or a `close` that ends the shell. Closing the socket without it leaves the shell running.
