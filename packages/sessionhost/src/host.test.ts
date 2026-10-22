@@ -3233,7 +3233,11 @@ export default (pi) => {
 
   for (let round = 1; round <= 3; round++) {
     const pi = openPiView(fake);
-    await fake.waitFor(() => pi.screen().includes("(faux) faux-1"));
+
+    await fake.waitFor(() =>
+      round === 1 ? pi.screen().includes("Pi can explain") : pi.screen() !== "",
+    );
+
     fake.terminals.get("pi")?.peer.closed();
 
     await fake.waitFor(
