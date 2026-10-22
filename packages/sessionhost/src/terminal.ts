@@ -38,9 +38,17 @@ export function openTerminal(
 
   return {
     write: (data) => {
+      if (terminal.closed) {
+        return;
+      }
+
       terminal.write(data);
     },
     resize: (cols, rows) => {
+      if (terminal.closed) {
+        return;
+      }
+
       terminal.resize(cols, rows);
     },
     close: () => {
