@@ -110,7 +110,7 @@ export class Sessions {
       pollWaitMs: options.pollWaitMs ?? 10_000,
       offlineAfterMs: options.offlineAfterMs ?? 30_000,
       onlineChanged: (provider) => {
-        this.#emitOnlineChange(provider);
+        this.#onlineChanged(provider);
       },
     });
 
@@ -450,7 +450,7 @@ export class Sessions {
     }
 
     const host = this.#hosts.get(id);
-    if (!host) {
+    if (!host || !this.#polls.online(session.provider)) {
       return { ok: false, reason: "offline" };
     }
 
@@ -586,12 +586,20 @@ export class Sessions {
     });
   }
 
-  #emitOnlineChange(provider: string): void {
+  // A command stream whose tunnel died can stay open for minutes, so an
+  // offline provider's streams are ended and the agent opens new ones.
+  #onlineChanged(provider: string): void {
+    const online = this.#polls.online(provider);
+
     const sessions = this.#store
       .list({ includeArchived: true })
       .filter((session) => session.provider === provider);
 
     for (const session of sessions) {
+      if (!online) {
+        this.#hosts.get(session.id)?.end();
+      }
+
       this.#emit(session.id, { type: "session", session: this.#view(session) });
     }
   }
