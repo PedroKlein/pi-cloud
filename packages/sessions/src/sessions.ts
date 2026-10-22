@@ -1,9 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type {
-  KernelEvent,
-  OfferedModels,
-  StartRequest,
-} from "@pi-cloud/plugins";
+import type { KernelEvent, ModelOffer, StartRequest } from "@pi-cloud/plugins";
 import {
   type Assignment,
   type Attempt,
@@ -12,7 +8,6 @@ import {
   type LiveEvent,
   type LivePost,
   liveSurface,
-  type ModelRef,
   type Removal,
   type RemovalReport,
   type Session,
@@ -21,8 +16,10 @@ import {
   type StartFailure,
   type TranscriptAck,
   type TranscriptBatch,
+  type Work,
   type WorkPoll,
 } from "@pi-cloud/protocol";
+import { ProviderPolls } from "./provider-polls";
 
 export type StoredSession = Omit<Session, "online">;
 
@@ -75,25 +72,14 @@ export interface SessionsOptions {
   readonly offlineAfterMs?: number;
   readonly events?: (event: KernelEvent) => void;
   readonly sessionPlugins?: readonly string[];
-  readonly offeredModels?: (environmentId: string) => OfferedModels;
+  readonly offeredModels?: ModelOffer;
 }
 
-export interface Claim {
-  readonly start: readonly Assignment[];
-  readonly unload: readonly Attempt[];
-  readonly remove: readonly Removal[];
+export interface Claim extends Work {
   readonly interrupted: readonly Attempt[];
 }
 
 type Listener<T> = (value: T) => void;
-
-interface ProviderState {
-  polling: number;
-  lastPoll: number;
-  offlineTimer: ReturnType<typeof setTimeout> | undefined;
-  folders: readonly string[];
-  models: readonly ModelRef[];
-}
 
 // Enough to catch a browser retrying a send; ids only need to outlive retries.
 const maxRequestIds = 100;
@@ -102,19 +88,16 @@ const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
 
 export class Sessions {
   readonly #store: SessionStore;
-  readonly #pollWaitMs: number;
-  readonly #offlineAfterMs: number;
+  readonly #polls: ProviderPolls;
   readonly #events: (event: KernelEvent) => void;
   readonly #sessionPlugins: readonly string[];
-  readonly #offeredModels: (environmentId: string) => OfferedModels;
+  readonly #offeredModels: ModelOffer;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
     { readonly send: Listener<Command>; readonly end: () => void }
   >();
-  readonly #pollers = new Map<string, Set<() => void>>();
   readonly #requestIds = new Map<string, Set<string>>();
-  readonly #providers = new Map<string, ProviderState>();
   readonly #surfaces = new Map<
     string,
     { readonly generation: number; readonly events: Map<string, LiveEvent> }
@@ -122,8 +105,15 @@ export class Sessions {
 
   constructor(store: SessionStore, options: SessionsOptions = {}) {
     this.#store = store;
-    this.#pollWaitMs = options.pollWaitMs ?? 10_000;
-    this.#offlineAfterMs = options.offlineAfterMs ?? 30_000;
+
+    this.#polls = new ProviderPolls({
+      pollWaitMs: options.pollWaitMs ?? 10_000,
+      offlineAfterMs: options.offlineAfterMs ?? 30_000,
+      onlineChanged: (provider) => {
+        this.#emitOnlineChange(provider);
+      },
+    });
+
     this.#events = options.events ?? (() => undefined);
     this.#sessionPlugins = options.sessionPlugins ?? [];
     this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
@@ -168,7 +158,7 @@ export class Sessions {
     };
 
     this.#store.insert(session);
-    this.#wake(session.provider);
+    this.#polls.wake(session.provider);
     const view = this.#view(session);
 
     this.#events({
@@ -206,7 +196,7 @@ export class Sessions {
     this.#hosts.get(id)?.end();
     this.#requestIds.delete(id);
     this.#update(archived);
-    this.#wake(session.provider);
+    this.#polls.wake(session.provider);
     this.#events({ type: "SessionArchived", session: this.#view(archived) });
 
     return { ok: true, value: this.#view(archived) };
@@ -230,7 +220,7 @@ export class Sessions {
     };
 
     this.#update(unarchived);
-    this.#wake(session.provider);
+    this.#polls.wake(session.provider);
 
     return { ok: true, value: this.#view(unarchived) };
   }
@@ -247,7 +237,7 @@ export class Sessions {
 
     const forced: StoredSession = { ...session, workspaceRemoval: "forced" };
     this.#update(forced);
-    this.#wake(session.provider);
+    this.#polls.wake(session.provider);
 
     return { ok: true, value: this.#view(forced) };
   }
@@ -279,14 +269,14 @@ export class Sessions {
 
   environments(): readonly Environment[] {
     return this.#store.environments().map((environment) => {
-      const state = this.#providers.get(environment.provider);
+      const { folders, models } = this.#polls.inventory(environment.provider);
       const offered = this.#offeredModels(environment.id).models;
 
       return {
         ...environment,
-        online: this.#online(environment.provider),
-        folders: state?.folders ?? [],
-        models: [...offered, ...(state?.models ?? [])],
+        online: this.#polls.online(environment.provider),
+        folders,
+        models: [...offered, ...models],
       };
     });
   }
@@ -297,9 +287,7 @@ export class Sessions {
     signal: AbortSignal,
   ): Promise<Claim> {
     this.#store.ensureEnvironment(provider);
-    const state = this.#pollStarted(provider);
-    state.folders = folders;
-    state.models = models;
+    const endPoll = this.#polls.begin(provider, { folders, models });
     try {
       const interrupted = this.#interruptMissing(provider, running);
       const start = this.#claimNext(provider);
@@ -308,7 +296,7 @@ export class Sessions {
         return { start, unload, remove: this.#removals(provider), interrupted };
       }
 
-      await this.#waitForWork(provider, signal);
+      await this.#polls.waitForWork(provider, signal);
 
       return {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
@@ -318,7 +306,7 @@ export class Sessions {
         interrupted,
       };
     } finally {
-      this.#pollEnded(provider, state);
+      endPoll();
     }
   }
 
@@ -346,31 +334,29 @@ export class Sessions {
     }
 
     const length = this.#store.transcriptLength(id);
-    if (batch.start <= length) {
-      const fresh = batch.lines.slice(length - batch.start);
-      if (fresh.length > 0) {
-        this.#store.appendTranscript(id, length, fresh);
 
-        const title = titleAfter(session.title, fresh);
-        if (title !== session.title && title !== null) {
-          this.#store.setTitle(id, title);
+    const fresh =
+      batch.start <= length ? batch.lines.slice(length - batch.start) : [];
 
-          this.#emit(id, {
-            type: "session",
-            session: this.#view({ ...session, title }),
-          });
-        }
+    if (fresh.length > 0) {
+      this.#store.appendTranscript(id, length, fresh);
 
-        fresh.forEach((entry, i) => {
-          this.#emit(id, { type: "entry", line: length + i, entry });
+      const title = titleAfter(session.title, fresh);
+      if (title !== session.title && title !== null) {
+        this.#store.setTitle(id, title);
+
+        this.#emit(id, {
+          type: "session",
+          session: this.#view({ ...session, title }),
         });
       }
+
+      fresh.forEach((entry, i) => {
+        this.#emit(id, { type: "entry", line: length + i, entry });
+      });
     }
 
-    return {
-      ok: true,
-      value: { acked: this.#store.transcriptLength(id) },
-    };
+    return { ok: true, value: { acked: length + fresh.length } };
   }
 
   publish(id: string, post: LivePost): Result<undefined> {
@@ -466,17 +452,19 @@ export class Sessions {
     }
 
     if (
-      command.type !== "message" ||
-      command.requestId === undefined ||
-      this.#firstRequest(id, command.requestId)
+      command.type === "message" &&
+      command.requestId !== undefined &&
+      !this.#rememberRequest(id, command.requestId)
     ) {
-      host.send(command);
+      return { ok: true, value: undefined };
     }
+
+    host.send(command);
 
     return { ok: true, value: undefined };
   }
 
-  #firstRequest(id: string, requestId: string): boolean {
+  #rememberRequest(id: string, requestId: string): boolean {
     const seen = this.#requestIds.get(id) ?? new Set<string>();
     this.#requestIds.set(id, seen);
     if (seen.has(requestId)) {
@@ -526,9 +514,7 @@ export class Sessions {
   }
 
   close(): void {
-    for (const state of this.#providers.values()) {
-      clearTimeout(state.offlineTimer);
-    }
+    this.#polls.close();
   }
 
   #interruptMissing(
@@ -574,12 +560,6 @@ export class Sessions {
       }));
   }
 
-  #wake(provider: string): void {
-    for (const wake of this.#pollers.get(provider) ?? []) {
-      wake();
-    }
-  }
-
   #claimNext(provider: string): Assignment[] {
     return this.#store.byProvider(provider, claimable).map((next) => {
       const session: StoredSession = {
@@ -603,66 +583,7 @@ export class Sessions {
     });
   }
 
-  async #waitForWork(provider: string, signal: AbortSignal): Promise<void> {
-    await new Promise<void>((resolve) => {
-      const pollers = this.#pollers.get(provider) ?? new Set();
-      this.#pollers.set(provider, pollers);
-
-      const done = (): void => {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", done);
-        pollers.delete(done);
-        resolve();
-      };
-
-      const timer = setTimeout(done, this.#pollWaitMs);
-      signal.addEventListener("abort", done);
-      pollers.add(done);
-    });
-  }
-
-  #pollStarted(provider: string): ProviderState {
-    const state = this.#providers.get(provider) ?? {
-      polling: 0,
-      lastPoll: 0,
-      offlineTimer: undefined,
-      folders: [],
-      models: [],
-    };
-
-    this.#providers.set(provider, state);
-    const wasOnline = this.#online(provider);
-    state.polling++;
-    clearTimeout(state.offlineTimer);
-    if (!wasOnline) {
-      this.#emitProvider(provider);
-    }
-
-    return state;
-  }
-
-  #pollEnded(provider: string, state: ProviderState): void {
-    state.polling--;
-    state.lastPoll = Date.now();
-    if (state.polling > 0) {
-      return;
-    }
-
-    state.offlineTimer = setTimeout(() => {
-      this.#emitProvider(provider);
-    }, this.#offlineAfterMs);
-  }
-
-  #online(provider: string): boolean {
-    const state = this.#providers.get(provider);
-
-    return (
-      state !== undefined &&
-      (state.polling > 0 || Date.now() - state.lastPoll < this.#offlineAfterMs)
-    );
-  }
-
-  #emitProvider(provider: string): void {
+  #emitOnlineChange(provider: string): void {
     const sessions = this.#store
       .list({ includeArchived: true })
       .filter((session) => session.provider === provider);
@@ -730,7 +651,7 @@ export class Sessions {
   }
 
   #view(session: StoredSession): Session {
-    return { ...session, online: this.#online(session.provider) };
+    return { ...session, online: this.#polls.online(session.provider) };
   }
 
   #emit(id: string, event: SessionEvent): void {
