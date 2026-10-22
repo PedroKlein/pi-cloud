@@ -314,9 +314,10 @@ export async function hostSession(
     }
 
     if (command.type === "unqueue") {
-      const back = unqueue(session, command);
-      if (back !== undefined) {
-        live.push({ type: "editor_text", text: back });
+      const taken = unqueue(session, command);
+
+      if (taken !== undefined && command.sendNow !== true) {
+        live.push({ type: "editor_text", text: command.text });
       }
 
       return;
@@ -459,12 +460,13 @@ async function run(
   }
 }
 
-// Removes text from Pi's queue and queues the rest again in order. Returns
-// the text, or undefined when Pi has already read it.
+// Removes text from Pi's queue, or moves it to the end of the steering queue
+// with sendNow, and queues the rest again in order. Returns the message, or
+// undefined when Pi has already read it.
 function unqueue(
   session: AgentSession,
-  { delivery, text }: Extract<Command, { type: "unqueue" }>,
-): string | undefined {
+  { delivery, text, sendNow }: Extract<Command, { type: "unqueue" }>,
+): AgentMessage | undefined {
   const queued = queuedMessages(session.agent);
 
   const index = queued[delivery].findIndex(
@@ -476,13 +478,17 @@ function unqueue(
     return undefined;
   }
 
-  queued[delivery].splice(index, 1);
+  const [taken] = queued[delivery].splice(index, 1);
+  if (taken !== undefined && sendNow === true) {
+    queued.steer.push(taken);
+  }
+
   session.clearQueue();
 
   void requeue(session, "steer", queued.steer);
   void requeue(session, "followUp", queued.followUp);
 
-  return text;
+  return taken;
 }
 
 type Delivery = Extract<Command, { type: "unqueue" }>["delivery"];

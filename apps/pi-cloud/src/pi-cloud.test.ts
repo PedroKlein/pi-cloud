@@ -524,6 +524,7 @@ test("rejects commands a browser may not send", async () => {
       { type: "message", text: "hi", delivery: "later" },
       { type: "unqueue", text: "hi", delivery: "later" },
       { type: "unqueue", delivery: "steer" },
+      { type: "unqueue", text: "hi", delivery: "steer", sendNow: "yes" },
       { type: "set_model", model: "openai/gpt-5" },
       { type: "set_model", model: { provider: "openai" } },
       { type: "set_thinking", level: "huge" },
@@ -570,7 +571,7 @@ test("rejects commands a browser may not send", async () => {
     }),
   );
 
-  expect(statuses).toEqual(Array.from({ length: 16 }, () => 400));
+  expect(statuses).toEqual(statuses.map(() => 400));
 });
 
 test("takes only answers shaped like a prompt's answer", async () => {

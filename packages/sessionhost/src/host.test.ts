@@ -1456,6 +1456,73 @@ test("takes a queued message back and keeps the rest queued with their images", 
   expect(lastContext).not.toContain("second");
 });
 
+test("moves a queued follow-up to steering when it is sent now", async () => {
+  const { faux, models } = await fauxModels(root);
+  let release = (): void => undefined;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  faux.setResponses([
+    async () => {
+      await gate;
+
+      return fauxAssistantMessage([fauxText("first reply")]);
+    },
+    fauxAssistantMessage([fauxText("steered reply")]),
+    fauxAssistantMessage([fauxText("follow-up reply")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "first" });
+  await fake.waitFor(() => faux.state.callCount === 1);
+
+  for (const text of ["second", "third"]) {
+    fake.send({
+      actor: "user:local",
+      type: "message",
+      text,
+      delivery: "followUp",
+    });
+  }
+
+  await fake.waitFor(() =>
+    fake.events.some((e) => e.type === "queue" && e.followUp.length === 2),
+  );
+
+  fake.send({
+    actor: "user:local",
+    type: "unqueue",
+    delivery: "followUp",
+    text: "third",
+    sendNow: true,
+  });
+
+  await fake.waitFor(() =>
+    fake.events.some(
+      (e) =>
+        e.type === "queue" &&
+        e.steering.join() === "third" &&
+        e.followUp.join() === "second",
+    ),
+  );
+
+  release();
+  await fake.waitFor(() => faux.state.callCount === 3);
+  await hosted.stop();
+
+  expect(fake.events.some((e) => e.type === "editor_text")).toBe(false);
+});
+
 test.each(["steer", "followUp"] as const)(
   "keeps a %s message an extension queued when a queued message is taken back",
   async (delivery) => {

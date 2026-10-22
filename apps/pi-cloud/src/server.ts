@@ -622,12 +622,22 @@ function browserCommand(body: unknown): Command {
       };
 
     case "unqueue": {
-      const { delivery } = fields;
+      const { delivery, sendNow } = fields;
       if (delivery !== "steer" && delivery !== "followUp") {
         throw new BadRequest('delivery must be "steer" or "followUp"');
       }
 
-      return { actor: user, type: "unqueue", delivery, text: text("text") };
+      if (sendNow !== undefined && typeof sendNow !== "boolean") {
+        throw new BadRequest("sendNow must be a boolean");
+      }
+
+      return {
+        actor: user,
+        type: "unqueue",
+        delivery,
+        text: text("text"),
+        ...(sendNow === true && { sendNow }),
+      };
     }
 
     case "answer":
