@@ -2,23 +2,27 @@ import {
   type ImageAttachment,
   imageLimits,
   imageTypes,
+  type ModelRef,
 } from "@pi-cloud/protocol";
 import { Button, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { command } from "./api";
 import { admit, dataUrl } from "./attachments";
-import type { Feed } from "./feed";
+import type { Feed, Settings } from "./feed";
+import { modelName, modelRef } from "./names";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
 import { useSuggestions } from "./suggestions";
 
 export function Composer({
   sessionId,
   feed,
+  models,
   hidden,
   report,
 }: {
   readonly sessionId: string;
   readonly feed: Feed;
+  readonly models: readonly ModelRef[];
   readonly hidden: boolean;
   readonly report: (error: unknown) => void;
 }): ReactElement {
@@ -219,7 +223,23 @@ export function Composer({
                 className="sr-only"
               />
             </label>
-            <span className="flex-1 text-caption text-fg-dim max-sm:hidden">
+            {feed.settings && (
+              <SettingsPickers
+                settings={feed.settings}
+                models={models}
+                onModel={(model) => {
+                  command(sessionId, { type: "set_model", model }).catch(
+                    report,
+                  );
+                }}
+                onThinking={(level) => {
+                  command(sessionId, { type: "set_thinking", level }).catch(
+                    report,
+                  );
+                }}
+              />
+            )}
+            <span className="flex-1 truncate text-caption text-fg-dim max-md:hidden">
               Enter steers · Alt+Enter queues a follow-up · / commands · @ files
             </span>
             {running && (
@@ -292,5 +312,72 @@ function Widget({ text }: { readonly text: string }): ReactElement {
     <pre className="rounded-md bg-code px-3 py-2 font-mono text-mono-sm whitespace-pre-wrap text-fg-dim">
       {text}
     </pre>
+  );
+}
+
+const picker =
+  "h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent";
+
+// Claude Code's model and effort menus, on Pi's model and reasoning level
+// (ADR 0023).
+function SettingsPickers({
+  settings,
+  models,
+  onModel,
+  onThinking,
+}: {
+  readonly settings: Settings;
+  readonly models: readonly ModelRef[];
+  readonly onModel: (model: ModelRef) => void;
+  readonly onThinking: (level: Settings["thinking"]) => void;
+}): ReactElement {
+  const current = settings.model ? modelName(settings.model) : "";
+
+  const names = [...new Set([current, ...models.map(modelName)])].filter(
+    (name) => name !== "",
+  );
+
+  return (
+    <>
+      <select
+        aria-label="Model"
+        value={current}
+        onChange={(event) => {
+          const model = modelRef(event.target.value);
+          if (model) {
+            onModel(model);
+          }
+        }}
+        className={picker}
+      >
+        {names.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+      {settings.levels.length > 1 && (
+        <select
+          aria-label="Reasoning"
+          value={settings.thinking}
+          onChange={(event) => {
+            const level = settings.levels.find(
+              (known) => known === event.target.value,
+            );
+
+            if (level) {
+              onThinking(level);
+            }
+          }}
+          className={picker}
+        >
+          {settings.levels.map((level) => (
+            <option key={level} value={level}>
+              {level === "off" ? "No reasoning" : `Reasoning: ${level}`}
+            </option>
+          ))}
+        </select>
+      )}
+    </>
   );
 }

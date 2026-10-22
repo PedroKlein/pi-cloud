@@ -16,6 +16,7 @@ import {
   type Selection,
   type SessionEvent,
   type StartFailure,
+  thinkingLevels,
   type ToolCall,
   protocolVersion,
   providerHeader,
@@ -586,6 +587,23 @@ function browserCommand(body: unknown): Command {
 
     case "abort":
       return { actor: user, type: "abort" };
+    case "set_model":
+      return {
+        actor: user,
+        type: "set_model",
+        model: modelOf(fields["model"]),
+      };
+    case "set_thinking": {
+      const level = thinkingLevels.find((known) => known === fields["level"]);
+      if (level === undefined) {
+        throw new BadRequest(
+          `level must be one of ${thinkingLevels.join(", ")}`,
+        );
+      }
+
+      return { actor: user, type: "set_thinking", level };
+    }
+
     case "unqueue": {
       const { delivery } = fields;
       if (delivery !== "steer" && delivery !== "followUp") {
@@ -620,7 +638,7 @@ function browserCommand(body: unknown): Command {
 
     default:
       throw new BadRequest(
-        "type must be message, abort, unqueue, answer or explain",
+        "type must be message, abort, set_model, set_thinking, unqueue, answer or explain",
       );
   }
 }

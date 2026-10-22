@@ -17,7 +17,10 @@ let root: string;
 let server: ReturnType<typeof serve>;
 let browser: Browser;
 let page: Page;
-const faux = fauxProvider();
+
+const faux = fauxProvider({
+  models: [{ id: "faux-1" }, { id: "faux-deep", reasoning: true }],
+});
 
 beforeAll(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-e2e-")));
@@ -784,3 +787,48 @@ test("keeps the closed sessions drawer out of reach on a phone", async () => {
 
   await page.setViewportSize({ width: 1280, height: 720 });
 });
+
+test("switches a session's model and reasoning level from the composer", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const composer = page.locator("form#prompt");
+  const model = composer.getByLabel("Model");
+  const reasoning = composer.getByLabel("Reasoning");
+
+  expect(await model.inputValue()).toBe("faux/faux-1");
+  expect(await reasoning.count()).toBe(0);
+
+  await model.selectOption("faux/faux-deep");
+  await reasoning.waitFor();
+  await reasoning.selectOption("high");
+
+  let asked: { model: string; reasoning: unknown } | undefined;
+
+  faux.setResponses([
+    (_context, options, _state, used) => {
+      asked = { model: used.id, reasoning: options?.reasoning };
+
+      return fauxAssistantMessage([fauxText("thought hard")]);
+    },
+  ]);
+
+  await page.locator("#prompt-text").fill("think");
+  await page.locator("#prompt-text").press("Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "thought hard" })
+    .waitFor();
+
+  expect(asked).toEqual({ model: "faux-deep", reasoning: "high" });
+}, 30_000);

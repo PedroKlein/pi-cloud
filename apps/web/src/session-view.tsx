@@ -197,6 +197,10 @@ export function SessionView({
           <Composer
             sessionId={sessionId}
             feed={feed}
+            models={
+              environments.find(({ id }) => id === session?.environmentId)
+                ?.models ?? []
+            }
             hidden={archived}
             report={reportError}
           />

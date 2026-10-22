@@ -20,7 +20,12 @@ import {
 } from "@pi-cloud/protocol";
 import { workspaceFiles } from "./files";
 import { remoteUI } from "./ui";
-import { type SessionOptions, startSession, stopSession } from "./session";
+import {
+  availableModel,
+  type SessionOptions,
+  startSession,
+  stopSession,
+} from "./session";
 import { openTerminal } from "./terminal";
 import { serverTools } from "./tools";
 
@@ -223,19 +228,27 @@ export async function hostSession(
       return;
     }
 
-    run(session, command).catch((error: unknown) => {
-      log("command failed", { command: command.type, error: String(error) });
+    run(session, command).then(
+      () => {
+        if (command.type === "set_model" || command.type === "set_thinking") {
+          live.push(settings(session));
+        }
+      },
+      (error: unknown) => {
+        log("command failed", { command: command.type, error: String(error) });
 
-      live.push({
-        type: "notify",
-        level: "error",
-        message: `${command.type} failed: ${String(error)}`,
-      });
-    });
+        live.push({
+          type: "notify",
+          level: "error",
+          message: `${command.type} failed: ${String(error)}`,
+        });
+      },
+    );
   });
 
   live.push({ type: "status", status: "idle" });
   live.push({ type: "commands", commands: slashCommands(session) });
+  live.push(settings(session));
   files.refresh();
   transcript.sync();
 
@@ -323,9 +336,22 @@ function attachTerminal(
 
 async function run(
   session: AgentSession,
-  command: Extract<Command, { type: "message" | "abort" | "context" }>,
+  command: Extract<
+    Command,
+    { type: "message" | "abort" | "context" | "set_model" | "set_thinking" }
+  >,
 ): Promise<void> {
   switch (command.type) {
+    case "set_model":
+      await session.setModel(
+        await availableModel(session.modelRuntime, command.model),
+      );
+
+      return;
+    case "set_thinking":
+      session.setThinkingLevel(command.level);
+
+      return;
     case "context":
       await session.sendCustomMessage(
         {
@@ -469,6 +495,17 @@ function filesFeed(
     stop: () => {
       stopped = true;
     },
+  };
+}
+
+function settings(session: AgentSession): LiveEvent {
+  const { model } = session;
+
+  return {
+    type: "settings",
+    model: model ? { provider: model.provider, id: model.id } : null,
+    thinking: session.thinkingLevel,
+    levels: session.getAvailableThinkingLevels(),
   };
 }
 
