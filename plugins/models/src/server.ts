@@ -36,6 +36,12 @@ export const models: ServerPlugin = {
         if (method === "GET" && path === "config") {
           const after = new URL(request.url).searchParams.get("after");
           if (after !== null) {
+            // A Session polls again at once after any answer, and backs off
+            // only after an error.
+            if (context.signal.aborted) {
+              return Response.json({ error: "stopping" }, { status: 503 });
+            }
+
             await versions.changed(
               environmentId,
               Number(after),
@@ -219,7 +225,7 @@ function changes(signal: AbortSignal): {
       waiting.delete(environmentId);
     },
     changed: async (environmentId, seen, request) => {
-      if (of(environmentId) !== seen || request.aborted || signal.aborted) {
+      if (of(environmentId) !== seen || request.aborted) {
         return;
       }
 
