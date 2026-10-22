@@ -615,6 +615,33 @@ test("refuses a Project repository whose URL leaves no name for its folder", asy
   expect(response.status).toBe(400);
 });
 
+test("refuses a null body and a file name that does not decode", async () => {
+  const a = await repository("app");
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Bad input",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  const projects = "/api/plugins/projects";
+
+  const responses = [
+    await api(`${projects}/projects/${id}/instructions`, null),
+    await api(`${projects}/threads/${coordinatorId}/state`, null),
+    await api(`${projects}/projects/${id}/memory/%zz`),
+    await api(`/api/plugins/library/projects/${id}/files/%zz`),
+  ];
+
+  expect(responses.map(({ status }) => status)).toEqual([400, 400, 400, 400]);
+});
+
 test("lists memory file sizes in UTF-8 bytes", async () => {
   const a = await repository("app");
 

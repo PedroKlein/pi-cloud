@@ -243,7 +243,7 @@ async function route(
     }
 
     if (project && child === "instructions" && request.method === "POST") {
-      const { instructions } = (await request.json()) as {
+      const { instructions } = ((await request.json()) ?? {}) as {
         instructions?: unknown;
       };
 
@@ -268,7 +268,7 @@ async function route(
 
     const thread = resource === "threads" ? store.member(id ?? "") : undefined;
     if (thread && child === "state" && request.method === "POST") {
-      const { state } = (await request.json()) as { state?: unknown };
+      const { state } = ((await request.json()) ?? {}) as { state?: unknown };
       store.setWorkState(thread.sessionId, toState(state));
 
       return new Response(null, { status: 204 });
@@ -276,7 +276,11 @@ async function route(
 
     return Response.json({ error: "not_found" }, { status: 404 });
   } catch (error) {
-    if (error instanceof BadRequest || error instanceof SyntaxError) {
+    if (
+      error instanceof BadRequest ||
+      error instanceof SyntaxError ||
+      error instanceof URIError
+    ) {
       return Response.json({ error: error.message }, { status: 400 });
     }
 
