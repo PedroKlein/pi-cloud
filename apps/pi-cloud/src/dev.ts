@@ -32,6 +32,8 @@ const commands = [
 
 let children: ChildProcess[] = [];
 let restart: ReturnType<typeof setTimeout> | undefined;
+let restarting: Promise<void> = Promise.resolve();
+let exiting = false;
 
 function start(): void {
   children = commands.map((args) =>
@@ -65,15 +67,21 @@ for (const dir of ["apps", "packages"]) {
 
     restart = setTimeout(() => {
       log("restarting", { changed: join(dir, file) });
-      void stop().then(start);
+
+      restarting = restarting.then(stop).then(() => {
+        if (!exiting) {
+          start();
+        }
+      });
     }, 200);
   });
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
+    exiting = true;
     clearTimeout(restart);
-    void stop().then(() => process.exit(0));
+    void restarting.then(stop).then(() => process.exit(0));
   });
 }
 
