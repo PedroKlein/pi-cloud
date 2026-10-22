@@ -46,7 +46,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const agent = { server: options.server, provider: options.provider };
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
-  const removing = new Map<string, Promise<RemovalReport | undefined>>();
+  const removing = new Map<string, Promise<RemovalReport>>();
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
@@ -174,26 +174,25 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const remove = async (
     removal: Removal,
     sessionLog: Log,
-  ): Promise<RemovalReport | undefined> => {
+  ): Promise<RemovalReport> => {
     const { sessionId, workspace, force } = removal;
     await stopping.get(sessionId);
-    try {
-      const report = await removeWorkspace(
-        workspace,
-        { dir: workspaceDir(sessionId), force },
-        sessionLog,
-      );
 
-      await reportRemoval(agent, sessionId, report).catch((error: unknown) => {
-        sessionLog("workspace removal not reported", { error: String(error) });
-      });
-
-      return report;
-    } catch (error) {
+    const report = await removeWorkspace(
+      workspace,
+      { dir: workspaceDir(sessionId), force },
+      sessionLog,
+    ).catch((error: unknown): RemovalReport => {
       sessionLog("workspace removal failed", { error: String(error) });
 
-      return undefined;
-    }
+      return { outcome: "kept", reason: String(error) };
+    });
+
+    await reportRemoval(agent, sessionId, report).catch((error: unknown) => {
+      sessionLog("workspace removal not reported", { error: String(error) });
+    });
+
+    return report;
   };
 
   const sessionLogger =
