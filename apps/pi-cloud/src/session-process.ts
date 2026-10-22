@@ -22,9 +22,9 @@ export interface SessionSpec {
 }
 
 type ChildMessage =
-  | { readonly ready: true }
-  | { readonly error: string }
-  | { readonly terminal: TerminalCommand };
+  | { readonly type: "ready" }
+  | { readonly type: "failed"; readonly error: string }
+  | { readonly type: "terminal"; readonly command: TerminalCommand };
 
 const stopTimeoutMs = 10_000;
 
@@ -66,12 +66,12 @@ export async function spawnSession(
       const message = childMessage(line);
       if (message === undefined) {
         log("session process output", { line });
-      } else if ("ready" in message) {
+      } else if (message.type === "ready") {
         resolve({ stop, exited });
-      } else if ("error" in message) {
+      } else if (message.type === "failed") {
         reject(new Error(message.error));
       } else {
-        openTerminal(message.terminal);
+        openTerminal(message.command);
       }
     });
 
@@ -125,16 +125,20 @@ export async function runSessionProcess(): Promise<void> {
         void stop();
       }),
       log,
-      (terminal) => {
-        send({ terminal });
+      (command) => {
+        send({ type: "terminal", command });
       },
     );
   } catch (error) {
-    send({ error: error instanceof Error ? error.message : String(error) });
+    send({
+      type: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
+
     process.exit(1);
   }
 
-  send({ ready: true });
+  send({ type: "ready" });
 
   // The agent closes stdin to stop the Session, or by exiting.
   while ((await lines.next()).done !== true) {
@@ -146,14 +150,44 @@ export async function runSessionProcess(): Promise<void> {
 
 function childMessage(line: string): ChildMessage | undefined {
   try {
-    const parsed = JSON.parse(line) as Record<string, unknown> | null;
+    const message: unknown = JSON.parse(line);
 
-    return parsed !== null &&
-      typeof parsed === "object" &&
-      ("ready" in parsed || "error" in parsed || "terminal" in parsed)
-      ? (parsed as ChildMessage)
-      : undefined;
+    return isChildMessage(message) ? message : undefined;
   } catch {
     return undefined;
   }
+}
+
+function isChildMessage(value: unknown): value is ChildMessage {
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case "ready":
+      return true;
+    case "failed":
+      return "error" in value && typeof value.error === "string";
+    case "terminal":
+      return "command" in value && isTerminalCommand(value.command);
+    default:
+      return false;
+  }
+}
+
+function isTerminalCommand(value: unknown): value is TerminalCommand {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "actor" in value &&
+    typeof value.actor === "string" &&
+    "type" in value &&
+    value.type === "terminal" &&
+    "terminalId" in value &&
+    typeof value.terminalId === "string" &&
+    "cols" in value &&
+    typeof value.cols === "number" &&
+    "rows" in value &&
+    typeof value.rows === "number"
+  );
 }
