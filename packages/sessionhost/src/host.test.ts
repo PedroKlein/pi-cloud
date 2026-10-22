@@ -1518,6 +1518,118 @@ test.each(["steer", "followUp"] as const)(
   },
 );
 
+const image = { mimeType: "image/png", data: "iVBORw0KGgo=" } as const;
+
+test.each([
+  [
+    "two messages with the same text",
+    [{ text: "look", images: [image] }, { text: "look" }],
+    [
+      [
+        { type: "text", text: "look" },
+        { type: "image", ...image },
+      ],
+      [{ type: "text", text: "look" }],
+    ],
+  ],
+  [
+    "a prompt template",
+    [{ text: "/review", images: [image] }],
+    [
+      [
+        { type: "text", text: "Review this screenshot." },
+        { type: "image", ...image },
+      ],
+    ],
+  ],
+] as const)(
+  "queues %s again with the right images when another message is taken back",
+  async (_, messages, expected) => {
+    const { faux, models } = await fauxModels(root);
+    await mkdir(join(root, ".pi", "prompts"), { recursive: true });
+
+    await writeFile(
+      join(root, ".pi", "prompts", "review.md"),
+      "Review this screenshot.",
+    );
+
+    let release = (): void => undefined;
+    let lastContext: unknown[] = [];
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const reply: FauxResponseFactory = (context) => {
+      lastContext = context.messages.flatMap((message) =>
+        message.role === "user" ? [message.content] : [],
+      );
+
+      return fauxAssistantMessage([fauxText("ok")]);
+    };
+
+    faux.setResponses([
+      async (...args) => {
+        await gate;
+
+        return reply(...args);
+      },
+      reply,
+      reply,
+    ]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, { models }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "first" });
+    await fake.waitFor(() => faux.state.callCount === 1);
+
+    for (const message of [...messages, { text: "other" }]) {
+      fake.send({
+        actor: "user:local",
+        type: "message",
+        delivery: "followUp",
+        ...message,
+      });
+    }
+
+    await fake.waitFor(() =>
+      fake.events.some(
+        (e) => e.type === "queue" && e.followUp.length === messages.length + 1,
+      ),
+    );
+
+    fake.send({
+      actor: "user:local",
+      type: "unqueue",
+      delivery: "followUp",
+      text: "other",
+    });
+
+    await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+    release();
+
+    await fake.waitFor(
+      () =>
+        fake.events.filter((e) => e.type === "status" && e.status === "idle")
+          .length === 2,
+    );
+
+    await hosted.stop();
+
+    expect(lastContext).toEqual([
+      [{ type: "text", text: "first" }],
+      ...expected,
+    ]);
+  },
+);
+
 test("leaves a message Pi already read when asked to take it back", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("done")])]);
