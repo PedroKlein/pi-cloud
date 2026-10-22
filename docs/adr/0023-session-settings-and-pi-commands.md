@@ -46,7 +46,7 @@ These aren't offered:
 - TUI-only commands: `/settings`, `/hotkeys`, `/changelog`, `/scoped-models`, `/trust`, `/bug` and `/quit`.
 - `/new`, `/resume`, `/fork`, `/clone` and `/tree`, which would change the session behind a Pi Cloud Session. Pi Cloud's own New session and a later fork cover these.
 - `/export`, `/import` and `/share`, which move files between the provider and the browser.
-- `/login` and `/logout`. Logging in to providers from the web is its own decision.
+- `/login` and `/logout`, which [ADR 0024](0024-provider-login-from-the-web.md) adds.
 
 ## Consequences
 

@@ -17,7 +17,7 @@
 
 ### Blocking the first slice
 
-- Resolved: no auth in v1 behind localhost or an SSH tunnel, and each provider keeps its own Pi model auth ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)).
+- Resolved: no auth in v1 behind localhost or an SSH tunnel, and each provider keeps its own Pi model auth ([ADR 0005](adr/0005-v1-access-and-model-credentials.md)). Users log providers in from the web, and the credential stays in the machine's Pi auth ([ADR 0024](adr/0024-provider-login-from-the-web.md)).
 - Resolved: a v1 Session only runs on its own provider, so the agent never starts a second attempt while the first is alive, and the server drops messages from old generations ([ADR 0006](adr/0006-provider-protocol.md)).
 
 ### Product and repository boundary

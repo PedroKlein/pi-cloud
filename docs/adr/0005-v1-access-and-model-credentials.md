@@ -1,6 +1,6 @@
 # 0005: v1 access and model credentials
 
-- Status: accepted
+- Status: accepted, amended by [ADR 0024](0024-provider-login-from-the-web.md) (provider login from the web)
 - Date: 2026-10-17
 
 ## Context
