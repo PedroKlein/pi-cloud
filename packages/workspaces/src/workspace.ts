@@ -315,7 +315,7 @@ async function removeCheckout(
   }
 
   const restore = hasBranch
-    ? await remoteHolding(repository, workspace.branch)
+    ? await restorePoint(repository, workspace.branch)
     : null;
 
   if (workspace.kind === "clone") {
@@ -517,24 +517,45 @@ async function worktreeFolder(path: string): Promise<string | undefined> {
     : dirname(dirname(dirname(resolve(path, gitdir.trim()))));
 }
 
-async function remoteHolding(
+// Never a remote branch that merely contains the session's commit, since such
+// a branch may have unrelated commits on top.
+async function restorePoint(
   repository: string,
   branch: string,
 ): Promise<string | null> {
+  const tip = await git(
+    repository,
+    "rev-parse",
+    "--verify",
+    `refs/heads/${branch}`,
+  );
+
   const refs = paths(
     await git(
       repository,
       "for-each-ref",
       "--contains",
-      branch,
-      "--format=%(refname:lstrip=2)%00",
+      tip,
+      "--format=%(objectname) %(refname:lstrip=2)%00",
       "refs/remotes",
     ),
   )
-    .map((ref) => ref.trim())
-    .filter((ref) => ref !== "" && !ref.endsWith("/HEAD"));
+    .map((line) => {
+      const [commit = "", name = ""] = line.trim().split(" ");
 
-  return refs.find((ref) => ref.endsWith(`/${branch}`)) ?? refs[0] ?? null;
+      return { commit, name };
+    })
+    .filter(({ name }) => name !== "" && !name.endsWith("/HEAD"));
+
+  if (refs.length === 0) {
+    return null;
+  }
+
+  return (
+    refs.find(({ name }) => name.endsWith(`/${branch}`))?.name ??
+    refs.find(({ commit }) => commit === tip)?.name ??
+    tip
+  );
 }
 
 async function cloneWithMirror(

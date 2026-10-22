@@ -15,6 +15,7 @@ import { type AddressInfo, createServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { Workspace } from "@pi-cloud/protocol";
 import { findCheckouts, prepareWorkspace, removeWorkspace } from "./workspace";
 
 const run = promisify(execFile);
@@ -855,6 +856,72 @@ test("removes a clean clone of an empty repository", async () => {
   ).toEqual({ outcome: "removed", restore: workspace });
 
   expect(stat(dir)).rejects.toThrow();
+});
+
+async function removeAndRestore(
+  workspace: Workspace,
+  options: { readonly dir: string; readonly folders: readonly string[] },
+): Promise<void> {
+  const report = await removeWorkspace(
+    workspace,
+    { dir: options.dir, force: false },
+    noLog,
+  );
+
+  if (report.outcome === "kept") {
+    throw new Error(`workspace kept: ${report.reason}`);
+  }
+
+  await prepareWorkspace(report.restore, options, noLog);
+}
+
+test("brings a session back without the commits of another remote branch that contains it", async () => {
+  await git(repository, "switch", "--create", "aaa-feature");
+  await commit(repository, "unrelated.txt");
+  await git(repository, "switch", "main");
+  const checkout = await checkoutWithRemote();
+
+  for (const workspace of [
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+    const options = { dir, folders: [checkout] };
+    await prepareWorkspace(workspace, options, noLog);
+    const tip = await git(dir, "rev-parse", "HEAD");
+
+    await removeAndRestore(workspace, options);
+
+    expect(await git(dir, "rev-parse", "HEAD")).toBe(tip);
+    expect(await readdir(dir)).not.toContain("unrelated.txt");
+  }
+});
+
+test("brings a session back at its own commit once the branch holding it moved on", async () => {
+  const checkout = await checkoutWithRemote();
+
+  for (const workspace of [
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+    const options = { dir, folders: [checkout] };
+    const review = `review/${workspace.kind}`;
+    await prepareWorkspace(workspace, options, noLog);
+    await commit(dir, "work.txt");
+    await git(dir, "push", "origin", `HEAD:refs/heads/${review}`);
+    const tip = await git(dir, "rev-parse", "HEAD");
+
+    await git(repository, "switch", review);
+    await commit(repository, "later.txt");
+    await git(repository, "switch", "main");
+    await git(dir, "fetch", "origin");
+
+    await removeAndRestore(workspace, options);
+
+    expect(await git(dir, "rev-parse", "HEAD")).toBe(tip);
+    expect(await readdir(dir)).not.toContain("later.txt");
+  }
 });
 
 test("reports a workspace that is already gone as removed", async () => {
