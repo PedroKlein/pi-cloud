@@ -94,6 +94,25 @@ test("chats with a session, replays it after a reload and opens its terminal", a
     .locator("#terminal .xterm-rows")
     .filter({ hasText: "e2e-42" })
     .waitFor();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const keys = page.getByRole("toolbar", { name: "Terminal keys" });
+  await page.keyboard.type("echo one");
+  await keys.getByRole("button", { name: "Ctrl" }).click();
+  await page.keyboard.type("u");
+  await page.keyboard.type("echo e2e-$((5 * 5))\n");
+  const rows = page.locator("#terminal .xterm-rows");
+  await rows.filter({ hasText: "e2e-25" }).waitFor();
+
+  expect(await rows.textContent()).not.toContain("oneu");
+
+  expect(
+    await keys
+      .getByRole("button", { name: "Ctrl" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+
+  await page.setViewportSize({ width: 1280, height: 720 });
 }, 30_000);
 
 test("starts a session with the task from the New session form", async () => {

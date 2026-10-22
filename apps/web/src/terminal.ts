@@ -5,8 +5,8 @@ import type { TerminalResize } from "@pi-cloud/protocol";
 export function openTerminal(
   sessionId: string,
   container: HTMLElement,
-  onClose: () => void,
-): () => void {
+  typed: (data: string) => string,
+): { readonly send: (data: string) => void; readonly close: () => void } {
   const token = (name: string): string =>
     getComputedStyle(container).getPropertyValue(name).trim();
 
@@ -72,16 +72,18 @@ export function openTerminal(
     terminal.write(
       `\r\n[terminal closed${event.reason === "" ? "" : `: ${event.reason}`}]\r\n`,
     );
-
-    onClose();
   };
 
   socket.addEventListener("close", closed);
 
-  const input = terminal.onData((data) => {
+  const send = (data: string): void => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(encoder.encode(data));
     }
+  };
+
+  const input = terminal.onData((data) => {
+    send(typed(data));
   });
 
   const resize = terminal.onResize(sendSize);
@@ -93,13 +95,19 @@ export function openTerminal(
   observer.observe(container);
   terminal.focus();
 
-  return () => {
-    socket.removeEventListener("close", closed);
-    observer.disconnect();
-    input.dispose();
-    resize.dispose();
-    socket.close();
-    themeChanges.disconnect();
-    terminal.dispose();
+  return {
+    send: (data) => {
+      send(data);
+      terminal.focus();
+    },
+    close: () => {
+      socket.removeEventListener("close", closed);
+      observer.disconnect();
+      input.dispose();
+      resize.dispose();
+      socket.close();
+      themeChanges.disconnect();
+      terminal.dispose();
+    },
   };
 }
