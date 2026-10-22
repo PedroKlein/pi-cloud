@@ -1571,6 +1571,15 @@ test("refuses a terminal for a session whose agent is gone", async () => {
   await follow(session.id, status("idle"));
   await laptop();
 
+  // The server sees the closed connections a moment after the agent stops.
+  while (
+    ((await (await api("/api/environments")).json()) as Environment[]).some(
+      (environment) => environment.provider === "laptop" && environment.online,
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
   const response = await fetch(
     new URL(`/api/sessions/${session.id}/terminal`, server.url),
     { headers: webSocketUpgrade },
