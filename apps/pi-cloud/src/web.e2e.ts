@@ -529,3 +529,97 @@ test("mentions a workspace file from the composer's menu", async () => {
     })
     .waitFor();
 }, 30_000);
+
+test("creates a pull request from the Changes panel", async () => {
+  const project = join(root, "widgets");
+  const remote = join(root, "widgets.git");
+  const bin = join(root, "bin");
+  const github = "https://github.com/acme/widgets.git";
+
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: project, encoding: "utf8" });
+
+  execFileSync("git", ["init", "--quiet", "--bare", remote]);
+  execFileSync("git", ["init", "--quiet", "--initial-branch=main", project]);
+  await writeFile(join(project, "README.md"), "widgets\n");
+  git("add", ".");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first");
+  git("config", `url.${remote}.insteadOf`, github);
+  git("remote", "add", "origin", github);
+  git("push", "--quiet", "origin", "main");
+
+  await mkdir(bin);
+
+  await writeFile(
+    join(bin, "gh"),
+    "#!/bin/sh\necho https://github.com/acme/widgets/pull/12\n",
+    { mode: 0o755 },
+  );
+
+  const saved = { ...process.env };
+
+  Object.assign(process.env, {
+    PATH: `${bin}:${saved["PATH"] ?? ""}`,
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  });
+
+  try {
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxToolCall("write", { path: "widget.ts", content: "export {};\n" }),
+      ]),
+      fauxAssistantMessage([fauxText("added the widget")]),
+      fauxAssistantMessage([fauxText("Add a widget\n\nStarts the module.")]),
+    ]);
+
+    await page.goto(server.url.href);
+    await page.getByRole("button", { name: "New session" }).click();
+    const form = page.locator("form#create");
+
+    await form
+      .locator("[name=environment]")
+      .selectOption({ label: "e2e (e2e, online)" });
+
+    await form.locator("[name=kind]").selectOption("worktree");
+    await form.locator("[name=location]").fill(project);
+    await form.getByRole("button", { name: "Start session" }).click();
+    await page.locator("#status", { hasText: "idle" }).waitFor();
+
+    await page.locator("#prompt-text").fill("add a widget");
+    await page.locator("#prompt-text").press("Enter");
+
+    const changes = page.locator('#plugin-panels [data-plugin="changes"]');
+    await changes.getByText("Changes (1 file)").waitFor();
+
+    await changes
+      .getByRole("button", { name: "More ways to create a PR" })
+      .click();
+
+    await changes.getByRole("menuitem", { name: "Create draft PR" }).waitFor();
+    await page.keyboard.press("Escape");
+
+    await changes
+      .getByRole("button", { name: "Create PR", exact: true })
+      .click();
+
+    const view = changes.getByRole("link", { name: "View PR" });
+    await view.waitFor();
+
+    expect(await view.getAttribute("href")).toBe(
+      "https://github.com/acme/widgets/pull/12",
+    );
+
+    const branch = execFileSync(
+      "git",
+      ["for-each-ref", "--format=%(refname:short) %(subject)", "refs/heads"],
+      { cwd: remote, encoding: "utf8" },
+    );
+
+    expect(branch).toContain("Add a widget");
+  } finally {
+    process.env = saved;
+  }
+}, 30_000);

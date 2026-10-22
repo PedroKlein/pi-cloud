@@ -18,7 +18,11 @@ import { Type } from "@earendil-works/pi-ai";
 import type { SessionPlugin } from "@pi-cloud/plugins";
 import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
 import { ask } from "@pi-cloud/ask/session";
-import { type CheckoutChanges, changes } from "@pi-cloud/changes/session";
+import {
+  type CheckoutChanges,
+  changes,
+  type PullRequest,
+} from "@pi-cloud/changes/session";
 import { hostSession, type SessionStream, type TerminalPeer } from "./index";
 import { fauxModels } from "./testdata/models";
 
@@ -1213,7 +1217,9 @@ function published(
   events: readonly LiveEvent[],
 ): (readonly CheckoutChanges[])[] {
   return events.flatMap((event) =>
-    event.type === "plugin" && event.plugin === "changes"
+    event.type === "plugin" &&
+    event.plugin === "changes" &&
+    event.key === "changes"
       ? [event.data as readonly CheckoutChanges[]]
       : [],
   );
@@ -1309,6 +1315,236 @@ test("sends only the stat when the patch is too large", async () => {
     patch: "",
     truncated: true,
   });
+});
+
+// A session branch on a clone whose origin looks like GitHub but is a bare
+// repository under root, and a gh on PATH that answers with reply.
+async function pullRequestSetup(reply: string): Promise<{
+  readonly repo: string;
+  readonly base: string;
+  readonly ghCalls: string;
+  readonly remoteLog: () => Promise<string>;
+  readonly restore: () => void;
+}> {
+  const exec = promisify(execFile);
+  const repo = await gitRepository();
+  const remote = join(root, "widgets.git");
+  const bin = join(root, "bin");
+  const ghCalls = join(root, "gh-calls");
+
+  const git = async (...args: string[]): Promise<string> =>
+    (await exec("git", args, { cwd: repo })).stdout.trim();
+
+  await exec("git", ["init", "--bare", "--initial-branch=main", remote]);
+
+  await git(
+    "config",
+    `url.${remote}.insteadOf`,
+    "https://github.com/acme/widgets.git",
+  );
+
+  await git("remote", "add", "origin", "https://github.com/acme/widgets.git");
+  await git("push", "--quiet", "origin", "main");
+  await git("switch", "--quiet", "-c", "pi/notes");
+
+  await mkdir(bin);
+
+  await writeFile(
+    join(bin, "gh"),
+    `#!/bin/sh\nprintf '%s\\n' "$@" >> ${ghCalls}\n${reply}\n`,
+    { mode: 0o755 },
+  );
+
+  const saved = { ...process.env };
+
+  Object.assign(process.env, {
+    PATH: `${bin}:${saved["PATH"] ?? ""}`,
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  });
+
+  return {
+    repo,
+    base: await git("rev-parse", "HEAD"),
+    ghCalls,
+    remoteLog: async () =>
+      (
+        await exec("git", ["log", "--format=%s", "pi/notes"], { cwd: remote })
+      ).stdout.trim(),
+    restore: () => {
+      process.env = saved;
+    },
+  };
+}
+
+function pullRequests(events: readonly LiveEvent[]): PullRequest[] {
+  return events.flatMap((event) =>
+    event.type === "plugin" &&
+    event.plugin === "changes" &&
+    event.key === "pull-requests"
+      ? (event.data as PullRequest[])
+      : [],
+  );
+}
+
+test("/pr draft commits, pushes and opens a draft pull request that the next start shows", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  const setup = await pullRequestSetup(
+    "echo https://github.com/acme/widgets/pull/7",
+  );
+
+  try {
+    await writeFile(join(setup.repo, "notes.txt"), "new notes\n");
+
+    faux.setResponses([
+      fauxAssistantMessage([
+        fauxText("Add release notes\n\nWrites notes.txt for the release."),
+      ]),
+    ]);
+
+    const options = {
+      cwd: setup.repo,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [changes],
+      checkouts: [{ path: setup.repo, base: setup.base }],
+    };
+
+    const fake = fakeStream();
+    const hosted = await hostSession(options, fake.stream, () => undefined);
+
+    fake.send({ actor: "user:local", type: "message", text: "/pr draft" });
+
+    await fake.waitFor(() =>
+      pullRequests(fake.events).some(({ status }) => status === "open"),
+    );
+
+    await hosted.stop();
+
+    expect(pullRequests(fake.events)).toEqual([
+      { name: "", status: "working" },
+      {
+        name: "",
+        status: "open",
+        url: "https://github.com/acme/widgets/pull/7",
+      },
+    ]);
+
+    expect(await setup.remoteLog()).toBe("Add release notes\nfirst");
+
+    const calls = (await Bun.file(setup.ghCalls).text()).split("\n");
+    expect(calls).toContain("--draft");
+    expect(calls).toContain("Add release notes");
+    expect(calls).toContain("Writes notes.txt for the release.");
+
+    const again = fakeStream();
+    const restarted = await hostSession(options, again.stream, () => undefined);
+    await again.waitFor(() => pullRequests(again.events).length > 0);
+    await restarted.stop();
+
+    expect(pullRequests(again.events)).toEqual([
+      {
+        name: "",
+        status: "open",
+        url: "https://github.com/acme/widgets/pull/7",
+      },
+    ]);
+  } finally {
+    setup.restore();
+  }
+});
+
+test("/pr falls back to GitHub's compose page when gh fails", async () => {
+  const { faux, models } = await fauxModels(root);
+  const setup = await pullRequestSetup("echo 'not logged in' >&2; exit 1");
+
+  try {
+    await writeFile(join(setup.repo, "notes.txt"), "new notes\n");
+    faux.setResponses([fauxAssistantMessage([fauxText("Add notes\n\nWhy.")])]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      {
+        cwd: setup.repo,
+        agentDir: join(root, "agent"),
+        sessionDir: join(root, "sessions"),
+        extensionPaths: [],
+        models,
+        plugins: [changes],
+        checkouts: [{ path: setup.repo, base: setup.base }],
+      },
+      fake.stream,
+      () => undefined,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "/pr" });
+
+    await fake.waitFor(() =>
+      pullRequests(fake.events).some(({ status }) => status === "compose"),
+    );
+
+    await hosted.stop();
+
+    const last = pullRequests(fake.events).at(-1);
+
+    expect(last).toMatchObject({
+      status: "compose",
+      reason: "gh pr create failed: not logged in",
+    });
+
+    const url = new URL(last?.status === "compose" ? last.url : "");
+    expect(url.pathname).toBe("/acme/widgets/compare/pi%2Fnotes");
+    expect(url.searchParams.get("title")).toBe("Add notes");
+    expect(url.searchParams.get("body")).toBe("Why.");
+    expect(await setup.remoteLog()).toBe("Add notes\nfirst");
+  } finally {
+    setup.restore();
+  }
+});
+
+test("/pr says why when the branch has nothing to push", async () => {
+  const { models } = await fauxModels(root);
+  const setup = await pullRequestSetup("exit 1");
+
+  try {
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      {
+        cwd: setup.repo,
+        agentDir: join(root, "agent"),
+        sessionDir: join(root, "sessions"),
+        extensionPaths: [],
+        models,
+        plugins: [changes],
+        checkouts: [{ path: setup.repo, base: setup.base }],
+      },
+      fake.stream,
+      () => undefined,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "/pr compose" });
+
+    await fake.waitFor(() =>
+      pullRequests(fake.events).some(({ status }) => status === "failed"),
+    );
+
+    await hosted.stop();
+
+    expect(pullRequests(fake.events).at(-1)).toEqual({
+      name: "",
+      status: "failed",
+      error: "nothing to push: the branch has no changes yet",
+    });
+  } finally {
+    setup.restore();
+  }
 });
 
 test("publishes no changes outside a git repository", async () => {
