@@ -958,6 +958,32 @@ test("matches a folder whose remote names the repository another way", async () 
   expect(await git(checkout, "worktree", "list")).toContain(join(dir, "tool"));
 });
 
+test("matches a folder whose scp-style remote path starts with a digit", async () => {
+  const checkout = await checkoutWithRemote();
+
+  await git(
+    checkout,
+    "remote",
+    "set-url",
+    "origin",
+    "git@git.example.com:3b1b/Manim.git",
+  );
+
+  const dir = join(root, "workspaces", "s1");
+
+  await prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: "https://git.example.com/3b1b/manim" }],
+    },
+    { dir, folders: [checkout] },
+    noLog,
+  );
+
+  expect(await git(checkout, "worktree", "list")).toContain(join(dir, "manim"));
+});
+
 test("removes several repositories only when none of them would lose work", async () => {
   const second = join(root, "second");
   await repositoryAt(second);
