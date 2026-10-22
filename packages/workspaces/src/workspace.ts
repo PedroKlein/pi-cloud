@@ -674,7 +674,7 @@ async function cloneWithMirror(
   log: Log,
 ): Promise<void> {
   if (mirrors === undefined) {
-    await git(dirname(dir), "clone", "--", repository, dir);
+    await remoteGit(repository, dirname(dir), "clone", "--", repository, dir);
 
     return;
   }
@@ -698,20 +698,36 @@ async function cloneWithMirror(
       },
     );
 
-    await git(dirname(dir), "clone", ...reference, "--", repository, dir);
+    await remoteGit(
+      repository,
+      dirname(dir),
+      "clone",
+      ...reference,
+      "--",
+      repository,
+      dir,
+    );
   });
 }
 
 async function updateMirror(repository: string, mirror: string): Promise<void> {
   if (await exists(mirror)) {
-    await git(mirror, "fetch", "--prune", "origin");
+    await remoteGit(repository, mirror, "fetch", "--prune", "origin");
 
     return;
   }
 
   await mkdir(dirname(mirror), { recursive: true });
   try {
-    await git(dirname(mirror), "clone", "--mirror", "--", repository, mirror);
+    await remoteGit(
+      repository,
+      dirname(mirror),
+      "clone",
+      "--mirror",
+      "--",
+      repository,
+      mirror,
+    );
   } catch (error) {
     await rm(mirror, { recursive: true, force: true });
     throw error;
@@ -834,7 +850,44 @@ async function readBase(dir: string, branch: string): Promise<string | null> {
   return git(dir, "config", "--get", baseKey(branch)).catch(() => null);
 }
 
+// ssh has no stall limit like http's, so these options give a server that goes
+// quiet the same five minutes, unless the provider set up its own ssh command.
+// A hasconfig include can set one for this repository alone.
+async function remoteGit(
+  repository: string,
+  cwd: string,
+  ...args: string[]
+): Promise<string> {
+  const ownSsh =
+    process.env["GIT_SSH_COMMAND"] !== undefined ||
+    process.env["GIT_SSH"] !== undefined ||
+    (await git(
+      cwd,
+      "-c",
+      `remote.origin.url=${repository}`,
+      "config",
+      "--get",
+      "core.sshCommand",
+    ).then(
+      () => true,
+      () => false,
+    ));
+
+  const ssh =
+    "ssh -o ConnectTimeout=300 -o ServerAliveInterval=15 -o ServerAliveCountMax=20";
+
+  return gitWith(ownSsh ? {} : { GIT_SSH_COMMAND: ssh }, cwd, args);
+}
+
 async function git(cwd: string, ...args: string[]): Promise<string> {
+  return gitWith({}, cwd, args);
+}
+
+async function gitWith(
+  defaults: Readonly<Record<string, string>>,
+  cwd: string,
+  args: readonly string[],
+): Promise<string> {
   try {
     const { stdout } = await run("git", args, {
       cwd,
@@ -847,6 +900,7 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
       env: {
         GIT_HTTP_LOW_SPEED_LIMIT: "1000",
         GIT_HTTP_LOW_SPEED_TIME: "300",
+        ...defaults,
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",
       },

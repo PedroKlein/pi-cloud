@@ -611,6 +611,147 @@ test("gives up on a repository whose server stops sending", async () => {
   }
 }, 30_000);
 
+// A stand-in for an ssh program that records how git ran it, then fails.
+async function recordingSsh(
+  bin: string,
+  name: string,
+  calls: string,
+): Promise<string> {
+  const path = join(bin, name);
+  await mkdir(bin, { recursive: true });
+
+  await writeFile(
+    path,
+    `#!/bin/sh\nprintf '%s\\n' "${name} $*" >> '${calls}'\nexit 1\n`,
+    { mode: 0o755 },
+  );
+
+  return path;
+}
+
+async function withEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  work: () => Promise<void>,
+): Promise<void> {
+  const saved = Object.entries(env).map(
+    ([key]) => [key, process.env[key]] as const,
+  );
+
+  const assign = (
+    entries: readonly (readonly [string, string | undefined])[],
+  ): void => {
+    for (const [key, value] of entries) {
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key);
+      } else {
+        process.env[key] = value;
+      }
+    }
+  };
+
+  assign(Object.entries(env));
+  try {
+    await work();
+  } finally {
+    assign(saved);
+  }
+}
+
+async function cloneOverSsh(remote: string, name: string): Promise<void> {
+  const prepared = prepareWorkspace(
+    { kind: "clone", repository: remote, branch: `pi-cloud/${name}` },
+    {
+      dir: join(root, "workspaces", name),
+      folders: [],
+      mirrors: join(root, "mirrors"),
+    },
+    noLog,
+  );
+
+  expect(prepared).rejects.toThrow("Could not read from remote repository");
+  await prepared.catch(() => undefined);
+}
+
+async function sshCalls(calls: string): Promise<string[]> {
+  return (await readFile(calls, "utf8")).trim().split("\n");
+}
+
+test("has ssh give up on a server that goes quiet", async () => {
+  const bin = join(root, "bin");
+  const calls = join(root, "ssh-calls");
+  await recordingSsh(bin, "ssh", calls);
+
+  await withEnv(
+    {
+      PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+      GIT_SSH_COMMAND: undefined,
+      GIT_SSH: undefined,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+    },
+    async () => {
+      await cloneOverSsh("git@example.invalid:org/repo.git", "s1");
+      await cloneOverSsh("ssh://git@example.invalid:2222/org/repo.git", "s2");
+    },
+  );
+
+  const made = await sshCalls(calls);
+
+  expect(made).toHaveLength(4);
+  for (const call of made) {
+    expect(call).toStartWith(
+      "ssh -o ConnectTimeout=300 -o ServerAliveInterval=15 -o ServerAliveCountMax=20 ",
+    );
+  }
+});
+
+test("leaves the provider's own ssh command alone", async () => {
+  const bin = join(root, "bin");
+  const calls = join(root, "ssh-calls");
+  await recordingSsh(bin, "ssh", calls);
+  const own = await recordingSsh(bin, "own-ssh", calls);
+
+  const coreConfig = join(root, "core.gitconfig");
+  await writeFile(coreConfig, `[core]\n\tsshCommand = ${own}\n`);
+  const includeConfig = join(root, "include.gitconfig");
+
+  await writeFile(
+    includeConfig,
+    `[includeIf "hasconfig:remote.*.url:git@example.invalid:org/**"]\n\tpath = ${coreConfig}\n`,
+  );
+
+  for (const [name, choice] of [
+    ["s1", { GIT_SSH_COMMAND: own }],
+    ["s2", { GIT_SSH: own }],
+    ["s3", { GIT_CONFIG_GLOBAL: coreConfig }],
+    ["s4", { GIT_CONFIG_GLOBAL: includeConfig }],
+  ] as const) {
+    await rm(calls, { force: true });
+
+    await withEnv(
+      {
+        PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+        GIT_SSH_COMMAND: undefined,
+        GIT_SSH: undefined,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        ...choice,
+      },
+      async () => {
+        await cloneOverSsh("git@example.invalid:org/repo.git", name);
+      },
+    );
+
+    const made = await sshCalls(calls);
+
+    expect(made.length).toBeGreaterThan(0);
+    for (const call of made) {
+      expect(call).toStartWith("own-ssh ");
+      expect(call).not.toContain("ServerAlive");
+    }
+  }
+});
+
 test("copies the gitignored files .worktreeinclude names into a new worktree", async () => {
   await writeFile(join(repository, ".gitignore"), ".env\nsecrets/\nbuild/\n");
 
