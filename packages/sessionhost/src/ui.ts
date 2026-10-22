@@ -35,8 +35,13 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
   readonly explain: (command: Extract<Command, { type: "explain" }>) => void;
   readonly cancelAll: () => void;
 } {
-  const pending = new Map<string, (value: Answer) => void>();
-  const explainers = new Map<string, Explain>();
+  const openPrompts = new Map<
+    string,
+    {
+      readonly done: (value: Answer) => void;
+      readonly explain: Explain | undefined;
+    }
+  >();
 
   const ask = async (
     request: PromptRequest,
@@ -51,8 +56,7 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
 
     return new Promise((resolve) => {
       const done = (value: Answer): void => {
-        pending.delete(id);
-        explainers.delete(id);
+        openPrompts.delete(id);
         clearTimeout(timer);
         options?.signal?.removeEventListener("abort", cancel);
         publish({ type: "prompt_end", id });
@@ -69,10 +73,7 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
           : setTimeout(cancel, options.timeout);
 
       options?.signal?.addEventListener("abort", cancel);
-      pending.set(id, done);
-      if (explain) {
-        explainers.set(id, explain);
-      }
+      openPrompts.set(id, { done, explain });
 
       publish({ type: "prompt", prompt: { id, ...request } as Prompt });
     });
@@ -155,10 +156,10 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       return typeof value === "object" ? value : null;
     },
     answer: (id, value) => {
-      pending.get(id)?.(value);
+      openPrompts.get(id)?.done(value);
     },
     explain: ({ id, questionId, value, question }) => {
-      const explainer = explainers.get(id);
+      const explainer = openPrompts.get(id)?.explain;
       if (!explainer) {
         return;
       }
@@ -166,7 +167,7 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       const reply = (
         result: { text: string; error: null } | { text: null; error: string },
       ): void => {
-        if (explainers.has(id)) {
+        if (openPrompts.has(id)) {
           publish({
             type: "explanation",
             id,
@@ -188,7 +189,7 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       );
     },
     cancelAll: () => {
-      for (const done of [...pending.values()]) {
+      for (const { done } of [...openPrompts.values()]) {
         done(null);
       }
     },
