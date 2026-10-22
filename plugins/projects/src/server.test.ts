@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   eventBus,
+  type EventBus,
   type PluginRoute,
   type ServerPluginContext,
   type ServerTool,
@@ -31,6 +32,7 @@ const user: Actor = "user:pedro";
 
 function fakeKernel(): {
   readonly context: ServerPluginContext;
+  readonly events: EventBus;
   readonly delivered: Delivered[];
   readonly transcripts: Map<string, string[]>;
   readonly route: () => PluginRoute;
@@ -47,6 +49,10 @@ function fakeKernel(): {
   const offline = new Set<string>();
   const refused: string[] = [];
   let route: PluginRoute | undefined;
+
+  const events = eventBus((_type, error) => {
+    throw error;
+  });
 
   const deliver = (
     kind: Delivered["kind"],
@@ -69,9 +75,7 @@ function fakeKernel(): {
         tools.set(tool.name, tool);
       },
     },
-    events: eventBus((_type, error) => {
-      throw error;
-    }),
+    events,
     sessions: {
       start: (request) => {
         const id = `session-${String(sessions.size + 1)}`;
@@ -132,6 +136,7 @@ function fakeKernel(): {
 
   return {
     context,
+    events,
     delivered,
     transcripts,
     route: () => {
@@ -242,14 +247,14 @@ function turn(
 ): void {
   const session = kernel.session(threadId);
 
-  kernel.context.events.publish({
+  kernel.events.publish({
     type: "TurnStarted",
     session: { ...session, status: "running" },
   });
 
   kernel.transcripts.get(threadId)?.push(...lines);
 
-  kernel.context.events.publish({ type: "TurnEnded", session });
+  kernel.events.publish({ type: "TurnEnded", session });
 }
 
 async function until(done: () => boolean): Promise<void> {

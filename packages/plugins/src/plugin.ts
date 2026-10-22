@@ -79,7 +79,10 @@ export interface ServerPluginContext {
   // The user this installation belongs to. v1 has exactly one.
   readonly owner: string;
   readonly tools: { readonly register: (tool: ServerTool) => void };
-  readonly events: EventBus;
+  readonly events: {
+    readonly publish: (event: PluginEvent) => void;
+    readonly subscribe: EventBus["subscribe"];
+  };
   readonly sessions: {
     readonly start: (request: StartRequest) => Session;
     readonly get: (id: string) => Session | undefined;
