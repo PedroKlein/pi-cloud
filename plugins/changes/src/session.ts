@@ -86,18 +86,15 @@ export const changes: SessionPlugin = {
         description:
           "Commit, push and open a pull request: /pr, /pr draft or /pr compose, then a checkout's name in a workspace of several",
         handler: async (args, ctx) => {
-          const [word = "", only] = args.trim().split(/\s+/);
-          const mode = modes[word];
+          const { mode, only } = parsePrArgs(args);
 
           const targets = branches(ctx.cwd).filter(
             ({ name }) => only === undefined || name === only,
           );
 
-          if (mode === undefined || targets.length === 0) {
+          if (targets.length === 0) {
             ctx.ui.notify(
-              mode === undefined
-                ? `Unknown /pr mode "${word}". Use draft or compose.`
-                : "/pr needs a checkout on its own session branch.",
+              "/pr needs a checkout on its own session branch.",
               "error",
             );
 
@@ -189,3 +186,15 @@ export const changes: SessionPlugin = {
       });
     },
 };
+
+function parsePrArgs(args: string): {
+  readonly mode: Mode;
+  readonly only: string | undefined;
+} {
+  const [first = "", second] = args.trim().split(/\s+/);
+  const mode = Object.hasOwn(modes, first) ? modes[first] : undefined;
+
+  return mode === undefined
+    ? { mode: "pr", only: first }
+    : { mode, only: second };
+}
