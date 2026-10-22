@@ -7,8 +7,10 @@ import {
   imageLimits,
   imageTypes,
   type LivePost,
+  type QuestionAnswer,
   type RemovalReport,
   type RepositoryCheckout,
+  type Selection,
   type SessionEvent,
   type StartFailure,
   type ToolCall,
@@ -588,7 +590,7 @@ function browserCommand(body: unknown): Command {
         actor: user,
         type: "answer",
         id: text("id"),
-        value: fields["value"] as Answer,
+        value: answerOf(fields["value"]),
       };
     case "explain": {
       const { question } = fields;
@@ -611,6 +613,66 @@ function browserCommand(body: unknown): Command {
         "type must be message, abort, unqueue, answer or explain",
       );
   }
+}
+
+function answerOf(value: unknown): Answer {
+  if (
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return value;
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequest(
+      "value must be a string, boolean, null or questions answer",
+    );
+  }
+
+  const { answers, note } = fieldsOf(value);
+
+  return {
+    answers: listOf("answers", answers, questionAnswerOf),
+    note: textOrNullOf("note", note),
+  };
+}
+
+function questionAnswerOf(answer: unknown): QuestionAnswer {
+  const { id, type, selections, text, value } = fieldsOf(answer);
+
+  switch (type) {
+    case "choice":
+      return {
+        id: textOf("id", id),
+        type,
+        selections: listOf("selections", selections, selectionOf),
+      };
+    case "text":
+      return { id: textOf("id", id), type, text: textOf("text", text) };
+    case "number":
+      if (typeof value !== "number") {
+        throw new BadRequest("value must be a number");
+      }
+
+      return { id: textOf("id", id), type, value };
+    default:
+      throw new BadRequest("each answer must be choice, text or number");
+  }
+}
+
+function selectionOf(selection: unknown): Selection {
+  const { value, label, custom, annotation } = fieldsOf(selection);
+  if (typeof custom !== "boolean") {
+    throw new BadRequest("custom must be a boolean");
+  }
+
+  return {
+    value: textOf("value", value),
+    label: textOf("label", label),
+    custom,
+    annotation: textOrNullOf("annotation", annotation),
+  };
 }
 
 function imagesOf(value: unknown): readonly ImageAttachment[] {
@@ -657,6 +719,40 @@ function startPointOf(startPoint: unknown): { startPoint?: string } {
   }
 
   return { startPoint };
+}
+
+function fieldsOf(value: unknown): Record<string, unknown> {
+  const fields = typeof value === "object" && value !== null ? value : {};
+
+  return fields as Record<string, unknown>;
+}
+
+function textOf(key: string, value: unknown): string {
+  if (typeof value !== "string") {
+    throw new BadRequest(`${key} must be a string`);
+  }
+
+  return value;
+}
+
+function textOrNullOf(key: string, value: unknown): string | null {
+  if (value !== null && typeof value !== "string") {
+    throw new BadRequest(`${key} must be a string or null`);
+  }
+
+  return value;
+}
+
+function listOf<T>(
+  key: string,
+  value: unknown,
+  item: (entry: unknown) => T,
+): readonly T[] {
+  if (!Array.isArray(value)) {
+    throw new BadRequest(`${key} must be a list`);
+  }
+
+  return value.map((entry: unknown) => item(entry));
 }
 
 function lineAfter(lastEventId: string | null): number {

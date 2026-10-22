@@ -557,6 +557,67 @@ test("rejects commands a browser may not send", async () => {
   expect(statuses).toEqual(Array.from({ length: 13 }, () => 400));
 });
 
+test("takes only answers shaped like a prompt's answer", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  const answer = async (value: unknown): Promise<number> => {
+    const response = await api(`/api/sessions/${session.id}/commands`, {
+      type: "answer",
+      id: "prompt-1",
+      value,
+    });
+
+    return response.status;
+  };
+
+  const accepted = await Promise.all(
+    [
+      "yes",
+      true,
+      null,
+      {
+        answers: [
+          {
+            id: "db",
+            type: "choice",
+            selections: [
+              {
+                value: "sqlite",
+                label: "SQLite",
+                custom: false,
+                annotation: null,
+              },
+            ],
+          },
+          { id: "name", type: "text", text: "widgets" },
+          { id: "size", type: "number", value: 40 },
+        ],
+        note: "no rush",
+      },
+    ].map(answer),
+  );
+
+  const rejected = await Promise.all(
+    [
+      undefined,
+      42,
+      [],
+      { answers: "x", note: null },
+      { answers: [] },
+      { answers: [{ id: "name", type: "text" }], note: null },
+      { answers: [{ id: "size", type: "number", value: "40" }], note: null },
+      {
+        answers: [{ id: "db", type: "choice", selections: [{ value: "a" }] }],
+        note: null,
+      },
+    ].map(answer),
+  );
+
+  expect(accepted).toEqual([202, 202, 202, 202]);
+  expect(rejected).toEqual(Array.from({ length: 8 }, () => 400));
+});
+
 async function asAgent(
   provider: string,
   path: string,
