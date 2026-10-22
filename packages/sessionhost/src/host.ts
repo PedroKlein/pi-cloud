@@ -261,6 +261,12 @@ export async function hostSession(
   ) {
     session.prompt(firstMessage).catch((error: unknown) => {
       log("first message failed", { error: String(error) });
+
+      live.push({
+        type: "notify",
+        level: "error",
+        message: `first message failed: ${String(error)}`,
+      });
     });
   }
 
