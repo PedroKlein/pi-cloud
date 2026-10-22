@@ -875,6 +875,52 @@ test("rejects malformed requests with 400", async () => {
   expect(negativeStart.status).toBe(400);
 });
 
+test("rejects agent bodies outside the protocol with 400", async () => {
+  const session = await createSession("vm");
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+
+  const generation = work.start[0]?.generation;
+  const base = `/agent/sessions/${session.id}`;
+
+  const claimed = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  const statuses = await Promise.all(
+    [
+      asAgent("vm", `${base}/live`, {
+        generation,
+        events: [{ type: "status", status: "bogus" }],
+      }),
+      asAgent("vm", `${base}/live`, { generation, events: [null] }),
+      asAgent("vm", `${base}/live`, { events: [] }),
+      asAgent("vm", `${base}/transcript`, { generation, start: 0, lines: [1] }),
+      asAgent("vm", `${base}/failed`, { generation, error: 5 }),
+      asAgent("vm", `${base}/workspace`, { outcome: "lost" }),
+      asAgent("vm", `${base}/workspace`, { outcome: "removed" }),
+      asAgent("vm", `${base}/tool-calls`, { generation, name: "lookup" }),
+      asAgent("vm", "/agent/work", {}),
+      asAgent("vm", "/agent/work", {
+        running: [{ sessionId: session.id }],
+        folders: [],
+        models: [],
+      }),
+    ].map(async (response) => (await response).status),
+  );
+
+  const after = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(statuses).toEqual(Array.from({ length: 10 }, () => 400));
+  expect(after.status).toBe(claimed.status);
+});
+
 test("aborts a running turn and stores the session as idle", async () => {
   faux.setResponses([
     async (_context, options) => {
@@ -1940,6 +1986,26 @@ test("stores the restore point of a removal reported after unarchive", async () 
   expect(stored.workspace).toEqual(restore);
   expect(stored.archivedAt).toBeNull();
   expect(stored.workspaceRemoval).toBeNull();
+});
+
+test("keeps a session's workspace when a removal report's restore has no kind", async () => {
+  const session = await createSession("vm", {
+    kind: "worktree",
+    path: root,
+  });
+
+  const reported = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/workspace`,
+    { outcome: "removed", restore: { path: root, branch: "pi-cloud/other" } },
+  );
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(reported.status).toBe(400);
+  expect(stored.workspace).toEqual(session.workspace);
 });
 
 test("checks several repositories out in one workspace and shows each one's changes", async () => {
