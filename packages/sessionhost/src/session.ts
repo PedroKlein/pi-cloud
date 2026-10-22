@@ -19,7 +19,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
-import type { ModelRef } from "@pi-cloud/protocol";
+import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
 import type { RemoteUI } from "./ui";
 import "./codemode";
 
@@ -37,6 +37,7 @@ export interface SessionOptions extends ModelOptions {
   readonly checkouts?: readonly Checkout[];
   readonly sessionDir: string;
   readonly model?: ModelRef;
+  readonly thinking?: ThinkingLevel;
   readonly systemPrompt?: string | null;
 }
 
@@ -75,18 +76,20 @@ export async function startSession(
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
   recordInterruptedToolCalls(sessionManager);
 
-  // Pi restores the model a resumed session last used, so the chosen model
-  // only picks the first one.
-  const model =
-    sessionManager.buildSessionContext().messages.length > 0
-      ? undefined
-      : await firstModel(services.modelRuntime, options);
+  // Pi restores the model and reasoning level a resumed session last used, so
+  // the chosen ones only set the first.
+  const fresh = sessionManager.buildSessionContext().messages.length === 0;
+
+  const model = fresh
+    ? await firstModel(services.modelRuntime, options)
+    : undefined;
 
   const { session } = await createAgentSessionFromServices({
     services,
     sessionManager,
     ...(host && { customTools: [...host.tools] }),
     ...(model && { model }),
+    ...(fresh && options.thinking && { thinkingLevel: options.thinking }),
   });
 
   await session.bindExtensions(

@@ -99,6 +99,7 @@ function fakeKernel(): {
           provider: "local",
           workspace: { kind: "folder", path: "/work" },
           model: null,
+          thinking: request.thinking ?? null,
           systemPrompt: request.systemPrompt ?? null,
           firstMessage: request.firstMessage ?? null,
           title: null,

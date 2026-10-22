@@ -147,6 +147,7 @@ export class Sessions {
           : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
       model:
         request.model ?? this.#offeredModels(environment.id).default ?? null,
+      thinking: request.thinking ?? null,
       systemPrompt: request.systemPrompt ?? null,
       firstMessage: request.firstMessage ?? null,
       title: null,
@@ -596,6 +597,7 @@ export class Sessions {
         generation: session.generation,
         workspace: session.workspace,
         model: session.model,
+        thinking: session.thinking,
         systemPrompt: session.systemPrompt,
         firstMessage: session.firstMessage,
         plugins: this.#sessionPlugins,

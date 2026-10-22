@@ -17,6 +17,7 @@ import {
   type Selection,
   type SessionEvent,
   type StartFailure,
+  type ThinkingLevel,
   thinkingLevels,
   type ToolCall,
   protocolVersion,
@@ -441,9 +442,26 @@ async function readJson(request: Request): Promise<unknown> {
   }
 }
 
+function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
+  const level = thinkingLevels.find((known) => known === value);
+  if (level === undefined) {
+    throw new BadRequest(
+      `${field} must be one of ${thinkingLevels.join(", ")}`,
+    );
+  }
+
+  return level;
+}
+
 function createSession(body: unknown): CreateSession {
-  const { environment, workspace, model, systemPrompt, firstMessage } = (body ??
-    {}) as Record<string, unknown>;
+  const {
+    environment,
+    workspace,
+    model,
+    thinking,
+    systemPrompt,
+    firstMessage,
+  } = (body ?? {}) as Record<string, unknown>;
 
   if (
     environment !== undefined &&
@@ -458,6 +476,8 @@ function createSession(body: unknown): CreateSession {
     workspace: workspaceRequest(workspace),
     ...optionalText("systemPrompt", systemPrompt),
     ...optionalText("firstMessage", firstMessage),
+    ...(thinking !== undefined &&
+      thinking !== null && { thinking: thinkingOf(thinking) }),
   };
 
   if (model === undefined || model === null) {
@@ -594,16 +614,12 @@ function browserCommand(body: unknown): Command {
         type: "set_model",
         model: modelOf(fields["model"]),
       };
-    case "set_thinking": {
-      const level = thinkingLevels.find((known) => known === fields["level"]);
-      if (level === undefined) {
-        throw new BadRequest(
-          `level must be one of ${thinkingLevels.join(", ")}`,
-        );
-      }
-
-      return { actor: user, type: "set_thinking", level };
-    }
+    case "set_thinking":
+      return {
+        actor: user,
+        type: "set_thinking",
+        level: thinkingOf(fields["level"], "level"),
+      };
 
     case "unqueue": {
       const { delivery } = fields;

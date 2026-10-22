@@ -831,6 +831,34 @@ test("switches a session's model and reasoning level from the composer", async (
   expect(asked).toEqual({ model: "faux-deep", reasoning: "high" });
 }, 30_000);
 
+test("starts a session at the reasoning level picked in the New session form", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.locator("[name=model]").fill("faux/faux-deep");
+  await form.getByLabel("Reasoning").selectOption("high");
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const composer = page.locator("form#prompt");
+
+  await composer
+    .getByLabel("Reasoning")
+    .and(page.locator(":has(option:checked[value=high])"))
+    .waitFor();
+
+  expect(await composer.getByLabel("Model").inputValue()).toBe(
+    "faux/faux-deep",
+  );
+}, 30_000);
+
 test("runs Pi's built-in commands from the composer", async () => {
   await page.goto(server.url.href);
   await page.getByRole("button", { name: "New session" }).click();

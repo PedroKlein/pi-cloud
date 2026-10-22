@@ -1,4 +1,8 @@
-import type { Environment, Session } from "@pi-cloud/protocol";
+import {
+  type Environment,
+  type Session,
+  thinkingLevels,
+} from "@pi-cloud/protocol";
 import { Button, Field, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -84,6 +88,7 @@ export function NewSessionDialog({
       environment: text("environment"),
       workspace: workspaceRequest(kind, text("location"), text("start-point")),
       model,
+      ...(text("thinking") !== "" && { thinking: text("thinking") }),
     })
       .then(async (response) => {
         setError(undefined);
@@ -185,6 +190,16 @@ export function NewSessionDialog({
               list="models"
               className={`${field} font-mono text-mono-sm`}
             />
+          </Field>
+          <Field label="Reasoning">
+            <select name="thinking" className={field}>
+              <option value="">Model default</option>
+              {thinkingLevels.map((level) => (
+                <option key={level} value={level}>
+                  {level === "off" ? "No reasoning" : level}
+                </option>
+              ))}
+            </select>
           </Field>
           <datalist id="models">
             {(chosen?.models ?? []).map((model) => (
