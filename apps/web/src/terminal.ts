@@ -10,16 +10,27 @@ export function openTerminal(
   const token = (name: string): string =>
     getComputedStyle(container).getPropertyValue(name).trim();
 
+  const colours = () => ({
+    background: token("--term-bg"),
+    foreground: token("--term-fg"),
+    cursor: token("--term-fg"),
+    selectionBackground: token("--accent-tint"),
+  });
+
   const terminal = new Terminal({
     cursorBlink: true,
     fontFamily: token("--font-mono"),
     fontSize: 13,
-    theme: {
-      background: token("--term-bg"),
-      foreground: token("--term-fg"),
-      cursor: token("--term-fg"),
-      selectionBackground: token("--accent-tint"),
-    },
+    theme: colours(),
+  });
+
+  const themeChanges = new MutationObserver(() => {
+    terminal.options.theme = colours();
+  });
+
+  themeChanges.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
   });
 
   const fit = new FitAddon();
@@ -88,6 +99,7 @@ export function openTerminal(
     input.dispose();
     resize.dispose();
     socket.close();
+    themeChanges.disconnect();
     terminal.dispose();
   };
 }

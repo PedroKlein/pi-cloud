@@ -1,3 +1,4 @@
+import { ThemeSwitch } from "./theme";
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
@@ -188,19 +189,22 @@ function EnvironmentStatus({
   readonly environments: readonly Environment[];
 }): ReactElement {
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-4 py-3 text-caption text-fg-dim">
-      {environments.map(({ id, name, online }) => (
-        <li key={id} className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              online ? "bg-done" : "border border-fg-dim",
-            )}
-          />
-          {name} {online ? "online" : "offline"}
-        </li>
-      ))}
-    </ul>
+    <div className="flex items-start gap-2 border-t border-line py-2.5 pr-2 pl-4">
+      <ul className="flex flex-1 flex-wrap gap-x-4 gap-y-1 pt-1 text-caption text-fg-dim">
+        {environments.map(({ id, name, online }) => (
+          <li key={id} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                online ? "bg-done" : "border border-fg-dim",
+              )}
+            />
+            {name} {online ? "online" : "offline"}
+          </li>
+        ))}
+      </ul>
+      <ThemeSwitch />
+    </div>
   );
 }
 
