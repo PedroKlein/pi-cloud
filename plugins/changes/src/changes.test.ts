@@ -98,6 +98,18 @@ test("reports added, edited, deleted, renamed and mode-changed files with their 
   );
 });
 
+test("writes a/ and b/ prefixes whatever the user's git config says", async () => {
+  const repo = await repository("repo", { "hello.txt": "hi\n" });
+
+  await git(repo, "config", "diff.mnemonicPrefix", "true");
+  await writeFile(join(repo, "hello.txt"), "hello\n");
+
+  const changes = await workspaceChanges(repo, null);
+
+  expect(changes?.patch).toContain("diff --git a/hello.txt b/hello.txt");
+  expect(changes?.patch).toContain("--- a/hello.txt\n+++ b/hello.txt");
+});
+
 test("leaves the contents of new and edited files out of the object store", async () => {
   const repo = await repository("repo", { "edit.txt": "one\n" });
 
