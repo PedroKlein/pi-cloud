@@ -5,14 +5,8 @@ import type {
   ModelRouteRequest,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
-import {
-  type Alias,
-  aliasesOf,
-  candidates,
-  failure,
-  gatewayProvider,
-} from "./gateway";
-import { mergeHealth, type SessionConfig } from "./model";
+import { aliasesOf, candidates, failure, gatewayProvider } from "./gateway";
+import { mergeHealth, type ModelRef, type SessionConfig } from "./model";
 
 const thinkingLevels = [
   "off",
@@ -27,9 +21,9 @@ const thinkingLevels = [
 const retryMs = 5000;
 
 // Registers the Environment's aliases as Pi virtual models under the gateway
-// provider. Each request goes to the first healthy backend in the chain, and
-// a backend that fails is reported so every Session in the Environment stops
-// using it.
+// provider. Each request goes to the alias's first healthy model, and a model
+// or provider that fails is reported so every Session in the Environment
+// stops using it.
 export const models: SessionPlugin = {
   name: "models",
   extension: (cloud) => async (pi) => {
@@ -46,14 +40,14 @@ export const models: SessionPlugin = {
     }
 
     let config = first;
-    let registered: readonly Alias[] = [];
+    let registered: readonly string[] = [];
 
     const register = (): void => {
       const aliases = config.aliases ? aliasesOf(config.aliases) : [];
 
       for (const alias of registered) {
-        if (!aliases.some(({ id }) => id === alias.id)) {
-          pi.unregisterVirtualModel(gatewayProvider, alias.id);
+        if (!aliases.includes(alias)) {
+          pi.unregisterVirtualModel(gatewayProvider, alias);
         }
       }
 
@@ -61,8 +55,8 @@ export const models: SessionPlugin = {
         try {
           pi.registerVirtualModel({
             provider: gatewayProvider,
-            id: alias.id,
-            name: alias.id,
+            id: alias,
+            name: alias,
             thinkingLevels,
             route: (request, ctx) => ({
               model: routeModel(config, alias, request, ctx),
@@ -71,7 +65,7 @@ export const models: SessionPlugin = {
           });
         } catch (error) {
           cloud.log("model alias not registered", {
-            alias: alias.id,
+            alias,
             error: String(error),
           });
         }
@@ -82,25 +76,27 @@ export const models: SessionPlugin = {
 
     register();
 
-    const report = (backend: string, errorMessage: string): void => {
+    const report = (model: ModelRef, errorMessage: string): void => {
       const now = new Date();
 
-      const entry = config.aliases
-        ? failure(config.aliases, backend, errorMessage, now)
+      const failed = config.aliases
+        ? failure(config.aliases, model, errorMessage, now)
         : undefined;
 
-      if (entry === undefined) {
+      if (failed === undefined) {
         return;
       }
 
+      const { key, entry } = failed;
+
       const health = mergeHealth(
         config.health,
-        { version: 1, unhealthyUntil: { [backend]: entry } },
+        { version: 1, unhealthyUntil: { [key]: entry } },
         now,
       );
 
       config = { ...config, health };
-      cloud.log("backend unhealthy", { backend, until: entry.until });
+      cloud.log("model unhealthy", { model: key, until: entry.until });
 
       void cloud
         .request("health", {
@@ -109,7 +105,7 @@ export const models: SessionPlugin = {
           body: JSON.stringify(health),
         })
         .catch((error: unknown) => {
-          cloud.log("backend health not reported", { error: String(error) });
+          cloud.log("model health not reported", { error: String(error) });
         });
     };
 
@@ -120,7 +116,10 @@ export const models: SessionPlugin = {
         message.stopReason === "error" &&
         ctx.model?.provider === gatewayProvider
       ) {
-        report(message.provider, message.errorMessage ?? "");
+        report(
+          { provider: message.provider, id: message.model },
+          message.errorMessage ?? "",
+        );
       }
     });
 
@@ -137,7 +136,7 @@ export const models: SessionPlugin = {
 };
 
 // Tool follow-ups and retries stay on the model that answered, which keeps
-// the prompt cache, unless its backend has since become unhealthy.
+// the prompt cache, unless that model has since become unhealthy.
 function stickyOf(request: ModelRouteRequest): ModelRouteRequest["previous"] {
   switch (request.reason) {
     case "continuation":
@@ -152,12 +151,12 @@ function stickyOf(request: ModelRouteRequest): ModelRouteRequest["previous"] {
 
 function routeModel(
   config: SessionConfig,
-  alias: Alias,
+  alias: string,
   request: ModelRouteRequest,
   ctx: ExtensionContext,
 ): ModelRoute["model"] {
   const routable = candidates(
-    config.aliases ?? { backends: {} },
+    config.aliases ?? { models: {} },
     config.health,
     alias,
     new Date(),
@@ -166,20 +165,23 @@ function routeModel(
   const sticky = stickyOf(request);
   if (
     sticky &&
-    routable.some(({ backend }) => backend === sticky.model.provider)
+    routable.some(
+      ({ provider, id }) =>
+        provider === sticky.model.provider && id === sticky.model.id,
+    )
   ) {
     return sticky.model;
   }
 
-  for (const { backend, modelId } of routable) {
-    const model = ctx.modelRegistry.find(backend, modelId);
+  for (const { provider, id } of routable) {
+    const model = ctx.modelRegistry.find(provider, id);
     if (model && ctx.modelRegistry.hasConfiguredAuth(model)) {
       return model;
     }
   }
 
   throw new Error(
-    `no healthy backend with a signed-in model for ${gatewayProvider}/${alias.id}`,
+    `no healthy, signed-in model for ${gatewayProvider}/${alias}`,
   );
 }
 

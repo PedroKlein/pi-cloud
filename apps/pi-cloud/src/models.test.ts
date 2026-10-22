@@ -98,10 +98,11 @@ async function aliases(environmentId: string): Promise<void> {
     `/api/plugins/models/environments/${environmentId}`,
     {
       aliases: {
-        fallbackChain: ["primary", "fallback"],
-        backends: {
-          primary: { tiers: { medium: [primary.getModel().id] } },
-          fallback: { tiers: { medium: [fallback.getModel().id] } },
+        models: {
+          "medium-1": [
+            `primary/${primary.getModel().id}`,
+            `fallback/${fallback.getModel().id}`,
+          ],
         },
       },
     },
@@ -110,7 +111,7 @@ async function aliases(environmentId: string): Promise<void> {
   expect(response.status).toBe(200);
 }
 
-test("routes an alias to the first backend of the session's Environment", async () => {
+test("routes an alias to its first model in the session's Environment", async () => {
   const { id: environmentId } = await environment();
   await aliases(environmentId);
 
@@ -132,7 +133,7 @@ test("routes an alias to the first backend of the session's Environment", async 
   expect(fallback.state.callCount).toBe(0);
 });
 
-test("takes a backend that hit its cap out of routing for the whole Environment", async () => {
+test("takes a provider that hit its cap out of routing for the whole Environment", async () => {
   const { id: environmentId } = await environment();
   await aliases(environmentId);
 
@@ -182,32 +183,39 @@ test("takes a backend that hit its cap out of routing for the whole Environment"
   await until(async () => session(capped.id), settled);
 });
 
-test("refuses an alias config without backends", async () => {
+test("refuses an alias config without aliases or with a malformed one", async () => {
   const { id: environmentId } = await environment();
 
-  const response = await api(
-    `/api/plugins/models/environments/${environmentId}`,
-    { aliases: { backends: {} } },
-  );
+  for (const config of [
+    { models: {} },
+    { models: { "medium-1": [] } },
+    { models: { "medium-1": ["no-provider"] } },
+    { models: { "a/b": ["primary/m"] } },
+    { models: { "medium-1": ["primary/m"] }, defaultAlias: "heavy-1" },
+  ]) {
+    const response = await api(
+      `/api/plugins/models/environments/${environmentId}`,
+      { aliases: config },
+    );
 
-  expect(response.status).toBe(400);
+    expect(response.status).toBe(400);
+  }
 });
 
-test("refuses a backend whose settings have the wrong types", async () => {
+test("refuses provider settings with the wrong types", async () => {
   const { id: environmentId } = await environment();
 
   for (const settings of [
     { capStatusCodes: 402 },
     { capStatusCodes: ["402"] },
-    { forceOnly: "yes" },
     { resetSchedule: 1 },
-    { quotaHint: false },
   ]) {
     const response = await api(
       `/api/plugins/models/environments/${environmentId}`,
       {
         aliases: {
-          backends: { primary: { tiers: { medium: "m" }, ...settings } },
+          models: { "medium-1": ["primary/m"] },
+          providers: { primary: settings },
         },
       },
     );
@@ -222,7 +230,7 @@ test("lists an Environment's aliases first and gives a session with no model its
   await api(`/api/plugins/models/environments/${environmentId}`, {
     aliases: {
       defaultAlias: "medium-1",
-      backends: { primary: { tiers: { medium: [primary.getModel().id] } } },
+      models: { "medium-1": [`primary/${primary.getModel().id}`] },
     },
   });
 
