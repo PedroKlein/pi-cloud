@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Assignment } from "@pi-cloud/protocol";
@@ -49,6 +50,7 @@ export async function spawnSession(
     child.once("exit", resolve);
   });
 
+  await once(child, "spawn");
   child.stdin.write(`${JSON.stringify(spec)}\n`);
   log("session process started", { pid: child.pid });
 
