@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -18,6 +18,19 @@ const usage = `usage:
                  [--extension <path>]...`;
 
 const dataRoot = join(homedir(), ".pi-cloud");
+
+// Pi resolves these sources itself and reads any other one as a local path.
+const extensionSourcePrefixes = [
+  "npm:",
+  "git:",
+  "github:",
+  "http:",
+  "https:",
+  "ssh:",
+  "builtin:",
+  "file:",
+];
+
 const [command, ...rest] = process.argv.slice(2);
 const shutdown = new AbortController();
 
@@ -51,9 +64,9 @@ switch (command) {
       ...(values.provider !== undefined && {
         agent: {
           provider: values.provider,
-          dataDir: values["data-dir"],
+          dataDir: absolutePath(values["data-dir"]),
           agentDir: getAgentDir(),
-          extensionPaths: values.extension,
+          extensionPaths: values.extension.map(extensionSource),
           folders: values.folder,
         },
       }),
@@ -89,9 +102,9 @@ switch (command) {
     await runAgent({
       server: values.server,
       provider: values.name,
-      dataDir: values["data-dir"],
+      dataDir: absolutePath(values["data-dir"]),
       agentDir: getAgentDir(),
-      extensionPaths: values.extension,
+      extensionPaths: values.extension.map(extensionSource),
       folders: values.folder,
       log: stderrLog("agent"),
       signal: shutdown.signal,
@@ -123,4 +136,20 @@ async function checkFolders(folders: readonly string[]): Promise<void> {
       process.exit(2);
     }
   }
+}
+
+// Git and Pi resolve a relative path against a Session's workspace or the home
+// directory, not against the directory pi-cloud was started from.
+function absolutePath(path: string): string {
+  return resolve(
+    path === "~" || path.startsWith("~/")
+      ? join(homedir(), path.slice(1))
+      : path,
+  );
+}
+
+function extensionSource(source: string): string {
+  return extensionSourcePrefixes.some((prefix) => source.startsWith(prefix))
+    ? source
+    : absolutePath(source);
 }
