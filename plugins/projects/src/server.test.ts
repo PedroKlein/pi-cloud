@@ -702,6 +702,35 @@ test("shows the coordinator's last reply on the Project", async () => {
   expect((await projectView(kernel)).coordinatorSays).toBeNull();
 });
 
+test("lists each Project with its repositories, coordinator state and blocked threads", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+
+  await kernel
+    .tool("set_status")
+    .run(
+      { state: "blocked" },
+      { session: kernel.session(threadId), actor: user },
+    );
+
+  const list = await kernel.route()(
+    new Request("http://pi-cloud/projects"),
+    "projects",
+    undefined,
+  );
+
+  expect(await list.json()).toMatchObject([
+    {
+      name: "Release",
+      coordinatorState: "idle",
+      repositories: 1,
+      threads: 1,
+      blocked: 1,
+    },
+  ]);
+});
+
 test("sends a message from the Project page to its coordinator, even while it is offline", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);

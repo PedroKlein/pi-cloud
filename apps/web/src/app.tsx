@@ -8,7 +8,12 @@ import {
 } from "./hooks";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
-import { enabledPlugins, type NavEntry, pluginContext } from "./plugins";
+import {
+  enabledPlugins,
+  type NavEntry,
+  pluginContext,
+  pluginRoute,
+} from "./plugins";
 import { SessionView } from "./session-view";
 import { Sidebar } from "./sidebar";
 
@@ -25,9 +30,7 @@ export function App({
   const environments = useEnvironments();
   useSettledNotices(sessions.value, route);
 
-  const page = route.startsWith("plugin/")
-    ? route.slice("plugin/".length)
-    : undefined;
+  const page = pluginRoute(route);
 
   const openDrawer = (): void => {
     setDrawer(true);
@@ -35,7 +38,14 @@ export function App({
 
   const content = (): ReactElement => {
     if (page !== undefined) {
-      return <PluginPage key={page} name={page} onMenu={openDrawer} />;
+      return (
+        <PluginPage
+          key={page.name}
+          name={page.name}
+          path={page.path}
+          onMenu={openDrawer}
+        />
+      );
     }
 
     if (route === "") {
@@ -154,9 +164,11 @@ function Empty({
 
 function PluginPage({
   name,
+  path,
   onMenu,
 }: {
   readonly name: string;
+  readonly path: string;
   readonly onMenu: () => void;
 }): ReactElement {
   const Page = enabledPlugins().find((plugin) => plugin.name === name)?.nav
@@ -174,7 +186,7 @@ function PluginPage({
       >
         {Page ? (
           <PluginBoundary key={name} name={name}>
-            <Page context={pluginContext(name)} />
+            <Page context={pluginContext(name)} path={path} />
           </PluginBoundary>
         ) : (
           <p className="text-fg-dim">This page isn&apos;t available.</p>

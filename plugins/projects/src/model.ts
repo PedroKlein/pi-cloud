@@ -17,7 +17,10 @@ export interface ProjectSummary {
   readonly id: string;
   readonly name: string;
   readonly coordinatorId: string;
+  readonly coordinatorState: RunState;
+  readonly repositories: number;
   readonly threads: number;
+  readonly blocked: number;
 }
 
 export interface ThreadView {
