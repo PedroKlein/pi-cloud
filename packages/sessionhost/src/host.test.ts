@@ -838,7 +838,7 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
   expect(logs).toContain("terminal failed to start");
 });
 
-test("gives extensions Pi's theme to style status text with", async () => {
+test("gives extensions Pi's theme and shows the text without its colors", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
   const extension = join(root, "themed.ts");
@@ -863,11 +863,11 @@ test("gives extensions Pi's theme to style status text with", async () => {
   await fake.waitFor(() => fake.events.some((e) => e.type === "status"));
   await hosted.stop();
 
-  expect(
-    fake.events.some(
-      (e) => e.type === "notify" && e.message.includes("themed"),
-    ),
-  ).toBe(true);
+  expect(fake.events).toContainEqual({
+    type: "notify",
+    message: "themed",
+    level: "info",
+  });
 });
 
 test("fails to start when the working directory does not exist", async () => {

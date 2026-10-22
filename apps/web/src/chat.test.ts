@@ -120,6 +120,17 @@ test("shows custom messages meant for display", () => {
   expect(chatItems(custom(false))).toEqual([]);
 });
 
+test("shows a custom message without the terminal colors an extension gave it", () => {
+  const entry = JSON.stringify({
+    type: "custom_message",
+    customType: "todo",
+    content: "\x1b[38;5;5mTODO\x1b[39m\n\x1b[1m- ship\x1b[22m",
+    display: true,
+  });
+
+  expect(chatItems(entry)).toEqual([{ role: "note", text: "TODO\n- ship" }]);
+});
+
 test("describes a tool call as a verb and its object", () => {
   expect(describeTool("read", { path: "src/app.ts" })).toEqual({
     verb: "Read",
