@@ -134,19 +134,26 @@ function deliver(
 
     try {
       const sent = sendQueued(queued, store, sessions, log);
-      if (sent.ok) {
-        store.delivered(queued.id);
+      if (!sent.ok && sent.reason === "offline") {
+        blocked.add(sessionId);
         continue;
       }
 
-      blocked.add(sessionId);
-      if (sent.reason !== "offline") {
-        log("delivery failed", { sessionId, reason: sent.reason });
+      if (!sent.ok) {
+        log("dropped a delivery to a session that is gone", {
+          sessionId,
+          reason: sent.reason,
+        });
       }
     } catch (error) {
-      blocked.add(sessionId);
-      log("delivery failed", { sessionId, error: String(error) });
+      log("dropped a delivery that failed", {
+        id: queued.id,
+        sessionId,
+        error: String(error),
+      });
     }
+
+    store.delivered(queued.id);
   }
 }
 

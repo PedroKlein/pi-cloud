@@ -17,6 +17,11 @@ interface Delivered {
   readonly text: string;
 }
 
+interface Logged {
+  readonly message: string;
+  readonly fields: Readonly<Record<string, unknown>> | undefined;
+}
+
 type FakeKernel = ReturnType<typeof fakeKernel>;
 
 let stop: AbortController;
@@ -41,6 +46,8 @@ function fakeKernel(): {
   readonly session: (id: string) => Session;
   readonly offline: Set<string>;
   readonly refused: string[];
+  readonly unreadable: Set<string>;
+  readonly logged: Logged[];
 } {
   const db = new DatabaseSync(":memory:");
   const sessions = new Map<string, Session>();
@@ -49,6 +56,8 @@ function fakeKernel(): {
   const delivered: Delivered[] = [];
   const offline = new Set<string>();
   const refused: string[] = [];
+  const unreadable = new Set<string>();
+  const logged: Logged[] = [];
   let route: PluginRoute | undefined;
 
   const events = eventBus((_type, error) => {
@@ -111,7 +120,13 @@ function fakeKernel(): {
       get: (id) => sessions.get(id),
       send: (id, text) => deliver("send", id, text),
       notify: (id, text) => deliver("notify", id, text),
-      transcript: (id) => [...(transcripts.get(id) ?? [])],
+      transcript: (id) => {
+        if (unreadable.has(id)) {
+          throw new Error(`transcript of ${id} is unreadable`);
+        }
+
+        return [...(transcripts.get(id) ?? [])];
+      },
     },
     routes: {
       handle: (handler) => {
@@ -130,7 +145,9 @@ function fakeKernel(): {
       },
     },
     signal: stop.signal,
-    log: () => undefined,
+    log: (message, fields) => {
+      logged.push({ message, fields });
+    },
   };
 
   return {
@@ -163,6 +180,8 @@ function fakeKernel(): {
     },
     offline,
     refused,
+    unreadable,
+    logged,
   };
 }
 
@@ -327,4 +346,46 @@ test("quotes a thread's last text reply when its turn ends on a tool call", asyn
   await until(() => kernel.delivered.length > 0);
 
   expect(kernel.delivered[0]?.text).toContain("Its last reply: bumped to v2");
+}, 10_000);
+
+test("drops a delivery it can't build, once, so later ones still reach the coordinator", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+
+  const thread = {
+    session: kernel.session(threadId),
+    actor: `session:${threadId}` as const,
+  };
+
+  turn(kernel, threadId, [
+    userLine("bump the version"),
+    replyLine("bumped to v2"),
+  ]);
+
+  kernel.unreadable.add(threadId);
+
+  const messageCoordinator = kernel.tool("message_coordinator");
+  await messageCoordinator.run({ text: "need a decision" }, thread);
+  await until(() => kernel.delivered.length > 0);
+
+  await messageCoordinator.run({ text: "still need it" }, thread);
+  await until(() => kernel.delivered.length > 1);
+
+  expect(kernel.delivered).toEqual([
+    {
+      kind: "send",
+      text: `[Thread "Bump version" (${threadId})] need a decision`,
+    },
+    {
+      kind: "send",
+      text: `[Thread "Bump version" (${threadId})] still need it`,
+    },
+  ]);
+
+  const failures = kernel.logged.filter(({ fields }) =>
+    String(fields?.["error"]).includes("unreadable"),
+  );
+
+  expect(failures).toHaveLength(1);
 }, 10_000);
