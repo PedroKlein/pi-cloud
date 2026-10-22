@@ -65,6 +65,9 @@ export interface HostedSession {
 
 const retryMs = 1000;
 
+// Keeps each upload well inside the request timeout and Bun's body limit.
+const transcriptBatchChars = 1_000_000;
+
 export type TerminalCommand = Extract<Command, { type: "terminal" }>;
 
 interface Terminals {
@@ -567,7 +570,7 @@ function transcriptSync(
   stream: SessionStream,
   log: Log,
 ): { sync: () => void; close: () => Promise<void> } {
-  let acked = 0;
+  let acked: number | undefined;
   let closed = false;
   let running: Promise<void> | undefined;
   let dirty = false;
@@ -581,8 +584,19 @@ function transcriptSync(
 
     const text = await readFile(file, "utf8").catch(() => "");
     const lines = text.split("\n").slice(0, -1);
-    if (lines.length > acked) {
-      acked = await stream.uploadTranscript(acked, lines.slice(acked));
+
+    acked ??= await stream.uploadTranscript(0, []);
+    while (acked < lines.length) {
+      const start = acked;
+
+      acked = await stream.uploadTranscript(
+        start,
+        transcriptBatch(lines, start),
+      );
+
+      if (acked <= start) {
+        break;
+      }
     }
 
     if (acked > lines.length) {
@@ -636,4 +650,22 @@ function transcriptSync(
       await running;
     },
   };
+}
+
+function transcriptBatch(
+  lines: readonly string[],
+  start: number,
+): readonly string[] {
+  let end = start + 1;
+  let size = lines[start]?.length ?? 0;
+  while (end < lines.length) {
+    size += lines[end]?.length ?? 0;
+    if (size > transcriptBatchChars) {
+      break;
+    }
+
+    end++;
+  }
+
+  return lines.slice(start, end);
 }

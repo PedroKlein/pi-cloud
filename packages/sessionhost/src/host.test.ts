@@ -51,7 +51,7 @@ function fakeStream(
   send: (command: Command) => void;
   events: LiveEvent[];
   lines: string[];
-  uploads: number[];
+  uploads: { start: number; count: number }[];
   terminals: Map<
     string,
     { peer: TerminalPeer; output: string[]; closed: boolean }
@@ -68,14 +68,14 @@ function fakeStream(
   let listener: ((command: Command) => void) | undefined;
   const events: LiveEvent[] = [];
   const lines: string[] = [];
-  const uploads: number[] = [];
+  const uploads: { start: number; count: number }[] = [];
   const toolCalls: { id: string; name: string; input: unknown }[] = [];
 
   const stream: SessionStream = {
     uploadTranscript: async (start, batch) => {
       await Promise.resolve();
-      uploads.push(start);
-      if (failures > 0) {
+      uploads.push({ start, count: batch.length });
+      if (failures > 0 && batch.length > 0) {
         failures--;
         throw new Error("server unavailable");
       }
@@ -299,8 +299,14 @@ test("resends the transcript from the last acknowledged line after a failure", a
   await hosted.stop();
 
   expect(logs).toContain("transcript upload failed");
-  expect(fake.uploads[0]).toBe(0);
-  expect(fake.uploads[1]).toBe(0);
+
+  expect(
+    fake.uploads
+      .filter(({ count }) => count > 0)
+      .slice(0, 2)
+      .map(({ start }) => start),
+  ).toEqual([0, 0]);
+
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
 });
 
@@ -492,6 +498,74 @@ test("uploads lines the server is missing as soon as it starts", async () => {
   await second.waitFor(() => second.lines.length === first.lines.length);
   await after.stop();
 
+  expect(second.lines).toEqual(first.lines);
+});
+
+test("does not upload lines the server already has when it starts again", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models,
+  };
+
+  const first = fakeStream();
+  const before = await hostSession(options, first.stream, () => undefined);
+  first.send({ actor: "user:local", type: "message", text: "hello" });
+  await first.waitFor(() => roles(first.lines).includes("assistant"));
+  await before.stop();
+
+  const second = fakeStream();
+  second.lines.push(...first.lines);
+  const after = await hostSession(options, second.stream, () => undefined);
+  await after.stop();
+
+  expect(
+    second.uploads.filter(
+      ({ start, count }) => count > 0 && start < first.lines.length,
+    ),
+  ).toEqual([]);
+
+  expect(second.lines).toEqual(first.lines);
+});
+
+test("uploads a long transcript in several requests, each from the last acknowledged line", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
+  const options = {
+    cwd: root,
+    agentDir: join(root, "agent"),
+    sessionDir: join(root, "sessions"),
+    extensionPaths: [],
+    models,
+  };
+
+  const first = fakeStream();
+  const before = await hostSession(options, first.stream, () => undefined);
+
+  first.send({
+    actor: "user:local",
+    type: "message",
+    text: "x".repeat(2_000_000),
+  });
+
+  await first.waitFor(() => roles(first.lines).includes("assistant"));
+  await before.stop();
+
+  const second = fakeStream();
+  const after = await hostSession(options, second.stream, () => undefined);
+  await after.stop();
+
+  const batches = second.uploads.filter(({ count }) => count > 0);
+  const ends = batches.map(({ start, count }) => start + count);
+
+  expect(batches.length).toBeGreaterThan(1);
+  expect(batches.map(({ start }) => start)).toEqual([0, ...ends.slice(0, -1)]);
   expect(second.lines).toEqual(first.lines);
 });
 
