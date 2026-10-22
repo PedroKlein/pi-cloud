@@ -8,7 +8,7 @@ import {
   type ToolCall,
   type ToolSpec,
   protocolVersion,
-  type TerminalResize,
+  type TerminalControl,
   providerHeader,
   type TranscriptAck,
   type TranscriptBatch,
@@ -27,8 +27,8 @@ const reconnectMs = { initial: 500, max: 20_000 };
 const pollTimeoutMs = 30_000;
 const requestTimeoutMs = 30_000;
 
-// Terminal output is not replayed (ADR 0006), so a terminal this far behind
-// the server is closed instead of buffered without bound. The built-in
+// Only a terminal's last output is replayed (ADR 0026), so a socket this far
+// behind the server is closed instead of buffered without bound. The built-in
 // provider shares the server's event loop, where tens of MB can queue for a
 // moment while everything is healthy, so the limit sits well above that.
 const maxTerminalBufferedBytes = 64 * 1024 * 1024;
@@ -227,8 +227,12 @@ function openTerminalSocket(
       return;
     }
 
-    const resize = JSON.parse(String(event.data)) as TerminalResize;
-    peer.resize(resize.cols, resize.rows);
+    const control = JSON.parse(String(event.data)) as TerminalControl;
+    if (control.type === "close") {
+      peer.end();
+    } else {
+      peer.resize(control.cols, control.rows);
+    }
   });
 
   socket.addEventListener("close", (event) => {

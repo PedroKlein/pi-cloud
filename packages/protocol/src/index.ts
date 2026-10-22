@@ -252,6 +252,8 @@ export type LiveEvent =
     }
   | { readonly type: "prompt"; readonly prompt: Prompt }
   | { readonly type: "prompt_end"; readonly id: string }
+  // The Session's shells that are still running (ADR 0026).
+  | { readonly type: "terminals"; readonly terminals: readonly TerminalTab[] }
   | {
       readonly type: "notify";
       readonly message: string;
@@ -339,6 +341,8 @@ export function liveSurface(
       return { key: "commands", open: true };
     case "files":
       return { key: "files", open: true };
+    case "terminals":
+      return { key: "terminals", open: event.terminals.length > 0 };
     case "settings":
       return { key: "settings", open: true };
     case "plugin":
@@ -440,6 +444,15 @@ export type Command = { readonly actor: Actor } & (
       readonly rows: number;
     }
 );
+
+export interface TerminalTab {
+  readonly id: string;
+  readonly label: string;
+}
+
+// The text frames a browser sends on a terminal socket. Closing the socket
+// leaves the shell running; a close frame ends it (ADR 0026).
+export type TerminalControl = TerminalResize | { readonly type: "close" };
 
 export interface TerminalResize {
   readonly type: "resize";

@@ -3,7 +3,7 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import {
   protocolVersion,
   providerHeader,
-  type TerminalResize,
+  type TerminalControl,
   versionHeader,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -24,10 +24,11 @@ interface Pair {
 
 const hostTimeoutMs = 10_000;
 
-// Terminal output is not replayed, so a browser this far behind is closed
-// instead of buffered without bound. The user opens a new terminal.
+// A browser this far behind is closed instead of buffered without bound. The
+// shell keeps running, and opening the terminal again replays its last output.
 const maxBufferedBytes = 1024 * 1024;
 const browserPath = /^\/api\/sessions\/([^/]+)\/terminal$/;
+const terminalIdPattern = /^[\w-]{1,64}$/;
 const hostPath = /^\/agent\/sessions\/([^/]+)\/terminals\/([^/]+)$/;
 
 export function terminalBroker(
@@ -65,7 +66,14 @@ export function terminalBroker(
     }
 
     const url = new URL(request.url);
-    const terminalId = randomUUID();
+    const asked = url.searchParams.get("terminal");
+
+    const terminalId =
+      asked !== null &&
+      terminalIdPattern.test(asked) &&
+      (pairs.get(asked)?.sessionId ?? sessionId) === sessionId
+        ? asked
+        : randomUUID();
 
     const sent = sessions.send(sessionId, {
       actor: `user:${owner}`,
@@ -81,6 +89,8 @@ export function terminalBroker(
         { status: sent.reason === "not_found" ? 404 : 409 },
       );
     }
+
+    end(terminalId, "opened elsewhere");
 
     pairs.set(terminalId, {
       sessionId,
@@ -165,7 +175,7 @@ export function terminalBroker(
       },
       message: (ws, message) => {
         const pair = pairs.get(ws.data.terminalId);
-        if (!pair) {
+        if (pair?.browser !== ws && pair?.host !== ws) {
           return;
         }
 
@@ -183,7 +193,9 @@ export function terminalBroker(
           return;
         }
 
-        const forward = typeof message === "string" ? resize(message) : message;
+        const forward =
+          typeof message === "string" ? control(message) : message;
+
         if (forward === undefined) {
           return;
         }
@@ -195,7 +207,10 @@ export function terminalBroker(
         }
       },
       close: (ws) => {
-        end(ws.data.terminalId, `${ws.data.role} disconnected`);
+        const pair = pairs.get(ws.data.terminalId);
+        if (pair?.browser === ws || pair?.host === ws) {
+          end(ws.data.terminalId, `${ws.data.role} disconnected`);
+        }
       },
     },
   };
@@ -215,7 +230,7 @@ function size(value: string | null, fallback: number): number {
   return validSize(parsed) ? parsed : fallback;
 }
 
-function resize(message: string): string | undefined {
+function control(message: string): string | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(message);
@@ -224,9 +239,13 @@ function resize(message: string): string | undefined {
   }
 
   const { type, cols, rows } = (parsed ?? {}) as Record<string, unknown>;
+  if (type === "close") {
+    return JSON.stringify({ type } satisfies TerminalControl);
+  }
+
   if (type !== "resize" || !validSize(cols) || !validSize(rows)) {
     return undefined;
   }
 
-  return JSON.stringify({ type, cols, rows } satisfies TerminalResize);
+  return JSON.stringify({ type, cols, rows } satisfies TerminalControl);
 }

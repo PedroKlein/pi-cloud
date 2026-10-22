@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message; the idle status that ends a turn carries its transcript length), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands)
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message; the idle status that ends a turn carries its transcript length), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands), and by [ADR 0026](0026-terminals-that-survive.md) (a shell outlives its socket and replays its last output)
 - Date: 2026-10-17
 
 ## Context
@@ -51,7 +51,7 @@ The protocol follows Claude Code's shape: a work channel per provider and a stre
 
 - Chat input, steering, abort and approval answers go from the browser to the server, then down the Session's SSE stream. Terminal input goes over the terminal's WebSocket.
 - While the provider is offline, the server rejects them and the UI says the provider is offline. Nothing is queued for later delivery.
-- Terminal bytes are forwarded live only. They aren't stored or replayed.
+- Terminal bytes are forwarded live and never stored. The Session host keeps a running shell's last 64 KB of output in memory and replays it to the next socket for that terminal ([ADR 0026](0026-terminals-that-survive.md)).
 
 ### Composer input
 

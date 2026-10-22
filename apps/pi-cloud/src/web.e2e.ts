@@ -113,6 +113,25 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   ).toBe("false");
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.keyboard.type("SURVIVE=yes\n");
+  await page.getByRole("button", { name: "Chat" }).click();
+  await page.getByRole("button", { name: "Terminal" }).click();
+  await rows.filter({ hasText: "e2e-25" }).waitFor();
+  await page.locator("#terminal .xterm").click();
+  await page.keyboard.type("echo survived=$SURVIVE\n");
+  await rows.filter({ hasText: "survived=yes" }).waitFor();
+
+  const tabs = page.getByRole("tablist", { name: "Terminals" });
+  await tabs.getByRole("tab", { name: "Terminal 1" }).waitFor();
+  await tabs.getByRole("button", { name: "New terminal" }).click();
+  await tabs.getByRole("tab", { name: "Terminal 2" }).waitFor();
+  await tabs.getByRole("button", { name: "Close Terminal 2" }).click();
+
+  await tabs
+    .getByRole("tab", { name: "Terminal 2" })
+    .waitFor({ state: "detached" });
+
+  await rows.filter({ hasText: "survived=yes" }).waitFor();
 }, 30_000);
 
 test("starts a session with the task from the New session form", async () => {

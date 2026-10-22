@@ -20,6 +20,7 @@ async function stalledServer(
 
   const server = createServer((socket) => {
     sockets.push(socket);
+    socket.on("error", () => undefined);
     let request = "";
 
     socket.on("data", (chunk) => {
@@ -66,7 +67,7 @@ async function stalledServer(
   };
 }
 
-test("closes a terminal whose output the server stops reading", async () => {
+test("closes a terminal socket whose output the server stops reading", async () => {
   const server = await stalledServer("head -c 300000000 /dev/zero\n");
   const logs: string[] = [];
 
@@ -101,7 +102,7 @@ test("closes a terminal whose output the server stops reading", async () => {
       rows: 24,
     });
 
-    await waitFor(() => logs.includes("terminal exited"));
+    await waitFor(() => logs.includes("terminal socket closed"));
   } finally {
     terminals.close();
     server.close();

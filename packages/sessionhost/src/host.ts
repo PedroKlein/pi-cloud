@@ -28,7 +28,7 @@ import {
   startSession,
   stopSession,
 } from "./session";
-import { openTerminal } from "./terminal";
+import { openTerminal, type Terminal } from "./terminal";
 import { serverTools } from "./tools";
 
 export interface SessionStream {
@@ -57,6 +57,9 @@ export interface HostOptions extends SessionOptions {
 export interface TerminalPeer {
   input: (data: Uint8Array) => void;
   resize: (cols: number, rows: number) => void;
+  // The user closed the terminal's tab.
+  end: () => void;
+  // The socket went away; the shell keeps running.
   closed: () => void;
 }
 
@@ -86,35 +89,124 @@ interface Terminals {
   readonly close: () => void;
 }
 
-// Opens session terminals in cwd, each over its own socket from stream.
+// What a shell printed while nobody watched, replayed to the next socket.
+const keptOutputBytes = 64 * 1024;
+
+interface Kept {
+  readonly label: string;
+  readonly shell: Terminal;
+  readonly output: Uint8Array[];
+  channel: TerminalChannel | undefined;
+}
+
+// Opens session terminals in cwd. A shell outlives its socket until it exits,
+// its tab is closed or the Session stops, and a later socket for the same
+// terminal picks it up again (ADR 0026).
 export function hostTerminals(
   cwd: string,
-  stream: Pick<SessionStream, "terminal">,
+  stream: Pick<SessionStream, "terminal" | "publish">,
   log: Log,
 ): Terminals {
-  const terminals = new Map<string, () => void>();
+  const kept = new Map<string, Kept>();
+  let opened = 0;
+
+  const publish = (): void => {
+    const terminals = [...kept].map(([id, { label }]) => ({ id, label }));
+
+    stream
+      .publish([{ type: "terminals", terminals }])
+      .catch((error: unknown) => {
+        log("terminal list failed to publish", { error: String(error) });
+      });
+  };
+
+  const attach = (terminalId: string, terminal: Kept): void => {
+    terminal.channel?.close();
+
+    const channel = stream.terminal(terminalId, {
+      input: (data) => {
+        terminal.shell.write(data);
+      },
+      resize: (cols, rows) => {
+        terminal.shell.resize(cols, rows);
+      },
+      end: () => {
+        terminal.shell.close();
+      },
+      closed: () => {
+        if (terminal.channel === channel) {
+          terminal.channel = undefined;
+        }
+      },
+    });
+
+    terminal.channel = channel;
+    terminal.output.forEach(channel.send);
+  };
+
+  const start = (command: TerminalCommand): Kept => {
+    const { terminalId, cols, rows } = command;
+    const output: Uint8Array[] = [];
+    let size = 0;
+
+    const shell = openTerminal({ cwd, cols, rows }, (data) => {
+      output.push(data);
+      size += data.byteLength;
+
+      while (size > keptOutputBytes && output.length > 1) {
+        size -= output.shift()?.byteLength ?? 0;
+      }
+
+      kept.get(terminalId)?.channel?.send(data);
+    });
+
+    opened += 1;
+
+    const terminal: Kept = {
+      label: `Terminal ${String(opened)}`,
+      shell,
+      output,
+      channel: undefined,
+    };
+
+    void shell.exited.then((code) => {
+      log("terminal exited", { terminalId, code });
+      terminal.channel?.close();
+      kept.delete(terminalId);
+      publish();
+    });
+
+    return terminal;
+  };
 
   return {
     open: (command) => {
-      try {
-        terminals.set(
-          command.terminalId,
-          attachTerminal(cwd, command, stream, log, () => {
-            terminals.delete(command.terminalId);
-          }),
-        );
-      } catch (error) {
-        log("terminal failed to start", {
-          terminalId: command.terminalId,
-          error: String(error),
-        });
+      const { terminalId } = command;
 
-        stream.terminal(command.terminalId, ignoredPeer).close();
+      try {
+        const existing = kept.get(terminalId);
+        const terminal = existing ?? start(command);
+
+        if (existing) {
+          existing.shell.resize(command.cols, command.rows);
+        } else {
+          kept.set(terminalId, terminal);
+          publish();
+        }
+
+        attach(terminalId, terminal);
+
+        log(existing ? "terminal reattached" : "terminal opened", {
+          terminalId,
+        });
+      } catch (error) {
+        log("terminal failed to start", { terminalId, error: String(error) });
+        stream.terminal(terminalId, ignoredPeer).close();
       }
     },
     close: () => {
-      for (const close of terminals.values()) {
-        close();
+      for (const { shell } of kept.values()) {
+        shell.close();
       }
     },
   };
@@ -320,53 +412,9 @@ export async function hostSession(
 const ignoredPeer: TerminalPeer = {
   input: () => undefined,
   resize: () => undefined,
+  end: () => undefined,
   closed: () => undefined,
 };
-
-function attachTerminal(
-  cwd: string,
-  command: TerminalCommand,
-  stream: Pick<SessionStream, "terminal">,
-  log: Log,
-  exited: () => void,
-): () => void {
-  const { terminalId, cols, rows } = command;
-  const pending: Uint8Array[] = [];
-
-  let output = (data: Uint8Array): void => {
-    pending.push(data);
-  };
-
-  const terminal = openTerminal({ cwd, cols, rows }, (data) => {
-    output(data);
-  });
-
-  const channel = stream.terminal(terminalId, {
-    input: (data) => {
-      terminal.write(data);
-    },
-    resize: (c, r) => {
-      terminal.resize(c, r);
-    },
-    closed: () => {
-      terminal.close();
-    },
-  });
-
-  pending.forEach(channel.send);
-  output = channel.send;
-  log("terminal opened", { terminalId });
-
-  void terminal.exited.then((code) => {
-    log("terminal exited", { terminalId, code });
-    channel.close();
-    exited();
-  });
-
-  return () => {
-    terminal.close();
-  };
-}
 
 async function run(
   session: AgentSession,
