@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { contentText, type ImageContent } from "@earendil-works/pi-ai";
+import {
+  contentText,
+  type ImageContent,
+  type UserMessage,
+} from "@earendil-works/pi-ai";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -183,10 +187,6 @@ export async function hostSession(
     }
   });
 
-  // Pi's queue keeps only the text, so the images of a queued message are
-  // kept here to queue it again when another is taken back.
-  const queuedImages = new Map<string, ImageContent[]>();
-
   const detach = stream.commands((command) => {
     log("command received", { command: command.type, actor: command.actor });
 
@@ -215,16 +215,12 @@ export async function hostSession(
     }
 
     if (command.type === "unqueue") {
-      const back = unqueue(session, command, queuedImages);
+      const back = unqueue(session, command);
       if (back !== undefined) {
         live.push({ type: "editor_text", text: back });
       }
 
       return;
-    }
-
-    if (command.type === "message" && command.images && session.isStreaming) {
-      queuedImages.set(command.text, images(command.images));
     }
 
     run(session, command).catch((error: unknown) => {
@@ -360,7 +356,6 @@ async function run(
 function unqueue(
   session: AgentSession,
   { delivery, text }: Extract<Command, { type: "unqueue" }>,
-  queuedImages: ReadonlyMap<string, ImageContent[]>,
 ): string | undefined {
   const queued = queuedMessages(session.agent);
 
@@ -376,8 +371,8 @@ function unqueue(
   queued[delivery].splice(index, 1);
   session.clearQueue();
 
-  void requeue(session, "steer", queued.steer, queuedImages);
-  void requeue(session, "followUp", queued.followUp, queuedImages);
+  void requeue(session, "steer", queued.steer);
+  void requeue(session, "followUp", queued.followUp);
 
   return text;
 }
@@ -419,16 +414,26 @@ async function requeue(
   session: AgentSession,
   delivery: Delivery,
   messages: readonly AgentMessage[],
-  queuedImages: ReadonlyMap<string, ImageContent[]>,
 ): Promise<void> {
   for (const message of messages) {
     if (message.role === "user") {
-      const text = contentText(message.content, "");
-      await session[delivery](text, queuedImages.get(text));
+      await session[delivery](
+        contentText(message.content, ""),
+        imagesOf(message.content),
+      );
     } else {
       session.agent[delivery](message);
     }
   }
+}
+
+function imagesOf(content: UserMessage["content"]): ImageContent[] | undefined {
+  const found =
+    typeof content === "string"
+      ? []
+      : content.filter((part) => part.type === "image");
+
+  return found.length > 0 ? found : undefined;
 }
 
 function images(attached: readonly ImageAttachment[]): ImageContent[] {
