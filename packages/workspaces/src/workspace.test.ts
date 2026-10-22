@@ -970,7 +970,10 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
     await removeWorkspace(workspace, { dir: clean, force: false }, noLog),
   ).toEqual({
     outcome: "removed",
-    restore: { ...workspace, restorePoint: "origin/main" },
+    restore: {
+      ...workspace,
+      restorePoint: await git(repository, "rev-parse", "main"),
+    },
   });
 
   expect(stat(clean)).rejects.toThrow();
@@ -1116,6 +1119,43 @@ test("brings a session back at its own commit once the branch holding it moved o
     await git(dir, "fetch", "origin");
 
     await removeAndRestore(workspace, options);
+
+    expect(await git(dir, "rev-parse", "HEAD")).toBe(tip);
+    expect(await readdir(dir)).not.toContain("later.txt");
+  }
+});
+
+test("brings a session back at its own commit when the branch holding it moves on after removal", async () => {
+  const checkout = await checkoutWithRemote();
+
+  for (const workspace of [
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+    const options = { dir, folders: [checkout] };
+    const review = `review/${workspace.kind}`;
+    await prepareWorkspace(workspace, options, noLog);
+    await commit(dir, `${workspace.kind}.txt`);
+    await git(dir, "push", "origin", `HEAD:refs/heads/${review}`);
+    const tip = await git(dir, "rev-parse", "HEAD");
+
+    const report = await removeWorkspace(
+      workspace,
+      { dir, force: false },
+      noLog,
+    );
+
+    await git(repository, "switch", review);
+    await commit(repository, "later.txt");
+    await git(repository, "switch", "main");
+    await git(checkout, "fetch", "origin");
+
+    await prepareWorkspace(
+      report.outcome === "removed" ? report.restore : workspace,
+      options,
+      noLog,
+    );
 
     expect(await git(dir, "rev-parse", "HEAD")).toBe(tip);
     expect(await readdir(dir)).not.toContain("later.txt");
@@ -1472,7 +1512,10 @@ test("removes several repositories only when none of them would lose work", asyn
       ...workspace,
       repositories: [
         { repository, restorePoint: "origin/pi-cloud/s1" },
-        { repository: second, restorePoint: "origin/main" },
+        {
+          repository: second,
+          restorePoint: await git(second, "rev-parse", "main"),
+        },
       ],
     },
   });
