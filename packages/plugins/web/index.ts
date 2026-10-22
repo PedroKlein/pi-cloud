@@ -11,6 +11,8 @@ export interface MountedSession {
   readonly id: string;
   // Every event the Session view receives, from the start of its stream.
   readonly events: (listener: (event: SessionEvent) => void) => () => void;
+  // Sends a message as the user, such as one of the plugin's Pi commands.
+  readonly send: (text: string) => Promise<void>;
 }
 
 export interface PageProps {

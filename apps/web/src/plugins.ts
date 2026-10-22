@@ -9,6 +9,7 @@ import type {
 import { projects } from "@pi-cloud/projects/web";
 import type { SessionEvent } from "@pi-cloud/protocol";
 import { usage } from "@pi-cloud/usage/web";
+import { command } from "./api";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
 const webPlugins: readonly WebPlugin[] = [
@@ -65,6 +66,13 @@ export function sessionChannel(id: string): {
           listeners.delete(listener);
         };
       },
+      send: async (text) =>
+        command(id, {
+          type: "message",
+          text,
+          requestId: crypto.randomUUID(),
+          delivery: "steer",
+        }),
     },
     dispatch: (event) => {
       listeners.forEach((listener) => {
