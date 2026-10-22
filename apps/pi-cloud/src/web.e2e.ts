@@ -830,3 +830,38 @@ test("switches a session's model and reasoning level from the composer", async (
 
   expect(asked).toEqual({ model: "faux-deep", reasoning: "high" });
 }, 30_000);
+
+test("runs Pi's built-in commands from the composer", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const box = page.locator("#prompt-text");
+
+  await box.fill("/");
+  await page.getByRole("option", { name: /\/session/ }).waitFor();
+
+  await box.fill("/name Release prep");
+  await box.press("Enter");
+  await page.getByRole("heading", { name: "Release prep" }).waitFor();
+
+  await box.fill("/session");
+  await box.press("Enter");
+  expect(await box.inputValue()).toBe("/session ");
+  await box.press("Enter");
+
+  await page
+    .locator("#chat", { hasText: "0 user and 0 assistant messages" })
+    .waitFor();
+
+  expect(await page.locator('#chat li[data-role="user"]').count()).toBe(0);
+}, 30_000);

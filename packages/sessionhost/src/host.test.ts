@@ -2815,3 +2815,81 @@ test("switches the session's model and reasoning level on command", async () => 
   expect(notice?.message).toStartWith("set_model failed: ");
   expect(notice?.message).toContain(`model not available: ${provider}/missing`);
 });
+
+test("runs Pi's built-in commands instead of sending them to the model", async () => {
+  const { faux, models } = await fauxModels(root, {
+    models: [{ id: "quick" }, { id: "deep", reasoning: true }],
+  });
+
+  const { provider } = faux.getModel();
+
+  faux.setResponses([fauxAssistantMessage([fauxText("hello back")])]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const say = (text: string): void => {
+    fake.send({ actor: "user:local", type: "message", text });
+  };
+
+  const latest = <T extends LiveEvent["type"]>(
+    type: T,
+  ): Extract<LiveEvent, { type: T }> | undefined =>
+    fake.events.findLast(
+      (event): event is Extract<LiveEvent, { type: T }> => event.type === type,
+    );
+
+  say("hello");
+  await fake.waitFor(() => roles(fake.lines).includes("assistant"));
+
+  say(`/model ${provider}/deep`);
+  await fake.waitFor(() => latest("settings")?.model?.id === "deep");
+
+  say("/thinking high");
+  await fake.waitFor(() => latest("settings")?.thinking === "high");
+
+  say("/name Release prep");
+  await fake.waitFor(() => latest("title")?.title === "Release prep");
+
+  await fake.waitFor(() =>
+    fake.lines.some((line) => line.includes('"Release prep"')),
+  );
+
+  say("/session");
+  await fake.waitFor(() => latest("notify") !== undefined);
+
+  expect(latest("notify")).toMatchObject({ type: "notify", level: "info" });
+  expect(latest("notify")?.message).toContain("1 user and 1 assistant");
+
+  say("/thinking huge");
+  await fake.waitFor(() => latest("notify")?.level === "error");
+
+  expect(latest("notify")?.message).toContain("huge");
+
+  say("/compact keep it short");
+
+  await fake.waitFor(
+    () => latest("notify")?.message.startsWith("/compact") === true,
+  );
+
+  await hosted.stop();
+
+  expect(latest("notify")?.message).toBe(
+    "/compact failed: Nothing to compact (session too small)",
+  );
+
+  expect(faux.state.callCount).toBe(1);
+  expect(roles(fake.lines).filter((role) => role === "user")).toHaveLength(1);
+
+  expect(latest("commands")?.commands).toContainEqual({
+    name: "compact",
+    description: "Compact the context now, with optional instructions",
+    source: "builtin",
+  });
+});

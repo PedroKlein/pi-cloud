@@ -5,12 +5,19 @@ import {
   type ModelRef,
 } from "@pi-cloud/protocol";
 import { Button, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  type RefObject,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { command } from "./api";
 import { admit, dataUrl } from "./attachments";
 import type { Feed, Settings } from "./feed";
 import { modelName, modelRef } from "./names";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
+import { browserCommand } from "./suggest";
 import { useSuggestions } from "./suggestions";
 
 export function Composer({
@@ -27,6 +34,8 @@ export function Composer({
   readonly report: (error: unknown) => void;
 }): ReactElement {
   const text = useRef<HTMLTextAreaElement>(null);
+  const modelMenu = useRef<HTMLSelectElement>(null);
+  const reasoningMenu = useRef<HTMLSelectElement>(null);
   const [images, setImages] = useState<readonly Attached[]>([]);
   const suggestions = useSuggestions(feed);
   const running = feed.session?.status === "running";
@@ -66,10 +75,39 @@ export function Composer({
     }, report);
   };
 
+  const runInBrowser = (name: "copy" | "model" | "thinking"): void => {
+    if (name === "copy") {
+      const answer = feed.items
+        .flatMap((item) => (item.role === "assistant" ? [item.text] : []))
+        .at(-1);
+
+      navigator.clipboard.writeText(answer ?? "").catch(report);
+
+      return;
+    }
+
+    const menu = (name === "model" ? modelMenu : reasoningMenu).current;
+    menu?.focus();
+
+    try {
+      menu?.showPicker();
+    } catch {
+      // Focus is enough where a browser can't open a select's picker.
+    }
+  };
+
   const send = (delivery: "steer" | "followUp"): void => {
     const box = text.current;
     const message = box?.value.trim() ?? "";
     if (!box || (message === "" && images.length === 0)) {
+      return;
+    }
+
+    const local = images.length === 0 ? browserCommand(message) : undefined;
+    if (local) {
+      box.value = "";
+      runInBrowser(local);
+
       return;
     }
 
@@ -227,6 +265,8 @@ export function Composer({
               <SettingsPickers
                 settings={feed.settings}
                 models={models}
+                modelMenu={modelMenu}
+                reasoningMenu={reasoningMenu}
                 onModel={(model) => {
                   command(sessionId, { type: "set_model", model }).catch(
                     report,
@@ -323,11 +363,15 @@ const picker =
 function SettingsPickers({
   settings,
   models,
+  modelMenu,
+  reasoningMenu,
   onModel,
   onThinking,
 }: {
   readonly settings: Settings;
   readonly models: readonly ModelRef[];
+  readonly modelMenu: RefObject<HTMLSelectElement | null>;
+  readonly reasoningMenu: RefObject<HTMLSelectElement | null>;
   readonly onModel: (model: ModelRef) => void;
   readonly onThinking: (level: Settings["thinking"]) => void;
 }): ReactElement {
@@ -340,6 +384,7 @@ function SettingsPickers({
   return (
     <>
       <select
+        ref={modelMenu}
         aria-label="Model"
         value={current}
         onChange={(event) => {
@@ -358,6 +403,7 @@ function SettingsPickers({
       </select>
       {settings.levels.length > 1 && (
         <select
+          ref={reasoningMenu}
           aria-label="Reasoning"
           value={settings.thinking}
           onChange={(event) => {
