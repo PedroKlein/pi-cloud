@@ -97,6 +97,9 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     await stopping.get(sessionId);
     const report = await removing.get(sessionId);
+    if (hosted.get(sessionId)?.generation !== generation) {
+      return undefined;
+    }
 
     // An unarchive can overtake a removal, so the assignment may still name
     // the workspace that removal just deleted.

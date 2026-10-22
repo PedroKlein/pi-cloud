@@ -1771,6 +1771,18 @@ async function sessionWhere(
   return found.session;
 }
 
+async function agentLogged(message: string, generation: number): Promise<void> {
+  while (
+    !agentLogs.some(
+      (line) =>
+        line.startsWith(message) &&
+        line.includes(`"generation":${String(generation)}`),
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 async function listed(query = ""): Promise<string[]> {
   return ((await (await api(`/api/sessions${query}`)).json()) as Session[]).map(
     (session) => session.id,
@@ -2001,6 +2013,62 @@ test("brings pushed work back when unarchived while its worktree is being remove
 
   expect(restarted.workspace).toMatchObject({ startPoint: `origin/${branch}` });
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+});
+
+test("leaves no worktree behind when archived again while its first removal runs", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+
+  let answer = (): void => undefined;
+
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+
+  faux.setResponses([
+    async () => {
+      await answered;
+
+      return fauxAssistantMessage([fauxText("slow to stop")]);
+    },
+  ]);
+
+  const watching = await watch(session.id);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await watching(status("running"));
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await agentLogged("unloading session", 1);
+  await api(`/api/sessions/${session.id}/unarchive`, {});
+  await agentLogged("starting session", 2);
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await agentLogged("unloading session", 2);
+  answer();
+  await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+  await laptop();
+
+  const branches = await run("git", ["branch", "--list", branch], {
+    cwd: checkout,
+  });
+
+  const worktrees = await run("git", ["worktree", "list"], { cwd: checkout });
+  const leftover = await stat(dir).catch(() => undefined);
+
+  expect(leftover).toBeUndefined();
+  expect(branches.stdout).toBe("");
+  expect(worktrees.stdout).not.toContain(dir);
 });
 
 test("stores the restore point of a removal reported after unarchive", async () => {
