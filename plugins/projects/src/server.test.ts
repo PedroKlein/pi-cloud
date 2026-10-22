@@ -389,3 +389,24 @@ test("drops a delivery it can't build, once, so later ones still reach the coord
 
   expect(failures).toHaveLength(1);
 }, 10_000);
+
+test("refuses memory file names made only of dots", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId } = await startProject(kernel);
+
+  const coordinator = {
+    session: kernel.session(coordinatorId),
+    actor: user,
+  };
+
+  const memoryWrite = kernel.tool("memory_write");
+
+  const results = await Promise.all(
+    [".", "..", ".notes"].map(async (name) =>
+      memoryWrite.run({ name, content: "notes" }, coordinator),
+    ),
+  );
+
+  expect(results.map(({ isError }) => isError)).toEqual([true, true, false]);
+}, 10_000);
