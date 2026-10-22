@@ -58,3 +58,26 @@ test("close ends the shell", async () => {
 
   expect(await terminal.exited).not.toBe(0);
 });
+
+test("ignores input and resizes that arrive after close", async () => {
+  const terminal = openTerminal(
+    { cwd: tmpdir(), shell: "/bin/sh", cols: 80, rows: 24 },
+    () => undefined,
+  );
+
+  terminal.close();
+
+  expect(() => {
+    terminal.write("x");
+  }).not.toThrow();
+
+  expect(() => {
+    terminal.resize(100, 30);
+  }).not.toThrow();
+
+  expect(() => {
+    terminal.close();
+  }).not.toThrow();
+
+  expect(await terminal.exited).not.toBe(0);
+});
