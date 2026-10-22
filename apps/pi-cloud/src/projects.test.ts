@@ -971,7 +971,7 @@ test("accepts library file names with letters from any script", async () => {
 
   expect(await (await api(files)).json()).toMatchObject([
     { name: "Relatório final.pdf", size: 1 },
-    { name: decomposed, size: 3 },
+    { name: decomposed.normalize("NFC"), size: 3 },
     { name: "日本.txt", size: 1 },
   ]);
 

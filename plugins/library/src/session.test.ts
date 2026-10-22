@@ -86,3 +86,16 @@ test("publishes a file under its everyday name", async () => {
     "PUT files/invoice%20(1).pdf",
   ]);
 });
+
+test("publishes a decomposed file name in its composed spelling", async () => {
+  await writeFile(join(cwd, "re\u0301sume\u0301.pdf"), "cv");
+  const requests: string[] = [];
+  const publish = await publisher(requests);
+
+  await publish("re\u0301sume\u0301.pdf");
+
+  expect(requests).toEqual([
+    "GET member",
+    `PUT files/${encodeURIComponent("r\u00e9sum\u00e9.pdf")}`,
+  ]);
+});

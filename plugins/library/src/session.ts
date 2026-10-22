@@ -37,11 +37,12 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
   };
 
   const libraryPath = (name: string): string => {
-    if (!validName(name)) {
+    const composed = name.normalize("NFC");
+    if (!validName(composed)) {
       throw new Error(nameRule);
     }
 
-    return `files/${encodeURIComponent(name)}`;
+    return `files/${encodeURIComponent(composed)}`;
   };
 
   const text = (
