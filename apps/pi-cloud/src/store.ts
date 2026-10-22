@@ -25,6 +25,7 @@ interface SessionRow {
   model: string | null;
   system_prompt: string | null;
   first_message: string | null;
+  title: string | null;
   status: SessionStatus;
   generation: number;
   created_at: string;
@@ -61,6 +62,7 @@ create table if not exists sessions (
   model text,
   system_prompt text,
   first_message text,
+  title text,
   status text not null,
   generation integer not null,
   created_at text not null,
@@ -101,6 +103,7 @@ function migrate(db: DatabaseSync): void {
     "workspace_removal",
     "system_prompt",
     "first_message",
+    "title",
   ]) {
     if (columns.length > 0 && !columns.some(({ name }) => name === column)) {
       db.exec(`alter table sessions add column ${column} text`);
@@ -169,6 +172,7 @@ export function openStore(path: string): SessionStore & {
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
     systemPrompt: row.system_prompt,
     firstMessage: row.first_message,
+    title: row.title,
     status: row.status,
     generation: row.generation,
     createdAt: row.created_at,
@@ -179,7 +183,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insert = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const update = db.prepare(
@@ -218,6 +222,8 @@ export function openStore(path: string): SessionStore & {
     "insert into transcript (session_id, line, entry) values (?, ?, ?)",
   );
 
+  const setTitle = db.prepare("update sessions set title = ? where id = ?");
+
   const transcript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
   );
@@ -232,6 +238,7 @@ export function openStore(path: string): SessionStore & {
         s.model && JSON.stringify(s.model),
         s.systemPrompt,
         s.firstMessage,
+        s.title,
         s.status,
         s.generation,
         s.createdAt,
@@ -281,6 +288,9 @@ export function openStore(path: string): SessionStore & {
         db.exec("rollback");
         throw error;
       }
+    },
+    setTitle: (id, title) => {
+      setTitle.run(title, id);
     },
     transcript: (id, from) =>
       (transcript.all(id, from) as { entry: string }[]).map((r) => r.entry),

@@ -59,14 +59,14 @@ export function SessionView({
   const { session } = feed;
 
   const place = session ? shortName(session.workspace) : "";
-  const title = feed.title ?? place;
+  const named = feed.title ?? session?.title ?? undefined;
+  const title = named ?? place;
 
   const archived = session !== undefined && session.archivedAt !== null;
 
   useEffect(() => {
-    document.title =
-      feed.title === undefined ? "Pi Cloud" : `${feed.title} · Pi Cloud`;
-  }, [feed.title]);
+    document.title = named === undefined ? "Pi Cloud" : `${named} · Pi Cloud`;
+  }, [named]);
 
   const action = (name: string): void => {
     api(`/api/sessions/${encodeURIComponent(sessionId)}/${name}`, {}).catch(

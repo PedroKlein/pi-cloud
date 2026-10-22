@@ -372,6 +372,8 @@ export interface Session {
   readonly model: ModelRef | null;
   readonly systemPrompt: string | null;
   readonly firstMessage: string | null;
+  // The name Pi gave the session, or else the first thing the user said.
+  readonly title: string | null;
   readonly status: SessionStatus;
   readonly generation: number;
   readonly createdAt: string;

@@ -51,6 +51,7 @@ export interface SessionStore {
     lines: readonly string[],
   ) => void;
   transcript: (id: string, from: number) => readonly string[];
+  setTitle: (id: string, title: string) => void;
 }
 
 export type Rejection =
@@ -153,6 +154,7 @@ export class Sessions {
         request.model ?? this.#offeredModels(environment.id).default ?? null,
       systemPrompt: request.systemPrompt ?? null,
       firstMessage: request.firstMessage ?? null,
+      title: null,
       status: "queued",
       generation: 0,
       createdAt: new Date().toISOString(),
@@ -340,6 +342,16 @@ export class Sessions {
       const fresh = batch.lines.slice(length - batch.start);
       if (fresh.length > 0) {
         this.#store.appendTranscript(id, length, fresh);
+
+        const title = titleAfter(current.value.title, fresh);
+        if (title !== current.value.title && title !== null) {
+          this.#store.setTitle(id, title);
+
+          this.#emit(id, {
+            type: "session",
+            session: this.#view({ ...current.value, title }),
+          });
+        }
 
         fresh.forEach((entry, i) => {
           this.#emit(id, { type: "entry", line: length + i, entry });
@@ -747,4 +759,64 @@ function surfaceOf(
     case "tool_end":
       return undefined;
   }
+}
+
+const titleLength = 80;
+
+// Pi's own session name wins; until there is one, the first user message
+// names the Session.
+function titleAfter(
+  title: string | null,
+  entries: readonly string[],
+): string | null {
+  let named = title;
+
+  for (const line of entries) {
+    const entry = parsed(line);
+
+    if (entry?.type === "session_info" && typeof entry.name === "string") {
+      named = entry.name;
+    }
+
+    if (named === null && entry?.type === "message") {
+      named = userText(entry.message);
+    }
+  }
+
+  return named === null ? null : named.trim().slice(0, titleLength);
+}
+
+function parsed(
+  line: string,
+): { type?: unknown; name?: unknown; message?: unknown } | undefined {
+  try {
+    const value: unknown = JSON.parse(line);
+
+    return typeof value === "object" && value !== null ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function userText(message: unknown): string | null {
+  if (typeof message !== "object" || message === null) {
+    return null;
+  }
+
+  const { role, content } = message as { role?: unknown; content?: unknown };
+  if (role !== "user") {
+    return null;
+  }
+
+  if (typeof content === "string") {
+    return content;
+  }
+
+  const text = Array.isArray(content)
+    ? (content as { type?: unknown; text?: unknown }[]).find(
+        (part) => part.type === "text" && typeof part.text === "string",
+      )?.text
+    : undefined;
+
+  return typeof text === "string" && text.trim() !== "" ? text : null;
 }
