@@ -1064,12 +1064,17 @@ test("rejects commands once the agent stops", async () => {
 
   await laptop();
 
+  await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+
   const sent = await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
     text: "hi",
   });
 
   expect(sent.status).toBe(409);
+  expect(await sent.json()).toEqual({ error: "offline" });
 });
 
 test("restarts an interrupted session as a new attempt with its transcript", async () => {
@@ -1570,6 +1575,10 @@ test("refuses a terminal for a session whose agent is gone", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
   await laptop();
+
+  await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
 
   const response = await fetch(
     new URL(`/api/sessions/${session.id}/terminal`, server.url),
