@@ -4,23 +4,24 @@ import type {
   OfferedModels,
   StartRequest,
 } from "@pi-cloud/plugins";
-import type {
-  Assignment,
-  Attempt,
-  Command,
-  Environment,
-  LiveEvent,
-  LivePost,
-  ModelRef,
-  Removal,
-  RemovalReport,
-  Session,
-  SessionEvent,
-  SessionStatus,
-  StartFailure,
-  TranscriptAck,
-  TranscriptBatch,
-  WorkPoll,
+import {
+  type Assignment,
+  type Attempt,
+  type Command,
+  type Environment,
+  type LiveEvent,
+  type LivePost,
+  liveSurface,
+  type ModelRef,
+  type Removal,
+  type RemovalReport,
+  type Session,
+  type SessionEvent,
+  type SessionStatus,
+  type StartFailure,
+  type TranscriptAck,
+  type TranscriptBatch,
+  type WorkPoll,
 } from "@pi-cloud/protocol";
 
 export type StoredSession = Omit<Session, "online">;
@@ -662,7 +663,7 @@ export class Sessions {
   }
 
   #trackSurface(id: string, generation: number, event: LiveEvent): void {
-    const surface = surfaceOf(event);
+    const surface = liveSurface(event);
     if (surface === undefined) {
       return;
     }
@@ -722,42 +723,6 @@ export class Sessions {
     for (const listener of this.#watchers.get(id) ?? []) {
       listener(event);
     }
-  }
-}
-
-function surfaceOf(
-  event: LiveEvent,
-): { readonly key: string; readonly open: boolean } | undefined {
-  switch (event.type) {
-    case "prompt":
-      return { key: `prompt:${event.prompt.id}`, open: true };
-    case "prompt_end":
-      return { key: `prompt:${event.id}`, open: false };
-    case "extension_status":
-      return { key: `status:${event.key}`, open: event.text !== null };
-    case "widget":
-      return { key: `widget:${event.key}`, open: event.lines !== null };
-    case "title":
-      return { key: "title", open: true };
-    case "commands":
-      return { key: "commands", open: true };
-    case "files":
-      return { key: "files", open: true };
-    case "plugin":
-      return { key: `plugin:${event.plugin}:${event.key}`, open: true };
-    case "queue":
-      return {
-        key: "queue",
-        open: event.steering.length > 0 || event.followUp.length > 0,
-      };
-    case "status":
-    case "notify":
-    case "editor_text":
-    case "explanation":
-    case "text":
-    case "tool_start":
-    case "tool_end":
-      return undefined;
   }
 }
 

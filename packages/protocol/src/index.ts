@@ -285,6 +285,44 @@ export type LiveEvent =
       readonly isError: boolean;
     };
 
+// The part of a Session's live state an event sets. A later event with the
+// same key replaces it, and a closed surface is no longer shown.
+export function liveSurface(
+  event: LiveEvent,
+): { readonly key: string; readonly open: boolean } | undefined {
+  switch (event.type) {
+    case "prompt":
+      return { key: `prompt:${event.prompt.id}`, open: true };
+    case "prompt_end":
+      return { key: `prompt:${event.id}`, open: false };
+    case "extension_status":
+      return { key: `status:${event.key}`, open: event.text !== null };
+    case "widget":
+      return { key: `widget:${event.key}`, open: event.lines !== null };
+    case "title":
+      return { key: "title", open: true };
+    case "commands":
+      return { key: "commands", open: true };
+    case "files":
+      return { key: "files", open: true };
+    case "plugin":
+      return { key: `plugin:${event.plugin}:${event.key}`, open: true };
+    case "queue":
+      return {
+        key: "queue",
+        open: event.steering.length > 0 || event.followUp.length > 0,
+      };
+    case "status":
+    case "notify":
+    case "editor_text":
+    case "explanation":
+    case "text":
+    case "tool_start":
+    case "tool_end":
+      return undefined;
+  }
+}
+
 export interface LivePost {
   readonly generation: number;
   readonly events: readonly LiveEvent[];
