@@ -20,7 +20,8 @@ const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 // Diffs the working tree through a throwaway copy of the index with every new
 // file marked intent-to-add, so new files show up in the patch without
 // touching the user's own index or writing their contents to the object
-// store. Submodules show only a moved commit, as in a staged diff.
+// store. Submodules show only a moved commit, as in a staged diff. A patch over
+// the cap keeps its head and is marked truncated.
 export async function workspaceChanges(
   cwd: string,
   base: string | null,
@@ -76,16 +77,22 @@ export async function workspaceChanges(
       { env, maxBuffer: patchLimit },
       ...diff,
       "--binary",
-    ).catch((error: unknown) => {
-      if (
-        (error as { code?: unknown }).code ===
-        "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-      ) {
-        return undefined;
-      }
+    ).then(
+      (whole) => ({ text: whole, truncated: false }),
+      (error: unknown) => {
+        if (
+          (error as { code?: unknown }).code ===
+          "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+        ) {
+          return {
+            text: (error as { stdout?: string }).stdout ?? "",
+            truncated: true,
+          };
+        }
 
-      throw error;
-    });
+        throw error;
+      },
+    );
 
     const files = parseNameStatus(names);
 
@@ -93,8 +100,8 @@ export async function workspaceChanges(
       files: files.slice(0, fileLimit),
       fileCount: files.length,
       stat,
-      patch: patch ?? "",
-      truncated: patch === undefined,
+      patch: patch.text,
+      truncated: patch.truncated,
     };
   } finally {
     await rm(scratch, { recursive: true, force: true });
