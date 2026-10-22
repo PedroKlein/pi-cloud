@@ -733,6 +733,62 @@ test("titles a session with its first user message until Pi names it", async () 
   expect(await titled()).toBe("Login fix");
 });
 
+test("keeps the last character whole when it shortens a long title", async () => {
+  const session = await createSession("vm");
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+
+  const generation = work.start[0]?.generation;
+  const path = `/agent/sessions/${session.id}/transcript`;
+
+  const titled = async (): Promise<string | null> =>
+    (
+      (await (await api(`/api/sessions/${session.id}`)).json()) as {
+        title: string | null;
+      }
+    ).title;
+
+  const events = await watch(session.id);
+
+  await asAgent("vm", path, {
+    generation,
+    start: 0,
+    lines: [
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: `${"a".repeat(79)}😀 and more` }],
+        },
+      }),
+    ],
+  });
+
+  const live = await events((seen) =>
+    seen.some((e) => e.type === "session" && e.session.title !== null),
+  );
+
+  expect(
+    live.flatMap((e) => (e.type === "session" ? e.session.title : [])),
+  ).toContain(`${"a".repeat(79)}😀`);
+
+  expect(await titled()).toBe(`${"a".repeat(79)}😀`);
+
+  await asAgent("vm", path, {
+    generation,
+    start: 1,
+    lines: [
+      JSON.stringify({ type: "session_info", name: `${"b".repeat(79)}🚀🚀` }),
+    ],
+  });
+
+  expect(await titled()).toBe(`${"b".repeat(79)}🚀`);
+});
+
 test("drops messages from an older generation", async () => {
   const session = await createSession("vm");
   await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });

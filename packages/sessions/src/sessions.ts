@@ -686,7 +686,9 @@ function titleAfter(
     }
   }
 
-  return named === null ? null : named.trim().slice(0, titleLength);
+  return named === null
+    ? null
+    : Array.from(named.trim()).slice(0, titleLength).join("");
 }
 
 function parsed(
