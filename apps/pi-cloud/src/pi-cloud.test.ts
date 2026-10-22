@@ -1013,6 +1013,14 @@ test("rejects agent bodies outside the protocol with 400", async () => {
       }),
       asAgent("vm", `${base}/live`, { generation, events: [null] }),
       asAgent("vm", `${base}/live`, { events: [] }),
+      asAgent("vm", `${base}/live`, {
+        generation,
+        events: [{ type: "status", status: "idle", transcriptLength: -1 }],
+      }),
+      asAgent("vm", `${base}/live`, {
+        generation,
+        events: [{ type: "status", status: "idle", transcriptLength: "3" }],
+      }),
       asAgent("vm", `${base}/transcript`, { generation, start: 0, lines: [1] }),
       asAgent("vm", `${base}/failed`, { generation, error: 5 }),
       asAgent("vm", `${base}/workspace`, { generation, outcome: "lost" }),
@@ -1032,7 +1040,7 @@ test("rejects agent bodies outside the protocol with 400", async () => {
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
 
-  expect(statuses).toEqual(Array.from({ length: 11 }, () => 400));
+  expect(statuses).toEqual(Array.from({ length: 13 }, () => 400));
   expect(after.status).toBe(claimed.status);
 });
 

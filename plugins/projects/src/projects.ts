@@ -27,7 +27,7 @@ export interface Member {
 export type Delivery =
   | { readonly kind: "context"; readonly text: string }
   | { readonly kind: "message"; readonly text: string }
-  // end is the length of the thread's transcript when its next turn started.
+  // end is how many transcript lines the thread's turn ended with.
   | { readonly kind: "turn"; readonly threadId: string; readonly end?: number };
 
 export interface Queued {
@@ -84,7 +84,6 @@ export interface ProjectStore {
     delivery: Delivery,
   ) => void;
   readonly queued: () => readonly Queued[];
-  readonly endTurns: (threadId: string, end: number) => void;
   readonly delivered: (id: number) => void;
 }
 
@@ -328,16 +327,6 @@ export function projectStore(
         actor: row.actor,
         delivery: JSON.parse(row.delivery) as Delivery,
       })),
-    endTurns: (threadId, end) => {
-      store.run(
-        `update projects_outbox set delivery = json_set(delivery, '$.end', ?)
-          where delivery ->> '$.kind' = 'turn'
-            and delivery ->> '$.threadId' = ?
-            and delivery ->> '$.end' is null`,
-        end,
-        threadId,
-      );
-    },
     delivered: (id) => {
       store.run("delete from projects_outbox where id = ?", id);
     },

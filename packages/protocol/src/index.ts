@@ -242,7 +242,13 @@ export type Prompt =
     };
 
 export type LiveEvent =
-  | { readonly type: "status"; readonly status: ActivityStatus }
+  | {
+      readonly type: "status";
+      readonly status: ActivityStatus;
+      // On the idle status that ends a turn: how many transcript lines the
+      // turn ended with, which the transcript upload may not have reached yet.
+      readonly transcriptLength?: number;
+    }
   | { readonly type: "prompt"; readonly prompt: Prompt }
   | { readonly type: "prompt_end"; readonly id: string }
   | {

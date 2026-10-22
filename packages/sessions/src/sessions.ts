@@ -388,10 +388,17 @@ export class Sessions {
 
         session = { ...session, status: event.status };
         this.#update(session);
-        if (turnStarted || turnEnded) {
+        if (turnStarted) {
+          this.#events({ type: "TurnStarted", session: this.#view(session) });
+        }
+
+        if (turnEnded) {
           this.#events({
-            type: turnStarted ? "TurnStarted" : "TurnEnded",
+            type: "TurnEnded",
             session: this.#view(session),
+            ...(event.transcriptLength !== undefined && {
+              transcriptLength: event.transcriptLength,
+            }),
           });
         }
       }

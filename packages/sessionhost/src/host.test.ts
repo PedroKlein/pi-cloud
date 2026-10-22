@@ -192,10 +192,44 @@ test("streams a turn as live events and transcript lines", async () => {
   expect(fake.events.filter((e) => e.type === "status")).toEqual([
     { type: "status", status: "idle" },
     { type: "status", status: "running" },
-    { type: "status", status: "idle" },
+    { type: "status", status: "idle", transcriptLength: fake.lines.length },
   ]);
 
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
+});
+
+test("tells the server how many transcript lines each turn ended with", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first reply")]),
+    fauxAssistantMessage([fauxText("second reply")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const idle = (): LiveEvent[] =>
+    fake.events.filter((e) => e.type === "status" && e.status === "idle");
+
+  fake.send({ actor: "user:local", type: "message", text: "one" });
+  await fake.waitFor(() => idle().length === 2);
+  fake.send({ actor: "user:local", type: "message", text: "two" });
+  await fake.waitFor(() => idle().length === 3);
+  await hosted.stop();
+
+  const secondTurn = fake.lines.findIndex((line) => line.includes('"two"'));
+
+  expect(idle().slice(1)).toEqual([
+    { type: "status", status: "idle", transcriptLength: secondTurn },
+    { type: "status", status: "idle", transcriptLength: fake.lines.length },
+  ]);
 });
 
 test("tells clients when a message cannot be sent to the model", async () => {
@@ -2452,7 +2486,7 @@ test("fails a server tool whose result never arrives, so the turn still ends", a
   expect(fake.events.filter((e) => e.type === "status")).toEqual([
     { type: "status", status: "idle" },
     { type: "status", status: "running" },
-    { type: "status", status: "idle" },
+    { type: "status", status: "idle", transcriptLength: fake.lines.length },
   ]);
 });
 
