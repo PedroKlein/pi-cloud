@@ -39,6 +39,10 @@ export function libraryStore(store: PluginStore): LibraryStore {
     primary key (project_id, name)
   )`);
 
+  store.exec(
+    "create index if not exists library_files_listing on library_files (project_id, name, size, actor, updated_at)",
+  );
+
   store.exec(`create table if not exists library_log (
     project_id text not null,
     name text not null,
