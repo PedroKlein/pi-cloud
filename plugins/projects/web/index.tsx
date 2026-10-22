@@ -11,6 +11,7 @@ import {
   type BadgeState,
   Button,
   cn,
+  Field,
   fieldClass,
   Icon,
   PageTitle,
@@ -164,58 +165,55 @@ function CreateForm({
       onSubmit={submit}
       className="project-create grid max-w-xl gap-3 rounded-lg border border-line bg-panel p-5"
     >
-      <input
-        name="name"
-        placeholder="Project name"
-        aria-label="Project name"
-        required
-        className={fieldClass}
-      />
-      <select
-        name="environment"
-        aria-label="Environment"
-        className={fieldClass}
-      >
-        {environments.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name} ({option.provider})
-          </option>
-        ))}
-      </select>
-      <input
-        name="model"
-        list="project-models"
-        aria-label="Coordinator model"
-        placeholder="Coordinator model as provider/id (optional)"
-        className={fieldClass}
-      />
-      <input
-        name="threadModel"
-        list="project-models"
-        aria-label="Thread model"
-        placeholder="Thread model as provider/id (optional)"
-        className={fieldClass}
-      />
+      <Field label="Name">
+        <input name="name" required className={fieldClass} />
+      </Field>
+      <Field label="Environment">
+        <select name="environment" className={fieldClass}>
+          {environments.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name} ({option.provider})
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Coordinator model">
+        <input
+          name="model"
+          list="project-models"
+          placeholder="Environment default"
+          className={cn(fieldClass, "font-mono text-mono-sm")}
+        />
+      </Field>
+      <Field label="Thread model">
+        <input
+          name="threadModel"
+          list="project-models"
+          placeholder="Environment default"
+          className={cn(fieldClass, "font-mono text-mono-sm")}
+        />
+      </Field>
       <datalist id="project-models">
         {models.map((ref) => (
           <option key={ref} value={ref} />
         ))}
       </datalist>
-      <textarea
-        name="repositories"
-        aria-label="Repositories"
-        placeholder="Repository URLs, one per line"
-        required
-        rows={2}
-        className={fieldClass}
-      />
-      <textarea
-        name="instructions"
-        aria-label="Instructions"
-        placeholder="Project instructions (optional)"
-        rows={3}
-        className={fieldClass}
-      />
+      <Field label="Repository URLs, one per line">
+        <textarea
+          name="repositories"
+          required
+          rows={2}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Instructions">
+        <textarea
+          name="instructions"
+          placeholder="Optional"
+          rows={3}
+          className={fieldClass}
+        />
+      </Field>
       <Button variant="primary" type="submit" className="justify-self-start">
         New Project
       </Button>
