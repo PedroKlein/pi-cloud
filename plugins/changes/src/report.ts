@@ -1,8 +1,11 @@
 export interface Changes {
+  // files and stat are cut short on a large change set, and fileCount counts
+  // every changed file.
   readonly files: readonly {
     readonly status: string;
     readonly path: string;
   }[];
+  readonly fileCount: number;
   readonly stat: string;
   readonly patch: string;
   readonly truncated: boolean;

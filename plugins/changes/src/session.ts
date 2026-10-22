@@ -55,7 +55,7 @@ export const changes: SessionPlugin = {
           publish("changes", found);
 
           log("workspace changes", {
-            files: found.reduce((sum, { files }) => sum + files.length, 0),
+            files: found.reduce((sum, { fileCount }) => sum + fileCount, 0),
             truncated: found.some(({ truncated }) => truncated),
             ms: Date.now() - started,
           });

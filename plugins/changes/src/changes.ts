@@ -11,6 +11,10 @@ const patchLimit = 256 * 1024;
 
 const outputLimit = 64 * 1024 * 1024;
 
+// The cap the files live event uses (ADR 0006), so a large change set doesn't
+// put megabytes on the live queue after every turn.
+const fileLimit = 5000;
+
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 // Diffs a throwaway copy of the index with every file added, so new files
@@ -50,7 +54,13 @@ export async function workspaceChanges(
 
     const diff = ["diff", "--cached", "--no-color", "--no-ext-diff", against];
     const names = await git(cwd, { env }, ...diff, "--name-status", "-z");
-    const stat = await git(cwd, { env }, ...diff, "--stat");
+
+    const stat = await git(
+      cwd,
+      { env },
+      ...diff,
+      `--stat-count=${String(fileLimit)}`,
+    );
 
     const patch = await git(
       cwd,
@@ -68,8 +78,11 @@ export async function workspaceChanges(
       throw error;
     });
 
+    const files = parseNameStatus(names);
+
     return {
-      files: parseNameStatus(names),
+      files: files.slice(0, fileLimit),
+      fileCount: files.length,
       stat,
       patch: patch ?? "",
       truncated: patch === undefined,
