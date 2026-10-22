@@ -81,6 +81,7 @@ test("closes a terminal whose output the server stops reading", async () => {
       generation: 1,
       workspace: { kind: "folder", path: tmpdir() },
       model: null,
+      thinking: null,
       systemPrompt: null,
       firstMessage: null,
       plugins: [],

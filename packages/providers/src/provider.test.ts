@@ -13,6 +13,7 @@ const assignment: Assignment = {
   generation: 1,
   workspace: { kind: "folder", path: "/w" },
   model: null,
+  thinking: null,
   systemPrompt: null,
   firstMessage: null,
   plugins: [],

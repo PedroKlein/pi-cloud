@@ -9,6 +9,7 @@ const session = (change: Partial<Session>): Session => ({
   provider: "laptop",
   workspace: { kind: "folder", path: "/home/me/site" },
   model: { provider: "github-copilot", id: "gpt-5.3-codex" },
+  thinking: null,
   systemPrompt: null,
   firstMessage: null,
   title: null,

@@ -19,6 +19,7 @@ const caller: ToolCaller = {
     provider: "local",
     workspace: { kind: "folder", path: "/work" },
     model: null,
+    thinking: null,
     systemPrompt: null,
     firstMessage: null,
     title: null,

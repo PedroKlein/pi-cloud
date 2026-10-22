@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   ModelRef,
   SessionStatus,
+  ThinkingLevel,
   Workspace,
   WorkspaceRemoval,
 } from "@pi-cloud/protocol";
@@ -25,6 +26,7 @@ interface SessionRow {
   model: string | null;
   system_prompt: string | null;
   first_message: string | null;
+  thinking: ThinkingLevel | null;
   title: string | null;
   status: SessionStatus;
   generation: number;
@@ -62,6 +64,7 @@ create table if not exists sessions (
   model text,
   system_prompt text,
   first_message text,
+  thinking text,
   title text,
   status text not null,
   generation integer not null,
@@ -109,6 +112,7 @@ function migrate(db: DatabaseSync): void {
     "system_prompt",
     "first_message",
     "title",
+    "thinking",
   ]) {
     if (sessionsTableExists && !hasColumn(column)) {
       db.exec(`alter table sessions add column ${column} text`);
@@ -181,6 +185,7 @@ export function openStore(path: string): SessionStore & {
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
     systemPrompt: row.system_prompt,
+    thinking: row.thinking,
     firstMessage: row.first_message,
     title: row.title,
     status: row.status,
@@ -193,7 +198,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
@@ -260,6 +265,7 @@ export function openStore(path: string): SessionStore & {
         s.model && JSON.stringify(s.model),
         s.systemPrompt,
         s.firstMessage,
+        s.thinking,
         s.title,
         s.status,
         s.generation,

@@ -79,6 +79,7 @@ export interface Assignment {
   readonly generation: number;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
+  readonly thinking: ThinkingLevel | null;
   readonly systemPrompt: string | null;
   readonly firstMessage: string | null;
   readonly plugins: readonly string[];
@@ -452,6 +453,8 @@ export interface Session {
   readonly provider: string;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
+  // The reasoning level a new Session starts at. Pi keeps later changes.
+  readonly thinking: ThinkingLevel | null;
   readonly systemPrompt: string | null;
   readonly firstMessage: string | null;
   // The name Pi gave the session, or else the first thing the user said.
@@ -481,6 +484,7 @@ export interface CreateSession {
   readonly environment?: string;
   readonly workspace: WorkspaceRequest;
   readonly model?: ModelRef;
+  readonly thinking?: ThinkingLevel;
   readonly systemPrompt?: string;
   readonly firstMessage?: string;
 }

@@ -98,7 +98,7 @@ beforeEach(async () => {
   serverLogs = [];
 
   faux = fauxProvider({
-    models: [{ id: "faux-small" }, { id: "faux-large" }],
+    models: [{ id: "faux-small" }, { id: "faux-large", reasoning: true }],
   });
 
   runtime = await ModelRuntime.create({
@@ -1488,6 +1488,35 @@ test("rejects a session request with a malformed model", async () => {
   });
 
   expect(response.status).toBe(400);
+});
+
+test("starts a session at the reasoning level it was created with", async () => {
+  const session = (await (
+    await api("/api/sessions", {
+      environment: await environmentOf("laptop"),
+      workspace: { kind: "folder", path: root },
+      model: { provider: faux.getModel().provider, id: "faux-large" },
+      thinking: "high",
+    })
+  ).json()) as Session;
+
+  expect(session.thinking).toBe("high");
+
+  await follow(session.id, (seen) =>
+    seen.some(
+      (event) =>
+        event.type === "live" &&
+        event.event.type === "settings" &&
+        event.event.thinking === "high",
+    ),
+  );
+
+  const unknown = await api("/api/sessions", {
+    workspace: { kind: "folder", path: root },
+    thinking: "huge",
+  });
+
+  expect(unknown.status).toBe(400);
 });
 
 test("runs a laptop session in its own worktree of a listed checkout", async () => {

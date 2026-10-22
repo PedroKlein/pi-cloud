@@ -52,6 +52,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     provider: "local",
     workspace: { kind: "folder", path: "/home/me/repo" },
     model: null,
+    thinking: null,
     systemPrompt: null,
     firstMessage: null,
     title: null,
@@ -81,6 +82,7 @@ test("opens a migrated database again", () => {
     provider: "vm",
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
+    thinking: "high",
     systemPrompt: null,
     firstMessage: null,
     title: null,
@@ -97,6 +99,7 @@ test("opens a migrated database again", () => {
 
   expect(store.get("s1")).toMatchObject({
     provider: "vm",
+    thinking: "high",
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
   });
@@ -115,6 +118,7 @@ function sessionIn(
     provider,
     workspace: { kind: "clone", repository: "r", branch: fields.id },
     model: null,
+    thinking: null,
     systemPrompt: null,
     firstMessage: null,
     title: null,

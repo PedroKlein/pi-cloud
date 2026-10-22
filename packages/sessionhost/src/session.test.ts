@@ -298,6 +298,28 @@ test("keeps a resumed session on the model it last used", async () => {
   expect(modelName(resumed)).toBe(`${second.provider}/${second.id}`);
 });
 
+test("starts a new session at the chosen reasoning level, and a resumed one at its last", async () => {
+  const { faux, models } = await fauxModels(root, {
+    models: [{ id: "faux-deep", reasoning: true }],
+  });
+
+  faux.setResponses([fauxAssistantMessage("hi")]);
+
+  const options = sessionOptions(root, { models });
+  const started = await startSession({ ...options, thinking: "high" });
+  const chosen = started.thinkingLevel;
+
+  started.setThinkingLevel("low");
+  await started.prompt("hello");
+  await stopSession(started);
+
+  const resumed = await startSession({ ...options, thinking: "high" });
+  await stopSession(resumed);
+
+  expect(chosen).toBe("high");
+  expect(resumed.thinkingLevel).toBe("low");
+});
+
 test("lists the models Pi can use, with the ones extensions register and later logins", async () => {
   const agentDir = join(root, "agent");
 

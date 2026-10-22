@@ -144,6 +144,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         extensionPaths: options.extensionPaths,
         systemPrompt: assignment.systemPrompt,
         ...(assignment.model && { model: assignment.model }),
+        ...(assignment.thinking && { thinking: assignment.thinking }),
       };
 
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);

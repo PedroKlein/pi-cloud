@@ -9,6 +9,7 @@ const session = (change: Partial<Session>): Session => ({
   provider: "laptop",
   workspace: { kind: "folder", path: "/repo" },
   model: null,
+  thinking: null,
   systemPrompt: null,
   firstMessage: null,
   title: null,
