@@ -726,7 +726,7 @@ test("removes a clean worktree and its branch and brings it back from the pushed
 
   expect(report).toEqual({
     outcome: "removed",
-    restore: { ...workspace, startPoint: "origin/pi-cloud/s1" },
+    restore: { ...workspace, restorePoint: "origin/pi-cloud/s1" },
   });
 
   expect(stat(dir)).rejects.toThrow();
@@ -734,7 +734,7 @@ test("removes a clean worktree and its branch and brings it back from the pushed
   expect(await git(checkout, "worktree", "list")).not.toContain(dir);
 
   await prepareWorkspace(
-    { ...workspace, startPoint: "origin/pi-cloud/s1" },
+    { ...workspace, restorePoint: "origin/pi-cloud/s1" },
     options,
     noLog,
   );
@@ -829,7 +829,7 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
     await removeWorkspace(workspace, { dir: clean, force: false }, noLog),
   ).toEqual({
     outcome: "removed",
-    restore: { ...workspace, startPoint: "origin/main" },
+    restore: { ...workspace, restorePoint: "origin/main" },
   });
 
   expect(stat(clean)).rejects.toThrow();
@@ -978,6 +978,93 @@ test("brings a session back at its own commit once the branch holding it moved o
 
     expect(await git(dir, "rev-parse", "HEAD")).toBe(tip);
     expect(await readdir(dir)).not.toContain("later.txt");
+  }
+});
+
+test("starts a session branch over once the remote deleted it after a merge", async () => {
+  const checkout = await checkoutWithRemote();
+
+  for (const [workspace, start] of [
+    [{ kind: "clone", repository, branch: "pi-cloud/s1" }, repository],
+    [{ kind: "worktree", path: checkout, branch: "pi-cloud/s2" }, checkout],
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+    const options = { dir, folders: [checkout] };
+    await prepareWorkspace(workspace, options, noLog);
+    await commit(dir, `${workspace.kind}.txt`);
+    await git(dir, "push", "origin", workspace.branch);
+
+    const report = await removeWorkspace(
+      workspace,
+      { dir, force: false },
+      noLog,
+    );
+
+    await git(
+      repository,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "merge",
+      "--squash",
+      workspace.branch,
+    );
+
+    await git(
+      repository,
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "commit",
+      "-m",
+      "merged",
+    );
+
+    await git(repository, "branch", "--delete", "--force", workspace.branch);
+    await git(checkout, "fetch", "--prune", "origin");
+    const logs: string[] = [];
+
+    await prepareWorkspace(
+      report.outcome === "removed" ? report.restore : workspace,
+      options,
+      (message) => {
+        logs.push(message);
+      },
+    );
+
+    expect(await git(dir, "branch", "--show-current")).toBe(workspace.branch);
+
+    expect(await git(dir, "rev-parse", "HEAD")).toBe(
+      await git(start, "rev-parse", "HEAD"),
+    );
+
+    expect(logs).toContain("restore point gone, starting the branch over");
+  }
+});
+
+test("fails a new session branch whose start point git can't find", async () => {
+  for (const workspace of [
+    { kind: "clone", repository, branch: "pi-cloud/s1", startPoint: "gone" },
+    {
+      kind: "worktree",
+      path: repository,
+      branch: "pi-cloud/s2",
+      startPoint: "gone",
+    },
+  ] as const) {
+    const prepared = prepareWorkspace(
+      workspace,
+      {
+        dir: join(root, "workspaces", workspace.branch),
+        folders: [repository],
+      },
+      noLog,
+    );
+
+    expect(prepared).rejects.toThrow("invalid reference: gone");
+    await prepared.catch(() => undefined);
   }
 });
 
@@ -1243,8 +1330,8 @@ test("removes several repositories only when none of them would lose work", asyn
     restore: {
       ...workspace,
       repositories: [
-        { repository, startPoint: "origin/pi-cloud/s1" },
-        { repository: second, startPoint: "origin/main" },
+        { repository, restorePoint: "origin/pi-cloud/s1" },
+        { repository: second, restorePoint: "origin/main" },
       ],
     },
   });

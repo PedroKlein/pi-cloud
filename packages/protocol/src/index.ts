@@ -20,23 +20,31 @@ export function checkoutName(repository: string): string | undefined {
   return name === "" || name === "." || name === ".." ? undefined : name;
 }
 
+// What a removal records to bring a session branch back (ADR 0013). Only the
+// provider sets it, so a WorkspaceRequest has none.
+interface Restorable {
+  // The remote branch or commit that held the branch's work. Once no remote
+  // has it, the branch starts over from startPoint.
+  readonly restorePoint?: string;
+}
+
 export type Workspace =
   | { readonly kind: "folder"; readonly path: string }
-  | {
+  | ({
       readonly kind: "worktree";
       readonly path: string;
       readonly branch: string;
       readonly startPoint?: string;
-    }
-  | {
+    } & Restorable)
+  | ({
       readonly kind: "clone";
       readonly repository: string;
       readonly branch: string;
       readonly startPoint?: string;
-    }
+    } & Restorable)
   | {
       readonly kind: "repositories";
-      readonly repositories: readonly RepositoryCheckout[];
+      readonly repositories: readonly (RepositoryCheckout & Restorable)[];
       readonly branch: string;
     };
 
