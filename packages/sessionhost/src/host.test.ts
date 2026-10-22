@@ -3206,6 +3206,49 @@ test("closes the Pi view on quit and keeps the session running", async () => {
   });
 }, 20_000);
 
+test("runs the extensions' startup once more for the TUI, not on every open and close", async () => {
+  const { models } = await fauxModels(root);
+  const extension = join(root, "starts.ts");
+  const starts = join(root, "starts.log");
+
+  await writeFile(
+    extension,
+    `import { appendFileSync } from "node:fs";
+export default (pi) => {
+  pi.on("session_start", () => {
+    appendFileSync(${JSON.stringify(starts)}, "started\\n");
+  });
+};
+`,
+  );
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { extensionPaths: [extension], models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  for (let round = 1; round <= 3; round++) {
+    const pi = openPiView(fake);
+    await fake.waitFor(() => pi.screen().includes("(faux) faux-1"));
+    fake.terminals.get("pi")?.peer.closed();
+
+    await fake.waitFor(
+      () =>
+        fake.events.filter((e) => e.type === "pi_view" && !e.attached)
+          .length === round,
+    );
+  }
+
+  await Bun.sleep(200);
+  await hosted.stop();
+
+  expect(await readFile(starts, "utf8")).toBe("started\n".repeat(2));
+}, 20_000);
+
 test("refuses to replace the session from the TUI", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();

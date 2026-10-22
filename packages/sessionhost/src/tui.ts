@@ -2,6 +2,7 @@ import {
   type AgentSession,
   AgentSessionRuntime,
   type ExtensionFactory,
+  type ExtensionUIContext,
   InteractiveMode,
 } from "@earendil-works/pi-coding-agent";
 import { StdinBuffer, type Terminal } from "@earendil-works/pi-tui";
@@ -20,7 +21,6 @@ interface ModeInternals {
   handleCtrlZ: () => void;
   showStatus: (message: string) => void;
   unregisterSignalHandlers: () => void;
-  bindCurrentSessionExtensions: () => Promise<void>;
   readonly ui: { readonly requestRender: (force?: boolean) => void };
 }
 
@@ -30,6 +30,11 @@ export interface PiView {
 }
 
 type Bindings = Parameters<AgentSession["bindExtensions"]>[0];
+
+type WebBindings = Bindings & {
+  readonly uiContext: ExtensionUIContext;
+  readonly mode: NonNullable<Bindings["mode"]>;
+};
 
 const oneSession =
   "Pi Cloud keeps one Pi session per session. Start a new session from the sidebar instead.";
@@ -47,35 +52,67 @@ export function piView(
   // and /import would replace it underneath the web and the transcript
   // upload, and tells the web about dialogs open in the TUI.
   readonly extension: ExtensionFactory;
-  readonly host: (session: AgentSession, web: Bindings) => PiView;
+  readonly host: (session: AgentSession, web: WebBindings) => PiView;
 } {
   const screen = virtualTerminal();
   let tui: ModeInternals | undefined;
+  let tuiUI: ExtensionUIContext | undefined;
   let channel: TerminalChannel | undefined;
-  let bound: "web" | "tui" = "web";
   let dialog: string | null = null;
-  let binding = Promise.resolve();
+
+  const showing = (): boolean => channel !== undefined && tuiUI !== undefined;
 
   const announce = (): void => {
     publish({ type: "pi_view", attached: channel !== undefined, dialog });
   };
 
-  const rebind = (to: typeof bound, bind: () => Promise<void>): void => {
-    binding = binding
-      .then(async () => {
-        await bind();
-        bound = to;
-      })
-      .catch((error: unknown) => {
-        log("pi view failed to bind dialogs", { error: String(error) });
-      });
-  };
+  const host = (session: AgentSession, web: WebBindings): PiView => {
+    // Pi runs the extensions' session_start on every bind, and extensions
+    // post snapshots and notices there. So the TUI binds once, through this
+    // context, and opening or closing the view only moves the extensions' UI.
+    const routed = new Proxy(web.uiContext, {
+      get: (_web, key) => {
+        const ui = showing() && tuiUI ? tuiUI : web.uiContext;
+        const value: unknown = Reflect.get(ui, key);
 
-  const host = (session: AgentSession, web: Bindings): PiView => {
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(ui)
+          : value;
+      },
+    });
+
+    const mode = (): WebBindings["mode"] => (showing() ? "tui" : web.mode);
+
+    const follow = (): void => {
+      if (tuiUI !== undefined) {
+        session.extensionRunner.setUIContext(routed, mode());
+      }
+    };
+
+    const bind = session.bindExtensions.bind(session);
+
+    session.bindExtensions = async (bindings) => {
+      if (bindings.mode !== "tui" || bindings.uiContext === undefined) {
+        return bind(bindings);
+      }
+
+      tuiUI = bindings.uiContext;
+
+      return bind({
+        ...bindings,
+        uiContext: routed,
+        mode: mode(),
+        onError: (error) => {
+          web.onError?.(error);
+          bindings.onError?.(error);
+        },
+      });
+    };
+
     const detach = (): void => {
       channel = undefined;
       screen.attach(undefined);
-      rebind("web", async () => session.bindExtensions(web));
+      follow();
       announce();
       log("pi view detached");
     };
@@ -94,8 +131,11 @@ export function piView(
         async () => Promise.reject(new Error(oneSession)),
       );
 
-      const mode = new InteractiveMode(runtime, { terminal: screen.terminal });
-      const internals = modeInternals(mode);
+      const interactive = new InteractiveMode(runtime, {
+        terminal: screen.terminal,
+      });
+
+      const internals = modeInternals(interactive);
 
       internals.shutdown = async () => {
         channel?.close();
@@ -108,16 +148,14 @@ export function piView(
         internals.showStatus("Suspending isn't available in Pi Cloud");
       };
 
-      const initialized = mode.init();
+      const initialized = interactive.init();
       internals.unregisterSignalHandlers();
 
-      rebind("tui", async () => {
-        await initialized;
-
-        mode.run().catch((error: unknown) => {
+      initialized
+        .then(async () => interactive.run())
+        .catch((error: unknown) => {
           log("pi view stopped", { error: String(error) });
         });
-      });
 
       return internals;
     };
@@ -146,12 +184,8 @@ export function piView(
         if (tui === undefined) {
           tui = start();
         } else {
-          const internals = tui;
-
-          rebind("tui", async () => {
-            await internals.bindCurrentSessionExtensions();
-            internals.ui.requestRender(true);
-          });
+          follow();
+          tui.ui.requestRender(true);
         }
 
         announce();
@@ -179,7 +213,7 @@ export function piView(
       });
 
       pi.on("ui_prompt_start", (event) => {
-        if (bound === "tui") {
+        if (showing()) {
           dialog = event.title ?? event.kind;
           announce();
         }
@@ -205,7 +239,6 @@ function modeInternals(mode: InteractiveMode): ModeInternals {
     "handleCtrlZ",
     "showStatus",
     "unregisterSignalHandlers",
-    "bindCurrentSessionExtensions",
   ].filter((name) => typeof internals[name] !== "function");
 
   if (typeof ui?.["requestRender"] !== "function") {
