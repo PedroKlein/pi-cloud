@@ -98,7 +98,19 @@ export const projects: ServerPlugin = {
   },
 };
 
-function deliver(
+// The store can refuse a write, such as while another process holds its lock.
+// A delivery waits for the next tick then, and the server keeps running.
+function deliver(store: ProjectStore, context: ServerPluginContext): void {
+  try {
+    deliverQueued(store, context);
+  } catch (error) {
+    context.log("deliveries wait for the next tick after an error", {
+      error: String(error),
+    });
+  }
+}
+
+function deliverQueued(
   store: ProjectStore,
   { sessions, log }: ServerPluginContext,
 ): void {

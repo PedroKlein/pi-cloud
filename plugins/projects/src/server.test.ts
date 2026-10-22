@@ -582,6 +582,55 @@ test("drops a delivery it can't build, once, so later ones still reach the coord
   expect(failures).toHaveLength(1);
 }, 10_000);
 
+test("keeps delivering, and sends nothing twice, while the store can't delete a delivered message", async () => {
+  const kernel = fakeKernel();
+  let locked = true;
+
+  projects.register({
+    ...kernel.context,
+    store: {
+      ...kernel.context.store,
+      run: (sql, ...params) => {
+        if (locked && sql.startsWith("delete from projects_outbox")) {
+          throw new Error("database is locked");
+        }
+
+        kernel.context.store.run(sql, ...params);
+      },
+    },
+  });
+
+  const { threadId } = await startProject(kernel);
+
+  await kernel
+    .tool("message_coordinator")
+    .run(
+      { text: "need a decision" },
+      { session: kernel.session(threadId), actor: `session:${threadId}` },
+    );
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect((await messageProject(kernel, "carry on")).status).toBe(202);
+
+  locked = false;
+  await until(() => kernel.delivered.length > 1);
+
+  expect(kernel.delivered).toEqual([
+    {
+      kind: "send",
+      text: `[Thread "Bump version" (${threadId})] need a decision`,
+    },
+    { kind: "send", text: "carry on" },
+  ]);
+
+  expect(
+    kernel.logged.some(({ fields }) =>
+      String(fields?.["error"]).includes("database is locked"),
+    ),
+  ).toBe(true);
+}, 10_000);
+
 test("refuses memory file names made only of dots", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);
