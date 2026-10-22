@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { complete, ranked, trigger } from "./suggest";
+import { browserCommand, complete, ranked, trigger } from "./suggest";
 
 test("opens commands only for a slash at the start of the message", () => {
   expect(trigger("/rev", 4)).toEqual({
@@ -43,4 +43,14 @@ test("replaces the typed word with the pick and a trailing space", () => {
     text: "/review ",
     caret: 8,
   });
+});
+
+test("runs /copy, and /model or /thinking without an argument, in the browser", () => {
+  expect(browserCommand("/copy")).toBe("copy");
+  expect(browserCommand(" /model ")).toBe("model");
+  expect(browserCommand("/thinking")).toBe("thinking");
+  expect(browserCommand("/model openai/gpt-5")).toBeUndefined();
+  expect(browserCommand("/thinking high")).toBeUndefined();
+  expect(browserCommand("/compact")).toBeUndefined();
+  expect(browserCommand("copy")).toBeUndefined();
 });

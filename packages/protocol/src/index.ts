@@ -365,7 +365,7 @@ export type ThinkingLevel = (typeof thinkingLevels)[number];
 export interface SlashCommand {
   readonly name: string;
   readonly description: string | null;
-  readonly source: "extension" | "prompt" | "skill";
+  readonly source: "builtin" | "extension" | "prompt" | "skill";
 }
 
 // Base64 image data sent to the model with a message (ADR 0006).

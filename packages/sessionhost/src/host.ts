@@ -18,6 +18,7 @@ import {
   type SlashCommand,
   type ToolSpec,
 } from "@pi-cloud/protocol";
+import { builtinCommands, builtinOf, runBuiltin, settings } from "./builtins";
 import { workspaceFiles } from "./files";
 import { remoteUI } from "./ui";
 import {
@@ -224,6 +225,37 @@ export async function hostSession(
       if (back !== undefined) {
         live.push({ type: "editor_text", text: back });
       }
+
+      return;
+    }
+
+    const builtin =
+      command.type === "message" ? builtinOf(session, command.text) : undefined;
+
+    if (builtin) {
+      runBuiltin(session, builtin).then(
+        (reply) => {
+          if (reply) {
+            live.push(reply);
+          }
+
+          if (builtin.name === "reload") {
+            live.push({ type: "commands", commands: slashCommands(session) });
+          }
+        },
+        (error: unknown) => {
+          log("command failed", {
+            command: builtin.name,
+            error: String(error),
+          });
+
+          live.push({
+            type: "notify",
+            level: "error",
+            message: `/${builtin.name} failed: ${error instanceof Error ? error.message : String(error)}`,
+          });
+        },
+      );
 
       return;
     }
@@ -498,27 +530,21 @@ function filesFeed(
   };
 }
 
-function settings(session: AgentSession): LiveEvent {
-  const { model } = session;
-
-  return {
-    type: "settings",
-    model: model ? { provider: model.provider, id: model.id } : null,
-    thinking: session.thinkingLevel,
-    levels: session.getAvailableThinkingLevels(),
-  };
-}
-
 // The same list Pi's RPC mode answers get_commands with.
 function slashCommands(session: AgentSession): readonly SlashCommand[] {
+  const extensions = session.extensionRunner
+    .getRegisteredCommands()
+    .map(({ invocationName, description }): SlashCommand => ({
+      name: invocationName,
+      description: description ?? null,
+      source: "extension",
+    }));
+
   return [
-    ...session.extensionRunner
-      .getRegisteredCommands()
-      .map(({ invocationName, description }): SlashCommand => ({
-        name: invocationName,
-        description: description ?? null,
-        source: "extension",
-      })),
+    ...builtinCommands.filter(
+      ({ name }) => !extensions.some((command) => command.name === name),
+    ),
+    ...extensions,
     ...session.promptTemplates.map(({ name, description }): SlashCommand => ({
       name,
       description,

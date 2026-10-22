@@ -63,3 +63,15 @@ export function complete(
     caret: from + inserted.length + (rest.startsWith(" ") ? 1 : 0),
   };
 }
+
+// Built-in commands the browser runs itself: /copy, and /model or /thinking
+// without an argument, which open their menus (ADR 0023).
+export function browserCommand(
+  text: string,
+): "copy" | "model" | "thinking" | undefined {
+  const name = /^\/(copy|model|thinking)$/.exec(text.trim())?.[1];
+
+  return name === "copy" || name === "model" || name === "thinking"
+    ? name
+    : undefined;
+}
