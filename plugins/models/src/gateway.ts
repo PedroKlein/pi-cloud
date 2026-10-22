@@ -9,6 +9,7 @@ import {
 export const gatewayProvider = "alias";
 
 const transientCooldownMs = 60_000;
+const goneCooldownMs = 24 * 60 * 60_000;
 const defaultCapCooldownMs = 60 * 60_000;
 const defaultCapStatusCodes = [402];
 
@@ -18,6 +19,11 @@ const capPattern =
 // A per-minute quota reads like a cap ("Quota exceeded ... check your plan and
 // billing details") but clears within a minute.
 const shortWindowPattern = /per.?minute|retry in \d+(\.\d+)?m?s\b/i;
+
+// A model the provider retired or never had stays gone until someone edits
+// the alias, so it is skipped for a day instead of failing every turn.
+const gonePattern =
+  /\b404\b|model_not_found|not found|no longer available|does not exist/i;
 
 const transientPattern =
   /\b(408|425|429|500|502|503|504)\b|rate.?limit|too many requests|overloaded|unavailable|timed? ?out|network|connection|fetch failed/i;
@@ -58,7 +64,7 @@ export function candidates(
 }
 
 // What a failed response takes out of routing, and until when: a cap benches
-// the provider's whole account, anything transient only the model.
+// the provider's whole account, a missing or transient model only that model.
 export function failure(
   config: AliasConfig,
   model: ModelRef,
@@ -83,17 +89,26 @@ export function failure(
     };
   }
 
-  if (transientPattern.test(errorMessage)) {
-    return {
-      key: modelKey(model),
-      entry: {
-        until: new Date(now.getTime() + transientCooldownMs).toISOString(),
-        reason,
-      },
-    };
+  const cooldownMs = modelCooldownMs(errorMessage);
+  if (cooldownMs === undefined) {
+    return undefined;
   }
 
-  return undefined;
+  return {
+    key: modelKey(model),
+    entry: {
+      until: new Date(now.getTime() + cooldownMs).toISOString(),
+      reason,
+    },
+  };
+}
+
+function modelCooldownMs(errorMessage: string): number | undefined {
+  if (gonePattern.test(errorMessage)) {
+    return goneCooldownMs;
+  }
+
+  return transientPattern.test(errorMessage) ? transientCooldownMs : undefined;
 }
 
 function resetAfter(schedule: string | undefined, now: Date): Date {

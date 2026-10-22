@@ -77,3 +77,13 @@ test("cools a per-minute quota down for a minute even when it mentions billing",
       ?.entry.until,
   ).toBe("2026-10-22T00:00:00.000Z");
 });
+
+test("skips a model the provider no longer has for a day", () => {
+  const message =
+    '404 {"error":{"code":404,"message":"This model models/gemini-2.5-flash-lite is no longer available to new users.","status":"NOT_FOUND"}}';
+
+  expect(failure(config, gemini, message, now)).toEqual({
+    key: "google/gemini-flash",
+    entry: { until: "2026-10-22T20:30:00.000Z", reason: message },
+  });
+});
