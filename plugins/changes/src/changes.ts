@@ -60,6 +60,8 @@ export async function workspaceChanges(
       "--no-color",
       "--no-ext-diff",
       "--ignore-submodules=dirty",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
       against,
     ];
 
