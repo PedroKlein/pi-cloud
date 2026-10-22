@@ -12,8 +12,8 @@ export interface ServerToolCalls {
   readonly cancelAll: () => void;
 }
 
-// The server drops a tool_result while the command stream reconnects, so a
-// call gives up instead of keeping the turn running forever.
+// The server can lose a tool_result, for example when it restarts during the
+// call, so a call gives up instead of keeping the turn running forever.
 const resultTimeoutMs = 5 * 60_000;
 
 // Tools served by server plugins (ADR 0015): a call goes up the stream and
