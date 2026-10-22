@@ -357,6 +357,13 @@ test("creates a Project and shares a file through its library", async () => {
   const row = page.locator("tr", { hasText: "Docs" });
   await row.locator("td", { hasText: /^e2e$/ }).waitFor();
 
+  // The thread takes the last scripted reply; later tests script their own.
+  await row.getByRole("button", { name: "Docs" }).click();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
+    .waitFor();
+
   await page
     .locator("#plugin-nav")
     .getByRole("link", { name: "Library" })
