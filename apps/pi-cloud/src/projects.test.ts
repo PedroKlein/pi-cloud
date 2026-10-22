@@ -615,6 +615,55 @@ test("refuses a Project repository whose URL leaves no name for its folder", asy
   expect(response.status).toBe(400);
 });
 
+test("lists memory file sizes in UTF-8 bytes", async () => {
+  const a = await repository("app");
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("memory_write", {
+          name: "notes.md",
+          content: "日本語 😀",
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("noted")]),
+  ]);
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Notes",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "take notes",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("noted"),
+  );
+
+  expect((await project(id)).memory).toMatchObject([
+    { name: "notes.md", size: 14 },
+  ]);
+}, 30_000);
+
 test("shares files between the user and Project sessions through the library", async () => {
   const a = await repository("app");
 
