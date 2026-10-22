@@ -16,9 +16,15 @@ import type {
   ToolCaller,
   SessionPlugin,
 } from "@pi-cloud/plugins";
-import type { Actor, Session, ToolCall, ToolSpec } from "@pi-cloud/protocol";
+import type {
+  Actor,
+  Command,
+  Session,
+  ToolCall,
+  ToolSpec,
+} from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { owner, type Sessions } from "@pi-cloud/sessions";
+import { owner, type Result, type Sessions } from "@pi-cloud/sessions";
 
 // The plugins built into this binary (ADR 0015). Each app imports its own
 // parts statically, so the compiled binary needs no dynamic loading.
@@ -174,7 +180,7 @@ export function startPlugins(
       void result
         .catch((error: unknown) => ({ text: String(error), isError: true }))
         .then((reply) => {
-          deps.sessions.send(session.id, {
+          sendResult(deps, session.id, call, {
             actor: `plugin:${found?.plugin ?? "kernel"}`,
             type: "tool_result",
             id: call.id,
@@ -194,4 +200,71 @@ export function startPlugins(
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
   };
+}
+
+const resultRetryMs = 1000;
+
+// A result that finds the command stream reconnecting waits for the same
+// attempt to come back. Like the projects outbox (ADR 0016), this holds only
+// what the server sends, never user input (ADR 0006).
+function sendResult(
+  deps: {
+    readonly sessions: Sessions;
+    readonly signal: AbortSignal;
+    readonly log: Log;
+  },
+  sessionId: string,
+  call: ToolCall,
+  command: Command,
+): void {
+  const fields = {
+    sessionId,
+    generation: call.generation,
+    tool: call.name,
+    callId: call.id,
+  };
+
+  const send = (): Result<undefined> =>
+    deps.sessions.isCurrent(sessionId, call.generation)
+      ? deps.sessions.send(sessionId, command)
+      : { ok: false, reason: "stale_generation" };
+
+  const sent = send();
+  if (sent.ok) {
+    return;
+  }
+
+  if (sent.reason !== "offline") {
+    deps.log("tool result dropped", { ...fields, reason: sent.reason });
+
+    return;
+  }
+
+  if (deps.signal.aborted) {
+    return;
+  }
+
+  deps.log("tool result waiting for the session", fields);
+
+  const stop = (): void => {
+    clearInterval(retry);
+    deps.signal.removeEventListener("abort", stop);
+  };
+
+  const retry = setInterval(() => {
+    const resent = send();
+    if (!resent.ok && resent.reason === "offline") {
+      return;
+    }
+
+    stop();
+
+    if (resent.ok) {
+      deps.log("tool result delivered", fields);
+    } else {
+      deps.log("tool result dropped", { ...fields, reason: resent.reason });
+    }
+  }, resultRetryMs);
+
+  deps.signal.addEventListener("abort", stop);
 }
