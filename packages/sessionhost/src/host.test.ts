@@ -1942,6 +1942,9 @@ async function pullRequestSetup(reply: string): Promise<{
   await git("push", "--quiet", "origin", "main");
   await git("switch", "--quiet", "-c", "pi/notes");
 
+  const base = await git("rev-parse", "HEAD");
+  await git("config", "branch.pi/notes.piCloudBase", base);
+
   await mkdir(bin);
 
   await writeFile(
@@ -1962,7 +1965,7 @@ async function pullRequestSetup(reply: string): Promise<{
 
   return {
     repo,
-    base: await git("rev-parse", "HEAD"),
+    base,
     ghCalls,
     remoteLog: async () =>
       (
