@@ -118,6 +118,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+// The server sees an agent's connections close a moment after it stops.
+async function untilOffline(provider: string): Promise<void> {
+  while (
+    ((await (await api("/api/environments")).json()) as Environment[]).some(
+      (environment) => environment.provider === provider && environment.online,
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 async function api(path: string, body?: unknown): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
@@ -1063,6 +1074,7 @@ test("rejects commands once the agent stops", async () => {
   await follow(session.id, status("idle"));
 
   await laptop();
+  await untilOffline("laptop");
 
   const sent = await api(`/api/sessions/${session.id}/commands`, {
     type: "message",
@@ -1570,15 +1582,7 @@ test("refuses a terminal for a session whose agent is gone", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
   await laptop();
-
-  // The server sees the closed connections a moment after the agent stops.
-  while (
-    ((await (await api("/api/environments")).json()) as Environment[]).some(
-      (environment) => environment.provider === "laptop" && environment.online,
-    )
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await untilOffline("laptop");
 
   const response = await fetch(
     new URL(`/api/sessions/${session.id}/terminal`, server.url),
