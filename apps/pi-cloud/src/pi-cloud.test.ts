@@ -1693,6 +1693,45 @@ test("replays open prompts to a client that connects later", async () => {
   ]);
 });
 
+test("marks a session as waiting on a person while one of its prompts is open", async () => {
+  const session = await createSession("vm");
+  await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });
+
+  const waiting = async (): Promise<boolean> =>
+    ((await (await api(`/api/sessions/${session.id}`)).json()) as Session)
+      .waiting;
+
+  const prompted = await watch(session.id);
+
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [
+      {
+        type: "prompt",
+        prompt: {
+          id: "p1",
+          kind: "confirm",
+          title: "Deploy?",
+          message: "Sure?",
+        },
+      },
+    ],
+  });
+
+  await prompted((events) =>
+    events.some((e) => e.type === "session" && e.session.waiting),
+  );
+
+  expect(await waiting()).toBe(true);
+
+  await asAgent("vm", `/agent/sessions/${session.id}/live`, {
+    generation: 1,
+    events: [{ type: "prompt_end", id: "p1" }],
+  });
+
+  expect(await waiting()).toBe(false);
+});
+
 test("replays the current extension status, widgets and title to a client that connects later", async () => {
   const session = await createSession("vm");
   await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] });

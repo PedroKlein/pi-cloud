@@ -28,6 +28,7 @@ const member: ToolCaller = {
     archivedAt: null,
     workspaceRemoval: null,
     online: true,
+    waiting: false,
   },
   actor: "session:session-1",
 };

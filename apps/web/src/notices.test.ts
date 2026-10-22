@@ -21,6 +21,7 @@ const session = (change: Partial<Session>): Session => ({
   archivedAt: null,
   workspaceRemoval: null,
   online: true,
+  waiting: false,
   ...change,
 });
 
@@ -39,6 +40,24 @@ test("only sessions that stop working have settled", () => {
   ];
 
   expect(settled(before, after).map(({ id }) => id)).toEqual(["a"]);
+});
+
+test("a session that starts waiting on an answer gets a notice", () => {
+  const before = [
+    session({ id: "a", status: "running" }),
+    session({ id: "b", status: "running", waiting: true }),
+  ];
+
+  const after = [
+    session({ id: "a", status: "running", waiting: true }),
+    session({ id: "b", status: "running", waiting: true }),
+  ];
+
+  expect(settled(before, after).map(({ id }) => id)).toEqual(["a"]);
+
+  expect(noticeText(session({ status: "running", waiting: true }))).toBe(
+    "Pi needs you in site",
+  );
 });
 
 test("a notice says how the session ended and where", () => {

@@ -3,7 +3,8 @@ import { shortName } from "./names";
 
 const busy: readonly SessionStatus[] = ["queued", "starting", "running"];
 
-// Sessions that were busy in the last poll and have stopped since.
+// Sessions that were busy in the last poll and have stopped since, or have
+// started waiting on an answer.
 export function settled(
   previous: readonly Session[],
   current: readonly Session[],
@@ -15,14 +16,18 @@ export function settled(
 
     return (
       was !== undefined &&
-      busy.includes(was.status) &&
-      !busy.includes(session.status)
+      ((busy.includes(was.status) && !busy.includes(session.status)) ||
+        (!was.waiting && session.waiting))
     );
   });
 }
 
 export function noticeText(session: Session): string {
   const place = shortName(session.workspace);
+
+  if (session.waiting) {
+    return `Pi needs you in ${place}`;
+  }
 
   switch (session.status) {
     case "failed":

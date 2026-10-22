@@ -21,6 +21,7 @@ const session = (change: Partial<Session>): Session => ({
   archivedAt: null,
   workspaceRemoval: null,
   online: true,
+  waiting: false,
   ...change,
 });
 
@@ -46,6 +47,11 @@ test("a session that needs a look shows its state", () => {
   expect(sessionBadge(session({ status: "running", online: false }))).toEqual({
     state: "offline",
     label: "Offline",
+  });
+
+  expect(sessionBadge(session({ status: "running", waiting: true }))).toEqual({
+    state: "waiting",
+    label: "Needs you",
   });
 });
 

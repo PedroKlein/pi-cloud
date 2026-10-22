@@ -58,6 +58,10 @@ export function runState(session: Session | undefined): RunState {
     return "offline";
   }
 
+  if (session.waiting) {
+    return "waiting";
+  }
+
   switch (session.status) {
     case "idle":
       return "idle";
@@ -88,6 +92,7 @@ export function unreachable(
     case "offline":
       return `${name} is on a machine that is offline`;
     case "working":
+    case "waiting":
     case "idle":
     case "interrupted":
       return undefined;
