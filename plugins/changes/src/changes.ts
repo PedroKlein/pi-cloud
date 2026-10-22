@@ -9,6 +9,8 @@ const run = promisify(execFile);
 
 const patchLimit = 256 * 1024;
 
+const outputLimit = 64 * 1024 * 1024;
+
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 // Diffs a throwaway copy of the index with every file added, so new files
@@ -33,30 +35,38 @@ export async function workspaceChanges(
       () => undefined,
     );
 
-    await git(cwd, env, "add", "--all");
+    await git(cwd, { env }, "add", "--all");
 
     const against =
       base ??
-      (await git(cwd, env, "rev-parse", "--verify", "--quiet", "HEAD").catch(
-        () => emptyTree,
-      ));
+      (await git(
+        cwd,
+        { env },
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "HEAD",
+      ).catch(() => emptyTree));
 
     const diff = ["diff", "--cached", "--no-color", "--no-ext-diff", against];
-    const names = await git(cwd, env, ...diff, "--name-status", "-z");
-    const stat = await git(cwd, env, ...diff, "--stat");
+    const names = await git(cwd, { env }, ...diff, "--name-status", "-z");
+    const stat = await git(cwd, { env }, ...diff, "--stat");
 
-    const patch = await git(cwd, env, ...diff, "--binary").catch(
-      (error: unknown) => {
-        if (
-          (error as { code?: unknown }).code ===
-          "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
-        ) {
-          return undefined;
-        }
+    const patch = await git(
+      cwd,
+      { env, maxBuffer: patchLimit },
+      ...diff,
+      "--binary",
+    ).catch((error: unknown) => {
+      if (
+        (error as { code?: unknown }).code ===
+        "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+      ) {
+        return undefined;
+      }
 
-        throw error;
-      },
-    );
+      throw error;
+    });
 
     return {
       files: parseNameStatus(names),
@@ -86,13 +96,16 @@ function parseNameStatus(output: string): Changes["files"] {
 
 async function git(
   cwd: string,
-  env: Readonly<Record<string, string>>,
+  options: {
+    readonly env?: Readonly<Record<string, string>>;
+    readonly maxBuffer?: number;
+  },
   ...args: string[]
 ): Promise<string> {
   const { stdout } = await run("git", args, {
     cwd,
-    env: { ...process.env, ...env },
-    maxBuffer: patchLimit,
+    env: { ...process.env, ...options.env },
+    maxBuffer: options.maxBuffer ?? outputLimit,
   });
 
   return stdout.trimEnd();
