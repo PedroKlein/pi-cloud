@@ -504,6 +504,14 @@ test("creates a Project and shares a file through its library", async () => {
 
   await page.getByRole("link", { name: "brief.txt" }).waitFor();
   await page.getByText("user:local wrote brief.txt (10 bytes)").waitFor();
+
+  const nav = page.locator("#project-nav").getByRole("link", { name: /^Site/ });
+  await nav.click();
+  await page.getByRole("button", { name: "Open coordinator" }).click();
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Archive" }).click();
+  await page.locator("#status", { hasText: "archived" }).waitFor();
+  await nav.waitFor({ state: "detached" });
 }, 30_000);
 
 test("shows a plugin page's failure without taking the app down", async () => {
