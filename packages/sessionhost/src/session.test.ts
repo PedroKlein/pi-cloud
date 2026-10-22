@@ -8,20 +8,18 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   fauxAssistantMessage,
-  fauxProvider,
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import {
-  type AgentSession,
-  ModelRuntime,
-} from "@earendil-works/pi-coding-agent";
-import { listModels, startSession, stopSession } from "./index";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { listModels, startSession, stopSession } from "./session";
+import { fauxModels } from "./testdata/models";
+import { sessionOptions } from "./testdata/options";
 
 const subagentsPath = dirname(
   fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
@@ -37,27 +35,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function fauxModels(): Promise<{
-  faux: ReturnType<typeof fauxProvider>;
-  runtime: ModelRuntime;
-}> {
-  const faux = fauxProvider({
-    models: [{ id: "faux-small" }, { id: "faux-large" }],
-  });
-
-  const runtime = await ModelRuntime.create({
-    authPath: join(root, "auth.json"),
-    modelsPath: null,
-    allowModelNetwork: false,
-  });
-
-  runtime.registerNativeProvider(faux.provider);
-
-  return { faux, runtime };
-}
-
 test("runs a turn with a tool call and a third-party extension loaded", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
 
   faux.setResponses([
     fauxAssistantMessage(
@@ -67,13 +46,9 @@ test("runs a turn with a tool call and a third-party extension loaded", async ()
     fauxAssistantMessage([fauxText("done")]),
   ]);
 
-  const session = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [subagentsPath],
-    models: { runtime, model: faux.getModel() },
-  });
+  const session = await startSession(
+    sessionOptions(root, { extensionPaths: [subagentsPath], models }),
+  );
 
   const toolOutputs: string[] = [];
 
@@ -92,17 +67,13 @@ test("runs a turn with a tool call and a third-party extension loaded", async ()
 });
 
 test("writes the transcript as JSONL in the session directory", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
   const sessionDir = join(root, "sessions");
 
-  const session = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir,
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-  });
+  const session = await startSession(
+    sessionOptions(root, { sessionDir, models }),
+  );
 
   await session.prompt("hello");
   await stopSession(session);
@@ -126,38 +97,40 @@ test("writes the transcript as JSONL in the session directory", async () => {
   ]);
 });
 
+test("starts in the home directory when the path is ~", async () => {
+  const { models } = await fauxModels(root);
+
+  const session = await startSession(
+    sessionOptions(root, { cwd: "~", models }),
+  );
+
+  await stopSession(session);
+
+  expect(session.sessionManager.getCwd()).toBe(homedir());
+});
+
 test("fails when an extension does not load", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { models } = await fauxModels(root);
   const broken = join(root, "broken.ts");
   await writeFile(broken, "throw new Error('boom');\n");
 
-  const error: unknown = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [broken],
-    models: { runtime, model: faux.getModel() },
-  }).catch((e: unknown) => e);
+  const error: unknown = await startSession(
+    sessionOptions(root, { extensionPaths: [broken], models }),
+  ).catch((e: unknown) => e);
 
   expect(error).toBeInstanceOf(Error);
   expect(String(error)).toContain(broken);
 });
 
 test("continues the session already in the session directory", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
 
   faux.setResponses([
     fauxAssistantMessage([fauxText("first")]),
     fauxAssistantMessage([fauxText("second")]),
   ]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-  };
+  const options = sessionOptions(root, { models });
 
   const first = await startSession(options);
   await first.prompt("one");
@@ -176,7 +149,7 @@ test("continues the session already in the session directory", async () => {
 });
 
 test("starts and stops extensions with session events", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { models } = await fauxModels(root);
   const marker = join(root, "started");
   const extension = join(root, "on-start.ts");
 
@@ -194,13 +167,9 @@ export default (pi) => {
 `,
   );
 
-  const session = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [extension],
-    models: { runtime, model: faux.getModel() },
-  });
+  const session = await startSession(
+    sessionOptions(root, { extensionPaths: [extension], models }),
+  );
 
   await stopSession(session);
 
@@ -251,12 +220,12 @@ test("uses a default model from a provider an extension registers", async () => 
     JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
   );
 
-  const session = await startSession({
-    cwd: root,
-    agentDir,
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [await proxyExtension()],
-  });
+  const session = await startSession(
+    sessionOptions(root, {
+      agentDir,
+      extensionPaths: [await proxyExtension()],
+    }),
+  );
 
   await stopSession(session);
 
@@ -272,13 +241,13 @@ test("starts a new session on the model it asks for", async () => {
     JSON.stringify({ defaultProvider: "proxy", defaultModel: "proxy-small" }),
   );
 
-  const session = await startSession({
-    cwd: root,
-    agentDir,
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [await proxyExtension()],
-    model: { provider: "proxy", id: "proxy-large" },
-  });
+  const session = await startSession(
+    sessionOptions(root, {
+      agentDir,
+      extensionPaths: [await proxyExtension()],
+      model: { provider: "proxy", id: "proxy-large" },
+    }),
+  );
 
   await stopSession(session);
 
@@ -286,19 +255,21 @@ test("starts a new session on the model it asks for", async () => {
 });
 
 test("refuses to start on a model the provider cannot use", async () => {
-  const start = startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [await proxyExtension()],
-    model: { provider: "proxy", id: "proxy-huge" },
-  });
+  const start = startSession(
+    sessionOptions(root, {
+      extensionPaths: [await proxyExtension()],
+      model: { provider: "proxy", id: "proxy-huge" },
+    }),
+  );
 
   expect(start).rejects.toThrow("model not available: proxy/proxy-huge");
 });
 
 test("keeps a resumed session on the model it last used", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root, {
+    models: [{ id: "faux-small" }, { id: "faux-large" }],
+  });
+
   const [first, second] = faux.models;
   if (second === undefined) {
     throw new Error("faux has one model");
@@ -306,13 +277,7 @@ test("keeps a resumed session on the model it last used", async () => {
 
   faux.setResponses([fauxAssistantMessage("hi")]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models: { runtime, model: first },
-  };
+  const options = sessionOptions(root, { models });
 
   const started = await startSession({
     ...options,
@@ -363,16 +328,10 @@ test("records an interrupted result for a tool call cut off by a crash", async (
 
   crashing.kill("SIGKILL");
   await new Promise((resolve) => crashing.once("exit", resolve));
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("sorry")])]);
 
-  const session = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-  });
+  const session = await startSession(sessionOptions(root, { models }));
 
   await stopSession(session);
 
@@ -397,16 +356,10 @@ test("records an interrupted result for a tool call cut off by a crash", async (
 }, 30_000);
 
 test("adds nothing when a session stopped between turns", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-  };
+  const options = sessionOptions(root, { models });
 
   const first = await startSession(options);
   await first.prompt("hello");
@@ -419,7 +372,7 @@ test("adds nothing when a session stopped between turns", async () => {
 });
 
 test("runs a codemode script, as Pi's CLI does", async () => {
-  const { faux, runtime } = await fauxModels();
+  const { faux, models } = await fauxModels(root);
 
   faux.setResponses([
     fauxAssistantMessage([fauxToolCall("codemode", { code: "return 6 * 7" })], {
@@ -435,13 +388,7 @@ test("runs a codemode script, as Pi's CLI does", async () => {
     JSON.stringify({ defaultTools: ["+codemode"] }),
   );
 
-  const session = await startSession({
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models: { runtime, model: faux.getModel() },
-  });
+  const session = await startSession(sessionOptions(root, { models }));
 
   const toolOutputs: string[] = [];
 

@@ -1,7 +1,7 @@
-import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { startSession } from "../index";
+import { startSession } from "../session";
 import { fauxModels } from "./models";
+import { sessionOptions } from "./options";
 
 const [root] = process.argv.slice(2);
 if (root === undefined) {
@@ -16,13 +16,7 @@ faux.setResponses([
   }),
 ]);
 
-const session = await startSession({
-  cwd: root,
-  agentDir: join(root, "agent"),
-  sessionDir: join(root, "sessions"),
-  extensionPaths: [],
-  models,
-});
+const session = await startSession(sessionOptions(root, { models }));
 
 session.subscribe((event) => {
   if (event.type === "tool_execution_start") {

@@ -7,10 +7,4 @@ export {
   type TerminalChannel,
   type TerminalPeer,
 } from "./host";
-export {
-  listModels,
-  type SessionOptions,
-  startSession,
-  stopSession,
-} from "./session";
-export { openTerminal, type Terminal, type TerminalOptions } from "./terminal";
+export { listModels, type SessionOptions } from "./session";

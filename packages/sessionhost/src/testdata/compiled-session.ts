@@ -1,19 +1,18 @@
-import { join } from "node:path";
 import {
   fauxAssistantMessage,
-  fauxProvider,
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { startSession, stopSession } from "../index";
+import { startSession, stopSession } from "../session";
+import { fauxModels } from "./models";
+import { sessionOptions } from "./options";
 
 const [root, ...extensionPaths] = process.argv.slice(2);
 if (root === undefined) {
   throw new Error("usage: compiled-session <root> [extension...]");
 }
 
-const faux = fauxProvider();
+const { faux, models } = await fauxModels(root);
 
 faux.setResponses([
   fauxAssistantMessage([fauxToolCall("codemode", { code: "return 6 * 7" })], {
@@ -22,21 +21,9 @@ faux.setResponses([
   fauxAssistantMessage([fauxText("compiled ok")]),
 ]);
 
-const runtime = await ModelRuntime.create({
-  authPath: join(root, "auth.json"),
-  modelsPath: null,
-  allowModelNetwork: false,
-});
-
-runtime.registerNativeProvider(faux.provider);
-
-const session = await startSession({
-  cwd: root,
-  agentDir: join(root, "agent"),
-  sessionDir: join(root, "sessions"),
-  extensionPaths,
-  models: { runtime, model: faux.getModel() },
-});
+const session = await startSession(
+  sessionOptions(root, { extensionPaths, models }),
+);
 
 const toolOutputs: string[] = [];
 

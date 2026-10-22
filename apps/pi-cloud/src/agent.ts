@@ -115,8 +115,9 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       };
 
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
+      const terminals = hostTerminals(cwd, stream, sessionLog);
       if (options.models) {
-        return await hostSession(
+        const session = await hostSession(
           {
             ...sessionOptions,
             models: options.models,
@@ -125,10 +126,16 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           },
           stream,
           sessionLog,
+          terminals.open,
         );
-      }
 
-      const terminals = hostTerminals(cwd, stream, sessionLog);
+        return {
+          stop: async () => {
+            terminals.close();
+            await session.stop();
+          },
+        };
+      }
 
       const child = await spawnSession(
         { ...agent, assignment, options: sessionOptions },
