@@ -67,20 +67,30 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     await stopped;
   };
 
-  const start = async (
+  const release = (
+    sessionId: string,
+    generation: number,
+  ): Hosted | undefined => {
+    const entry = hosted.get(sessionId);
+    if (entry?.generation !== generation) {
+      return undefined;
+    }
+
+    hosted.delete(sessionId);
+
+    return entry;
+  };
+
+  const hostAssignment = async (
     assignment: Assignment,
     sessionLog: Log,
   ): Promise<HostedSession | undefined> => {
     const { sessionId, generation } = assignment;
 
-    const current = (): boolean =>
-      hosted.get(sessionId)?.generation === generation;
-
     const fenced = (): void => {
-      const entry = hosted.get(sessionId);
-      if (entry?.generation === generation) {
+      const entry = release(sessionId, generation);
+      if (entry) {
         sessionLog("session fenced", { generation });
-        hosted.delete(sessionId);
         void retire(sessionId, entry);
       }
     };
@@ -138,10 +148,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       void child.exited.then((code) => {
         terminals.close();
-        const entry = hosted.get(sessionId);
-        if (entry?.generation === generation) {
+        if (release(sessionId, generation)) {
           sessionLog("session process exited", { code });
-          hosted.delete(sessionId);
         }
       });
 
@@ -163,15 +171,13 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         });
       });
 
-      if (current()) {
-        hosted.delete(sessionId);
-      }
+      release(sessionId, generation);
 
       return undefined;
     }
   };
 
-  const remove = async (
+  const removeSessionWorkspace = async (
     removal: Removal,
     sessionLog: Log,
   ): Promise<RemovalReport> => {
@@ -239,13 +245,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       hosted.set(sessionId, {
         generation: assignment.generation,
-        session: start(assignment, sessionLog),
+        session: hostAssignment(assignment, sessionLog),
       });
     },
     unload: ({ sessionId, generation }) => {
-      const entry = hosted.get(sessionId);
-      if (entry?.generation === generation) {
-        hosted.delete(sessionId);
+      const entry = release(sessionId, generation);
+      if (entry) {
         void retire(sessionId, entry);
       }
     },
@@ -255,7 +260,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         return;
       }
 
-      const removed = remove(removal, sessionLogger(sessionId)).finally(() => {
+      const removed = removeSessionWorkspace(
+        removal,
+        sessionLogger(sessionId),
+      ).finally(() => {
         removing.delete(sessionId);
       });
 

@@ -12,6 +12,7 @@ import type {
   PluginRoute,
   PluginStore,
   ServerPlugin,
+  ServerPluginContext,
   ServerTool,
   ToolCaller,
   SessionPlugin,
@@ -83,6 +84,7 @@ export function startPlugins(
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
+  const sessions = pluginSessions(deps.sessions);
   for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
@@ -100,27 +102,7 @@ export function startPlugins(
         },
       },
       events: deps.events,
-      sessions: {
-        start: (request) => {
-          const started = deps.sessions.start(request);
-          if (!started.ok) {
-            throw new Error(`session not started: ${started.reason}`);
-          }
-
-          return started.value;
-        },
-        get: (id) => deps.sessions.get(id),
-        send: (id, text, actor) =>
-          deps.sessions.send(id, {
-            actor,
-            type: "message",
-            text,
-            delivery: "followUp",
-          }),
-        notify: (id, text, actor) =>
-          deps.sessions.send(id, { actor, type: "context", text }),
-        transcript: (id) => deps.sessions.transcript(id),
-      },
+      sessions,
       routes: {
         handle: (route) => {
           routes.set(plugin.name, route);
@@ -190,6 +172,30 @@ export function startPlugins(
     },
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
+  };
+}
+
+function pluginSessions(sessions: Sessions): ServerPluginContext["sessions"] {
+  return {
+    start: (request) => {
+      const started = sessions.start(request);
+      if (!started.ok) {
+        throw new Error(`session not started: ${started.reason}`);
+      }
+
+      return started.value;
+    },
+    get: (id) => sessions.get(id),
+    send: (id, text, actor) =>
+      sessions.send(id, {
+        actor,
+        type: "message",
+        text,
+        delivery: "followUp",
+      }),
+    notify: (id, text, actor) =>
+      sessions.send(id, { actor, type: "context", text }),
+    transcript: (id) => sessions.transcript(id),
   };
 }
 
