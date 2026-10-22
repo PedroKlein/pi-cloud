@@ -11,6 +11,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { type AddressInfo, createServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -525,6 +526,56 @@ test("clones the same repository for several sessions at once", async () => {
 
   expect(await readdir(mirrors)).toHaveLength(1);
 });
+
+test("gives up on a repository whose server stops sending", async () => {
+  const connections: Socket[] = [];
+
+  const server = createServer((socket) => {
+    connections.push(socket);
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  const { port } = server.address() as AddressInfo;
+  const silent = `http://127.0.0.1:${String(port)}/repo.git`;
+  const mirrors = join(root, "mirrors");
+  const lowSpeedTime = process.env["GIT_HTTP_LOW_SPEED_TIME"];
+  process.env["GIT_HTTP_LOW_SPEED_TIME"] = "1";
+
+  try {
+    const prepared = await Promise.allSettled(
+      ["s1", "s2"].map(async (name) =>
+        prepareWorkspace(
+          { kind: "clone", repository: silent, branch: `pi-cloud/${name}` },
+          { dir: join(root, "workspaces", name), folders: [], mirrors },
+          noLog,
+        ),
+      ),
+    );
+
+    for (const result of prepared) {
+      expect(
+        result.status === "rejected" ? String(result.reason) : "cloned",
+      ).toContain("Operation too slow");
+    }
+
+    expect(connections.length).toBeGreaterThan(0);
+  } finally {
+    if (lowSpeedTime === undefined) {
+      delete process.env["GIT_HTTP_LOW_SPEED_TIME"];
+    } else {
+      process.env["GIT_HTTP_LOW_SPEED_TIME"] = lowSpeedTime;
+    }
+
+    for (const connection of connections) {
+      connection.destroy();
+    }
+
+    server.close();
+  }
+}, 30_000);
 
 test("copies the gitignored files .worktreeinclude names into a new worktree", async () => {
   await writeFile(join(repository, ".gitignore"), ".env\nsecrets/\nbuild/\n");
