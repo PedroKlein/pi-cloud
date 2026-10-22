@@ -416,11 +416,13 @@ export type Command = { readonly actor: Actor } & (
   | { readonly type: "set_model"; readonly model: ModelRef }
   | { readonly type: "set_thinking"; readonly level: ThinkingLevel }
   // Takes a queued message back before Pi reads it; the text returns to the
-  // composer as editor_text.
+  // composer as editor_text. With sendNow it moves to the steering queue
+  // instead, so Pi reads it after its current step.
   | {
       readonly type: "unqueue";
       readonly delivery: "steer" | "followUp";
       readonly text: string;
+      readonly sendNow?: boolean;
     }
   // Context for the model's next turn that doesn't start one.
   | { readonly type: "context"; readonly text: string }

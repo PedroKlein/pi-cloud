@@ -20,6 +20,12 @@ import { PromptCard, type PromptHandlers } from "./prompt-card";
 import { browserCommand } from "./suggest";
 import { useSuggestions } from "./suggestions";
 
+// Pi reads a message sent now after its current step, and a queued one when
+// it finishes.
+const sendNowKeys = /Mac|iPhone|iPad/.test(navigator.userAgent)
+  ? "⌘Enter"
+  : "Ctrl+Enter";
+
 export function Composer({
   sessionId,
   feed,
@@ -141,10 +147,29 @@ export function Composer({
         >
           <span>
             <span className="mr-2 text-caption font-medium">
-              {delivery === "steer" ? "Steering" : "Follow-up"}
+              {delivery === "steer" ? "Steering" : "Queued"}
             </span>
             {queued}
           </span>
+          {delivery === "followUp" && (
+            <button
+              type="button"
+              aria-label={`Send "${queued}" now`}
+              title="Send now"
+              onClick={() => {
+                command(sessionId, {
+                  type: "unqueue",
+                  delivery,
+                  text: queued,
+                  sendNow: true,
+                }).catch(report);
+              }}
+              className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-md px-1.5 text-caption hover:bg-hover hover:text-fg"
+            >
+              <Icon name="arrow-up" className="size-3.5" />
+              Send now
+            </button>
+          )}
           <button
             type="button"
             aria-label={`Take back "${queued}"`}
@@ -170,7 +195,7 @@ export function Composer({
           id="prompt"
           onSubmit={(event) => {
             event.preventDefault();
-            send("steer");
+            send("followUp");
           }}
           onDragOver={(event) => {
             if (event.dataTransfer.types.includes("Files")) {
@@ -238,7 +263,7 @@ export function Composer({
 
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                send(event.altKey ? "followUp" : "steer");
+                send(event.metaKey || event.ctrlKey ? "steer" : "followUp");
               }
             }}
             className="resize-none bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
@@ -288,7 +313,10 @@ export function Composer({
               />
             )}
             <span className="flex-1 truncate text-caption text-fg-dim max-md:hidden">
-              Enter steers · Alt+Enter queues a follow-up · / commands · @ files
+              {running
+                ? `Enter queues · ${sendNowKeys} sends now`
+                : "Enter sends"}{" "}
+              · / commands · @ files
             </span>
             {running && (
               <Button

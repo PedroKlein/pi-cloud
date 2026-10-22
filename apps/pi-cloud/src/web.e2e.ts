@@ -736,7 +736,7 @@ test("follows the system theme until a theme is picked, and keeps the pick", asy
   expect(await theme()).toBe("dark");
 });
 
-test("takes a queued message back into the composer", async () => {
+test("queues a message while Pi works, takes one back and sends one now", async () => {
   let release = (): void => undefined;
 
   const gate = new Promise<void>((resolve) => {
@@ -767,12 +767,22 @@ test("takes a queued message back into the composer", async () => {
   await box.press("Enter");
   await page.locator("#status", { hasText: "running" }).waitFor();
 
+  await page.getByText("Enter queues").waitFor();
   await box.fill("not yet");
-  await box.press("Alt+Enter");
+  await box.press("Enter");
   const takeBack = page.getByRole("button", { name: 'Take back "not yet"' });
   await takeBack.click();
   await takeBack.waitFor({ state: "detached" });
   expect(await box.inputValue()).toBe("not yet");
+
+  await box.fill("right away");
+  await box.press("Enter");
+  await page.getByRole("button", { name: 'Send "right away" now' }).click();
+
+  await page
+    .locator("p", { hasText: "right away" })
+    .getByText("Steering")
+    .waitFor();
 
   release();
 
