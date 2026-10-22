@@ -84,11 +84,15 @@ export const models: ServerPlugin = {
       }
 
       if (method === "POST" && environmentId !== undefined) {
-        const body = (await request.json().catch(() => null)) as {
-          aliases?: unknown;
-        } | null;
+        const body: unknown = await request.json().catch(() => null);
+        if (typeof body !== "object" || body === null || !("aliases" in body)) {
+          return Response.json(
+            { error: "aliases must be a config or null" },
+            { status: 400 },
+          );
+        }
 
-        const aliases = body?.aliases ?? null;
+        const { aliases } = body;
         const problem = aliases === null ? undefined : aliasProblem(aliases);
         if (problem !== undefined) {
           return Response.json({ error: problem }, { status: 400 });

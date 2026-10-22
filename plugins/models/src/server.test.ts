@@ -108,6 +108,54 @@ async function clearAliases(route: PluginRoute): Promise<void> {
   await route(request, `environments/${environmentId}`, undefined);
 }
 
+async function saveAliases(
+  route: PluginRoute,
+  body: string,
+): Promise<Response> {
+  const request = new Request(`http://models/environments/${environmentId}`, {
+    method: "POST",
+    body,
+  });
+
+  return route(request, `environments/${environmentId}`, undefined);
+}
+
+async function savedAliases(route: PluginRoute): Promise<unknown> {
+  const request = new Request("http://models/environments");
+  const response = await route(request, "environments", undefined);
+  const [saved] = (await response.json()) as { aliases: unknown }[];
+
+  return saved?.aliases;
+}
+
+const aliases = { backends: { local: { tiers: { fast: "llama" } } } };
+
+test.each([
+  ["no body", ""],
+  ["broken JSON", '{"aliases":'],
+  ["no aliases key", "{}"],
+  ["a misspelled aliases key", JSON.stringify({ alias: aliases })],
+])("a save with %s keeps the saved aliases", async (_, body) => {
+  const route = registered(new AbortController().signal);
+  await saveAliases(route, JSON.stringify({ aliases }));
+  const seen = await configVersion(route);
+
+  const response = await saveAliases(route, body);
+
+  expect(response.status).toBe(400);
+  expect(await savedAliases(route)).toEqual(aliases);
+  expect(await configVersion(route)).toBe(seen);
+});
+
+test("a save with null aliases turns them off", async () => {
+  const route = registered(new AbortController().signal);
+  await saveAliases(route, JSON.stringify({ aliases }));
+
+  await clearAliases(route);
+
+  expect(await savedAliases(route)).toBeNull();
+});
+
 test("a config wait woken by a change leaves no listener on the server signal", async () => {
   const server = new AbortController();
   const route = registered(server.signal);
