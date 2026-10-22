@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -24,13 +24,21 @@ import {
   changes,
   type PullRequest,
 } from "@pi-cloud/changes/session";
-import { hostSession, type SessionStream, type TerminalPeer } from "./index";
+import {
+  hostSession,
+  hostTerminals,
+  type SessionStream,
+  type TerminalPeer,
+} from "./index";
 import { fauxModels } from "./testdata/models";
+import { sessionOptions } from "./testdata/options";
 
 let root: string;
 
 // What the composer's menus list, published at every start.
 const listings: readonly LiveEvent["type"][] = ["commands", "files"];
+
+const noTerminal = (): void => undefined;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "sessionhost-host-"));
@@ -156,15 +164,10 @@ test("streams a turn as live events and transcript lines", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "hello" });
@@ -204,15 +207,10 @@ test("tells clients when a message cannot be sent to the model", async () => {
 
   try {
     const hosted = await hostSession(
-      {
-        cwd: root,
-        agentDir: join(root, "agent"),
-        sessionDir: join(root, "sessions"),
-        extensionPaths: [],
-        models: { runtime, model: loggedOut },
-      },
+      sessionOptions(root, { models: { runtime, model: loggedOut } }),
       fake.stream,
       () => undefined,
+      noTerminal,
     );
 
     fake.send({ actor: "user:local", type: "message", text: "hello" });
@@ -250,16 +248,13 @@ test("tells clients when the first message cannot be sent to the model", async (
 
   try {
     const hosted = await hostSession(
-      {
-        cwd: root,
-        agentDir: join(root, "agent"),
-        sessionDir: join(root, "sessions"),
-        extensionPaths: [],
+      sessionOptions(root, {
         models: { runtime, model: loggedOut },
         firstMessage: "kick off",
-      },
+      }),
       fake.stream,
       (message) => logs.push(message),
+      noTerminal,
     );
 
     await fake.waitFor(() => logs.includes("first message failed"));
@@ -284,15 +279,10 @@ test("resends the transcript from the last acknowledged line after a failure", a
   const logs: string[] = [];
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     fake.stream,
     (message) => logs.push(message),
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "hello" });
@@ -317,15 +307,10 @@ test("keeps the latest status when a live post fails", async () => {
   const logs: string[] = [];
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     fake.stream,
     (message) => logs.push(message),
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.length > 0);
@@ -354,15 +339,10 @@ test("finishes retrying a failed live post before it stops", async () => {
   };
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     slow,
     (message) => logs.push(message),
+    noTerminal,
   );
 
   // By the second failure every startup event has been queued, so the retry
@@ -395,15 +375,10 @@ test("resends extension status and widgets when a live post fails", async () => 
   );
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [extension],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [extension], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.length > 0);
@@ -444,16 +419,10 @@ test("sends only the latest of each surface after live posts keep failing", asyn
   };
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [progress],
-    },
+    sessionOptions(root, { models, plugins: [progress] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.length > 0);
@@ -490,16 +459,10 @@ test("resends only the end of a prompt that closed while its live post failed", 
   };
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [asking],
-    },
+    sessionOptions(root, { models, plugins: [asking] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.length > 0);
@@ -516,22 +479,30 @@ test("uploads lines the server is missing as soon as it starts", async () => {
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models,
-  };
+  const options = sessionOptions(root, { models });
 
   const first = fakeStream();
-  const before = await hostSession(options, first.stream, () => undefined);
+
+  const before = await hostSession(
+    options,
+    first.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   first.send({ actor: "user:local", type: "message", text: "hello" });
   await first.waitFor(() => roles(first.lines).includes("assistant"));
   await before.stop();
 
   const second = fakeStream();
-  const after = await hostSession(options, second.stream, () => undefined);
+
+  const after = await hostSession(
+    options,
+    second.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   await second.waitFor(() => second.lines.length === first.lines.length);
   await after.stop();
 
@@ -542,23 +513,31 @@ test("does not upload lines the server already has when it starts again", async 
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models,
-  };
+  const options = sessionOptions(root, { models });
 
   const first = fakeStream();
-  const before = await hostSession(options, first.stream, () => undefined);
+
+  const before = await hostSession(
+    options,
+    first.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   first.send({ actor: "user:local", type: "message", text: "hello" });
   await first.waitFor(() => roles(first.lines).includes("assistant"));
   await before.stop();
 
   const second = fakeStream();
   second.lines.push(...first.lines);
-  const after = await hostSession(options, second.stream, () => undefined);
+
+  const after = await hostSession(
+    options,
+    second.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   await after.stop();
 
   expect(
@@ -574,16 +553,16 @@ test("uploads a long transcript in several requests, each from the last acknowle
   const { faux, models } = await fauxModels(root);
   faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
-    models,
-  };
+  const options = sessionOptions(root, { models });
 
   const first = fakeStream();
-  const before = await hostSession(options, first.stream, () => undefined);
+
+  const before = await hostSession(
+    options,
+    first.stream,
+    () => undefined,
+    noTerminal,
+  );
 
   first.send({
     actor: "user:local",
@@ -595,7 +574,14 @@ test("uploads a long transcript in several requests, each from the last acknowle
   await before.stop();
 
   const second = fakeStream();
-  const after = await hostSession(options, second.stream, () => undefined);
+
+  const after = await hostSession(
+    options,
+    second.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   await after.stop();
 
   const batches = second.uploads.filter(({ count }) => count > 0);
@@ -609,17 +595,13 @@ test("uploads a long transcript in several requests, each from the last acknowle
 test("opens a terminal in the session directory on command", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
+  const terminals = hostTerminals(root, fake.stream, () => undefined);
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     fake.stream,
     () => undefined,
+    terminals.open,
   );
 
   fake.send({
@@ -633,6 +615,7 @@ test("opens a terminal in the session directory on command", async () => {
   const terminal = fake.terminals.get("t1");
   terminal?.peer.input(new TextEncoder().encode("pwd; exit\n"));
   await fake.waitFor(() => terminal?.closed === true);
+  terminals.close();
   await hosted.stop();
 
   expect(terminal?.output.join("")).toContain(root);
@@ -675,15 +658,10 @@ test("asks the user through prompt events and waits for the answer", async () =>
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [await confirmTool()],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [await confirmTool()], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "ship it" });
@@ -738,15 +716,10 @@ export default (pi) => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [extension],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [extension], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "pick" });
@@ -769,15 +742,10 @@ test("cancels open prompts when the session stops", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [await confirmTool()],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [await confirmTool()], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "ship it" });
@@ -795,16 +763,17 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
   const cwd = join(root, "work");
   await mkdir(cwd);
 
+  const log = (message: string): void => {
+    logs.push(message);
+  };
+
+  const terminals = hostTerminals(cwd, fake.stream, log);
+
   const hosted = await hostSession(
-    {
-      cwd,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { cwd, models }),
     fake.stream,
-    (message) => logs.push(message),
+    log,
+    terminals.open,
   );
 
   await rm(cwd, { recursive: true });
@@ -819,6 +788,7 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
 
   fake.send({ actor: "user:local", type: "message", text: "hello" });
   await fake.waitFor(() => fake.lines.join().includes("still here"));
+  terminals.close();
   await hosted.stop();
 
   expect(fake.terminals.get("t1")?.closed).toBe(true);
@@ -841,15 +811,10 @@ test("gives extensions Pi's theme to style status text with", async () => {
   );
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [extension],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [extension], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.some((e) => e.type === "status"));
@@ -862,56 +827,15 @@ test("gives extensions Pi's theme to style status text with", async () => {
   ).toBe(true);
 });
 
-test("opens the terminal in the home directory when the path is ~", async () => {
-  const { models } = await fauxModels(root);
-  const fake = fakeStream();
-
-  const hosted = await hostSession(
-    {
-      cwd: "~",
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
-    fake.stream,
-    () => undefined,
-  );
-
-  fake.send({
-    actor: "user:local",
-    type: "terminal",
-    terminalId: "t1",
-    cols: 80,
-    rows: 24,
-  });
-
-  await fake.waitFor(() => fake.terminals.has("t1"));
-  fake.terminals.get("t1")?.peer.input(new TextEncoder().encode("pwd\n"));
-
-  await fake.waitFor(() =>
-    (fake.terminals.get("t1")?.output.join("") ?? "").includes(homedir()),
-  );
-
-  await hosted.stop();
-
-  expect(fake.terminals.get("t1")?.output.join("")).toContain(homedir());
-});
-
 test("fails to start when the working directory does not exist", async () => {
   const { models } = await fauxModels(root);
   const missing = join(root, "missing");
 
   const error: unknown = await hostSession(
-    {
-      cwd: missing,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { cwd: missing, models }),
     fakeStream().stream,
     () => undefined,
+    noTerminal,
   ).catch((e: unknown) => e);
 
   expect(String(error)).toContain(`working directory not found: ${missing}`);
@@ -933,15 +857,10 @@ test("logs errors thrown by extension handlers", async () => {
   );
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [extension],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [extension], models }),
     fakeStream().stream,
     (message, fields) => logs.push({ message, ...(fields && { fields }) }),
+    noTerminal,
   );
 
   await hosted.stop();
@@ -978,15 +897,10 @@ test("forwards extension status, widgets, title and editor text", async () => {
   );
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [extension],
-      models,
-    },
+    sessionOptions(root, { extensionPaths: [extension], models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
@@ -1067,16 +981,10 @@ test("asks structured questions with the ask plugin's ask_user tool", async () =
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [ask],
-    },
+    sessionOptions(root, { models, plugins: [ask] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "set it up" });
@@ -1244,16 +1152,14 @@ export default (pi) => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
+    sessionOptions(root, {
       extensionPaths: [extension],
       models,
       plugins: [ask],
-    },
+    }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "ask me" });
@@ -1308,16 +1214,10 @@ test("explains an option with the session's model while the form is open", async
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [ask],
-    },
+    sessionOptions(root, { models, plugins: [ask] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "set it up" });
@@ -1384,16 +1284,10 @@ test.each([
     const fake = fakeStream();
 
     const hosted = await hostSession(
-      {
-        cwd: root,
-        agentDir: join(root, "agent"),
-        sessionDir: join(root, "sessions"),
-        extensionPaths: [],
-        models,
-        plugins: [ask],
-      },
+      sessionOptions(root, { models, plugins: [ask] }),
       fake.stream,
       () => undefined,
+      noTerminal,
     );
 
     fake.send({ actor: "user:local", type: "message", text: "first" });
@@ -1463,16 +1357,10 @@ test("takes a queued message back and keeps the rest queued with their images", 
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [ask],
-    },
+    sessionOptions(root, { models, plugins: [ask] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "first" });
@@ -1531,16 +1419,10 @@ test("leaves a message Pi already read when asked to take it back", async () => 
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [ask],
-    },
+    sessionOptions(root, { models, plugins: [ask] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "first" });
@@ -1610,17 +1492,15 @@ test("publishes what the session changed in its git workspace after a turn", asy
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
+    sessionOptions(root, {
       cwd: repo,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
       models,
       plugins: [changes],
       checkouts: [{ path: repo, base: null }],
-    },
+    }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => published(fake.events).length === 1);
@@ -1665,17 +1545,15 @@ test("sends only the stat when the patch is too large", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
+    sessionOptions(root, {
       cwd: repo,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
       models,
       plugins: [changes],
       checkouts: [{ path: repo, base: null }],
-    },
+    }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => published(fake.events).length > 0);
@@ -1707,17 +1585,15 @@ test("sends the file list and stat when they alone are larger than the patch lim
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
+    sessionOptions(root, {
       cwd: repo,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
       models,
       plugins: [changes],
       checkouts: [{ path: repo, base: null }],
-    },
+    }),
     fake.stream,
     (message) => logs.push(message),
+    noTerminal,
   );
 
   await fake.waitFor(
@@ -1826,18 +1702,21 @@ test("/pr draft commits, pushes and opens a draft pull request that the next sta
       ]),
     ]);
 
-    const options = {
+    const options = sessionOptions(root, {
       cwd: setup.repo,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
       models,
       plugins: [changes],
       checkouts: [{ path: setup.repo, base: setup.base }],
-    };
+    });
 
     const fake = fakeStream();
-    const hosted = await hostSession(options, fake.stream, () => undefined);
+
+    const hosted = await hostSession(
+      options,
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
 
     fake.send({ actor: "user:local", type: "message", text: "/pr draft" });
 
@@ -1864,7 +1743,14 @@ test("/pr draft commits, pushes and opens a draft pull request that the next sta
     expect(calls).toContain("Writes notes.txt for the release.");
 
     const again = fakeStream();
-    const restarted = await hostSession(options, again.stream, () => undefined);
+
+    const restarted = await hostSession(
+      options,
+      again.stream,
+      () => undefined,
+      noTerminal,
+    );
+
     await again.waitFor(() => pullRequests(again.events).length > 0);
     await restarted.stop();
 
@@ -1891,17 +1777,15 @@ test("/pr falls back to GitHub's compose page when gh fails", async () => {
     const fake = fakeStream();
 
     const hosted = await hostSession(
-      {
+      sessionOptions(root, {
         cwd: setup.repo,
-        agentDir: join(root, "agent"),
-        sessionDir: join(root, "sessions"),
-        extensionPaths: [],
         models,
         plugins: [changes],
         checkouts: [{ path: setup.repo, base: setup.base }],
-      },
+      }),
       fake.stream,
       () => undefined,
+      noTerminal,
     );
 
     fake.send({ actor: "user:local", type: "message", text: "/pr" });
@@ -1937,17 +1821,15 @@ test("/pr says why when the branch has nothing to push", async () => {
     const fake = fakeStream();
 
     const hosted = await hostSession(
-      {
+      sessionOptions(root, {
         cwd: setup.repo,
-        agentDir: join(root, "agent"),
-        sessionDir: join(root, "sessions"),
-        extensionPaths: [],
         models,
         plugins: [changes],
         checkouts: [{ path: setup.repo, base: setup.base }],
-      },
+      }),
       fake.stream,
       () => undefined,
+      noTerminal,
     );
 
     fake.send({ actor: "user:local", type: "message", text: "/pr compose" });
@@ -1974,17 +1856,14 @@ test("publishes no changes outside a git repository", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
+    sessionOptions(root, {
       models,
       plugins: [changes],
       checkouts: [{ path: root, base: null }],
-    },
+    }),
     fake.stream,
     (message) => logs.push(message),
+    noTerminal,
   );
 
   await hosted.stop();
@@ -2001,16 +1880,10 @@ test("adds context to the session without starting a turn", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      firstMessage: null,
-    },
+    sessionOptions(root, { models, firstMessage: null }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "hi" });
@@ -2068,15 +1941,10 @@ test("runs server tools through the stream and gives the model their result", as
   });
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "look it up" });
@@ -2118,16 +1986,10 @@ test("fails a server tool whose result never arrives, so the turn still ends", a
   });
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      serverToolTimeoutMs: 50,
-    },
+    sessionOptions(root, { models, serverToolTimeoutMs: 50 }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "look it up" });
@@ -2199,16 +2061,10 @@ test("lets a plugin's tools reach its own server routes", async () => {
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: root,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-      plugins: [echo],
-    },
+    sessionOptions(root, { models, plugins: [echo] }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   fake.send({ actor: "user:local", type: "message", text: "echo hi" });
@@ -2227,11 +2083,7 @@ test("starts with its first message, its system prompt text and plugins' extensi
 
   faux.setResponses([fauxAssistantMessage([fauxText("started")])]);
 
-  const options = {
-    cwd: root,
-    agentDir: join(root, "agent"),
-    sessionDir: join(root, "sessions"),
-    extensionPaths: [],
+  const options = sessionOptions(root, {
     models,
     systemPrompt: "You coordinate project X.",
     firstMessage: "kick off",
@@ -2257,15 +2109,29 @@ test("starts with its first message, its system prompt text and plugins' extensi
         },
       },
     ],
-  };
+  });
 
   const fake = fakeStream();
-  const first = await hostSession(options, fake.stream, () => undefined);
+
+  const first = await hostSession(
+    options,
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   await fake.waitFor(() => roles(fake.lines).includes("assistant"));
   await first.stop();
 
   const again = fakeStream();
-  const second = await hostSession(options, again.stream, () => undefined);
+
+  const second = await hostSession(
+    options,
+    again.stream,
+    () => undefined,
+    noTerminal,
+  );
+
   await again.waitFor(() => again.lines.length >= fake.lines.length);
   await second.stop();
 
@@ -2309,15 +2175,10 @@ test("lists a checkout's tracked and untracked files for mentions, and again aft
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: work,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { cwd: work, models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => filesOf(fake.events) !== undefined);
@@ -2358,15 +2219,10 @@ test("walks a folder outside git for mentions, skipping hidden folders and node_
   const fake = fakeStream();
 
   const hosted = await hostSession(
-    {
-      cwd: work,
-      agentDir: join(root, "agent"),
-      sessionDir: join(root, "sessions"),
-      extensionPaths: [],
-      models,
-    },
+    sessionOptions(root, { cwd: work, models }),
     fake.stream,
     () => undefined,
+    noTerminal,
   );
 
   await fake.waitFor(() => filesOf(fake.events) !== undefined);

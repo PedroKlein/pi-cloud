@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { tmpdir } from "node:os";
-import { openTerminal } from "./index";
+import { openTerminal } from "./terminal";
 
 function collect(): {
   onData: (data: Uint8Array) => void;

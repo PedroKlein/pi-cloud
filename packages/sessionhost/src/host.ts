@@ -113,7 +113,7 @@ export async function hostSession(
   options: HostOptions,
   stream: SessionStream,
   log: Log,
-  openTerminalElsewhere?: (command: TerminalCommand) => void,
+  startTerminal: (command: TerminalCommand) => void,
 ): Promise<HostedSession> {
   const live = liveQueue(stream, log);
 
@@ -182,9 +182,6 @@ export async function hostSession(
       transcript.sync();
     }
   });
-
-  const terminals = hostTerminals(session.sessionManager.getCwd(), stream, log);
-  const startTerminal = openTerminalElsewhere ?? terminals.open;
 
   // Pi's queue keeps only the text, so the images of a queued message are
   // kept here to queue it again when another is taken back.
@@ -266,7 +263,6 @@ export async function hostSession(
     stop: async () => {
       detach();
       files.stop();
-      terminals.close();
 
       prompts.cancelAll();
       calls.cancelAll();

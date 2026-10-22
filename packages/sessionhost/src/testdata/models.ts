@@ -3,11 +3,14 @@ import { fauxProvider } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { SessionOptions } from "../session";
 
-export async function fauxModels(dir: string): Promise<{
+export async function fauxModels(
+  dir: string,
+  options?: Parameters<typeof fauxProvider>[0],
+): Promise<{
   faux: ReturnType<typeof fauxProvider>;
   models: NonNullable<SessionOptions["models"]>;
 }> {
-  const faux = fauxProvider();
+  const faux = fauxProvider(options);
 
   const runtime = await ModelRuntime.create({
     authPath: join(dir, "auth.json"),
