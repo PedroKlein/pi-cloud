@@ -267,22 +267,11 @@ function ProjectPage({
   return (
     <>
       {back}
-      <PageTitle
-        description={`Repositories: ${project.repositories.join(", ")}`}
-      >
+      <PageTitle description={project.repositories.join(" · ")}>
         {project.name}
       </PageTitle>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="primary"
-          onClick={() => {
-            context.openSession(project.coordinatorId);
-          }}
-        >
-          Open coordinator
-        </Button>
-        <RunBadge state={project.coordinatorState} />
-      </div>
+
+      <Coordinator context={context} path={path} project={project} />
 
       <Section title="Threads">
         {project.threads.length === 0 ? (
@@ -290,7 +279,7 @@ function ProjectPage({
             No threads yet. Ask the coordinator to start some.
           </p>
         ) : (
-          <ThreadTable
+          <ThreadBoard
             context={context}
             threads={project.threads}
             environments={environments}
@@ -310,6 +299,107 @@ function ProjectPage({
         <Memory context={context} path={path} project={project} />
       </Section>
     </>
+  );
+}
+
+function Coordinator({
+  context,
+  path,
+  project,
+}: {
+  readonly context: WebContext;
+  readonly path: string;
+  readonly project: ProjectView;
+}): ReactElement {
+  const [error, setError] = useState("");
+
+  const send = (form: HTMLFormElement): void => {
+    const box = form.elements.namedItem("text");
+    if (!(box instanceof HTMLTextAreaElement) || box.value.trim() === "") {
+      return;
+    }
+
+    const text = box.value;
+    box.value = "";
+    setError("");
+
+    context.request(`${path}/message`, { text }).then(
+      async (response) => {
+        if (!response.ok) {
+          box.value = text;
+
+          const { error: reason } = (await response.json()) as {
+            error: string;
+          };
+
+          setError(reason);
+        }
+      },
+      (failure: unknown) => {
+        box.value = text;
+        setError(String(failure));
+      },
+    );
+  };
+
+  return (
+    <section
+      aria-label="Coordinator"
+      className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-4"
+    >
+      <header className="flex items-center gap-3">
+        <h2 className="flex-1 text-label font-medium text-fg-dim">
+          Coordinator
+        </h2>
+        <RunBadge state={project.coordinatorState} />
+        <Button
+          variant="ghost"
+          onClick={() => {
+            context.openSession(project.coordinatorId);
+          }}
+        >
+          Open coordinator
+        </Button>
+      </header>
+      <p className="text-prose whitespace-pre-wrap text-fg">
+        {project.coordinatorSays ?? "No reply yet."}
+      </p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          send(event.currentTarget);
+        }}
+        className="flex items-end gap-2 rounded-lg border border-line bg-bg py-2 pr-2 pl-3 focus-within:border-accent"
+      >
+        <textarea
+          name="text"
+          rows={2}
+          aria-label="Message the coordinator"
+          placeholder="Ask the coordinator or start new work"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          className="flex-1 resize-none bg-transparent text-ui text-fg placeholder:text-fg-dim focus:outline-none"
+        />
+        <Button
+          variant="primary"
+          iconOnly
+          type="submit"
+          aria-label="Send to the coordinator"
+          className="rounded-full"
+        >
+          <Icon name="arrow-up" />
+        </Button>
+      </form>
+      {error !== "" && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -333,9 +423,22 @@ function RunBadge({ state }: { readonly state: RunState }): ReactElement {
   );
 }
 
-const needsYou: readonly WorkState[] = ["blocked", "review_ready"];
+const columns: readonly {
+  readonly label: string;
+  readonly states: readonly WorkState[];
+  readonly dot: string;
+}[] = [
+  {
+    label: "Needs you",
+    states: ["blocked", "review_ready"],
+    dot: "bg-waiting",
+  },
+  { label: "Working", states: ["in_progress"], dot: "bg-working" },
+  { label: "Failed", states: ["failed"], dot: "bg-failed" },
+  { label: "Done", states: ["done"], dot: "bg-done" },
+];
 
-function ThreadTable({
+function ThreadBoard({
   context,
   threads,
   environments,
@@ -344,84 +447,104 @@ function ThreadTable({
   readonly threads: readonly ThreadView[];
   readonly environments: readonly Environment[];
 }): ReactElement {
-  const cell = "border-b border-line px-3 py-2.5 text-left";
-
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
-      <table className="w-full border-collapse text-ui [&_tr:last-child>td]:border-b-0">
-        <thead className="bg-panel text-label text-fg-dim">
-          <tr>
-            {[
-              "Thread",
-              "Environment",
-              "Run",
-              "Work",
-              "Branch",
-              "Last activity",
-            ].map((heading) => (
-              <th key={heading} className={cn(cell, "font-medium")}>
-                {heading}
-              </th>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {columns.map(({ label, states, dot }, index) => {
+        const shown = threads.filter(({ workState }) =>
+          states.includes(workState),
+        );
+
+        return (
+          <section
+            key={label}
+            aria-label={label}
+            className="flex min-w-0 flex-col gap-2"
+          >
+            <h3 className="flex items-center gap-2 text-label text-fg-dim">
+              <span className={cn("size-2 rounded-full", dot)} />
+              {label} · {shown.length}
+            </h3>
+            {shown.map((thread) => (
+              <ThreadCard
+                key={thread.sessionId}
+                context={context}
+                thread={thread}
+                needsYou={index === 0}
+                environment={
+                  environments.find(({ id }) => id === thread.environmentId)
+                    ?.name ?? thread.environmentId
+                }
+              />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {threads.map((thread) => (
-            <tr
-              key={thread.sessionId}
-              className={cn(
-                needsYou.includes(thread.workState) && "bg-waiting-tint",
-              )}
-            >
-              <td className={cell}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    context.openSession(thread.sessionId);
-                  }}
-                  className="cursor-pointer font-medium text-accent hover:underline"
-                >
-                  {thread.title}
-                </button>
-              </td>
-              <td className={cell}>
-                {environments.find(({ id }) => id === thread.environmentId)
-                  ?.name ?? thread.environmentId}
-              </td>
-              <td className={cell}>
-                <RunBadge state={thread.runState} />
-              </td>
-              <td className={cell}>
-                <select
-                  key={thread.workState}
-                  aria-label={`Work state of ${thread.title}`}
-                  defaultValue={thread.workState}
-                  onChange={(event) => {
-                    void context.request(
-                      `threads/${encodeURIComponent(thread.sessionId)}/state`,
-                      { state: event.target.value },
-                    );
-                  }}
-                  className={cn(fieldClass, "py-1")}
-                >
-                  {workStates.map((value) => (
-                    <option key={value} value={value}>
-                      {value.replace("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td className={cn(cell, "font-mono text-mono-sm")}>
-                {thread.branch ?? ""}
-              </td>
-              <td className={cn(cell, "text-label text-fg-dim")}>
-                {new Date(thread.lastActivity).toLocaleString()}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+function ThreadCard({
+  context,
+  thread,
+  needsYou,
+  environment,
+}: {
+  readonly context: WebContext;
+  readonly thread: ThreadView;
+  readonly needsYou: boolean;
+  readonly environment: string;
+}): ReactElement {
+  return (
+    <article
+      aria-label={thread.title}
+      className={cn(
+        "flex flex-col gap-2 rounded-lg border bg-panel p-3",
+        needsYou ? "border-waiting" : "border-line",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            context.openSession(thread.sessionId);
+          }}
+          className="cursor-pointer text-left font-medium text-fg-strong hover:underline"
+        >
+          {thread.title}
+        </button>
+        {thread.runState !== "idle" && <RunBadge state={thread.runState} />}
+      </div>
+      <p className="truncate text-caption text-fg-dim">
+        {[
+          environment,
+          thread.branch,
+          new Date(thread.lastActivity).toLocaleString(undefined, {
+            dateStyle: "short",
+            timeStyle: "short",
+          }),
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
+      <select
+        key={thread.workState}
+        aria-label={`Work state of ${thread.title}`}
+        defaultValue={thread.workState}
+        onChange={(event) => {
+          void context.request(
+            `threads/${encodeURIComponent(thread.sessionId)}/state`,
+            { state: event.target.value },
+          );
+        }}
+        className={cn(fieldClass, "self-start py-0.5 text-label")}
+      >
+        {workStates.map((value) => (
+          <option key={value} value={value}>
+            {value.replace("_", " ")}
+          </option>
+        ))}
+      </select>
+    </article>
   );
 }
 
