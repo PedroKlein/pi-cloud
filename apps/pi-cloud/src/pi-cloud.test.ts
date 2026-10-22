@@ -1965,7 +1965,10 @@ test("removes a clean worktree on archive and brings its pushed work back on una
     (s) => s.workspaceRemoval === "removed",
   );
 
-  expect(removed.workspace).toMatchObject({ startPoint: `origin/${branch}` });
+  expect(removed.workspace).toMatchObject({
+    restorePoint: `origin/${branch}`,
+  });
+
   expect(stat(dir)).rejects.toThrow();
 
   await api(`/api/sessions/${session.id}/unarchive`, {});
@@ -2011,7 +2014,10 @@ test("brings pushed work back when unarchived while its worktree is being remove
     true,
   );
 
-  expect(restarted.workspace).toMatchObject({ startPoint: `origin/${branch}` });
+  expect(restarted.workspace).toMatchObject({
+    restorePoint: `origin/${branch}`,
+  });
+
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
 });
 
@@ -2093,7 +2099,7 @@ test("stores the restore point of a removal reported after unarchive", async () 
 
   const restore = {
     ...session.workspace,
-    startPoint: "origin/pi-cloud/restored",
+    restorePoint: "origin/pi-cloud/restored",
   };
 
   const reported = await asAgent(

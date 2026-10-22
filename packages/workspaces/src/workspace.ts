@@ -74,14 +74,12 @@ export async function prepareWorkspace(
   // so it waits until a checkout is missing. A failure waits for the other
   // checkouts, so none is still writing once the workspace counts as failed.
   const settled = await Promise.allSettled(
-    repositories.map(async ({ repository, startPoint, path }) => {
+    repositories.map(async ({ repository, path, ...start }) => {
       const folder = (await exists(path))
         ? undefined
         : (await (remotes ??= checkoutsByRemote(folders))).get(
             repositoryKey(repository),
           );
-
-      const start = startPoint === undefined ? {} : { startPoint };
 
       return prepareCheckout(
         folder === undefined
@@ -129,7 +127,7 @@ async function addWorktree(
   log: Log,
 ): Promise<Checkout> {
   const folder = await allowedFolder(workspace.path, folders);
-  const { branch, startPoint } = workspace;
+  const { branch } = workspace;
 
   const reused = await reusedCheckout(dir, branch, log);
   if (reused !== undefined) {
@@ -145,6 +143,8 @@ async function addWorktree(
   log("adding worktree", { folder: workspace.path, branch, dir });
 
   await mkdir(dirname(dir), { recursive: true });
+
+  const startPoint = await branchStart(folder, workspace, log);
 
   await git(
     folder,
@@ -196,11 +196,14 @@ async function cloneCheckout(
 
 async function cloneInto(
   dir: string,
-  { repository, branch, startPoint }: Extract<Workspace, { kind: "clone" }>,
+  workspace: Extract<Workspace, { kind: "clone" }>,
   mirrors: string | undefined,
   log: Log,
 ): Promise<string | null> {
+  const { repository, branch } = workspace;
   await cloneWithMirror(repository, dir, mirrors, log);
+
+  const startPoint = await branchStart(dir, workspace, log);
 
   await git(
     dir,
@@ -208,12 +211,38 @@ async function cloneInto(
     "--no-track",
     "--create",
     branch,
-    ...(startPoint === undefined
-      ? []
-      : [await remoteStartPoint(dir, startPoint)]),
+    ...(startPoint === undefined ? [] : [startPoint]),
   );
 
   return recordBase(dir, branch);
+}
+
+// A removed session branch comes back from its restore point. Once no remote
+// has that, say after its pull request merged and the remote deleted it, the
+// branch starts over like a new one, which still fails on a bad startPoint.
+async function branchStart(
+  repository: string,
+  workspace: Exclude<SingleWorkspace, { kind: "folder" }>,
+  log: Log,
+): Promise<string | undefined> {
+  const { branch, startPoint } = workspace;
+
+  const named = (ref: string): string | Promise<string> =>
+    workspace.kind === "clone" ? remoteStartPoint(repository, ref) : ref;
+
+  if (workspace.restorePoint !== undefined) {
+    const restored = await named(workspace.restorePoint);
+    if (await isCommit(repository, restored)) {
+      return restored;
+    }
+
+    log("restore point gone, starting the branch over", {
+      branch,
+      restorePoint: workspace.restorePoint,
+    });
+  }
+
+  return startPoint === undefined ? undefined : named(startPoint);
 }
 
 async function reusedCheckout(
@@ -303,12 +332,12 @@ export async function removeWorkspace(
     const restored =
       report.outcome === "removed" &&
       (report.restore.kind === "worktree" || report.restore.kind === "clone")
-        ? report.restore.startPoint
+        ? report.restore.restorePoint
         : undefined;
 
     repositories.push({
       ...checkout,
-      ...(restored !== undefined && { startPoint: restored }),
+      ...(restored !== undefined && { restorePoint: restored }),
     });
   }
 
@@ -376,7 +405,7 @@ async function removeCheckout(
   return {
     outcome: "removed",
     restore:
-      restore === null ? workspace : { ...workspace, startPoint: restore },
+      restore === null ? workspace : { ...workspace, restorePoint: restore },
   };
 }
 
@@ -459,6 +488,19 @@ async function branchExists(
     "--verify",
     "--quiet",
     `refs/heads/${branch}`,
+  ).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function isCommit(repository: string, ref: string): Promise<boolean> {
+  return git(
+    repository,
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${ref}^{commit}`,
   ).then(
     () => true,
     () => false,
