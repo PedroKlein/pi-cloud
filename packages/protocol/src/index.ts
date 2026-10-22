@@ -26,6 +26,10 @@ interface Restorable {
   // The remote branch or commit that held the branch's work. Once no remote
   // has it, the branch starts over from startPoint.
   readonly restorePoint?: string;
+  // The piCloud* keys of the branch's git config by name, such as the commit
+  // it started from and its pull request (ADR 0021). They come back with the
+  // branch, but not when it starts over.
+  readonly branchConfig?: Readonly<Record<string, string>>;
 }
 
 export type Workspace =

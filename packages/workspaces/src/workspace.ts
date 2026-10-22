@@ -144,7 +144,7 @@ async function addWorktree(
 
   await mkdir(dirname(dir), { recursive: true });
 
-  const startPoint = await branchStart(folder, workspace, log);
+  const { startPoint, config } = await branchStart(folder, workspace, log);
 
   await git(
     folder,
@@ -159,7 +159,7 @@ async function addWorktree(
   const copied = await copyIncluded(folder, dir);
   log("worktree added", { dir, copied });
 
-  return { path: dir, base: await recordBase(dir, branch) };
+  return { path: dir, base: await recordBase(dir, branch, config) };
 }
 
 async function cloneCheckout(
@@ -203,7 +203,7 @@ async function cloneInto(
   const { repository, branch } = workspace;
   await cloneWithMirror(repository, dir, mirrors, log);
 
-  const startPoint = await branchStart(dir, workspace, log);
+  const { startPoint, config } = await branchStart(dir, workspace, log);
 
   await git(
     dir,
@@ -214,17 +214,23 @@ async function cloneInto(
     ...(startPoint === undefined ? [] : [startPoint]),
   );
 
-  return recordBase(dir, branch);
+  return recordBase(dir, branch, config);
 }
 
-// A removed session branch comes back from its restore point. Once no remote
-// has that, say after its pull request merged and the remote deleted it, the
-// branch starts over like a new one, which still fails on a bad startPoint.
+interface BranchStart {
+  readonly startPoint: string | undefined;
+  readonly config: Readonly<Record<string, string>>;
+}
+
+// A removed session branch comes back from its restore point with its git
+// config. Once no remote has that point, say after its pull request merged
+// and the remote deleted it, the branch starts over like a new one, which
+// still fails on a bad startPoint.
 async function branchStart(
   repository: string,
   workspace: Exclude<SingleWorkspace, { kind: "folder" }>,
   log: Log,
-): Promise<string | undefined> {
+): Promise<BranchStart> {
   const { branch, startPoint } = workspace;
 
   const named = (ref: string): string | Promise<string> =>
@@ -233,7 +239,7 @@ async function branchStart(
   if (workspace.restorePoint !== undefined) {
     const restored = await named(workspace.restorePoint);
     if (await isCommit(repository, restored)) {
-      return restored;
+      return { startPoint: restored, config: workspace.branchConfig ?? {} };
     }
 
     log("restore point gone, starting the branch over", {
@@ -242,7 +248,10 @@ async function branchStart(
     });
   }
 
-  return startPoint === undefined ? undefined : named(startPoint);
+  return {
+    startPoint: startPoint === undefined ? undefined : await named(startPoint),
+    config: {},
+  };
 }
 
 async function reusedCheckout(
@@ -332,12 +341,17 @@ export async function removeWorkspace(
     const restored =
       report.outcome === "removed" &&
       (report.restore.kind === "worktree" || report.restore.kind === "clone")
-        ? report.restore.restorePoint
+        ? report.restore
         : undefined;
 
     repositories.push({
       ...checkout,
-      ...(restored !== undefined && { restorePoint: restored }),
+      ...(restored?.restorePoint !== undefined && {
+        restorePoint: restored.restorePoint,
+      }),
+      ...(restored?.branchConfig !== undefined && {
+        branchConfig: restored.branchConfig,
+      }),
     });
   }
 
@@ -388,6 +402,9 @@ async function removeCheckout(
     ? await restorePoint(repository, workspace.branch)
     : null;
 
+  const branchConfig =
+    restore === null ? {} : await piCloudConfig(repository, workspace.branch);
+
   if (workspace.kind === "clone") {
     await rm(dir, { recursive: true, force: true });
   } else {
@@ -405,7 +422,9 @@ async function removeCheckout(
   return {
     outcome: "removed",
     restore:
-      restore === null ? workspace : { ...workspace, restorePoint: restore },
+      restore === null
+        ? workspace
+        : { ...workspace, restorePoint: restore, branchConfig },
   };
 }
 
@@ -869,7 +888,22 @@ async function remoteStartPoint(
 // so a later attempt, and git itself when the branch is deleted, know it.
 const baseKey = (branch: string): string => `branch.${branch}.piCloudBase`;
 
-async function recordBase(dir: string, branch: string): Promise<string | null> {
+// A restored branch gets its config back first, and keeps the base in it
+// while git still has that commit.
+async function recordBase(
+  dir: string,
+  branch: string,
+  restored: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  for (const [name, value] of Object.entries(restored)) {
+    await git(dir, "config", `branch.${branch}.${name}`, value);
+  }
+
+  const kept = await readBase(dir, branch);
+  if (kept !== null && (await isCommit(dir, kept))) {
+    return kept;
+  }
+
   const head = await git(dir, "rev-parse", "--verify", "--quiet", "HEAD").catch(
     () => null,
   );
@@ -883,6 +917,35 @@ async function recordBase(dir: string, branch: string): Promise<string | null> {
 
 async function readBase(dir: string, branch: string): Promise<string | null> {
   return git(dir, "config", "--get", baseKey(branch)).catch(() => null);
+}
+
+// The branch.<branch>.piCloud* keys by name, such as its base and the pull
+// request the changes plugin opened for it. git prints them lowercased.
+async function piCloudConfig(
+  repository: string,
+  branch: string,
+): Promise<Record<string, string>> {
+  const prefix = `branch.${branch}.`;
+
+  const lines = await git(
+    repository,
+    "config",
+    "--get-regexp",
+    "^branch\\..*\\.picloud",
+  ).catch(() => "");
+
+  return Object.fromEntries(
+    lines.split("\n").flatMap((line) => {
+      const [, name, value] =
+        /^(picloud[^.\s]*) (.*)$/.exec(line.slice(prefix.length)) ?? [];
+
+      return line.startsWith(prefix) &&
+        name !== undefined &&
+        value !== undefined
+        ? [[name, value]]
+        : [];
+    }),
+  );
 }
 
 // ssh has no stall limit like http's, so these options give a server that goes

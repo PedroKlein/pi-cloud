@@ -867,7 +867,11 @@ test("removes a clean worktree and its branch and brings it back from the pushed
 
   expect(report).toEqual({
     outcome: "removed",
-    restore: { ...workspace, restorePoint: "origin/pi-cloud/s1" },
+    restore: {
+      ...workspace,
+      restorePoint: "origin/pi-cloud/s1",
+      branchConfig: { picloudbase: await git(checkout, "rev-parse", "HEAD") },
+    },
   });
 
   expect(stat(dir)).rejects.toThrow();
@@ -973,6 +977,7 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
     restore: {
       ...workspace,
       restorePoint: await git(repository, "rev-parse", "main"),
+      branchConfig: { picloudbase: await git(repository, "rev-parse", "main") },
     },
   });
 
@@ -1207,7 +1212,7 @@ test("starts a session branch over once the remote deleted it after a merge", as
     await git(checkout, "fetch", "--prune", "origin");
     const logs: string[] = [];
 
-    await prepareWorkspace(
+    const { checkouts } = await prepareWorkspace(
       report.outcome === "removed" ? report.restore : workspace,
       options,
       (message) => {
@@ -1215,12 +1220,11 @@ test("starts a session branch over once the remote deleted it after a merge", as
       },
     );
 
+    const head = await git(start, "rev-parse", "HEAD");
+
     expect(await git(dir, "branch", "--show-current")).toBe(workspace.branch);
-
-    expect(await git(dir, "rev-parse", "HEAD")).toBe(
-      await git(start, "rev-parse", "HEAD"),
-    );
-
+    expect(await git(dir, "rev-parse", "HEAD")).toBe(head);
+    expect(checkouts).toEqual([{ path: dir, base: head }]);
     expect(logs).toContain("restore point gone, starting the branch over");
   }
 });
@@ -1246,6 +1250,49 @@ test("fails a new session branch whose start point git can't find", async () => 
 
     expect(prepared).rejects.toThrow("invalid reference: gone");
     await prepared.catch(() => undefined);
+  }
+});
+
+test("brings a session branch back with the base and pull request it had", async () => {
+  const checkout = await checkoutWithRemote();
+  const start = await git(repository, "rev-parse", "HEAD");
+  const pullRequest = "https://github.com/example/origin/pull/1";
+
+  for (const workspace of [
+    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s3",
+      repositories: [{ repository }],
+    },
+  ] as const) {
+    const dir = join(root, "workspaces", workspace.branch);
+    const options = { dir, folders: [checkout] };
+    const { checkouts } = await prepareWorkspace(workspace, options, noLog);
+    const path = checkouts[0]?.path ?? "";
+    const pullRequestKey = `branch.${workspace.branch}.piCloudPullRequest`;
+    await commit(path, `${workspace.kind}.txt`);
+    await git(path, "push", "origin", workspace.branch);
+    await git(path, "config", pullRequestKey, pullRequest);
+
+    const report = await removeWorkspace(
+      workspace,
+      { dir, force: false },
+      noLog,
+    );
+
+    const restored = await prepareWorkspace(
+      report.outcome === "removed" ? report.restore : workspace,
+      options,
+      noLog,
+    );
+
+    expect(restored.checkouts).toEqual([{ path, base: start }]);
+
+    expect(await git(path, "config", "--get", pullRequestKey)).toBe(
+      pullRequest,
+    );
   }
 });
 
@@ -1511,10 +1558,17 @@ test("removes several repositories only when none of them would lose work", asyn
     restore: {
       ...workspace,
       repositories: [
-        { repository, restorePoint: "origin/pi-cloud/s1" },
+        {
+          repository,
+          restorePoint: "origin/pi-cloud/s1",
+          branchConfig: {
+            picloudbase: await git(checkout, "rev-parse", "HEAD"),
+          },
+        },
         {
           repository: second,
           restorePoint: await git(second, "rev-parse", "main"),
+          branchConfig: { picloudbase: await git(second, "rev-parse", "main") },
         },
       ],
     },
