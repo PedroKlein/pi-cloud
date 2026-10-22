@@ -67,13 +67,16 @@ export const projects: ServerPlugin = {
       }
     });
 
-    context.events.subscribe("SessionStateChanged", ({ session }) => {
+    // Every restart interrupts the threads it finds idle too, and those lost
+    // nothing, so a notice would only cost the coordinator a turn.
+    context.events.subscribe("SessionStateChanged", ({ session, previous }) => {
       const thread = store.member(session.id);
       const project = thread && store.get(thread.projectId);
       if (
         thread?.role === "thread" &&
         project &&
-        (session.status === "interrupted" || session.status === "failed")
+        ((session.status === "interrupted" && previous === "running") ||
+          session.status === "failed")
       ) {
         store.enqueue(project.coordinatorId, "plugin:projects", {
           kind: "message",

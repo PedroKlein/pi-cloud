@@ -918,3 +918,35 @@ test("tells the coordinator when a thread can't get its message", async () => {
 
   expect(kernel.delivered).toEqual([{ kind: "send", text: "carry on" }]);
 }, 10_000);
+
+test("tells the coordinator about a thread that stopped mid-turn, not one a restart caught idle", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+
+  const stopped = (previous: Session["status"], changes: Partial<Session>) => {
+    kernel.update(threadId, changes);
+
+    kernel.events.publish({
+      type: "SessionStateChanged",
+      session: kernel.session(threadId),
+      previous,
+    });
+
+    kernel.update(threadId, { status: "idle", error: null });
+  };
+
+  stopped("idle", { status: "interrupted" });
+  stopped("starting", { status: "interrupted" });
+  stopped("running", { status: "interrupted" });
+  stopped("starting", { status: "failed", error: "clone failed" });
+
+  // Notices go out in the order they were queued, so the failure comes last.
+  await until(() =>
+    kernel.delivered.some(({ text }) => text.includes("stopped: failed")),
+  );
+
+  expect(
+    kernel.delivered.map(({ text }) => /\) (stopped: \w+)/.exec(text)?.[1]),
+  ).toEqual(["stopped: interrupted", "stopped: failed"]);
+}, 10_000);
