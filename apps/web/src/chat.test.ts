@@ -240,6 +240,36 @@ test("times a turn from its message to its last entry and names the answering mo
   expect(duration("2026-10-22T10:00:00Z", "2026-10-22T10:00:09Z")).toBe("9s");
 });
 
+test("ends a turn at Pi's last message, not at notes posted after it", () => {
+  const entries = [
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:00.000Z",
+      message: { role: "user", content: "fix it" },
+    },
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:07.000Z",
+      message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+    },
+    {
+      type: "custom_message",
+      timestamp: "2026-10-22T10:01:21.000Z",
+      customType: "todo",
+      content: "board",
+      display: true,
+    },
+  ];
+
+  const [turn] = turns(
+    entries
+      .flatMap((entry) => chatItems(JSON.stringify(entry)))
+      .map((item, key) => ({ ...item, key })),
+  );
+
+  expect(turn?.ended).toBe("2026-10-22T10:00:07.000Z");
+});
+
 test("tallies a turn's work by kind of step", () => {
   const steps = ["read", "read", "edit", "write", "bash", "grep"].map(
     (name) => ({ name }),

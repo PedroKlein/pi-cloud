@@ -415,6 +415,47 @@ test("shows the session's changes and usage from their plugins", async () => {
     .waitFor();
 }, 30_000);
 
+test("shows a turn as working between steps until Pi finishes it", async () => {
+  const { promise: answered, resolve: answer } =
+    Promise.withResolvers<undefined>();
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("bash", { command: "true" })], {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await answered;
+
+      return fauxAssistantMessage([fauxText("all done")]);
+    },
+  ]);
+
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.locator("#prompt-text").fill("check");
+  await page.locator("#prompt-text").press("Enter");
+
+  const work = page.locator('#chat li[data-role="work"]');
+  await work.getByText("ran 1 command").waitFor();
+  await Bun.sleep(300);
+
+  expect(await work.locator("summary").first().textContent()).toContain(
+    "Working",
+  );
+
+  answer(undefined);
+  await work.getByText(/^Worked for/).waitFor();
+}, 30_000);
+
 test("creates a Project and shares a file through its library", async () => {
   const repository = join(root, "site");
   execFileSync("git", ["init", "--quiet", "--initial-branch=main", repository]);

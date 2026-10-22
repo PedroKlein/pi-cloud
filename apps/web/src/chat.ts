@@ -272,7 +272,7 @@ export function turns(
     });
 
     const tail = inTurn.slice(lastTool + 1);
-    const ended = inTurn.at(-1)?.at;
+    const ended = inTurn.findLast((item) => item.role !== "note")?.at;
 
     const model = inTurn.findLast(
       (item) => item.role === "assistant" && item.model !== undefined,
