@@ -51,6 +51,7 @@ export function matches(
     .filter((word) => word !== "");
 
   const text = [
+    session.title ?? "",
     shortName(session.workspace),
     JSON.stringify(session.workspace),
     environmentName,

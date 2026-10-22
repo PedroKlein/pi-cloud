@@ -53,3 +53,10 @@ test("search matches every word against name, path, environment and model", () =
   expect(matches(found, "site vm", "laptop")).toBe(false);
   expect(matches(found, "  ", "laptop")).toBe(true);
 });
+
+test("search matches the session's title", () => {
+  const titled = session({ title: "Fix the login redirect" });
+
+  expect(matches(titled, "login", "laptop")).toBe(true);
+  expect(matches(session({}), "login", "laptop")).toBe(false);
+});
