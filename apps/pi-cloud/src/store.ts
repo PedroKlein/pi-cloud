@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
 import type {
   ModelRef,
   SessionStatus,
@@ -43,7 +43,7 @@ interface EnvironmentRow {
   created_at: string;
 }
 
-const environments = `
+const environmentsTable = `
 create table if not exists environments (
   id text primary key,
   name text not null,
@@ -53,7 +53,7 @@ create table if not exists environments (
 );
 `;
 
-const schema = `
+const sessionTables = `
 create table if not exists sessions (
   id text primary key,
   environment_id text not null references environments (id),
@@ -82,19 +82,24 @@ create table if not exists transcript (
 // Databases from before Sessions had a workspace stored a folder path in cwd,
 // and ones from before Environments named the provider on each Session.
 function migrate(db: DatabaseSync): void {
-  db.exec(environments);
+  db.exec(environmentsTable);
 
   const columns = db
     .prepare("select name from pragma_table_info('sessions')")
     .all() as { name: string }[];
 
-  if (columns.some((column) => column.name === "cwd")) {
-    db.exec(`
-      begin;
-      alter table sessions rename column cwd to workspace;
-      update sessions set workspace = json_object('kind', 'folder', 'path', workspace);
-      commit;
-    `);
+  const sessionsTableExists = columns.length > 0;
+
+  const hasColumn = (name: string): boolean =>
+    columns.some((column) => column.name === name);
+
+  if (hasColumn("cwd")) {
+    transaction(db, () => {
+      db.exec(`
+        alter table sessions rename column cwd to workspace;
+        update sessions set workspace = json_object('kind', 'folder', 'path', workspace);
+      `);
+    });
   }
 
   for (const column of [
@@ -105,16 +110,16 @@ function migrate(db: DatabaseSync): void {
     "first_message",
     "title",
   ]) {
-    if (columns.length > 0 && !columns.some(({ name }) => name === column)) {
+    if (sessionsTableExists && !hasColumn(column)) {
       db.exec(`alter table sessions add column ${column} text`);
     }
   }
 
-  if (columns.some(({ name }) => name === "provider")) {
+  if (hasColumn("provider")) {
     migrateToEnvironments(db);
   }
 
-  db.exec(schema);
+  db.exec(sessionTables);
 }
 
 function migrateToEnvironments(db: DatabaseSync): void {
@@ -122,8 +127,7 @@ function migrateToEnvironments(db: DatabaseSync): void {
     .prepare("select distinct provider from sessions")
     .all() as { provider: string }[];
 
-  db.exec("begin");
-  try {
+  transaction(db, () => {
     for (const { provider } of providers) {
       insertEnvironment(db, provider);
     }
@@ -136,18 +140,24 @@ function migrateToEnvironments(db: DatabaseSync): void {
         owner_id = '${owner}';
       alter table sessions drop column provider;
     `);
-
-    db.exec("commit");
-  } catch (error) {
-    db.exec("rollback");
-    throw error;
-  }
+  });
 }
 
 function insertEnvironment(db: DatabaseSync, provider: string): void {
   db.prepare(
     "insert into environments (id, name, provider, owner_id, created_at) values (?, ?, ?, ?, ?) on conflict (provider) do nothing",
   ).run(randomUUID(), provider, provider, owner, new Date().toISOString());
+}
+
+function transaction(db: DatabaseSync, run: () => void): void {
+  db.exec("begin");
+  try {
+    run();
+    db.exec("commit");
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
 }
 
 export function openStore(path: string): SessionStore & {
@@ -182,31 +192,34 @@ export function openStore(path: string): SessionStore & {
     workspaceRemoval: row.workspace_removal,
   });
 
-  const insert = db.prepare(
+  const insertSession = db.prepare(
     "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
-  const update = db.prepare(
+  const updateSession = db.prepare(
     "update sessions set workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ? where id = ?",
   );
 
-  const check = db.prepare("select 1 from sessions limit 1");
+  const selectAnySession = db.prepare("select 1 from sessions limit 1");
 
   const withProvider =
     "select sessions.*, environments.provider from sessions join environments on environments.id = sessions.environment_id";
 
-  const get = db.prepare(`${withProvider} where sessions.id = ?`);
-  const list = db.prepare(`${withProvider} order by sessions.created_at desc`);
+  const selectSession = db.prepare(`${withProvider} where sessions.id = ?`);
 
-  const unarchived = db.prepare(
+  const selectSessions = db.prepare(
+    `${withProvider} order by sessions.created_at desc`,
+  );
+
+  const selectUnarchivedSessions = db.prepare(
     `${withProvider} where sessions.archived_at is null order by sessions.created_at desc`,
   );
 
-  const byProvider = db.prepare(
+  const selectByProvider = db.prepare(
     `${withProvider} where environments.provider = ? and status in (select value from json_each(?)) order by sessions.created_at`,
   );
 
-  const pendingRemovals = db.prepare(
+  const selectPendingRemovals = db.prepare(
     `${withProvider} where environments.provider = ? and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
   );
 
@@ -218,27 +231,27 @@ export function openStore(path: string): SessionStore & {
     createdAt: row.created_at,
   });
 
-  const environmentList = db.prepare(
+  const selectEnvironments = db.prepare(
     "select * from environments order by created_at, name",
   );
 
-  const length = db.prepare(
+  const countTranscript = db.prepare(
     "select count(*) as n from transcript where session_id = ?",
   );
 
-  const appendLine = db.prepare(
+  const insertTranscriptLine = db.prepare(
     "insert into transcript (session_id, line, entry) values (?, ?, ?)",
   );
 
-  const setTitle = db.prepare("update sessions set title = ? where id = ?");
+  const updateTitle = db.prepare("update sessions set title = ? where id = ?");
 
-  const transcript = db.prepare(
+  const selectTranscript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
   );
 
   return {
     insert: (s) => {
-      insert.run(
+      insertSession.run(
         s.id,
         s.environmentId,
         s.ownerId,
@@ -257,7 +270,7 @@ export function openStore(path: string): SessionStore & {
       );
     },
     update: (s) => {
-      update.run(
+      updateSession.run(
         JSON.stringify(s.workspace),
         s.status,
         s.generation,
@@ -269,24 +282,27 @@ export function openStore(path: string): SessionStore & {
       );
     },
     get: (id) => {
-      const row = get.get(id) as SessionRow | undefined;
+      const row = selectSession.get(id) as SessionRow | undefined;
 
       return row && toSession(row);
     },
     list: ({ includeArchived }) =>
       (
-        (includeArchived ? list : unarchived).all() as unknown as SessionRow[]
+        (includeArchived
+          ? selectSessions
+          : selectUnarchivedSessions
+        ).all() as unknown as SessionRow[]
       ).map(toSession),
     byProvider: (provider, statuses) =>
       (
-        byProvider.all(
+        selectByProvider.all(
           provider,
           JSON.stringify(statuses),
         ) as unknown as SessionRow[]
       ).map(toSession),
     pendingRemovals: (provider) =>
       (
-        pendingRemovals.all(
+        selectPendingRemovals.all(
           provider,
           "stopped" satisfies SessionStatus,
           "pending" satisfies WorkspaceRemoval,
@@ -297,25 +313,26 @@ export function openStore(path: string): SessionStore & {
       insertEnvironment(db, provider);
     },
     environments: () =>
-      (environmentList.all() as unknown as EnvironmentRow[]).map(toEnvironment),
-    transcriptLength: (id) => (length.get(id) as { n: number }).n,
+      (selectEnvironments.all() as unknown as EnvironmentRow[]).map(
+        toEnvironment,
+      ),
+    transcriptLength: (id) => (countTranscript.get(id) as { n: number }).n,
     appendTranscript: (id, start, lines) => {
-      db.exec("begin");
-      try {
-        lines.forEach((entry, i) => appendLine.run(id, start + i, entry));
-        db.exec("commit");
-      } catch (error) {
-        db.exec("rollback");
-        throw error;
-      }
+      transaction(db, () => {
+        lines.forEach((entry, i) =>
+          insertTranscriptLine.run(id, start + i, entry),
+        );
+      });
     },
     setTitle: (id, title) => {
-      setTitle.run(title, id);
+      updateTitle.run(title, id);
     },
     transcript: (id, from) =>
-      (transcript.all(id, from) as { entry: string }[]).map((r) => r.entry),
+      (selectTranscript.all(id, from) as { entry: string }[]).map(
+        (r) => r.entry,
+      ),
     check: () => {
-      check.get();
+      selectAnySession.get();
     },
     plugin: (name) => pluginStore(db, name),
     close: () => {
@@ -338,10 +355,9 @@ function pluginStore(db: DatabaseSync, name: string): PluginStore {
 
       db.exec(sql);
     },
-    all: (sql, ...params) =>
-      db.prepare(sql).all(...(params as SQLInputValue[])),
+    all: (sql, ...params) => db.prepare(sql).all(...params),
     run: (sql, ...params) => {
-      db.prepare(sql).run(...(params as SQLInputValue[]));
+      db.prepare(sql).run(...params);
     },
   };
 }

@@ -59,11 +59,13 @@ export type PluginRoute = (
   caller: ToolCaller | undefined,
 ) => Response | Promise<Response>;
 
+type SqlValue = string | number | bigint | null | Uint8Array;
+
 // Tables a plugin creates must be named <plugin>_<table>.
 export interface PluginStore {
   readonly exec: (sql: string) => void;
-  readonly all: (sql: string, ...params: readonly unknown[]) => unknown[];
-  readonly run: (sql: string, ...params: readonly unknown[]) => void;
+  readonly all: (sql: string, ...params: readonly SqlValue[]) => unknown[];
+  readonly run: (sql: string, ...params: readonly SqlValue[]) => void;
 }
 
 // Models a plugin offers for an Environment: listed before the machine's own
