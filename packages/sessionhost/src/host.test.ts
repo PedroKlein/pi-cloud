@@ -1955,6 +1955,110 @@ test("/pr says why when the branch has nothing to push", async () => {
   }
 });
 
+test("/pr with only a checkout's name opens a full pull request for that checkout", async () => {
+  const exec = promisify(execFile);
+  const { faux, models } = await fauxModels(root);
+
+  const setup = await pullRequestSetup(
+    "echo https://github.com/acme/widgets/pull/8",
+  );
+
+  const other = join(root, "other");
+
+  try {
+    await exec("git", ["clone", "--quiet", setup.repo, other]);
+    await exec("git", ["switch", "--quiet", "-c", "pi/other"], { cwd: other });
+    await writeFile(join(setup.repo, "notes.txt"), "new notes\n");
+    faux.setResponses([fauxAssistantMessage([fauxText("Add notes\n\nWhy.")])]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, {
+        models,
+        plugins: [changes],
+        checkouts: [
+          { path: setup.repo, base: setup.base },
+          { path: other, base: setup.base },
+        ],
+      }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "/pr repo" });
+
+    await fake.waitFor(
+      () =>
+        pullRequests(fake.events).some(({ status }) => status === "open") ||
+        fake.events.some((e) => e.type === "notify"),
+    );
+
+    await hosted.stop();
+
+    expect(fake.events.filter((e) => e.type === "notify")).toEqual([]);
+
+    expect(pullRequests(fake.events)).toEqual([
+      { name: "repo", status: "working" },
+      {
+        name: "repo",
+        status: "open",
+        url: "https://github.com/acme/widgets/pull/8",
+      },
+    ]);
+
+    expect(await Bun.file(setup.ghCalls).text()).not.toContain("--draft");
+    expect(await setup.remoteLog()).toBe("Add notes\nfirst");
+  } finally {
+    setup.restore();
+  }
+});
+
+test("/pr constructor starts no pull request", async () => {
+  const { models } = await fauxModels(root);
+  const setup = await pullRequestSetup("exit 1");
+
+  try {
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, {
+        cwd: setup.repo,
+        models,
+        plugins: [changes],
+        checkouts: [{ path: setup.repo, base: setup.base }],
+      }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    fake.send({
+      actor: "user:local",
+      type: "message",
+      text: "/pr constructor",
+    });
+
+    await fake.waitFor(
+      () =>
+        pullRequests(fake.events).length > 0 ||
+        fake.events.some((e) => e.type === "notify"),
+    );
+
+    await hosted.stop();
+
+    expect(pullRequests(fake.events)).toEqual([]);
+
+    expect(fake.events.find((e) => e.type === "notify")).toMatchObject({
+      level: "error",
+      message: "/pr needs a checkout on its own session branch.",
+    });
+  } finally {
+    setup.restore();
+  }
+});
+
 test("publishes no changes outside a git repository", async () => {
   const { models } = await fauxModels(root);
   const logs: string[] = [];
