@@ -59,7 +59,7 @@ export function serverTools(
             call(id, spec.name, input).catch((error: unknown) => {
               reject(
                 new Error(
-                  `the server could not run ${spec.name}: ${String(error)}`,
+                  `could not confirm the server received ${spec.name} (${String(error)}); it may still have run, so check before retrying`,
                 ),
               );
             });

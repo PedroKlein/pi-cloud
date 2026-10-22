@@ -52,6 +52,7 @@ function fakeStream(
   options: {
     failUploads?: number;
     failPublishes?: number;
+    failToolCalls?: boolean;
     tools?: readonly ToolSpec[];
   } = {},
 ): {
@@ -127,6 +128,9 @@ function fakeStream(
     callTool: async (id, name, input) => {
       await Promise.resolve();
       toolCalls.push({ id, name, input });
+      if (options.failToolCalls === true) {
+        throw new Error("the connection closed before the server answered");
+      }
     },
     pluginRequest: async (plugin, path, init) =>
       Promise.resolve(
@@ -2020,6 +2024,54 @@ test("fails a server tool whose result never arrives, so the turn still ends", a
     { type: "status", status: "running" },
     { type: "status", status: "idle" },
   ]);
+});
+
+test("tells the model a server tool may still have run when its call gets no answer", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("start_thread", { task: "fix it" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("the call failed")]),
+  ]);
+
+  const fake = fakeStream({
+    failToolCalls: true,
+    tools: [
+      {
+        name: "start_thread",
+        description: "Starts a thread",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "start a thread" });
+  await fake.waitFor(() => fake.lines.join().includes("the call failed"));
+  await hosted.stop();
+
+  const result = fake.lines
+    .map(
+      (line) =>
+        JSON.parse(line) as { message?: { role: string; isError?: boolean } },
+    )
+    .find((entry) => entry.message?.role === "toolResult");
+
+  expect(fake.toolCalls).toHaveLength(1);
+  expect(result?.message?.isError).toBe(true);
+  expect(JSON.stringify(result)).toContain("the connection closed");
+
+  expect(JSON.stringify(result)).toContain(
+    "it may still have run, so check before retrying",
+  );
 });
 
 test("lets a plugin's tools reach its own server routes", async () => {
