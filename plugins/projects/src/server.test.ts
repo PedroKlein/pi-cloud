@@ -44,6 +44,7 @@ function fakeKernel(): {
   readonly route: () => PluginRoute;
   readonly tool: (name: string) => ServerTool;
   readonly session: (id: string) => Session;
+  readonly update: (id: string, changes: Partial<Session>) => void;
   readonly offline: Set<string>;
   readonly refused: string[];
   readonly unreadable: Set<string>;
@@ -180,6 +181,12 @@ function fakeKernel(): {
 
       return found;
     },
+    update: (id, changes) => {
+      const found = sessions.get(id);
+      if (found !== undefined) {
+        sessions.set(id, { ...found, ...changes });
+      }
+    },
     offline,
     refused,
     unreadable,
@@ -275,21 +282,37 @@ const bashLine = JSON.stringify({
 
 const cutLine = '{"type":"message","message":{"role":"assis';
 
+function turnStarted(kernel: FakeKernel, threadId: string): void {
+  kernel.events.publish({
+    type: "TurnStarted",
+    session: { ...kernel.session(threadId), status: "running" },
+  });
+}
+
+// transcriptLength is how many lines the thread's host says the turn ended
+// with, whether or not they have reached the server yet.
+function turnEnded(
+  kernel: FakeKernel,
+  threadId: string,
+  transcriptLength?: number,
+): void {
+  kernel.events.publish({
+    type: "TurnEnded",
+    session: kernel.session(threadId),
+    ...(transcriptLength !== undefined && { transcriptLength }),
+  });
+}
+
 function turn(
   kernel: FakeKernel,
   threadId: string,
   lines: readonly string[],
 ): void {
-  const session = kernel.session(threadId);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
 
-  kernel.events.publish({
-    type: "TurnStarted",
-    session: { ...session, status: "running" },
-  });
-
-  kernel.transcripts.get(threadId)?.push(...lines);
-
-  kernel.events.publish({ type: "TurnEnded", session });
+  turnStarted(kernel, threadId);
+  transcript.push(...lines);
+  turnEnded(kernel, threadId, transcript.length);
 }
 
 async function until(done: () => boolean): Promise<void> {
@@ -347,6 +370,158 @@ test("wakes an offline coordinator only for the held thread turns that ended wel
   expect(kernel.delivered.map(({ kind }) => kind)).toEqual(["send", "notify"]);
   expect(kernel.delivered[0]?.text).toContain("finished a turn");
   expect(kernel.delivered[1]?.text).toContain("model error: 429 quota");
+}, 10_000);
+
+test("names a thread turn's model error that reaches the server after the thread's next turn started", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+
+  turnStarted(kernel, threadId);
+  transcript.push(userLine("bump the version"), replyLine("working on it"));
+  turnEnded(kernel, threadId, 3);
+  turnStarted(kernel, threadId);
+
+  transcript.push(
+    errorLine("429 quota"),
+    userLine("try again"),
+    replyLine("bumped to v2"),
+  );
+
+  turnEnded(kernel, threadId, 5);
+
+  await until(() => kernel.delivered.length >= 2);
+
+  expect(kernel.delivered.map(({ kind }) => kind)).toEqual(["notify", "send"]);
+  expect(kernel.delivered[0]?.text).toContain("model error: 429 quota");
+  expect(kernel.delivered[1]?.text).toContain("Its last reply: bumped to v2");
+}, 10_000);
+
+test("wakes the coordinator once for a thread turn that messaged it when the next turn's first line arrives early", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+
+  turnStarted(kernel, threadId);
+
+  transcript.push(
+    userLine("bump the version"),
+    ...toolCallLines("message_coordinator", "Message queued."),
+    replyLine("asked the coordinator"),
+  );
+
+  turnEnded(kernel, threadId, 4);
+  transcript.push(userLine("carry on"));
+  turnStarted(kernel, threadId);
+  transcript.push(replyLine("carried on"));
+  turnEnded(kernel, threadId, 6);
+
+  await until(() => kernel.delivered.length >= 2);
+
+  expect(kernel.delivered.map(({ kind }) => kind)).toEqual(["notify", "send"]);
+
+  expect(kernel.delivered[0]?.text).toContain(
+    "Its last reply: asked the coordinator",
+  );
+
+  expect(kernel.delivered[1]?.text).toContain("Its last reply: carried on");
+}, 10_000);
+
+test("holds a thread's turn notice, and what follows it, until the rest of the turn reaches the server", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+  const messageCoordinator = kernel.tool("message_coordinator");
+
+  const thread = {
+    session: kernel.session(threadId),
+    actor: `session:${threadId}` as const,
+  };
+
+  const asked = messageCoordinator.run({ text: "need a decision" }, thread);
+  turnStarted(kernel, threadId);
+  transcript.push(userLine("bump the version"));
+  turnEnded(kernel, threadId, 2);
+  const followed = messageCoordinator.run({ text: "and another" }, thread);
+  await Promise.all([asked, followed]);
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered).toEqual([
+    {
+      kind: "send",
+      text: `[Thread "Bump version" (${threadId})] need a decision`,
+    },
+  ]);
+
+  transcript.push(replyLine("bumped to v2"));
+  await until(() => kernel.delivered.length >= 3);
+
+  expect(kernel.delivered[1]?.text).toContain("Its last reply: bumped to v2");
+  expect(kernel.delivered[2]?.text).toContain("and another");
+}, 10_000);
+
+test("keeps a thread turn's notice as context when its model error reaches the server after the turn ended", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+
+  const asked = kernel
+    .tool("message_coordinator")
+    .run(
+      { text: "need a decision" },
+      { session: kernel.session(threadId), actor: `session:${threadId}` },
+    );
+
+  turnStarted(kernel, threadId);
+  transcript.push(userLine("bump the version"));
+  turnEnded(kernel, threadId, 2);
+  await asked;
+
+  await until(() => kernel.delivered.length > 0);
+  expect(kernel.delivered).toHaveLength(1);
+
+  transcript.push(errorLine("429 quota"));
+  await until(() => kernel.delivered.length > 1);
+
+  expect(kernel.delivered[1]?.kind).toBe("notify");
+  expect(kernel.delivered[1]?.text).toContain("model error: 429 quota");
+}, 10_000);
+
+test("gives the coordinator a held turn notice with what reached the server once the thread is archived", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+
+  turnStarted(kernel, threadId);
+  transcript.push(userLine("bump the version"), replyLine("working on it"));
+  turnEnded(kernel, threadId, 3);
+  kernel.update(threadId, { archivedAt: new Date().toISOString() });
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered[0]?.text).toContain("Its last reply: working on it");
+}, 10_000);
+
+test("reads a thread's whole transcript for a turn notice when its host doesn't say where the turn ended", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const transcript = kernel.transcripts.get(threadId) ?? [];
+
+  turnStarted(kernel, threadId);
+  transcript.push(userLine("bump the version"));
+  turnEnded(kernel, threadId);
+  transcript.push(replyLine("bumped to v2"));
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered[0]?.text).toContain("Its last reply: bumped to v2");
 }, 10_000);
 
 test("quotes a thread's last text reply when its turn ends on a tool call", async () => {

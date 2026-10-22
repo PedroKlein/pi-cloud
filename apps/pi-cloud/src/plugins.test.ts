@@ -355,6 +355,40 @@ test("tells a plugin how many lines a session's transcript has", async () => {
   expect(sessions?.transcriptLength("missing")).toBe(0);
 });
 
+test("tells a plugin how many transcript lines a turn ended with", async () => {
+  const ended: (number | undefined)[] = [];
+  let sessions: ServerPluginContext["sessions"] | undefined;
+
+  await start([
+    {
+      name: "turns",
+      register: (context) => {
+        sessions = context.sessions;
+
+        context.events.subscribe("TurnEnded", ({ transcriptLength }) => {
+          ended.push(transcriptLength);
+        });
+      },
+    },
+  ]);
+
+  faux.setResponses([fauxAssistantMessage([fauxText("all done")])]);
+
+  const session = await createSession();
+  await follow(session.id, idle);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "finish up",
+  });
+
+  await follow(session.id, entriesInclude('"all done"'));
+  await follow(session.id, idle);
+
+  expect(ended).toEqual([sessions?.transcriptLength(session.id)]);
+  expect(sessions?.transcript(session.id).at(-1)).toContain('"all done"');
+});
+
 test("leaves out plugins that are turned off", async () => {
   let registered = false;
 

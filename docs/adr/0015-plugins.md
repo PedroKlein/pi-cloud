@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md); v2 direction in [ADR 0022](0022-plugin-model-v2.md))
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md); `TurnEnded` carries the turn's transcript length; v2 direction in [ADR 0022](0022-plugin-model-v2.md))
 - Date: 2026-10-21
 
 ## Context
@@ -75,6 +75,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 ### Events
 
 - The server has an in-process event bus. Kernel code publishes `SessionCreated`, `SessionStateChanged`, `TurnStarted`, `TurnEnded`, `SessionArchived` and `ToolCalled`.
+- `TurnEnded` carries how many transcript lines the turn ended with, when the Session host reports it ([ADR 0006](0006-provider-protocol.md)). The server's copy of the transcript can still be behind, so a plugin that reads a turn's lines waits until the copy reaches that length. Added 2026-10-22.
 - Plugins subscribe to it and publish their own events, named `<plugin>.<Event>`.
 - Kernel code never calls a plugin. A feature reacts to events or serves tools, routes and model offers.
 - Events are in-process and not stored in v1. Current state in SQLite stays authoritative, as [extensibility.md](../extensibility.md#domain-events) says.

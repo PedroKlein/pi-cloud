@@ -26,7 +26,13 @@ export type KernelEvent =
       readonly previous: Session["status"];
     }
   | { readonly type: "TurnStarted"; readonly session: Session }
-  | { readonly type: "TurnEnded"; readonly session: Session }
+  | {
+      readonly type: "TurnEnded";
+      readonly session: Session;
+      // How many transcript lines the turn ended with, when the Session's
+      // host says. The transcript upload can still be behind it.
+      readonly transcriptLength?: number;
+    }
   | { readonly type: "SessionArchived"; readonly session: Session }
   | {
       readonly type: "ToolCalled";

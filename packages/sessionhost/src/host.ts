@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -176,7 +177,7 @@ export async function hostSession(
   const files = filesFeed(session.sessionManager.getCwd(), live, log);
 
   const unsubscribe = session.subscribe((event) => {
-    const liveEvent = toLiveEvent(event);
+    const liveEvent = toLiveEvent(event, session);
     if (liveEvent) {
       live.push(liveEvent);
     }
@@ -561,13 +562,20 @@ function slashCommands(session: AgentSession): readonly SlashCommand[] {
   ];
 }
 
-function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
+function toLiveEvent(
+  event: AgentSessionEvent,
+  session: AgentSession,
+): LiveEvent | undefined {
   if (event.type === "agent_start") {
     return { type: "status", status: "running" };
   }
 
   if (event.type === "agent_settled") {
-    return { type: "status", status: "idle" };
+    return {
+      type: "status",
+      status: "idle",
+      transcriptLength: transcriptLength(session),
+    };
   }
 
   if (
@@ -602,6 +610,17 @@ function toLiveEvent(event: AgentSessionEvent): LiveEvent | undefined {
   }
 
   return undefined;
+}
+
+// Pi's file holds its header and then one line per entry, and only exists
+// once the session has a conversation.
+function transcriptLength({
+  sessionFile,
+  sessionManager,
+}: AgentSession): number {
+  return sessionFile !== undefined && existsSync(sessionFile)
+    ? sessionManager.getEntryCount() + 1
+    : 0;
 }
 
 function liveQueue(

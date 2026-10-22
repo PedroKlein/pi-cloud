@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands)
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message; the idle status that ends a turn carries its transcript length), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands)
 - Date: 2026-10-17
 
 ## Context
@@ -43,6 +43,7 @@ The protocol follows Claude Code's shape: a work channel per provider and a stre
 - Pi's JSONL file on the provider stays the authoritative transcript while the Session runs.
 - The Session host POSTs each new JSONL entry to the server with its line number. The server stores it and answers with the highest contiguous line it has.
 - The JSONL file is the outbox. After a failure, the Session host resends from the server's last acknowledged line, so nothing extra is buffered, and a repeated POST is harmless.
+- Transcript lines and live events go up in separate POSTs, and neither waits for the other. So the idle status that ends a turn carries how many JSONL lines the turn ended with, and the server knows where the turn ends in its copy even while the upload is behind. Added 2026-10-22.
 - Browsers replay a Session from the server's copy, then follow live. Streaming text and tool progress are forwarded live but not stored; a reconnecting browser sees completed entries plus whatever is streaming at that moment.
 - If a provider is lost for good, the server's copy is what a fork to another provider starts from.
 

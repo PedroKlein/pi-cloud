@@ -864,13 +864,21 @@ function livePost(body: unknown): LivePost {
 // Only a status event changes the stored Session. The rest pass through to
 // browsers unchecked, so events from a newer agent still reach them.
 function liveEventOf(event: unknown): LiveEvent {
-  const { type, status } = fieldsOf(event);
+  const { type, status, transcriptLength } = fieldsOf(event);
   if (typeof type !== "string") {
     throw new BadRequest("each event needs a type");
   }
 
   if (type === "status" && status !== "idle" && status !== "running") {
     throw new BadRequest('status must be "idle" or "running"');
+  }
+
+  if (
+    type === "status" &&
+    transcriptLength !== undefined &&
+    integerOf("transcriptLength", transcriptLength) < 0
+  ) {
+    throw new BadRequest("transcriptLength must not be negative");
   }
 
   return event as LiveEvent;

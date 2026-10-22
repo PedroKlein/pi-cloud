@@ -13,6 +13,7 @@ import {
   threadView,
 } from "./prompts";
 import {
+  type Delivery,
   type Member,
   type Project,
   type ProjectStore,
@@ -49,7 +50,9 @@ export const projects: ServerPlugin = {
       });
     }
 
-    context.events.subscribe("TurnEnded", ({ session }) => {
+    // The transcript upload can trail TurnEnded, so a turn notice reads the
+    // transcript when it is delivered, up to where the turn ended.
+    context.events.subscribe("TurnEnded", ({ session, transcriptLength }) => {
       const thread = store.member(session.id);
       if (thread?.role === "thread") {
         const project = store.get(thread.projectId);
@@ -57,19 +60,9 @@ export const projects: ServerPlugin = {
           store.enqueue(project.coordinatorId, `plugin:projects`, {
             kind: "turn",
             threadId: thread.sessionId,
+            ...(transcriptLength !== undefined && { end: transcriptLength }),
           });
         }
-      }
-    });
-
-    // The transcript upload can trail TurnEnded, so a turn notice reads the
-    // transcript when it is delivered, up to where the thread's next turn began.
-    context.events.subscribe("TurnStarted", ({ session }) => {
-      if (store.member(session.id)?.role === "thread") {
-        store.endTurns(
-          session.id,
-          context.sessions.transcriptLength(session.id),
-        );
       }
     });
 
@@ -126,7 +119,11 @@ function deliver(
     // A turn notice reads the thread's whole transcript, so don't build one
     // every second for a Session that can't take it.
     const state = runState(target);
-    if (state === "offline" || state === "interrupted") {
+    if (
+      state === "offline" ||
+      state === "interrupted" ||
+      awaitsTranscript(queued.delivery, sessions)
+    ) {
       blocked.add(sessionId);
       continue;
     }
@@ -154,6 +151,20 @@ function deliver(
 
     store.delivered(queued.id);
   }
+}
+
+// A turn notice waits for the rest of its turn, which its thread's host
+// uploads even after an outage, until the thread is archived.
+function awaitsTranscript(
+  delivery: Delivery,
+  sessions: ServerPluginContext["sessions"],
+): boolean {
+  return (
+    delivery.kind === "turn" &&
+    delivery.end !== undefined &&
+    sessions.get(delivery.threadId)?.archivedAt === null &&
+    sessions.transcriptLength(delivery.threadId) < delivery.end
+  );
 }
 
 function sendQueued(
