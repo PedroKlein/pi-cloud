@@ -81,10 +81,12 @@ function resolve(
     : undefined;
 }
 
+// macOS and zip archives often spell "é" as "e" plus a combining accent; NFC
+// makes both spellings one file.
 function decoded(name: string | undefined): string | undefined {
   return name === undefined || name === ""
     ? undefined
-    : decodeURIComponent(name);
+    : decodeURIComponent(name).normalize("NFC");
 }
 
 async function serve(

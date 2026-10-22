@@ -199,3 +199,30 @@ test("accepts everyday file names and refuses only unsafe ones", async () => {
     "attachment; filename*=UTF-8''invoice%20%281%29.pdf",
   );
 });
+
+test("treats the composed and decomposed spellings of a name as one file", async () => {
+  const route = registered();
+  const composed = encodeURIComponent("r\u00e9sum\u00e9.pdf");
+  const decomposed = encodeURIComponent("re\u0301sume\u0301.pdf");
+
+  await put(route, `projects/p1/files/${decomposed}`, "from mac");
+
+  const fetched = await route(
+    new Request(`http://library/files/${composed}`),
+    `files/${composed}`,
+    member,
+  );
+
+  expect(fetched.status).toBe(200);
+  expect(await fetched.text()).toBe("from mac");
+
+  await put(route, `files/${composed}`, "from linux", member);
+
+  expect(await (await get(route, "projects/p1/files")).json()).toMatchObject([
+    { name: "r\u00e9sum\u00e9.pdf", size: 10 },
+  ]);
+
+  expect(
+    await (await get(route, `projects/p1/files/${decomposed}`)).text(),
+  ).toBe("from linux");
+});
