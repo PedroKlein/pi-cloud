@@ -182,9 +182,7 @@ function Routing({
               const down = model && unhealthy(health, model, now);
 
               return down
-                ? [
-                    `${value} until ${new Date(down.until).toLocaleTimeString()}`,
-                  ]
+                ? [`${value} until ${new Date(down.until).toLocaleString()}`]
                 : [];
             });
 
