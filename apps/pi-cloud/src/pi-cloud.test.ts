@@ -2120,6 +2120,7 @@ function fakeModelServer(reply: string): ReturnType<typeof Bun.serve> {
 
 async function startProcessAgent(
   model: ReturnType<typeof Bun.serve>,
+  extensionPaths: readonly string[] = [],
 ): Promise<void> {
   const agentDir = join(root, "pi-process");
   await mkdir(agentDir, { recursive: true });
@@ -2145,7 +2146,7 @@ async function startProcessAgent(
     provider: "process",
     dataDir: join(root, "process"),
     agentDir,
-    extensionPaths: [],
+    extensionPaths,
     folders: [root],
     log: (message, fields) => {
       agentLogs.push(`${message} ${JSON.stringify(fields)}`);
@@ -2283,6 +2284,65 @@ test("marks a session failed when its process cannot start it", async () => {
     const failed = await sessionWhere(session.id, (s) => s.status === "failed");
 
     expect(failed.error).toContain("model not available: nowhere/none");
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);
+
+test("keeps a session process working when its extensions print JSON", async () => {
+  const model = fakeModelServer("reply despite the noise");
+  const extension = join(root, "noisy.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", () => {
+    console.log(JSON.stringify({ error: "stray" }));
+    console.log(JSON.stringify({ terminal: null }));
+    console.log(JSON.stringify({ type: "terminal", command: null }));
+  });
+};
+`,
+  );
+
+  await startProcessAgent(model, [extension]);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "fake", id: "fake-model" },
+      })
+    ).json()) as Session;
+
+    await follow(session.id, status("idle"));
+
+    await api(`/api/sessions/${session.id}/commands`, {
+      type: "message",
+      text: "hi",
+    });
+
+    const reply = await follow(session.id, (events) =>
+      events.some(
+        (e) =>
+          e.type === "entry" && e.entry.includes("reply despite the noise"),
+      ),
+    );
+
+    expect(roles(reply)).toContain("assistant");
+
+    expect(
+      agentLogs.some(
+        (line) =>
+          line.startsWith("session process output") && line.includes("stray"),
+      ),
+    ).toBe(true);
+
+    const terminal = await openTerminal(session.id);
+    terminal.socket.send(encoder.encode("echo sum=$((40+2))\n"));
+
+    expect(await terminal.output("sum=42")).toContain("sum=42");
   } finally {
     await model.stop(true);
   }
