@@ -11,10 +11,13 @@ import { type DiffFile, type DiffLine, parseDiff } from "./diff";
 
 export const changes: WebPlugin = {
   name: "changes",
-  SessionPanel,
+  SessionHeader,
 };
 
-function SessionPanel({ session }: SessionPartProps): ReactElement {
+// The header's Diff button opens the session's changes in a side panel, like
+// the mockups and Claude Code's diff view.
+function SessionHeader({ session }: SessionPartProps): ReactElement | null {
+  const [open, setOpen] = useState(false);
   const [found, setFound] = useState<readonly CheckoutChanges[]>([]);
   const [pullRequests, setPullRequests] = useState<readonly PullRequest[]>([]);
 
@@ -40,20 +43,76 @@ function SessionPanel({ session }: SessionPartProps): ReactElement {
     [session],
   );
 
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const close = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", close);
+
+    return () => {
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const changed = found.filter(({ files }) => files.length > 0);
+  if (changed.length === 0) {
+    return null;
+  }
+
+  const count = changed.reduce((sum, { files }) => sum + files.length, 0);
+
   return (
     <>
-      {found
-        .filter(({ files }) => files.length > 0)
-        .map((checkout) => (
-          <Checkout
-            key={checkout.name}
-            checkout={checkout}
-            session={session}
-            pullRequest={pullRequests.find(
-              ({ name }) => name === checkout.name,
-            )}
-          />
-        ))}
+      <Button
+        variant="ghost"
+        aria-expanded={open}
+        aria-label={`Diff, ${String(count)} ${count === 1 ? "file" : "files"} changed`}
+        onClick={() => {
+          setOpen(!open);
+        }}
+      >
+        <Icon name="git-pull-request" className="size-3.5" />
+        Diff
+      </Button>
+      <section
+        role="dialog"
+        aria-label="Changes"
+        hidden={!open}
+        className="fixed inset-y-0 right-0 z-40 flex w-[min(760px,100vw)] flex-col border-l border-line bg-panel text-ui text-fg shadow-pop"
+      >
+        <header className="flex min-h-14 items-center gap-2 border-b border-line px-4">
+          <h2 className="flex-1 font-semibold text-fg-strong">Changes</h2>
+          <Button
+            variant="ghost"
+            iconOnly
+            aria-label="Close changes"
+            onClick={() => {
+              setOpen(false);
+            }}
+          >
+            <Icon name="x" />
+          </Button>
+        </header>
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-4">
+          {changed.map((checkout) => (
+            <Checkout
+              key={checkout.name}
+              checkout={checkout}
+              session={session}
+              pullRequest={pullRequests.find(
+                ({ name }) => name === checkout.name,
+              )}
+            />
+          ))}
+        </div>
+      </section>
     </>
   );
 }
@@ -100,13 +159,9 @@ function Checkout({
   };
 
   return (
-    <div className="relative">
-      <details className="group/changes">
-        <summary className="flex min-h-control cursor-pointer list-none items-center gap-1.5 text-label text-fg-dim hover:text-fg [&::-webkit-details-marker]:hidden">
-          <Icon
-            name="chevron-right"
-            className="size-3.5 transition-transform group-open/changes:rotate-90"
-          />
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-start gap-2">
+        <h3 className="flex min-h-control flex-1 items-center gap-1.5 text-label text-fg-dim">
           {`${name === "" ? "Changes" : `Changes in ${name}`} (${String(files.length)} ${files.length === 1 ? "file" : "files"})`}
           {!truncated && (
             <span className="font-mono text-mono-sm">
@@ -114,17 +169,22 @@ function Checkout({
               <span className="text-failed">−{removed}</span>
             </span>
           )}
-        </summary>
-        <div className="mt-2 flex max-h-[50vh] flex-col gap-2 overflow-auto">
-          {truncated ? (
-            <p className="text-fg-dim">The patch is too large to show.</p>
-          ) : (
-            diff.map((file) => (
-              <FileDiff key={file.path} file={file} review={review} />
-            ))
-          )}
-        </div>
-      </details>
+        </h3>
+        {branched && (
+          <PullRequestActions
+            name={name}
+            session={session}
+            pullRequest={pullRequest}
+          />
+        )}
+      </div>
+      {truncated ? (
+        <p className="text-fg-dim">The patch is too large to show.</p>
+      ) : (
+        diff.map((file) => (
+          <FileDiff key={file.path} file={file} review={review} />
+        ))
+      )}
       {comments.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-label text-fg-dim">
           {`${String(comments.length)} ${comments.length === 1 ? "comment" : "comments"} on the diff`}
@@ -145,13 +205,6 @@ function Checkout({
             </span>
           )}
         </div>
-      )}
-      {branched && (
-        <PullRequestActions
-          name={name}
-          session={session}
-          pullRequest={pullRequest}
-        />
       )}
     </div>
   );
@@ -191,7 +244,7 @@ function PullRequestActions({
     (pullRequest?.status === "compose" ? pullRequest.reason : undefined);
 
   return (
-    <div className="absolute top-0 right-0 flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
         {pullRequest?.status === "open" && (
           <>
@@ -247,7 +300,8 @@ function CreateMenu({
         }
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === "Escape" && open) {
+          event.stopPropagation();
           setOpen(false);
         }
       }}
