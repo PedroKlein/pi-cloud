@@ -71,8 +71,9 @@ export async function prepareWorkspace(
 
   // Each repository becomes a worktree of a listed folder that has it as a
   // remote, or a clone when none does. Searching the folders walks every root,
-  // so it waits until a checkout is missing.
-  const checkouts = await Promise.all(
+  // so it waits until a checkout is missing. A failure waits for the other
+  // checkouts, so none is still writing once the workspace counts as failed.
+  const settled = await Promise.allSettled(
     repositories.map(async ({ repository, startPoint, path }) => {
       const folder = (await exists(path))
         ? undefined
@@ -92,6 +93,15 @@ export async function prepareWorkspace(
 
       return { path: cwd, base };
     }),
+  );
+
+  const failed = settled.find((result) => result.status === "rejected");
+  if (failed !== undefined) {
+    throw failed.reason;
+  }
+
+  const checkouts = settled.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
   );
 
   return { cwd: dir, checkouts };
