@@ -79,8 +79,8 @@ export function App({
           }
         }}
         className={cn(
-          "z-20 w-sidebar shrink-0 border-r border-line max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(320px,85vw)] max-md:shadow-pop max-md:transition-transform motion-reduce:transition-none",
-          !drawer && "max-md:-translate-x-full",
+          "z-20 w-sidebar shrink-0 border-r border-line max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(320px,85vw)] max-md:shadow-pop max-md:transition-[translate,visibility] motion-reduce:transition-none",
+          !drawer && "max-md:invisible max-md:-translate-x-full",
         )}
       >
         <Sidebar
