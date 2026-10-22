@@ -111,3 +111,38 @@ test("closes a terminal socket whose output the server stops reading", async () 
   expect(logs).toContain("terminal fell behind");
   expect(logs).toContain("terminal socket closed");
 }, 30_000);
+
+test("stops an attempt the server fenced without failing its live events", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => Response.json({ error: "stale_generation" }, { status: 409 }),
+  });
+
+  let fences = 0;
+
+  const stream = httpSessionStream(
+    { server: server.url.href, provider: "laptop" },
+    {
+      sessionId: "s1",
+      generation: 1,
+      workspace: { kind: "folder", path: tmpdir() },
+      model: null,
+      thinking: null,
+      systemPrompt: null,
+      firstMessage: null,
+      plugins: [],
+    },
+    () => undefined,
+    () => {
+      fences += 1;
+    },
+  );
+
+  try {
+    await stream.publish([{ type: "status", status: "idle" }]);
+  } finally {
+    await server.stop();
+  }
+
+  expect(fences).toBe(1);
+});
