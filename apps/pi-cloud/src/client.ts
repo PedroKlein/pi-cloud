@@ -142,9 +142,16 @@ export function httpSessionStream(
 
       return ((await response.json()) as TranscriptAck).acked;
     },
+    // No one follows a fenced attempt live, such as one whose Session was
+    // just archived, so its events are dropped without a retry.
     publish: async (events) => {
       const live: LivePost = { generation, events };
-      await post("live", live);
+
+      await post("live", live).catch((error: unknown) => {
+        if (!rejected(error)) {
+          throw error;
+        }
+      });
     },
     commands: (listener) => {
       const controller = new AbortController();
