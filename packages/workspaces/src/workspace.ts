@@ -477,14 +477,16 @@ function repositoryKey(url: string): string {
       .replace(/\.git$/, "");
   }
 
-  return url
-    .trim()
-    .toLowerCase()
+  const normalized = url.trim().toLowerCase();
+  const scpSyntax = !normalized.includes("://");
+
+  const key = normalized
     .replace(/^[a-z+]+:\/\//, "")
     .replace(/^[^@/]+@/, "")
-    .replace(/^([^/:]+):(?!\d)/, "$1/")
     .replace(/\/+$/, "")
     .replace(/\.git$/, "");
+
+  return scpSyntax ? key.replace(/^([^/:]+):/, "$1/") : key;
 }
 
 // The checkout a worktree at path belongs to, or undefined when path is
