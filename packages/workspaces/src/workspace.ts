@@ -131,13 +131,7 @@ async function prepareCheckout(
   }
 
   if (workspace.kind === "worktree") {
-    const inCheckout = await git(
-      absolute(workspace.path),
-      "rev-parse",
-      "--is-inside-work-tree",
-    ).catch(() => "false");
-
-    if (inCheckout !== "true") {
+    if (!(await isCheckout(absolute(workspace.path)))) {
       throw new Error(
         `${workspace.path} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
       );
@@ -451,7 +445,7 @@ export async function findCheckouts(
 
     if (
       entries.some(({ name }) => name === ".git") &&
-      (await isCheckout(dir))
+      (await isCheckout(dir).catch(() => false))
     ) {
       found.push(dir);
 
@@ -815,11 +809,30 @@ function absolute(path: string): string {
   );
 }
 
+// git's own error is kept when it refuses a repository, such as one owned by
+// another user, since its message says how to fix that.
 async function isCheckout(path: string): Promise<boolean> {
-  return git(path, "rev-parse", "--is-inside-work-tree").then(
-    (inside) => inside === "true",
+  const isDirectory = await stat(path).then(
+    (found) => found.isDirectory(),
     () => false,
   );
+
+  if (!isDirectory) {
+    return false;
+  }
+
+  try {
+    return (await git(path, "rev-parse", "--is-inside-work-tree")) === "true";
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("not a git repository")
+    ) {
+      return false;
+    }
+
+    throw error;
+  }
 }
 
 async function exists(path: string): Promise<boolean> {
