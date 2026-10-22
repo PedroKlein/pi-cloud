@@ -13,8 +13,10 @@ const outputLimit = 64 * 1024 * 1024;
 
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
-// Diffs a throwaway copy of the index with every file added, so new files
-// show up in the patch without touching the user's own index.
+// Diffs the working tree through a throwaway copy of the index with every new
+// file marked intent-to-add, so new files show up in the patch without
+// touching the user's own index or writing their contents to the object
+// store. Submodules show only a moved commit, as in a staged diff.
 export async function workspaceChanges(
   cwd: string,
   base: string | null,
@@ -35,7 +37,7 @@ export async function workspaceChanges(
       () => undefined,
     );
 
-    await git(cwd, { env }, "add", "--all");
+    await git(cwd, { env }, "add", "--all", "--intent-to-add");
 
     const against =
       base ??
@@ -48,7 +50,14 @@ export async function workspaceChanges(
         "HEAD",
       ).catch(() => emptyTree));
 
-    const diff = ["diff", "--cached", "--no-color", "--no-ext-diff", against];
+    const diff = [
+      "diff",
+      "--no-color",
+      "--no-ext-diff",
+      "--ignore-submodules=dirty",
+      against,
+    ];
+
     const names = await git(cwd, { env }, ...diff, "--name-status", "-z");
     const stat = await git(cwd, { env }, ...diff, "--stat");
 
