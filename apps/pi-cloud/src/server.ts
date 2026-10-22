@@ -1,12 +1,15 @@
 import {
   type Answer,
+  type Attempt,
   type Command,
   checkoutName,
   type CreateSession,
   type ImageAttachment,
   imageLimits,
   imageTypes,
+  type LiveEvent,
   type LivePost,
+  type ModelRef,
   type QuestionAnswer,
   type RemovalReport,
   type RepositoryCheckout,
@@ -19,6 +22,7 @@ import {
   type TranscriptBatch,
   versionHeader,
   type WorkPoll,
+  type Workspace,
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -156,7 +160,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/tool-calls$/,
       agent(async (request, [id = ""]) => {
-        const call = await readJson<ToolCall>(request);
+        const call = toolCall(await readJson(request));
         const session = sessions.get(id);
         if (!session || !sessions.isCurrent(id, call.generation)) {
           return Response.json({ error: "stale_generation" }, { status: 409 });
@@ -188,7 +192,7 @@ export function createHandler(
       /^\/api\/sessions$/,
       async (request) => {
         const created = sessions.start({
-          ...createSession(await readJson<unknown>(request)),
+          ...createSession(await readJson(request)),
           actor: user,
         });
 
@@ -264,17 +268,14 @@ export function createHandler(
       "POST",
       /^\/api\/sessions\/([^/]+)\/commands$/,
       async (request, [id = ""]) =>
-        reply(
-          sessions.send(id, browserCommand(await readJson<unknown>(request))),
-          202,
-        ),
+        reply(sessions.send(id, browserCommand(await readJson(request))), 202),
     ],
     [
       "POST",
       /^\/agent\/work$/,
       agent(async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
-        const poll = await readJson<WorkPoll>(request);
+        const poll = workPoll(await readJson(request));
 
         const { start, unload, remove, interrupted } = await sessions.claim(
           provider,
@@ -301,10 +302,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/transcript$/,
       agent(async (request, [id = ""]) => {
-        const batch = await readJson<TranscriptBatch>(request);
-        if (!Number.isSafeInteger(batch.start) || batch.start < 0) {
-          throw new BadRequest("start must be a non-negative integer");
-        }
+        const batch = transcriptBatch(await readJson(request));
 
         return reply(sessions.appendTranscript(id, batch), 200);
       }),
@@ -313,7 +311,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/failed$/,
       agent(async (request, [id = ""]) => {
-        const failure = await readJson<StartFailure>(request);
+        const failure = startFailure(await readJson(request));
         log("session failed to start", { sessionId: id, ...failure });
 
         return reply(sessions.fail(id, failure), 204);
@@ -323,7 +321,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/workspace$/,
       agent(async (request, [id = ""]) => {
-        const report = await readJson<RemovalReport>(request);
+        const report = removalReport(await readJson(request));
         log("workspace removal reported", { sessionId: id, ...report });
 
         return reply(sessions.reportRemoval(id, report), 204);
@@ -333,7 +331,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/live$/,
       agent(async (request, [id = ""]) =>
-        reply(sessions.publish(id, await readJson<LivePost>(request)), 204),
+        reply(sessions.publish(id, livePost(await readJson(request))), 204),
       ),
     ],
     [
@@ -421,9 +419,9 @@ class BadRequest extends Error {}
 // v1 has no auth, so every browser request acts as the one owner.
 const user = `user:${owner}` as const;
 
-async function readJson<T>(request: Request): Promise<T> {
+async function readJson(request: Request): Promise<unknown> {
   try {
-    return (await request.json()) as T;
+    return await request.json();
   } catch {
     throw new BadRequest("body must be JSON");
   }
@@ -721,6 +719,107 @@ function startPointOf(startPoint: unknown): { startPoint?: string } {
   return { startPoint };
 }
 
+function toolCall(body: unknown): ToolCall {
+  const { generation, id, name, input } = fieldsOf(body);
+
+  return {
+    generation: integerOf("generation", generation),
+    id: textOf("id", id),
+    name: textOf("name", name),
+    input,
+  };
+}
+
+function workPoll(body: unknown): WorkPoll {
+  const { running, folders, models } = fieldsOf(body);
+
+  return {
+    running: listOf("running", running, attemptOf),
+    folders: listOf("folders", folders, (folder) =>
+      textOf("each folder", folder),
+    ),
+    models: listOf("models", models, modelOf),
+  };
+}
+
+function attemptOf(attempt: unknown): Attempt {
+  const { sessionId, generation } = fieldsOf(attempt);
+
+  return {
+    sessionId: textOf("sessionId", sessionId),
+    generation: integerOf("generation", generation),
+  };
+}
+
+function modelOf(model: unknown): ModelRef {
+  const { provider, id } = fieldsOf(model);
+
+  return { provider: textOf("provider", provider), id: textOf("id", id) };
+}
+
+function transcriptBatch(body: unknown): TranscriptBatch {
+  const { generation, start, lines } = fieldsOf(body);
+  if (typeof start !== "number" || !Number.isSafeInteger(start) || start < 0) {
+    throw new BadRequest("start must be a non-negative integer");
+  }
+
+  return {
+    generation: integerOf("generation", generation),
+    start,
+    lines: listOf("lines", lines, (line) => textOf("each line", line)),
+  };
+}
+
+function startFailure(body: unknown): StartFailure {
+  const { generation, error } = fieldsOf(body);
+
+  return {
+    generation: integerOf("generation", generation),
+    error: textOf("error", error),
+  };
+}
+
+function removalReport(body: unknown): RemovalReport {
+  const { outcome, restore, reason } = fieldsOf(body);
+
+  switch (outcome) {
+    case "removed":
+      if (typeof fieldsOf(restore)["kind"] !== "string") {
+        throw new BadRequest("restore must be a workspace with a kind");
+      }
+
+      return { outcome, restore: restore as Workspace };
+    case "kept":
+      return { outcome, reason: textOf("reason", reason) };
+    default:
+      throw new BadRequest('outcome must be "removed" or "kept"');
+  }
+}
+
+function livePost(body: unknown): LivePost {
+  const { generation, events } = fieldsOf(body);
+
+  return {
+    generation: integerOf("generation", generation),
+    events: listOf("events", events, liveEventOf),
+  };
+}
+
+// Only a status event changes the stored Session. The rest pass through to
+// browsers unchecked, so events from a newer agent still reach them.
+function liveEventOf(event: unknown): LiveEvent {
+  const { type, status } = fieldsOf(event);
+  if (typeof type !== "string") {
+    throw new BadRequest("each event needs a type");
+  }
+
+  if (type === "status" && status !== "idle" && status !== "running") {
+    throw new BadRequest('status must be "idle" or "running"');
+  }
+
+  return event as LiveEvent;
+}
+
 function fieldsOf(value: unknown): Record<string, unknown> {
   const fields = typeof value === "object" && value !== null ? value : {};
 
@@ -738,6 +837,14 @@ function textOf(key: string, value: unknown): string {
 function textOrNullOf(key: string, value: unknown): string | null {
   if (value !== null && typeof value !== "string") {
     throw new BadRequest(`${key} must be a string or null`);
+  }
+
+  return value;
+}
+
+function integerOf(key: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new BadRequest(`${key} must be an integer`);
   }
 
   return value;
