@@ -215,6 +215,26 @@ const errorLine = (error: string): string =>
     },
   });
 
+const toolCallLines = (name: string, result: string): string[] => [
+  JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "call-1", name, arguments: {} }],
+      stopReason: "toolUse",
+    },
+  }),
+  JSON.stringify({
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: name,
+      content: [{ type: "text", text: result }],
+    },
+  }),
+];
+
 function turn(
   kernel: FakeKernel,
   threadId: string,
@@ -287,4 +307,20 @@ test("wakes an offline coordinator only for the held thread turns that ended wel
   expect(kernel.delivered.map(({ kind }) => kind)).toEqual(["send", "notify"]);
   expect(kernel.delivered[0]?.text).toContain("finished a turn");
   expect(kernel.delivered[1]?.text).toContain("model error: 429 quota");
+}, 10_000);
+
+test("quotes a thread's last text reply when its turn ends on a tool call", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+
+  turn(kernel, threadId, [
+    userLine("bump the version"),
+    replyLine("bumped to v2"),
+    ...toolCallLines("set_status", "Work state set to review_ready."),
+  ]);
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered[0]?.text).toContain("Its last reply: bumped to v2");
 }, 10_000);

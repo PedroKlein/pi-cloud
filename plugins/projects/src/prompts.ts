@@ -159,7 +159,12 @@ export function messageText(line: string): {
 }
 
 function lastReply(transcript: readonly string[]): string | undefined {
-  return transcript
-    .map(messageText)
-    .findLast((message) => message?.role === "assistant")?.text;
+  for (const line of transcript.toReversed()) {
+    const message = messageText(line);
+    if (message?.role === "assistant") {
+      return message.text;
+    }
+  }
+
+  return undefined;
 }
