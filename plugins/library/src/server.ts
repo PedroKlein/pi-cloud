@@ -1,7 +1,7 @@
 import type { ServerPlugin, ToolCaller } from "@pi-cloud/plugins";
 import type { Actor } from "@pi-cloud/protocol";
 import { type LibraryStore, libraryStore } from "./library";
-import { fileLimit, nameRule, validName } from "./model";
+import { fileLimit, nameRule, sizeRule, validName } from "./model";
 
 export const library: ServerPlugin = {
   name: "library",
@@ -134,12 +134,7 @@ async function serve(
 
   const content = new Uint8Array(await request.arrayBuffer());
   if (content.length > fileLimit) {
-    return Response.json(
-      {
-        error: `library files are limited to ${String(fileLimit / 1024 / 1024)} MB`,
-      },
-      { status: 413 },
-    );
+    return Response.json({ error: sizeRule }, { status: 413 });
   }
 
   store.write(projectId, name, content, actor);

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -6,7 +6,13 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
-import { type LibraryFile, nameRule, validName } from "./model";
+import {
+  fileLimit,
+  type LibraryFile,
+  nameRule,
+  sizeRule,
+  validName,
+} from "./model";
 
 // Only Sessions in a Project get the library tools.
 export const library: SessionPlugin = {
@@ -87,6 +93,11 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
       async execute(_id, params, signal, _update, ctx) {
         const path = resolve(ctx.cwd, params.path);
         const name = params.name ?? basename(path);
+
+        if ((await stat(path)).size > fileLimit) {
+          throw new Error(sizeRule);
+        }
+
         const content = await readFile(path);
 
         await ok(
