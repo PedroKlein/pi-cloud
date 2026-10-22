@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
 import {
+  appendFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -246,6 +247,38 @@ test("fails a worktree of a folder that is not a checkout", async () => {
     outcome: "removed",
     restore: { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
   });
+});
+
+test("fails a worktree with git's own error when git can't read the checkout", async () => {
+  await appendFile(join(repository, ".git", "config"), "[core\n");
+
+  const prepared = prepareWorkspace(
+    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { dir: join(root, "workspaces", "s1"), folders: [repository] },
+    noLog,
+  );
+
+  expect(prepared).rejects.toThrow("bad config line");
+  await prepared.catch(() => undefined);
+});
+
+test("keeps a worktree whose checkout git can't read, even when forced", async () => {
+  const dir = join(root, "workspaces", "s1");
+
+  const workspace = {
+    kind: "worktree",
+    path: repository,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  await prepareWorkspace(workspace, { dir, folders: [repository] }, noLog);
+  await appendFile(join(repository, ".git", "config"), "[core\n");
+
+  const removed = removeWorkspace(workspace, { dir, force: true }, noLog);
+
+  expect(removed).rejects.toThrow("bad config line");
+  await removed.catch(() => undefined);
+  expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
 });
 
 test("clones the repository onto the session's own branch", async () => {
