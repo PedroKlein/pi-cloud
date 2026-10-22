@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Assignment, Removal } from "@pi-cloud/protocol";
+import type { Assignment, Removal, RemovalReport } from "@pi-cloud/protocol";
 import { runProvider, type Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
@@ -46,7 +46,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const agent = { server: options.server, provider: options.provider };
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
-  const removing = new Map<string, Promise<void>>();
+  const removing = new Map<string, Promise<RemovalReport | undefined>>();
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
@@ -86,10 +86,16 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     };
 
     await stopping.get(sessionId);
-    await removing.get(sessionId);
+    const report = await removing.get(sessionId);
+
+    // An unarchive can overtake a removal, so the assignment may still name
+    // the workspace that removal just deleted.
+    const workspace =
+      report?.outcome === "removed" ? report.restore : assignment.workspace;
+
     try {
       const { cwd, checkouts } = await prepareWorkspace(
-        assignment.workspace,
+        workspace,
         {
           dir: workspaceDir(sessionId),
           folders: options.folders,
@@ -165,7 +171,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     }
   };
 
-  const remove = async (removal: Removal, sessionLog: Log): Promise<void> => {
+  const remove = async (
+    removal: Removal,
+    sessionLog: Log,
+  ): Promise<RemovalReport | undefined> => {
     const { sessionId, workspace, force } = removal;
     await stopping.get(sessionId);
     try {
@@ -175,9 +184,15 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         sessionLog,
       );
 
-      await reportRemoval(agent, sessionId, report);
+      await reportRemoval(agent, sessionId, report).catch((error: unknown) => {
+        sessionLog("workspace removal not reported", { error: String(error) });
+      });
+
+      return report;
     } catch (error) {
       sessionLog("workspace removal failed", { error: String(error) });
+
+      return undefined;
     }
   };
 
