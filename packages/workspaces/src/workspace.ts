@@ -11,7 +11,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import {
   checkoutName,
@@ -59,12 +59,18 @@ export async function prepareWorkspace(
 
   const { dir, folders } = options;
   const { branch } = workspace;
+
+  const repositories = workspace.repositories.map((checkout) => ({
+    ...checkout,
+    path: checkoutPath(dir, checkout.repository),
+  }));
+
   await mkdir(dir, { recursive: true });
 
   // Each repository becomes a worktree of a listed folder that has it as a
   // remote, or a clone when none does.
   const checkouts = await Promise.all(
-    workspace.repositories.map(async ({ repository, startPoint }) => {
+    repositories.map(async ({ repository, startPoint, path }) => {
       const folder = await folderOf(repository, folders);
       const start = startPoint === undefined ? {} : { startPoint };
 
@@ -72,7 +78,7 @@ export async function prepareWorkspace(
         folder === undefined
           ? { kind: "clone", repository, branch, ...start }
           : { kind: "worktree", path: folder, branch, ...start },
-        { ...options, dir: join(dir, checkoutName(repository)) },
+        { ...options, dir: path },
         log,
       );
 
@@ -190,7 +196,7 @@ export async function removeWorkspace(
 
   const checkouts = await Promise.all(
     workspace.repositories.map(async (checkout) => {
-      const path = join(dir, checkoutName(checkout.repository));
+      const path = checkoutPath(dir, checkout.repository);
       const folder = await worktreeFolder(path);
 
       return {
@@ -209,9 +215,7 @@ export async function removeWorkspace(
   );
 
   if (!force) {
-    const names = new Set(
-      workspace.repositories.map(({ repository }) => checkoutName(repository)),
-    );
+    const names = new Set(checkouts.map(({ path }) => basename(path)));
 
     const outside = (await exists(dir))
       ? (await readdir(dir)).filter((name) => !names.has(name)).sort()
@@ -232,7 +236,7 @@ export async function removeWorkspace(
 
         return {
           outcome: "kept",
-          reason: `${checkoutName(checkout.repository)}: ${reason}`,
+          reason: `${basename(path)}: ${reason}`,
         };
       }
     }
@@ -726,6 +730,15 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
       { cause: error },
     );
   }
+}
+
+function checkoutPath(dir: string, repository: string): string {
+  const name = checkoutName(repository);
+  if (name === undefined) {
+    throw new Error(`${repository} has no name for its checkout folder`);
+  }
+
+  return join(dir, name);
 }
 
 function absolute(path: string): string {

@@ -504,7 +504,7 @@ function workspaceRequest(workspace: unknown): WorkspaceRequest {
   ) {
     const checkouts = repositories.map(repositoryCheckout);
     const names = checkouts.map((c) => checkoutName(c.repository));
-    if (names.includes("") || new Set(names).size !== names.length) {
+    if (names.includes(undefined) || new Set(names).size !== names.length) {
       throw new BadRequest("repositories need different names");
     }
 

@@ -1880,6 +1880,21 @@ test("rejects repositories that would share a folder", async () => {
   });
 });
 
+test("rejects a repository whose URL leaves no name for its folder", async () => {
+  for (const repository of [
+    "https://example.com/org/..",
+    "https://example.com/org/.",
+    "/home/me/app/.git",
+  ]) {
+    const response = await api("/api/sessions", {
+      environment: await environmentOf("laptop"),
+      workspace: { kind: "repositories", repositories: [{ repository }] },
+    });
+
+    expect(response.status).toBe(400);
+  }
+});
+
 test("keeps a worktree with unpushed work on archive until the user forces removal", async () => {
   const checkout = await pushedCheckout();
 
