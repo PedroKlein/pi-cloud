@@ -1,7 +1,7 @@
 import type { ServerPlugin, ToolCaller } from "@pi-cloud/plugins";
 import type { Actor } from "@pi-cloud/protocol";
 import { type LibraryStore, libraryStore } from "./library";
-import { fileLimit, validName } from "./model";
+import { fileLimit, nameRule, validName } from "./model";
 
 export const library: ServerPlugin = {
   name: "library",
@@ -96,7 +96,9 @@ async function serve(
   }
 
   if (name === undefined) {
-    return Response.json(store.files(projectId));
+    return request.method === "GET"
+      ? Response.json(store.files(projectId))
+      : Response.json({ error: "not_found" }, { status: 404 });
   }
 
   if (request.method === "GET") {
@@ -117,10 +119,7 @@ async function serve(
   }
 
   if (!validName(name)) {
-    return Response.json(
-      { error: "file names may use letters, digits, spaces, . _ and -" },
-      { status: 400 },
-    );
+    return Response.json({ error: nameRule }, { status: 400 });
   }
 
   const content = new Uint8Array(await request.arrayBuffer());

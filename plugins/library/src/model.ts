@@ -14,6 +14,10 @@ export interface LibraryWrite {
 
 export const fileLimit = 10 * 1024 * 1024;
 
+export const nameRule = "file names may use letters, digits, spaces, . _ and -";
+
 export function validName(name: string): boolean {
-  return name.length <= 200 && /^[\w.-][\w .-]*$/.test(name);
+  return (
+    name.length <= 200 && /^[\w.-][\w .-]*$/.test(name) && !/^\.+$/.test(name)
+  );
 }

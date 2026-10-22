@@ -736,6 +736,74 @@ test("shares files between the user and Project sessions through the library", a
   expect(await (await api(`${files}/readme.md`)).text()).toBe("app\n");
 }, 30_000);
 
+test("refuses library file names made only of dots", async () => {
+  const a = await repository("app");
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("publish_file", { path: "app/README.md", name: "." }),
+        fauxToolCall("fetch_file", { name: ".", path: "app/listing.json" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("tried")]),
+  ]);
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Docs",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  const files = `/api/plugins/library/projects/${id}/files`;
+
+  const dot = await fetch(new URL(`${files}/.`, server?.url), {
+    method: "PUT",
+    body: "x",
+  });
+
+  const dots = await fetch(new URL(`${files}/...`, server?.url), {
+    method: "PUT",
+    body: "x",
+  });
+
+  expect(dot.status).toBe(404);
+  expect(dots.status).toBe(400);
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "share the readme",
+  });
+
+  const text = await until(
+    async () => transcript(coordinatorId),
+    (said) => said.includes("tried"),
+  );
+
+  expect(text).not.toContain("Published");
+  expect(text).toContain("file names may use letters, digits, spaces");
+  expect(await (await api(files)).json()).toEqual([]);
+
+  expect(
+    readFile(
+      join(root, "local", "workspaces", coordinatorId, "app", "listing.json"),
+    ),
+  ).rejects.toThrow("ENOENT");
+}, 30_000);
+
 test("runs a Project's threads across two machines and two repositories", async () => {
   const app = await repository("app");
   const lib = await repository("lib");
