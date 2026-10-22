@@ -66,9 +66,7 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -98,15 +96,40 @@ test("chats with a session, replays it after a reload and opens its terminal", a
     .waitFor();
 }, 30_000);
 
+test("starts a session with the task from the New session form", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("on it")])]);
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+
+  const task = form.getByLabel("What should Pi do?");
+
+  await task.fill("Paginate the session list");
+  await task.press("Control+Enter");
+
+  await page
+    .locator('#chat li[data-role="user"]', {
+      hasText: "Paginate the session list",
+    })
+    .waitFor();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "on it" })
+    .waitFor();
+}, 30_000);
+
 test("archives a session, shows it only with archived sessions and unarchives it", async () => {
   await page.goto(server.url.href);
 
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -168,9 +191,7 @@ test("finds sessions by search and notifies when one finishes", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -231,9 +252,7 @@ test("answers the agent's questions in the prompt card", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -284,9 +303,7 @@ test("shows the session's changes and usage from their plugins", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -424,9 +441,7 @@ test("attaches an image to a message and shows it in the chat", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -474,9 +489,7 @@ test("picks a slash command from the composer's menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -512,9 +525,7 @@ test("mentions a workspace file from the composer's menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(project);
@@ -588,9 +599,7 @@ test("creates a pull request from the Changes panel", async () => {
     await page.getByRole("button", { name: "New session" }).click();
     const form = page.locator("form#create");
 
-    await form
-      .locator("[name=environment]")
-      .selectOption({ label: "e2e (e2e, online)" });
+    await form.getByRole("radio", { name: /^e2e/ }).check();
 
     await form.locator("[name=kind]").selectOption("worktree");
     await form.locator("[name=location]").fill(project);
@@ -675,9 +684,7 @@ test("takes a queued message back into the composer", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -727,9 +734,7 @@ test("sends comments on diff lines to Pi as one message", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(project);
@@ -791,9 +796,7 @@ test("switches a session's model and reasoning level from the composer", async (
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -836,9 +839,7 @@ test("starts a session at the reasoning level picked in the New session form", a
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -864,9 +865,7 @@ test("runs Pi's built-in commands from the composer", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
@@ -899,9 +898,7 @@ test("logs in to a provider from the model menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form
-    .locator("[name=environment]")
-    .selectOption({ label: "e2e (e2e, online)" });
+  await form.getByRole("radio", { name: /^e2e/ }).check();
 
   await form.locator("[name=kind]").selectOption("folder");
   await form.locator("[name=location]").fill(root);
