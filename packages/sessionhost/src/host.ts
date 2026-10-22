@@ -544,7 +544,12 @@ function liveQueue(
     },
     close: async () => {
       closed = true;
-      await sending;
+
+      let drained: Promise<void>;
+      do {
+        drained = sending;
+        await drained;
+      } while (drained !== sending);
     },
   };
 }

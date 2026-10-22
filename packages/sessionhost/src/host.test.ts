@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
   fauxAssistantMessage,
@@ -337,6 +338,42 @@ test("keeps the latest status when a live post fails", async () => {
   ]);
 
   expect(fake.events.some((e) => e.type === "commands")).toBe(true);
+});
+
+test("finishes retrying a failed live post before it stops", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream({ failPublishes: 2 });
+  const logs: string[] = [];
+
+  const slow: SessionStream = {
+    ...fake.stream,
+    publish: async (events) => {
+      await sleep(10);
+      await fake.stream.publish(events);
+    },
+  };
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    slow,
+    (message) => logs.push(message),
+  );
+
+  // By the second failure every startup event has been queued, so the retry
+  // is the only post left when the session stops.
+  await fake.waitFor(
+    () => logs.filter((m) => m === "live events dropped").length === 2,
+  );
+
+  await hosted.stop();
+
+  expect(fake.events).toContainEqual({ type: "status", status: "idle" });
 });
 
 test("resends extension status and widgets when a live post fails", async () => {
