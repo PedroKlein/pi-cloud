@@ -50,6 +50,8 @@ type Route = (
   params: readonly string[],
 ) => Response | Promise<Response>;
 
+type RouteTable = readonly (readonly [string, RegExp, Route])[];
+
 export function createHandler(
   sessions: Sessions,
   plugins: PluginHost,
@@ -76,7 +78,7 @@ export function createHandler(
         sessionId !== undefined &&
         sessions.get(sessionId)?.provider !== provider
       ) {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        return notFound();
       }
 
       return route(request, params);
@@ -94,7 +96,7 @@ export function createHandler(
       return reply(result, 200);
     };
 
-  const routes: readonly (readonly [string, RegExp, Route])[] = [
+  const browserRoutes: RouteTable = [
     [
       "GET",
       /^\/healthz$/,
@@ -116,60 +118,7 @@ export function createHandler(
       "ANY",
       /^\/api\/plugins\/([^/]+)\/(.*)$/,
       async (request, [name = "", path = ""]) =>
-        (await plugins.route(request, name, path)) ??
-        Response.json({ error: "not_found" }, { status: 404 }),
-    ],
-    [
-      "ANY",
-      /^\/agent\/sessions\/([^/]+)\/plugins\/([^/]+)\/(.*)$/,
-      agent(async (request, [id = "", name = "", path = ""]) => {
-        const session = sessions.get(id);
-
-        const generation = Number(
-          new URL(request.url).searchParams.get("generation") ?? NaN,
-        );
-
-        if (!session || !sessions.isCurrent(id, generation)) {
-          return Response.json({ error: "stale_generation" }, { status: 409 });
-        }
-
-        return (
-          (await plugins.route(request, name, path, {
-            session,
-            actor: `session:${id}`,
-          })) ?? Response.json({ error: "not_found" }, { status: 404 })
-        );
-      }),
-    ],
-    [
-      "GET",
-      /^\/agent\/sessions\/([^/]+)\/tools$/,
-      agent((request, [id = ""]) => {
-        const session = sessions.get(id);
-
-        const generation = Number(
-          new URL(request.url).searchParams.get("generation") ?? NaN,
-        );
-
-        return session && sessions.isCurrent(id, generation)
-          ? Response.json(plugins.tools(session))
-          : Response.json({ error: "stale_generation" }, { status: 409 });
-      }),
-    ],
-    [
-      "POST",
-      /^\/agent\/sessions\/([^/]+)\/tool-calls$/,
-      agent(async (request, [id = ""]) => {
-        const call = toolCall(await readJson(request));
-        const session = sessions.get(id);
-        if (!session || !sessions.isCurrent(id, call.generation)) {
-          return Response.json({ error: "stale_generation" }, { status: 409 });
-        }
-
-        plugins.call(session, call);
-
-        return new Response(null, { status: 202 });
-      }),
+        (await plugins.route(request, name, path)) ?? notFound(),
     ],
     [
       "GET",
@@ -213,9 +162,7 @@ export function createHandler(
       (_request, [id = ""]) => {
         const session = sessions.get(id);
 
-        return session
-          ? Response.json(session)
-          : Response.json({ error: "not_found" }, { status: 404 });
+        return session ? Response.json(session) : notFound();
       },
     ],
     [
@@ -270,10 +217,65 @@ export function createHandler(
       async (request, [id = ""]) =>
         reply(sessions.send(id, browserCommand(await readJson(request))), 202),
     ],
+  ];
+
+  const agentRoutes: RouteTable = [
+    [
+      "ANY",
+      /^\/agent\/sessions\/([^/]+)\/plugins\/([^/]+)\/(.*)$/,
+      async (request, [id = "", name = "", path = ""]) => {
+        const session = sessions.get(id);
+
+        const generation = Number(
+          new URL(request.url).searchParams.get("generation") ?? NaN,
+        );
+
+        if (!session || !sessions.isCurrent(id, generation)) {
+          return Response.json({ error: "stale_generation" }, { status: 409 });
+        }
+
+        return (
+          (await plugins.route(request, name, path, {
+            session,
+            actor: `session:${id}`,
+          })) ?? notFound()
+        );
+      },
+    ],
+    [
+      "GET",
+      /^\/agent\/sessions\/([^/]+)\/tools$/,
+      (request, [id = ""]) => {
+        const session = sessions.get(id);
+
+        const generation = Number(
+          new URL(request.url).searchParams.get("generation") ?? NaN,
+        );
+
+        return session && sessions.isCurrent(id, generation)
+          ? Response.json(plugins.tools(session))
+          : Response.json({ error: "stale_generation" }, { status: 409 });
+      },
+    ],
+    [
+      "POST",
+      /^\/agent\/sessions\/([^/]+)\/tool-calls$/,
+      async (request, [id = ""]) => {
+        const call = toolCall(await readJson(request));
+        const session = sessions.get(id);
+        if (!session || !sessions.isCurrent(id, call.generation)) {
+          return Response.json({ error: "stale_generation" }, { status: 409 });
+        }
+
+        plugins.call(session, call);
+
+        return new Response(null, { status: 202 });
+      },
+    ],
     [
       "POST",
       /^\/agent\/work$/,
-      agent(async (request) => {
+      async (request) => {
         const provider = request.headers.get(providerHeader) ?? "";
         const poll = workPoll(await readJson(request));
 
@@ -296,48 +298,47 @@ export function createHandler(
         }
 
         return Response.json({ start, unload, remove });
-      }),
+      },
     ],
     [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/transcript$/,
-      agent(async (request, [id = ""]) => {
+      async (request, [id = ""]) => {
         const batch = transcriptBatch(await readJson(request));
 
         return reply(sessions.appendTranscript(id, batch), 200);
-      }),
+      },
     ],
     [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/failed$/,
-      agent(async (request, [id = ""]) => {
+      async (request, [id = ""]) => {
         const failure = startFailure(await readJson(request));
         log("session failed to start", { sessionId: id, ...failure });
 
         return reply(sessions.fail(id, failure), 204);
-      }),
+      },
     ],
     [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/workspace$/,
-      agent(async (request, [id = ""]) => {
+      async (request, [id = ""]) => {
         const report = removalReport(await readJson(request));
         log("workspace removal reported", { sessionId: id, ...report });
 
         return reply(sessions.reportRemoval(id, report), 204);
-      }),
+      },
     ],
     [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/live$/,
-      agent(async (request, [id = ""]) =>
+      async (request, [id = ""]) =>
         reply(sessions.publish(id, livePost(await readJson(request))), 204),
-      ),
     ],
     [
       "GET",
       /^\/agent\/sessions\/([^/]+)\/commands$/,
-      agent((request, [id = ""]) => {
+      (request, [id = ""]) => {
         const generation = Number(
           new URL(request.url).searchParams.get("generation") ?? NaN,
         );
@@ -370,8 +371,15 @@ export function createHandler(
 
           return attached.value;
         });
-      }),
+      },
     ],
+  ];
+
+  const routes: RouteTable = [
+    ...browserRoutes,
+    ...agentRoutes.map(
+      ([method, pattern, route]) => [method, pattern, agent(route)] as const,
+    ),
   ];
 
   return async (request) => {
@@ -397,7 +405,7 @@ export function createHandler(
       }
     }
 
-    return Response.json({ error: "not_found" }, { status: 404 });
+    return notFound();
   };
 }
 
@@ -412,6 +420,10 @@ function reply(result: Result<unknown>, status: number): Response {
   return result.value === undefined
     ? new Response(null, { status })
     : Response.json(result.value, { status });
+}
+
+function notFound(): Response {
+  return Response.json({ error: "not_found" }, { status: 404 });
 }
 
 class BadRequest extends Error {}
