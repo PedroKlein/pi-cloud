@@ -139,7 +139,8 @@ test("archives a session, shows it only with archived sessions and unarchives it
   const item = page.locator(`#sessions li[data-id="${id}"]`);
   await item.waitFor();
 
-  await page.getByRole("button", { name: "Archive" }).click();
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Archive" }).click();
   await page.locator("#status", { hasText: "archived" }).waitFor();
   await page.locator("#prompt").waitFor({ state: "hidden" });
   await page.reload();
@@ -148,7 +149,8 @@ test("archives a session, shows it only with archived sessions and unarchives it
   await item.waitFor({ state: "detached" });
   await page.getByLabel("Show archived").check();
   await item.waitFor();
-  await page.getByRole("button", { name: "Unarchive" }).click();
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Unarchive" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
   expect(new URL(page.url()).hash.slice(1)).toBe(id);
