@@ -1,70 +1,79 @@
 import { expect, test } from "bun:test";
-import { aliasesOf, candidates, failure } from "./gateway";
+import { candidates, failure } from "./gateway";
 import type { AliasConfig } from "./model";
 
 const config: AliasConfig = {
-  fallbackChain: ["copilot", "google"],
-  backends: {
-    copilot: {
-      tiers: { medium: ["gpt-5.3-codex", "claude-sonnet"], light: "gpt-mini" },
-    },
-    google: {
-      tiers: { medium: "gemini-flash" },
-      resetSchedule: "utc-midnight",
-    },
+  models: {
+    "medium-1": [
+      "github-copilot/claude-haiku-4.5",
+      "google/gemini-flash",
+      "github-copilot/gpt-5.3-codex",
+    ],
   },
+  providers: { google: { resetSchedule: "utc-midnight" } },
 };
 
 const now = new Date("2026-10-21T20:30:00Z");
+const gemini = { provider: "google", id: "gemini-flash" };
 
-test("names aliases by tier, counted from the first backend in the chain", () => {
-  expect(aliasesOf(config).map(({ id }) => id)).toEqual([
-    "medium-1",
-    "medium-2",
-    "light-1",
-  ]);
-});
-
-test("routes past an unhealthy backend and clamps to a shorter list", () => {
+test("routes an alias through its models in order, across providers, past unhealthy ones", () => {
   const health = {
     version: 1,
     unhealthyUntil: {
-      copilot: { until: "2026-10-21T21:00:00Z", reason: "402" },
+      "github-copilot/claude-haiku-4.5": {
+        until: "2026-10-21T20:31:00Z",
+        reason: "429",
+      },
     },
   } as const;
 
-  expect(
-    candidates(
-      config,
-      health,
-      { id: "medium-2", tier: "medium", index: 2 },
-      now,
-    ),
-  ).toEqual([{ backend: "google", modelId: "gemini-flash" }]);
+  expect(candidates(config, health, "medium-1", now)).toEqual([
+    gemini,
+    { provider: "github-copilot", id: "gpt-5.3-codex" },
+  ]);
 });
 
-test("cools a rate limit down for a minute and holds a cap until its reset", () => {
-  expect(failure(config, "google", "429 Too Many Requests", now)?.until).toBe(
-    "2026-10-21T20:31:00.000Z",
-  );
+test("a provider cap benches every model of that provider", () => {
+  const health = {
+    version: 1,
+    unhealthyUntil: {
+      "github-copilot": { until: "2026-10-22T00:00:00Z", reason: "402" },
+    },
+  } as const;
 
-  expect(failure(config, "google", "402 Payment Required", now)?.until).toBe(
-    "2026-10-22T00:00:00.000Z",
-  );
+  expect(candidates(config, health, "medium-1", now)).toEqual([gemini]);
+});
 
-  expect(failure(config, "google", "context too long", now)).toBeUndefined();
+test("cools a rate-limited model down for a minute and holds a provider cap until its reset", () => {
+  expect(failure(config, gemini, "429 Too Many Requests", now)).toEqual({
+    key: "google/gemini-flash",
+    entry: {
+      until: "2026-10-21T20:31:00.000Z",
+      reason: "429 Too Many Requests",
+    },
+  });
+
+  expect(failure(config, gemini, "402 Payment Required", now)).toEqual({
+    key: "google",
+    entry: {
+      until: "2026-10-22T00:00:00.000Z",
+      reason: "402 Payment Required",
+    },
+  });
+
+  expect(failure(config, gemini, "context too long", now)).toBeUndefined();
 });
 
 test("cools a per-minute quota down for a minute even when it mentions billing", () => {
-  const gemini =
+  const message =
     "429 You exceeded your current quota, please check your plan and billing details. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.5-flash-lite Please retry in 23.5s.";
 
-  expect(failure(config, "google", gemini, now)?.until).toBe(
+  expect(failure(config, gemini, message, now)?.entry.until).toBe(
     "2026-10-21T20:31:00.000Z",
   );
 
   expect(
-    failure(config, "google", "429 insufficient_quota: check your billing", now)
-      ?.until,
+    failure(config, gemini, "429 insufficient_quota: check your billing", now)
+      ?.entry.until,
   ).toBe("2026-10-22T00:00:00.000Z");
 });

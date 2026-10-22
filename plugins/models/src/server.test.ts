@@ -129,7 +129,7 @@ async function savedAliases(route: PluginRoute): Promise<unknown> {
   return saved?.aliases;
 }
 
-const aliases = { backends: { local: { tiers: { fast: "llama" } } } };
+const aliases = { models: { fast: ["local/llama"] } };
 
 test.each([
   ["no body", ""],

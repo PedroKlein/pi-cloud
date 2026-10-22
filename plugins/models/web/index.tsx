@@ -18,18 +18,18 @@ import { type ReactElement, useState } from "react";
 import {
   aliasesOf,
   candidates,
-  chainOf,
   gatewayProvider,
+  modelKey,
   unhealthy,
 } from "../src/gateway";
-import type {
-  AliasConfig,
-  Backend,
-  EnvironmentModels,
-  Health,
+import {
+  type AliasConfig,
+  type EnvironmentModels,
+  type Health,
+  modelRef,
+  type ProviderSettings,
 } from "../src/model";
 
-const tiers = ["heavy", "medium", "light", "xlight", "minimal"];
 const schedules = ["", "utc-hourly", "utc-midnight", "utc-monthly-1st"];
 
 export const models: WebPlugin = {
@@ -51,7 +51,7 @@ function Page({ context }: PageProps): ReactElement {
 
   return (
     <>
-      <PageTitle description="Aliases such as medium-1 name a tier instead of a model. Each Environment maps them to the models its machine has, in fallback order, and a backend that fails is skipped by every session there until it resets.">
+      <PageTitle description="An alias such as medium-1 names a list of models, tried in order, that can mix providers. Each Environment has its own aliases, and a model that fails is skipped by every session there until it cools down or its provider resets.">
         Models
       </PageTitle>
       {environments.map((environment) => {
@@ -87,7 +87,7 @@ function EnvironmentSection({
   const health = saved?.health ?? { version: 1, unhealthyUntil: {} };
 
   const [draft, setDraft] = useState<AliasConfig>(
-    saved?.aliases ?? { backends: {} },
+    saved?.aliases ?? { models: {} },
   );
 
   const save = async (aliases: AliasConfig | null): Promise<void> => {
@@ -170,16 +170,28 @@ function Routing({
           <tr>
             <th className={cn(cell, "font-medium")}>Alias</th>
             <th className={cn(cell, "font-medium")}>Routes to now</th>
+            <th className={cn(cell, "font-medium")}>Skipped</th>
           </tr>
         </thead>
         <tbody>
           {aliasesOf(config).map((alias) => {
             const [first] = candidates(config, health, alias, now);
 
+            const skipped = (config.models[alias] ?? []).flatMap((value) => {
+              const model = modelRef(value);
+              const down = model && unhealthy(health, model, now);
+
+              return down
+                ? [
+                    `${value} until ${new Date(down.until).toLocaleTimeString()}`,
+                  ]
+                : [];
+            });
+
             return (
-              <tr key={alias.id}>
+              <tr key={alias}>
                 <td className={cn(cell, "font-mono text-mono-sm")}>
-                  {gatewayProvider}/{alias.id}
+                  {gatewayProvider}/{alias}
                 </td>
                 <td
                   className={cn(
@@ -188,9 +200,10 @@ function Routing({
                     !first && "text-failed",
                   )}
                 >
-                  {first
-                    ? `${first.backend}/${first.modelId}`
-                    : "no healthy backend"}
+                  {first ? modelKey(first) : "no healthy model"}
+                </td>
+                <td className={cn(cell, "font-mono text-mono-sm text-fg-dim")}>
+                  {skipped.join(", ")}
                 </td>
               </tr>
             );
@@ -213,43 +226,27 @@ function Editor({
   readonly onChange: (next: AliasConfig) => void;
 }): ReactElement {
   const now = new Date();
+  const list = `models-${environment.id}`;
+  const [name, setName] = useState("");
 
-  const order = [
-    ...chainOf(draft),
-    ...Object.keys(draft.backends).filter(
-      (name) => draft.backends[name]?.forceOnly === true,
-    ),
-  ];
+  const setModels = (next: AliasConfig["models"]): void => {
+    const { defaultAlias, ...rest } = draft;
 
-  const withBackends = (
-    names: readonly string[],
-    backends = draft.backends,
-  ): AliasConfig => ({
-    ...(draft.defaultAlias !== undefined && {
-      defaultAlias: draft.defaultAlias,
-    }),
-    fallbackChain: names.filter((name) => backends[name]?.forceOnly !== true),
-    backends: Object.fromEntries(
-      names.flatMap((name) => {
-        const backend = backends[name];
-
-        return backend ? [[name, backend]] : [];
-      }),
-    ),
-  });
-
-  const move = (index: number, by: number): void => {
-    const next = [...order];
-    const [name] = next.splice(index, 1);
-    if (name !== undefined) {
-      next.splice(index + by, 0, name);
-      onChange(withBackends(next));
-    }
+    onChange({
+      ...rest,
+      models: next,
+      ...(defaultAlias !== undefined &&
+        defaultAlias in next && { defaultAlias }),
+    });
   };
 
   const providers = [
-    ...new Set(environment.models.map(({ provider }) => provider)),
-  ].filter((provider) => !order.includes(provider));
+    ...new Set(
+      Object.values(draft.models)
+        .flat()
+        .flatMap((value) => modelRef(value)?.provider ?? []),
+    ),
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -269,215 +266,187 @@ function Editor({
           className={fieldClass}
         >
           <option value="">The machine&apos;s Pi default</option>
-          {aliasesOf(draft).map(({ id }) => (
-            <option key={id} value={id}>
-              {gatewayProvider}/{id}
+          {aliasesOf(draft).map((alias) => (
+            <option key={alias} value={alias}>
+              {gatewayProvider}/{alias}
             </option>
           ))}
         </select>
       </label>
 
       <h3 className="text-ui font-semibold text-fg-strong">
-        Backends, in fallback order
+        Aliases, each with its models in fallback order
       </h3>
-      {order.map((name, index) => (
-        <BackendEditor
-          key={name}
-          environment={environment}
-          name={name}
-          backend={draft.backends[name] ?? { tiers: {} }}
-          down={unhealthy(health, name, now)}
-          first={index === 0}
-          last={index === order.length - 1}
-          onChange={(backend) => {
-            onChange(
-              withBackends(order, { ...draft.backends, [name]: backend }),
-            );
-          }}
-          onMove={(by) => {
-            move(index, by);
-          }}
-          onRemove={() => {
-            onChange(withBackends(order.filter((other) => other !== name)));
-          }}
-        />
-      ))}
-      {providers.length > 0 && (
-        <select
-          aria-label="Add a backend"
-          value=""
-          onChange={(event) => {
-            onChange(
-              withBackends([...order, event.target.value], {
-                ...draft.backends,
-                [event.target.value]: { tiers: {} },
-              }),
-            );
-          }}
-          className={cn(fieldClass, "self-start")}
-        >
-          <option value="">Add a backend…</option>
-          {providers.map((provider) => (
-            <option key={provider} value={provider}>
-              {provider}
-            </option>
+      <datalist id={list}>
+        {environment.models
+          .filter(({ provider }) => provider !== gatewayProvider)
+          .map((model) => (
+            <option key={modelKey(model)} value={modelKey(model)} />
           ))}
-        </select>
+      </datalist>
+      <div className="grid gap-2 sm:grid-cols-[max-content_1fr_max-content] sm:items-center sm:gap-x-4">
+        {aliasesOf(draft).map((alias) => (
+          <label key={alias} className="contents text-label text-fg-dim">
+            <span className="font-mono text-mono-sm">{alias}</span>
+            <input
+              list={list}
+              placeholder="provider/model, comma-separated"
+              defaultValue={(draft.models[alias] ?? []).join(", ")}
+              onBlur={(event) => {
+                setModels({
+                  ...draft.models,
+                  [alias]: event.target.value
+                    .split(",")
+                    .map((value) => value.trim())
+                    .filter((value) => value !== ""),
+                });
+              }}
+              className={cn(fieldClass, "font-mono text-mono-sm")}
+            />
+            <Button
+              variant="danger"
+              onClick={() => {
+                setModels(
+                  Object.fromEntries(
+                    Object.entries(draft.models).filter(
+                      ([other]) => other !== alias,
+                    ),
+                  ),
+                );
+              }}
+            >
+              Remove
+            </Button>
+          </label>
+        ))}
+      </div>
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (name !== "" && !(name in draft.models)) {
+            setModels({ ...draft.models, [name]: [] });
+            setName("");
+          }
+        }}
+      >
+        <input
+          aria-label="New alias name"
+          placeholder="medium-1"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value.trim());
+          }}
+          className={cn(fieldClass, "font-mono text-mono-sm")}
+        />
+        <Button type="submit">Add alias</Button>
+      </form>
+
+      {providers.length > 0 && (
+        <>
+          <h3 className="text-ui font-semibold text-fg-strong">Providers</h3>
+          {providers.map((provider) => (
+            <ProviderEditor
+              key={provider}
+              name={provider}
+              settings={draft.providers?.[provider] ?? {}}
+              down={health.unhealthyUntil[provider]}
+              now={now}
+              onChange={(settings) => {
+                const others = Object.entries(draft.providers ?? {}).filter(
+                  ([other]) => other !== provider,
+                );
+
+                onChange({
+                  ...draft,
+                  providers: Object.fromEntries(
+                    Object.keys(settings).length === 0
+                      ? others
+                      : [...others, [provider, settings]],
+                  ),
+                });
+              }}
+            />
+          ))}
+        </>
       )}
     </div>
   );
 }
 
-function BackendEditor({
-  environment,
+function ProviderEditor({
   name,
-  backend,
+  settings,
   down,
-  first,
-  last,
+  now,
   onChange,
-  onMove,
-  onRemove,
 }: {
-  readonly environment: Environment;
   readonly name: string;
-  readonly backend: Backend;
-  readonly down: ReturnType<typeof unhealthy>;
-  readonly first: boolean;
-  readonly last: boolean;
-  readonly onChange: (backend: Backend) => void;
-  readonly onMove: (by: number) => void;
-  readonly onRemove: () => void;
+  readonly settings: ProviderSettings;
+  readonly down: Health["unhealthyUntil"][string] | undefined;
+  readonly now: Date;
+  readonly onChange: (settings: ProviderSettings) => void;
 }): ReactElement {
-  const list = `models-${environment.id}-${name}`;
+  const capped = down !== undefined && Date.parse(down.until) > now.getTime();
 
   return (
     <fieldset className="flex flex-col gap-3 rounded-md border border-line bg-bg p-4">
       <legend className="flex items-center gap-2 px-1 font-mono text-mono">
         {name}
-        {down ? (
+        {capped ? (
           <Badge state="failed">
-            Unhealthy until {new Date(down.until).toLocaleString()} (
-            {down.reason})
+            Capped until {new Date(down.until).toLocaleString()} ({down.reason})
           </Badge>
         ) : (
           <Badge state="done">Healthy</Badge>
         )}
       </legend>
-      <datalist id={list}>
-        {environment.models
-          .filter(({ provider }) => provider === name)
-          .map(({ id }) => (
-            <option key={id} value={id} />
-          ))}
-      </datalist>
-      <div className="grid gap-2 sm:grid-cols-[max-content_1fr] sm:items-center sm:gap-x-4">
-        {tiers.map((tier) => (
-          <label key={tier} className="contents text-label text-fg-dim">
-            <span>{tier}</span>
-            <input
-              list={list}
-              placeholder="model ids, comma-separated"
-              defaultValue={[backend.tiers[tier] ?? []].flat().join(", ")}
-              onBlur={(event) => {
-                const ids = event.target.value
-                  .split(",")
-                  .map((id) => id.trim())
-                  .filter((id) => id !== "");
+      <div className="flex flex-wrap items-center gap-4 text-label text-fg-dim">
+        <label className="flex items-center gap-2">
+          Cap status codes
+          <input
+            placeholder="402"
+            defaultValue={(settings.capStatusCodes ?? []).join(", ")}
+            onBlur={(event) => {
+              const parsed = event.target.value
+                .split(",")
+                .map((code) => Number(code.trim()))
+                .filter((code) => Number.isInteger(code) && code > 0);
 
-                const others = Object.entries(backend.tiers).filter(
-                  ([other]) => other !== tier,
-                );
+              const { capStatusCodes: _, ...rest } = settings;
 
-                onChange({
-                  ...backend,
-                  tiers: Object.fromEntries(
-                    ids.length === 0 ? others : [...others, [tier, ids]],
-                  ),
-                });
-              }}
-              className={cn(fieldClass, "font-mono text-mono-sm")}
-            />
-          </label>
-        ))}
-      </div>
-      <Settings backend={backend} onChange={onChange} />
-      <div className="flex flex-wrap gap-2">
-        <Button
-          disabled={first}
-          onClick={() => {
-            onMove(-1);
-          }}
-        >
-          Up
-        </Button>
-        <Button
-          disabled={last}
-          onClick={() => {
-            onMove(1);
-          }}
-        >
-          Down
-        </Button>
-        <Button variant="danger" onClick={onRemove}>
-          Remove
-        </Button>
+              onChange(
+                parsed.length === 0
+                  ? rest
+                  : { ...rest, capStatusCodes: parsed },
+              );
+            }}
+            className={cn(fieldClass, "w-28")}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          Reset
+          <select
+            value={settings.resetSchedule ?? ""}
+            onChange={(event) => {
+              const { resetSchedule: _, ...rest } = settings;
+
+              onChange(
+                event.target.value === ""
+                  ? rest
+                  : { ...rest, resetSchedule: event.target.value },
+              );
+            }}
+            className={fieldClass}
+          >
+            {schedules.map((value) => (
+              <option key={value} value={value}>
+                {value === "" ? "1 hour after a cap" : value}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     </fieldset>
-  );
-}
-
-function Settings({
-  backend,
-  onChange,
-}: {
-  readonly backend: Backend;
-  readonly onChange: (backend: Backend) => void;
-}): ReactElement {
-  return (
-    <div className="flex flex-wrap items-center gap-4 text-label text-fg-dim">
-      <label className="flex items-center gap-2">
-        Cap status codes
-        <input
-          placeholder="402"
-          defaultValue={(backend.capStatusCodes ?? []).join(", ")}
-          onBlur={(event) => {
-            const parsed = event.target.value
-              .split(",")
-              .map((code) => Number(code.trim()))
-              .filter((code) => Number.isInteger(code) && code > 0);
-
-            const { capStatusCodes: _, ...rest } = backend;
-
-            onChange(
-              parsed.length === 0 ? rest : { ...rest, capStatusCodes: parsed },
-            );
-          }}
-          className={cn(fieldClass, "w-28")}
-        />
-      </label>
-      <label className="flex items-center gap-2">
-        Reset
-        <select
-          value={backend.resetSchedule ?? ""}
-          onChange={(event) => {
-            const { resetSchedule: _, ...rest } = backend;
-
-            onChange(
-              event.target.value === ""
-                ? rest
-                : { ...rest, resetSchedule: event.target.value },
-            );
-          }}
-          className={fieldClass}
-        >
-          {schedules.map((value) => (
-            <option key={value} value={value}>
-              {value === "" ? "1 hour after a cap" : value}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
   );
 }

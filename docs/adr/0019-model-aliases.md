@@ -1,6 +1,6 @@
 # 0019: Model aliases
 
-- Status: accepted, amended 2026-10-21 (pi-cloud has its own gateway on Pi virtual models instead of reusing pi-gateway)
+- Status: accepted, amended 2026-10-21 (pi-cloud has its own gateway on Pi virtual models instead of reusing pi-gateway) and 2026-10-22 (each alias lists its own models, which can mix providers)
 - Date: 2026-10-21
 
 ## Context
@@ -23,24 +23,26 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 - Model aliases are the `models` plugin in `plugins/models/`. It's on by default ([ADR 0015](0015-plugins.md)).
 - pi-cloud has its own gateway. pi-gateway is a reference, as [ADR 0001](0001-own-the-control-plane-and-ui.md) treats other projects. An earlier version of this ADR reused pi-gateway through a `pi.events` seam. That meant an npm release for every change and a guard for Sessions that load both copies.
-- The session part registers each alias as a Pi virtual model, `alias/<alias>`. The provider isn't `gateway`, so a machine that also runs pi-gateway keeps its `gateway/*` models. Pi calls its `route` before every request, and it returns the first healthy backend's model that has credentials on the machine. Pi keeps the backends' own providers, auth and streaming, so pi-cloud needs no transport of its own.
-- A tool follow-up or a retry stays on the model that answered while its backend is healthy, which keeps the prompt cache.
-- pi-gateway replays a failed request on the next backend in the same turn. Pi already retries rate limits and server errors, and that retry routes to the next backend. Pi doesn't retry a quota or billing cap, so that turn ends with the error and the next request goes to the next backend.
-- The alias names follow pi-gateway: `<tier>-<n>`, where the count per tier comes from the first backend in the chain that has the tier.
+- The session part registers each alias as a Pi virtual model, `alias/<alias>`. The provider isn't `gateway`, so a machine that also runs pi-gateway keeps its `gateway/*` models. Pi calls its `route` before every request, and it returns the alias's first healthy model that has credentials on the machine. Pi keeps each model's own provider, auth and streaming, so pi-cloud needs no transport of its own.
+- A tool follow-up or a retry stays on the model that answered while that model is healthy, which keeps the prompt cache.
+- pi-gateway replays a failed request on the next backend in the same turn. Pi already retries rate limits and server errors, and that retry routes to the alias's next model. Pi doesn't retry a quota or billing cap, so that turn ends with the error and the next request goes to the next model.
+- An alias name is letters, digits, dots, dashes and underscores. `<tier>-<n>` names such as `medium-1` are a convention, not structure.
 
 ### Config per Environment, on the server
 
-- The server stores the alias config for each Environment in the plugin's tables. It has the same shape as `aliases.json`: backends, the tiers of each backend with their ordered models, the fallback chain, reset schedules and cap status codes.
-- Backends are the Pi providers on that Environment's machine. Credentials stay on the machine, as ADR 0005 says.
+- The server stores the alias config for each Environment in the plugin's tables. Each alias is an ordered list of `provider/model` refs to Pi models on that Environment's machine, so one alias can mix providers, and two aliases can try the same providers in different orders. Credentials stay on the machine, as ADR 0005 says.
+- Settings for how a provider's account runs out, its cap status codes and reset schedule, sit beside the aliases, once per provider.
+- The first version kept pi-gateway's `aliases.json` shape: backends, one per provider, each with tiers of model ids, and a fallback chain over backends. pi-gateway needs that shape because it registers one provider with one credential. Virtual models route each request to any provider with its own credentials, so the shape only cost flexibility: an alias's models all came from one provider at a time, and a backend failed over as a whole. A config saved in that shape is read as the aliases it produced: `<tier>-<n>` lists the n-th model of each backend in chain order.
 - When a Session starts, the session part reads its Environment's config from the plugin's server route.
 - A config change reaches running Sessions the same way health does (below).
 
-### Health on the server, per machine and backend
+### Health on the server, per model and provider
 
-- When a response through an alias fails with a cap or a transient error, the session part marks its backend unhealthy and reports it to the plugin's server route through `request` (ADR 0015). The server keeps, per backend, the later of the reset times it hears about.
-- The server keeps health per Environment and backend. In v1 one Environment is one machine.
+- When a response through an alias fails with a cap or a transient error, the session part marks it unhealthy and reports it to the plugin's server route through `request` (ADR 0015). The server keeps, per key, the later of the reset times it hears about.
+- A transient error benches only the model that failed, as `provider/model`, since limits such as Gemini's requests per minute are per model. A cap benches the whole provider, as `provider`, since it's the account that ran out. A model is skipped while either is unhealthy.
+- The server keeps health per Environment. In v1 one Environment is one machine.
 - Every Session in that Environment that uses the gateway gets the change and reroutes its next request. The session part waits for changes on a long-polling route, so this needs no protocol addition.
-- A per-minute 429 is a transient error with a one-minute cooldown, not a cap. A cap comes from a backend's cap status codes (402 unless set) or from quota and billing wording, and lasts until its reset schedule, or an hour.
+- A per-minute 429 is a transient error with a one-minute cooldown, not a cap. A cap comes from a provider's cap status codes (402 unless set) or from quota and billing wording, and lasts until its reset schedule, or an hour.
 
 ### Choosing a model
 
@@ -52,8 +54,8 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 
 ### Web
 
-- The plugin's `nav` page edits each Environment's aliases, backends and fallback chain. It lists the backends from the models that Environment's machine reports.
-- The same page shows live status for each alias: the backend and real model it routes to, each backend's health and reset time, and the last model error. Model errors are only visible in transcripts today.
+- The plugin's `nav` page edits each Environment's aliases, each with its models in order, and the settings of the providers they use. It suggests models from the ones that Environment's machine reports.
+- The same page shows live status for each alias: the model it routes to now and the models it skips until when, plus each provider's cap and reset time.
 
 ## Consequences
 

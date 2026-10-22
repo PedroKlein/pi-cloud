@@ -1,8 +1,13 @@
-import type { AliasConfig, Backend, Health, Unhealthy } from "./model";
+import {
+  type AliasConfig,
+  type Health,
+  type ModelRef,
+  modelRef,
+  type Unhealthy,
+} from "./model";
 
 export const gatewayProvider = "alias";
 
-const tierOrder = ["heavy", "medium", "light", "xlight", "minimal"];
 const transientCooldownMs = 60_000;
 const defaultCapCooldownMs = 60 * 60_000;
 const defaultCapStatusCodes = [402];
@@ -17,113 +22,50 @@ const shortWindowPattern = /per.?minute|retry in \d+(\.\d+)?m?s\b/i;
 const transientPattern =
   /\b(408|425|429|500|502|503|504)\b|rate.?limit|too many requests|overloaded|unavailable|timed? ?out|network|connection|fetch failed/i;
 
-export interface Alias {
-  readonly id: string;
-  readonly tier: string;
-  readonly index: number;
+export const modelKey = ({ provider, id }: ModelRef): string =>
+  `${provider}/${id}`;
+
+export function aliasesOf(config: AliasConfig): readonly string[] {
+  return Object.keys(config.models);
 }
 
-export interface Candidate {
-  readonly backend: string;
-  readonly modelId: string;
-}
-
-const modelsOf = (backend: Backend, tier: string): readonly string[] => {
-  const models = backend.tiers[tier];
-
-  return models === undefined ? [] : [models].flat();
-};
-
-// Backends in routing order: the fallback chain, then any others, never the
-// force-only ones.
-export function chainOf(config: AliasConfig): readonly string[] {
-  const names = Object.keys(config.backends);
-  const chain = [...(config.fallbackChain ?? []), ...names];
-
-  return [...new Set(chain)].filter(
-    (name) => config.backends[name]?.forceOnly !== true && names.includes(name),
-  );
-}
-
-// heavy-1, heavy-2, ...: the count per tier comes from the first backend in
-// the chain that has the tier, so the names stay the same while backends
-// come and go.
-export function aliasesOf(config: AliasConfig): readonly Alias[] {
-  const chain = chainOf(config);
-
-  const tiers = Object.values(config.backends).flatMap((backend) =>
-    Object.keys(backend.tiers),
-  );
-
-  const ordered = [
-    ...tierOrder.filter((tier) => tiers.includes(tier)),
-    ...[...new Set(tiers)].filter((tier) => !tierOrder.includes(tier)),
-  ];
-
-  return ordered.flatMap((tier) => {
-    const first = chain
-      .map((name) => config.backends[name])
-      .find(
-        (backend) =>
-          backend !== undefined && modelsOf(backend, tier).length > 0,
-      );
-
-    const count = first ? modelsOf(first, tier).length : 0;
-
-    return Array.from({ length: count }, (_, i) => ({
-      id: `${tier}-${String(i + 1)}`,
-      tier,
-      index: i + 1,
-    }));
-  });
-}
-
+// Why a model is out of routing: its provider's account hit a cap, or the
+// model itself is cooling down.
 export function unhealthy(
   health: Health,
-  backend: string,
+  model: ModelRef,
   now: Date,
 ): Unhealthy | undefined {
-  const entry = health.unhealthyUntil[backend];
-
-  return entry !== undefined && Date.parse(entry.until) > now.getTime()
-    ? entry
-    : undefined;
+  return [model.provider, modelKey(model)]
+    .map((key) => health.unhealthyUntil[key])
+    .find(
+      (entry) => entry !== undefined && Date.parse(entry.until) > now.getTime(),
+    );
 }
 
-// Each healthy backend's model for the alias, in routing order. A backend with
-// fewer models than the alias index gives its last one.
+// The alias's healthy models, in its order.
 export function candidates(
   config: AliasConfig,
   health: Health,
-  alias: Alias,
+  alias: string,
   now: Date,
-): readonly Candidate[] {
-  return chainOf(config).flatMap((backend) => {
-    const models = modelsOf(
-      config.backends[backend] ?? { tiers: {} },
-      alias.tier,
-    );
+): readonly ModelRef[] {
+  return (config.models[alias] ?? []).flatMap((value) => {
+    const model = modelRef(value);
 
-    const modelId = models[Math.min(alias.index, models.length) - 1];
-
-    return modelId === undefined || unhealthy(health, backend, now)
-      ? []
-      : [{ backend, modelId }];
+    return model === undefined || unhealthy(health, model, now) ? [] : [model];
   });
 }
 
-// How long a failed response takes its backend out of routing, if at all.
+// What a failed response takes out of routing, and until when: a cap benches
+// the provider's whole account, anything transient only the model.
 export function failure(
   config: AliasConfig,
-  backend: string,
+  model: ModelRef,
   errorMessage: string,
   now: Date,
-): Unhealthy | undefined {
-  const settings = config.backends[backend];
-  if (settings === undefined) {
-    return undefined;
-  }
-
+): { readonly key: string; readonly entry: Unhealthy } | undefined {
+  const settings = config.providers?.[model.provider] ?? {};
   const codes = settings.capStatusCodes ?? defaultCapStatusCodes;
   const statuses = (errorMessage.match(/\b\d{3}\b/g) ?? []).map(Number);
   const reason = errorMessage.slice(0, 200);
@@ -133,15 +75,21 @@ export function failure(
     (capPattern.test(errorMessage) && !shortWindowPattern.test(errorMessage))
   ) {
     return {
-      until: resetAfter(settings.resetSchedule, now).toISOString(),
-      reason,
+      key: model.provider,
+      entry: {
+        until: resetAfter(settings.resetSchedule, now).toISOString(),
+        reason,
+      },
     };
   }
 
   if (transientPattern.test(errorMessage)) {
     return {
-      until: new Date(now.getTime() + transientCooldownMs).toISOString(),
-      reason,
+      key: modelKey(model),
+      entry: {
+        until: new Date(now.getTime() + transientCooldownMs).toISOString(),
+        reason,
+      },
     };
   }
 

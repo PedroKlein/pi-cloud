@@ -13,6 +13,7 @@ import {
   mergeHealth,
   noHealth,
   type SessionConfig,
+  storedAliases,
 } from "./model";
 
 // Below the server's 30 second idle timeout.
@@ -70,7 +71,7 @@ export const models: ServerPlugin = {
             store.setHealth(environmentId, health);
             versions.bump(environmentId);
 
-            context.log("backend health changed", {
+            context.log("model health changed", {
               environmentId,
               unhealthy: Object.keys(health.unhealthyUntil),
               session: caller.session.id,
@@ -124,7 +125,7 @@ function offered(aliases: AliasConfig | null): OfferedModels {
     return { models: [] };
   }
 
-  const refs = aliasesOf(aliases).map(({ id }) => ({
+  const refs = aliasesOf(aliases).map((id) => ({
     provider: gatewayProvider,
     id,
   }));
@@ -160,7 +161,7 @@ function modelsStore(store: PluginStore): ModelsStore {
   const parsed = (row: Row): EnvironmentModels => ({
     environmentId: row.environment_id,
     aliases:
-      row.aliases === null ? null : (JSON.parse(row.aliases) as AliasConfig),
+      row.aliases === null ? null : storedAliases(JSON.parse(row.aliases)),
     health: row.health === null ? noHealth : (JSON.parse(row.health) as Health),
   });
 
