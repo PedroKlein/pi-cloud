@@ -8,15 +8,16 @@ export interface RepositoryCheckout {
 }
 
 // The directory a repository is checked out into inside a repositories
-// Workspace: the last segment of its URL, without ".git".
-export function checkoutName(repository: string): string {
-  return (
-    repository
-      .replace(/[/\\]+$/, "")
-      .split(/[/:\\]/)
-      .at(-1)
-      ?.replace(/\.git$/, "") ?? ""
-  );
+// Workspace: the last segment of its URL, without ".git". Undefined when that
+// is "", "." or "..", which can't name a folder of its own.
+export function checkoutName(repository: string): string | undefined {
+  const name = repository
+    .replace(/[/\\]+$/, "")
+    .split(/[/:\\]/)
+    .at(-1)
+    ?.replace(/\.git$/, "");
+
+  return name === "" || name === "." || name === ".." ? undefined : name;
 }
 
 export type Workspace =

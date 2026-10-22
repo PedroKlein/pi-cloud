@@ -274,7 +274,11 @@ function create(
     : [];
 
   const names = urls.map(checkoutName);
-  if (urls.length === 0 || new Set(names).size !== names.length) {
+  if (
+    urls.length === 0 ||
+    names.includes(undefined) ||
+    new Set(names).size !== names.length
+  ) {
     throw new BadRequest(
       "a Project needs one or more repositories with different names",
     );

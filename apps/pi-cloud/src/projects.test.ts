@@ -455,6 +455,15 @@ test("refuses a Project without repositories", async () => {
   expect(response.status).toBe(400);
 });
 
+test("refuses a Project repository whose URL leaves no name for its folder", async () => {
+  const response = await api("/api/plugins/projects/projects", {
+    name: "Unnamed",
+    repositories: [join(await repository("app"), ".git")],
+  });
+
+  expect(response.status).toBe(400);
+});
+
 test("shares files between the user and Project sessions through the library", async () => {
   const a = await repository("app");
 

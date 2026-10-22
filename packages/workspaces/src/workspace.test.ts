@@ -974,3 +974,53 @@ test("keeps several repositories while files sit beside them", async () => {
 
   expect(stat(dir)).rejects.toThrow();
 });
+
+test("refuses a repository whose URL leaves no name for its folder", async () => {
+  const dir = join(root, "workspaces", "s1");
+  const unnamed = join(repository, ".git");
+
+  const prepared = prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: unnamed }],
+    },
+    { dir, folders: [] },
+    noLog,
+  );
+
+  expect(prepared).rejects.toThrow(
+    `${unnamed} has no name for its checkout folder`,
+  );
+
+  await prepared.catch(() => undefined);
+
+  expect(stat(dir)).rejects.toThrow();
+});
+
+test("never removes the folder above a workspace, even when forced", async () => {
+  const workspaces = join(root, "workspaces");
+  const dir = join(workspaces, "s1");
+  const draft = join(workspaces, "s2", "draft.txt");
+  await mkdir(dir, { recursive: true });
+  await mkdir(join(workspaces, "s2"));
+  await writeFile(draft, "draft\n");
+
+  const removed = removeWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: "https://example.com/org/.." }],
+    },
+    { dir, force: true },
+    noLog,
+  );
+
+  expect(removed).rejects.toThrow(
+    "https://example.com/org/.. has no name for its checkout folder",
+  );
+
+  await removed.catch(() => undefined);
+
+  expect(await readFile(draft, "utf8")).toBe("draft\n");
+});
