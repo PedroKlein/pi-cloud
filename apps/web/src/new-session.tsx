@@ -3,7 +3,7 @@ import {
   type Session,
   thinkingLevels,
 } from "@pi-cloud/protocol";
-import { Button, Field, Icon } from "@pi-cloud/ui";
+import { Button, cn, Field, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
   type SubmitEvent,
@@ -89,6 +89,9 @@ export function NewSessionDialog({
       workspace: workspaceRequest(kind, text("location"), text("start-point")),
       model,
       ...(text("thinking") !== "" && { thinking: text("thinking") }),
+      ...(text("first-message") !== "" && {
+        firstMessage: text("first-message"),
+      }),
     })
       .then(async (response) => {
         setError(undefined);
@@ -121,25 +124,60 @@ export function NewSessionDialog({
         </header>
 
         <div className="grid gap-4 px-6 pt-2 pb-6 sm:grid-cols-2">
-          <Field label="Environment">
-            <select
-              name="environment"
-              required
-              value={chosen?.id ?? ""}
-              onChange={(event) => {
-                setEnvironmentId(event.target.value);
-              }}
-              className={field}
-            >
+          <div className="sm:col-span-2">
+            <Field label="What should Pi do?">
+              <textarea
+                name="first-message"
+                rows={4}
+                autoFocus
+                placeholder="Optional. Leave it empty to start in an idle session."
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    (event.metaKey || event.ctrlKey)
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                className={cn(field, "h-auto resize-y py-2")}
+              />
+            </Field>
+          </div>
+          <fieldset className="flex flex-col gap-1.5 sm:col-span-2">
+            <legend className="mb-1.5 text-label font-medium text-fg-dim">
+              Environment
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
               {environments.map((e) => (
-                <option
+                <label
                   key={e.id}
-                  value={e.id}
-                  label={`${e.name} (${e.provider}, ${e.online ? "online" : "offline"})`}
-                />
+                  className="flex cursor-pointer gap-3 rounded-lg border border-line bg-bg p-3 has-checked:border-accent has-checked:bg-accent-tint has-focus-visible:outline-2 has-focus-visible:outline-accent"
+                >
+                  <input
+                    type="radio"
+                    name="environment"
+                    value={e.id}
+                    required
+                    checked={chosen?.id === e.id}
+                    onChange={() => {
+                      setEnvironmentId(e.id);
+                    }}
+                    className="sr-only"
+                  />
+                  <Icon name="monitor" className="mt-0.5 size-4 shrink-0" />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium text-fg-strong">
+                      {e.name}
+                    </span>
+                    <span className="truncate text-caption text-fg-dim">
+                      {e.online ? "Online" : "Offline"} · {e.provider}
+                    </span>
+                  </span>
+                </label>
               ))}
-            </select>
-          </Field>
+            </div>
+          </fieldset>
           <Field label="Workspace">
             <select
               name="kind"
@@ -154,6 +192,13 @@ export function NewSessionDialog({
               <option value="clone">Clone of a repository</option>
               <option value="repositories">Several repositories</option>
             </select>
+          </Field>
+          <Field label="Start from">
+            <input
+              name="start-point"
+              placeholder="Current branch or commit"
+              className={field}
+            />
           </Field>
           <div className="sm:col-span-2">
             <Field
@@ -176,13 +221,6 @@ export function NewSessionDialog({
               <option key={folder} value={folder} />
             ))}
           </datalist>
-          <Field label="Start from">
-            <input
-              name="start-point"
-              placeholder="Current branch or commit"
-              className={field}
-            />
-          </Field>
           <Field label="Model">
             <input
               name="model"
@@ -209,9 +247,16 @@ export function NewSessionDialog({
         </div>
 
         <footer className="flex items-center gap-2 border-t border-line px-6 py-3">
-          <p role="alert" className="flex-1 text-caption text-failed">
-            {error}
-          </p>
+          <div className="flex-1 text-caption">
+            <p role="alert" className="text-failed">
+              {error}
+            </p>
+            {error === undefined && (
+              <p className="text-fg-dim max-sm:hidden">
+                ⌘Enter starts the session
+              </p>
+            )}
+          </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
