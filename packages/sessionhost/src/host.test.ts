@@ -3253,6 +3253,52 @@ export default (pi) => {
   expect(await readFile(starts, "utf8")).toBe("started\n".repeat(2));
 }, 20_000);
 
+test("doesn't tell the user to update the Pi that Pi Cloud ships", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const realFetch = globalThis.fetch;
+  let asked = false;
+
+  delete process.env["PI_OFFLINE"];
+
+  globalThis.fetch = Object.assign(
+    async (input: string | URL | Request) => {
+      if (
+        String(input instanceof Request ? input.url : input).endsWith(
+          "/latest-version",
+        )
+      ) {
+        asked = true;
+
+        return Promise.resolve(Response.json({ version: "99.0.0" }));
+      }
+
+      return Promise.resolve(new Response(null, { status: 404 }));
+    },
+    { preconnect: realFetch.preconnect },
+  );
+
+  try {
+    const hosted = await hostSession(
+      sessionOptions(root, { models }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    const pi = openPiView(fake);
+    await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+    await Bun.sleep(500);
+    await hosted.stop();
+
+    expect(asked).toBe(false);
+    expect(pi.screen()).not.toContain("New version");
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env["PI_OFFLINE"] = "1";
+  }
+}, 20_000);
+
 test("refuses to replace the session from the TUI", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();

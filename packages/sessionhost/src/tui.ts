@@ -131,6 +131,9 @@ export function piView(
         async () => Promise.reject(new Error(oneSession)),
       );
 
+      // Pi Cloud ships its own Pi, so Pi's advice to update itself is wrong.
+      process.env["PI_SKIP_VERSION_CHECK"] = "1";
+
       const interactive = new InteractiveMode(runtime, {
         terminal: screen.terminal,
       });
