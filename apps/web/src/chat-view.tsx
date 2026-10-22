@@ -2,11 +2,23 @@ import { cn, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
   type ReactNode,
+  useEffect,
   useLayoutEffect,
   useRef,
+  useState,
 } from "react";
 import { dataUrl } from "./attachments";
-import { describeTool, linkParts, type Step, turns, type Work } from "./chat";
+import {
+  ago,
+  describeTool,
+  duration,
+  linkParts,
+  type Step,
+  tally,
+  type Turn,
+  turns,
+  type Work,
+} from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
 
@@ -21,6 +33,7 @@ export function ChatView({
   const atBottom = useRef(true);
   const shown = turns(feed.items);
   const live = feed.streaming !== undefined || feed.tools.length > 0;
+  const now = useNow();
 
   useLayoutEffect(() => {
     const box = scroller.current;
@@ -52,6 +65,13 @@ export function ChatView({
           const running = last ? feed.tools : [];
 
           return [
+            index > 0 && turn.user !== undefined && (
+              <li
+                key={`${String(turn.key)}-rule`}
+                aria-hidden
+                className="border-t border-line"
+              />
+            ),
             turn.user !== undefined && (
               <li
                 key={`${String(turn.key)}-user`}
@@ -75,11 +95,7 @@ export function ChatView({
             ),
             hasSteps(turn.work) || running.length > 0 ? (
               <li key={`${String(turn.key)}-work`} data-role="work">
-                <WorkBlock
-                  work={turn.work}
-                  running={running}
-                  live={last && live}
-                />
+                <WorkBlock turn={turn} running={running} live={last && live} />
               </li>
             ) : (
               turn.work.map((item, at) =>
@@ -102,6 +118,13 @@ export function ChatView({
                 <Answer text={text} />
               </li>
             )),
+            turn.answer.length > 0 && !(last && live) && (
+              <AnswerMeta
+                key={`${String(turn.key)}-meta`}
+                turn={turn}
+                now={now}
+              />
+            ),
           ];
         })}
         {feed.streaming !== undefined && (
@@ -111,6 +134,51 @@ export function ChatView({
         )}
       </ol>
     </div>
+  );
+}
+
+function useNow(): number {
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 30_000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  return now;
+}
+
+function AnswerMeta({
+  turn,
+  now,
+}: {
+  readonly turn: Turn;
+  readonly now: number;
+}): ReactElement | null {
+  if (turn.ended === undefined && turn.model === undefined) {
+    return null;
+  }
+
+  return (
+    <li
+      data-role="answer-meta"
+      className="-mt-2 flex gap-3 text-caption text-fg-dim"
+    >
+      {turn.ended !== undefined && (
+        <time
+          dateTime={turn.ended}
+          title={new Date(turn.ended).toLocaleString()}
+        >
+          {ago(turn.ended, now)}
+        </time>
+      )}
+      {turn.model !== undefined && <span>{turn.model}</span>}
+    </li>
   );
 }
 
@@ -146,14 +214,16 @@ function Answer({ text }: { readonly text: string }): ReactElement {
 }
 
 function WorkBlock({
-  work,
+  turn,
   running,
   live,
 }: {
-  readonly work: readonly Work[];
+  readonly turn: Turn;
   readonly running: readonly { readonly id: string; readonly name: string }[];
   readonly live: boolean;
 }): ReactElement {
+  const { work, started, ended } = turn;
+
   const steps = work.flatMap((item) =>
     item.kind === "step" ? [item.step] : [],
   );
@@ -165,12 +235,11 @@ function WorkBlock({
     ({ id }) => !steps.some((step) => step.id === id),
   );
 
+  const did = tally([...steps, ...extra]);
+
   return (
-    <details
-      open={live}
-      className="group/work rounded-lg border border-line bg-panel open:pb-1"
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-3 py-2 text-label text-fg-dim select-none hover:text-fg [&::-webkit-details-marker]:hidden">
+    <details open={live} className="group/work">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md px-1 py-1 text-label text-fg-dim select-none hover:text-fg [&::-webkit-details-marker]:hidden">
         <Icon
           name="chevron-right"
           className="mr-0.5 size-3.5 transition-transform group-open/work:rotate-90"
@@ -181,15 +250,18 @@ function WorkBlock({
             Working
           </span>
         ) : (
-          <span>Worked</span>
+          <span className="font-medium text-fg">
+            {started !== undefined && ended !== undefined
+              ? `Worked for ${duration(started, ended)}`
+              : "Worked"}
+          </span>
         )}
-        <span>
-          · {steps.length + extra.length}{" "}
-          {steps.length + extra.length === 1 ? "step" : "steps"}
-        </span>
+        {did.map((part) => (
+          <span key={part}>· {part}</span>
+        ))}
         {failed > 0 && <span className="text-failed">· {failed} failed</span>}
       </summary>
-      <ol className="flex flex-col gap-px px-1">
+      <ol className="flex flex-col gap-px pt-1 pl-5">
         {work.map((item, index) => (
           <li
             key={

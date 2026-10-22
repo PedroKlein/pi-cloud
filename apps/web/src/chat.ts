@@ -1,13 +1,18 @@
 import { type ImageAttachment, imageTypes } from "@pi-cloud/protocol";
 
-export type ChatItem =
+export type ChatItem = (
   | {
       readonly role: "user";
       readonly text: string;
       readonly images?: readonly ImageAttachment[];
     }
   | {
-      readonly role: "assistant" | "error" | "note";
+      readonly role: "assistant";
+      readonly text: string;
+      readonly model?: string;
+    }
+  | {
+      readonly role: "error" | "note";
       readonly text: string;
     }
   | {
@@ -22,7 +27,8 @@ export type ChatItem =
       readonly name: string;
       readonly text: string;
       readonly failed: boolean;
-    };
+    }
+) & { readonly at?: string };
 
 interface Part {
   readonly type: string;
@@ -36,6 +42,7 @@ interface Part {
 
 interface Entry {
   readonly type: string;
+  readonly timestamp?: string;
   readonly content?: unknown;
   readonly display?: boolean;
   readonly message?: {
@@ -45,11 +52,20 @@ interface Entry {
     readonly toolName?: string;
     readonly isError?: boolean;
     readonly errorMessage?: string;
+    readonly model?: string;
   };
 }
 
 export function chatItems(line: string): readonly ChatItem[] {
   const entry = JSON.parse(line) as Entry;
+  const at = entry.timestamp;
+
+  return entryItems(entry).map((item) =>
+    at === undefined ? item : { ...item, at },
+  );
+}
+
+function entryItems(entry: Entry): readonly ChatItem[] {
   const message = entry.message;
   if (
     entry.type === "custom_message" &&
@@ -89,7 +105,15 @@ export function chatItems(line: string): readonly ChatItem[] {
 
     case "assistant":
       return [
-        ...(text === "" ? [] : [{ role: "assistant", text } as const]),
+        ...(text === ""
+          ? []
+          : [
+              {
+                role: "assistant",
+                text,
+                ...(message.model !== undefined && { model: message.model }),
+              } as const,
+            ]),
         ...parts.flatMap((part): ChatItem[] =>
           part.type === "toolCall"
             ? [
@@ -171,6 +195,9 @@ export interface Turn {
   readonly images?: readonly ImageAttachment[];
   readonly work: readonly Work[];
   readonly answer: readonly string[];
+  readonly started?: string;
+  readonly ended?: string;
+  readonly model?: string;
 }
 
 // Groups the items from one user message to the next. Text after the last
@@ -182,6 +209,7 @@ export function turns(
     key: number;
     user: string | undefined;
     images: readonly ImageAttachment[] | undefined;
+    started: string | undefined;
     items: ChatItem[];
   }[] = [];
 
@@ -192,6 +220,7 @@ export function turns(
         key: item.key,
         user: item.role === "user" ? item.text : undefined,
         images: item.role === "user" ? item.images : undefined,
+        started: item.at,
         items: item.role === "user" ? [] : [item],
       });
     } else {
@@ -199,7 +228,7 @@ export function turns(
     }
   }
 
-  return result.map(({ key, user, images, items: inTurn }) => {
+  return result.map(({ key, user, images, started, items: inTurn }) => {
     const lastTool = inTurn.findLastIndex(
       (item) => item.role === "tool" || item.role === "result",
     );
@@ -243,11 +272,20 @@ export function turns(
     });
 
     const tail = inTurn.slice(lastTool + 1);
+    const ended = inTurn.at(-1)?.at;
+
+    const model = inTurn.findLast(
+      (item) => item.role === "assistant" && item.model !== undefined,
+    );
 
     return {
       key,
       user,
       ...(images && { images }),
+      ...(started !== undefined && { started }),
+      ...(ended !== undefined && { ended }),
+      ...(model?.role === "assistant" &&
+        model.model !== undefined && { model: model.model }),
       work: [
         ...work,
         ...tail.flatMap((item): Work[] =>
@@ -261,6 +299,67 @@ export function turns(
       ),
     };
   });
+}
+
+const tallies: readonly {
+  readonly tools: readonly string[];
+  readonly label: (count: number) => string;
+}[] = [
+  { tools: ["read"], label: (n) => `read ${counted(n, "file")}` },
+  { tools: ["edit", "write"], label: (n) => `edited ${counted(n, "file")}` },
+  { tools: ["bash"], label: (n) => `ran ${counted(n, "command")}` },
+];
+
+// What a turn's work did, as in "read 6 files · ran 1 command".
+export function tally(steps: readonly { readonly name: string }[]): string[] {
+  const known = new Set(tallies.flatMap(({ tools }) => tools));
+  const others = steps.filter(({ name }) => !known.has(name)).length;
+
+  return [
+    ...tallies.flatMap(({ tools, label }) => {
+      const count = steps.filter(({ name }) => tools.includes(name)).length;
+
+      return count === 0 ? [] : [label(count)];
+    }),
+    ...(others === 0 ? [] : [counted(others, "other step")]),
+  ];
+}
+
+function counted(count: number, noun: string): string {
+  return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+export function duration(from: string, to: string): string {
+  const seconds = Math.max(
+    0,
+    Math.round((Date.parse(to) - Date.parse(from)) / 1000),
+  );
+
+  const minutes = Math.floor(seconds / 60);
+
+  return minutes === 0
+    ? `${String(seconds)}s`
+    : `${String(minutes)}m ${String(seconds % 60)}s`;
+}
+
+export function ago(at: string, now: number): string {
+  const minutes = Math.floor((now - Date.parse(at)) / 60_000);
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${String(minutes)} min ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${String(hours)} h ago`;
+  }
+
+  return new Date(at).toLocaleDateString();
 }
 
 // Login notes carry the URLs to open (ADR 0024). A URL doesn't end with the
