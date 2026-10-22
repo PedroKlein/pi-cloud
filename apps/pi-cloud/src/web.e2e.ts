@@ -329,6 +329,8 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
   await page.getByText("No threads yet.").waitFor();
 
+  const calls = faux.state.callCount;
+
   faux.setResponses([
     fauxAssistantMessage(
       [fauxToolCall("start_thread", { title: "Docs", message: "write docs" })],
@@ -336,6 +338,7 @@ test("creates a Project and shares a file through its library", async () => {
     ),
     fauxAssistantMessage([fauxText("ok")]),
     fauxAssistantMessage([fauxText("ok")]),
+    fauxAssistantMessage([fauxText("noted")]),
   ]);
 
   await page.getByRole("button", { name: "Open coordinator" }).click();
@@ -357,12 +360,17 @@ test("creates a Project and shares a file through its library", async () => {
   const row = page.locator("tr", { hasText: "Docs" });
   await row.locator("td", { hasText: /^e2e$/ }).waitFor();
 
-  // The thread takes the last scripted reply; later tests script their own.
+  // The thread's reply wakes the coordinator, and both take scripted replies
+  // that later tests would otherwise lose to them.
   await row.getByRole("button", { name: "Docs" }).click();
 
   await page
     .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
     .waitFor();
+
+  while (faux.state.callCount < calls + 4) {
+    await Bun.sleep(20);
+  }
 
   await page
     .locator("#plugin-nav")
