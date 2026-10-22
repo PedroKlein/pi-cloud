@@ -473,6 +473,8 @@ export interface Session {
   readonly archivedAt: string | null;
   readonly workspaceRemoval: WorkspaceRemoval | null;
   readonly online: boolean;
+  // Pi asked a question and waits for a person to answer it (ADR 0025).
+  readonly waiting: boolean;
 }
 
 export interface Environment {

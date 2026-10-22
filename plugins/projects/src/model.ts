@@ -9,7 +9,7 @@ export const workStates = [
 export type WorkState = (typeof workStates)[number];
 
 export type RunState =
-  "working" | "idle" | "offline" | "interrupted" | "archived";
+  "working" | "waiting" | "idle" | "offline" | "interrupted" | "archived";
 
 export type Role = "coordinator" | "thread";
 
@@ -20,7 +20,8 @@ export interface ProjectSummary {
   readonly coordinatorState: RunState;
   readonly repositories: number;
   readonly threads: number;
-  readonly blocked: number;
+  // Threads that are blocked or wait on an answer.
+  readonly needsYou: number;
 }
 
 export interface ThreadView {

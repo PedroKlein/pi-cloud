@@ -45,7 +45,7 @@ export function modelRef(name: string): ModelRef | undefined {
 }
 
 export interface SessionBadge {
-  readonly state: "working" | "failed" | "offline";
+  readonly state: "working" | "waiting" | "failed" | "offline";
   readonly label: string;
 }
 
@@ -57,6 +57,10 @@ export function sessionBadge(session: Session): SessionBadge | undefined {
 
   if (!session.online) {
     return { state: "offline", label: "Offline" };
+  }
+
+  if (session.waiting) {
+    return { state: "waiting", label: "Needs you" };
   }
 
   switch (session.status) {

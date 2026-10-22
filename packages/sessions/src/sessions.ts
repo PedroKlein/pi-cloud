@@ -22,7 +22,7 @@ import {
 } from "@pi-cloud/protocol";
 import { ProviderPolls } from "./provider-polls";
 
-export type StoredSession = Omit<Session, "online">;
+export type StoredSession = Omit<Session, "online" | "waiting">;
 
 export type StoredEnvironment = Omit<
   Environment,
@@ -404,7 +404,12 @@ export class Sessions {
         }
       }
 
+      const waiting = this.#waiting(session);
       this.#trackSurface(id, post.generation, event);
+
+      if (this.#waiting(session) !== waiting) {
+        this.#emit(id, { type: "session", session: this.#view(session) });
+      }
 
       this.#emit(id, { type: "live", event });
     }
@@ -688,7 +693,15 @@ export class Sessions {
   }
 
   #view(session: StoredSession): Session {
-    return { ...session, online: this.#polls.online(session.provider) };
+    return {
+      ...session,
+      online: this.#polls.online(session.provider),
+      waiting: this.#waiting(session),
+    };
+  }
+
+  #waiting(session: StoredSession): boolean {
+    return this.#openSurfaces(session).some(({ type }) => type === "prompt");
   }
 
   #emit(id: string, event: SessionEvent): void {

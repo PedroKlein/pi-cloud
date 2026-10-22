@@ -55,8 +55,8 @@ function Items({ context, path }: NavItemsProps): ReactElement {
             <span className="truncate text-label font-medium">
               {project.name}
             </span>
-            {project.blocked > 0 ? (
-              <Badge state="waiting">{project.blocked} needs you</Badge>
+            {project.needsYou > 0 ? (
+              <Badge state="waiting">{project.needsYou} needs you</Badge>
             ) : (
               <span />
             )}
@@ -447,6 +447,7 @@ const runBadges: Readonly<
   Record<RunState, { state: BadgeState; label: string } | undefined>
 > = {
   working: { state: "working", label: "Working" },
+  waiting: { state: "waiting", label: "Needs you" },
   idle: undefined,
   offline: { state: "offline", label: "Offline" },
   interrupted: { state: "offline", label: "Interrupted" },
@@ -490,8 +491,11 @@ function ThreadBoard({
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {columns.map(({ label, states, dot }, index) => {
-        const shown = threads.filter(({ workState }) =>
-          states.includes(workState),
+        const shown = threads.filter((thread) =>
+          index === 0
+            ? states.includes(thread.workState) || thread.runState === "waiting"
+            : states.includes(thread.workState) &&
+              thread.runState !== "waiting",
         );
 
         return (

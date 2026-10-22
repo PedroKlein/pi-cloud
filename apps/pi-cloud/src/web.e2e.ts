@@ -286,6 +286,7 @@ test("answers the agent's questions in the prompt card", async () => {
 
   const card = page.locator('[data-role="prompt"]');
   await card.getByRole("heading", { level: 2, name: "Which size?" }).waitFor();
+  await page.locator("#sessions").getByText("Needs you").waitFor();
   await card.getByLabel("Large").check();
 
   expect(
@@ -302,6 +303,11 @@ test("answers the agent's questions in the prompt card", async () => {
     .waitFor();
 
   await card.waitFor({ state: "detached" });
+
+  await page
+    .locator("#sessions")
+    .getByText("Needs you")
+    .waitFor({ state: "detached" });
 
   const work = page.locator('#chat li[data-role="work"]');
 

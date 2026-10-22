@@ -112,6 +112,7 @@ function fakeKernel(): {
           archivedAt: null,
           workspaceRemoval: null,
           online: true,
+          waiting: false,
         };
 
         sessions.set(id, session);
@@ -751,10 +752,10 @@ test("shows the coordinator's last reply on the Project", async () => {
   expect((await projectView(kernel)).coordinatorSays).toBeNull();
 });
 
-test("lists each Project with its repositories, coordinator state and blocked threads", async () => {
+test("lists each Project with its repositories, coordinator state and the threads that need you", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);
-  const { threadId } = await startProject(kernel);
+  const { coordinatorId, threadId } = await startProject(kernel);
 
   await kernel
     .tool("set_status")
@@ -762,6 +763,22 @@ test("lists each Project with its repositories, coordinator state and blocked th
       { state: "blocked" },
       { session: kernel.session(threadId), actor: user },
     );
+
+  const started = await kernel
+    .tool("start_thread")
+    .run(
+      { title: "Ask", message: "ask me" },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  const asking = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+  kernel.update(asking, { waiting: true });
+
+  expect(
+    (await projectView(kernel)).threads.find(
+      ({ sessionId }) => sessionId === asking,
+    ),
+  ).toMatchObject({ runState: "waiting", workState: "in_progress" });
 
   const list = await kernel.route()(
     new Request("http://pi-cloud/projects"),
@@ -774,8 +791,8 @@ test("lists each Project with its repositories, coordinator state and blocked th
       name: "Release",
       coordinatorState: "idle",
       repositories: 1,
-      threads: 1,
-      blocked: 1,
+      threads: 2,
+      needsYou: 2,
     },
   ]);
 });

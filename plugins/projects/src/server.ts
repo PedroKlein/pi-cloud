@@ -449,8 +449,11 @@ function summaries(
       coordinatorState: runState(sessions.get(project.coordinatorId)),
       repositories: project.repositories.length,
       threads: threads.length,
-      blocked: threads.filter((thread) => thread.workState === "blocked")
-        .length,
+      needsYou: threads.filter(
+        (thread) =>
+          thread.workState === "blocked" ||
+          runState(sessions.get(thread.sessionId)) === "waiting",
+      ).length,
     };
   });
 }
