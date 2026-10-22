@@ -110,7 +110,7 @@ export function projectTools(
         const message = required(input, "message");
 
         const repositories = Array.isArray(input["repositories"])
-          ? input["repositories"].map(String)
+          ? [...new Set(input["repositories"].map(String))]
           : project.repositories;
 
         const unknown = repositories.filter(
