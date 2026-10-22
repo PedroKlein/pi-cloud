@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md))
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md))
 - Date: 2026-10-21
 
 ## Context
@@ -88,6 +88,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 
 - A plugin's web part claims named slots: `nav` (an entry and a page), `session.panel`, `session.header`, and `message.<type>` renderers for its own custom messages.
 - Each slot is a React component. The web bundle imports plugins statically, so they share the app's React, its data hooks and the `packages/ui` components and tokens ([ADR 0020](0020-web-stack.md)). A plugin styles itself with the same Tailwind token classes and never brings its own colours or fonts.
+- A session slot gets the Session's events and `send(text)`, which posts a message as the user, so a button can run the plugin's own Pi command ([ADR 0021](0021-pull-requests.md)).
 - Its props give it what `ctx` gave it before: requests to its own routes, live events for a Session, opening a Session and navigation.
 - The first version of this section had each slot export `mount(element, ctx)` and let a plugin render with anything it liked. With every v1 plugin in this repository and one design system, that only meant a second way to do everything.
 - A `session.panel` or `session.header` component also gets the open Session's event stream, shared with the Session view, so it sees transcript entries and its own plugin live events without opening another connection.
