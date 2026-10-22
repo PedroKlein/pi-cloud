@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
+import type {
+  SendOutcome,
+  ServerPlugin,
+  ServerPluginContext,
+} from "@pi-cloud/plugins";
 import { type Actor, checkoutName } from "@pi-cloud/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
 import {
@@ -14,6 +18,7 @@ import {
   type Project,
   type ProjectStore,
   projectStore,
+  type Queued,
 } from "./projects";
 import { modelRef, projectTools, workState } from "./tools";
 
@@ -117,7 +122,7 @@ function deliver(
       continue;
     }
 
-    const { delivery, sessionId, actor } = queued;
+    const { sessionId } = queued;
     const target = sessions.get(sessionId);
     if (target?.archivedAt !== null) {
       log("dropped a delivery to a session that is gone", { sessionId });
@@ -134,27 +139,40 @@ function deliver(
     }
 
     try {
-      switch (delivery.kind) {
-        case "message":
-          sessions.send(sessionId, delivery.text, actor);
-          break;
-        case "context":
-          sessions.notify(sessionId, delivery.text, actor);
-          break;
-        case "turn": {
-          const thread = store.member(delivery.threadId);
-          if (thread) {
-            deliverTurn(thread, delivery.end, sessionId, actor, sessions, log);
-          }
-        }
+      const sent = sendQueued(queued, store, sessions, log);
+      if (sent.ok) {
+        store.delivered(queued.id);
+        continue;
       }
 
-      store.delivered(queued.id);
+      blocked.add(sessionId);
+      if (sent.reason !== "offline") {
+        log("delivery failed", { sessionId, reason: sent.reason });
+      }
     } catch (error) {
       blocked.add(sessionId);
-      if (!String(error).includes("offline")) {
-        log("delivery failed", { sessionId, error: String(error) });
-      }
+      log("delivery failed", { sessionId, error: String(error) });
+    }
+  }
+}
+
+function sendQueued(
+  { delivery, sessionId, actor }: Queued,
+  store: ProjectStore,
+  sessions: ServerPluginContext["sessions"],
+  log: ServerPluginContext["log"],
+): SendOutcome {
+  switch (delivery.kind) {
+    case "message":
+      return sessions.send(sessionId, delivery.text, actor);
+    case "context":
+      return sessions.notify(sessionId, delivery.text, actor);
+    case "turn": {
+      const thread = store.member(delivery.threadId);
+
+      return thread
+        ? deliverTurn(thread, delivery.end, sessionId, actor, sessions, log)
+        : { ok: true };
     }
   }
 }
@@ -166,7 +184,7 @@ function deliverTurn(
   actor: Actor,
   sessions: ServerPluginContext["sessions"],
   log: ServerPluginContext["log"],
-): void {
+): SendOutcome {
   const transcript = sessions.transcript(thread.sessionId).slice(0, end);
   const error = turnError(transcript);
 
@@ -188,10 +206,10 @@ function deliverTurn(
   // coordinator woken by it tends to retry the thread on the same model, which
   // fails the same way.
   if (error !== undefined || messagedCoordinator(transcript)) {
-    sessions.notify(coordinatorId, notice, actor);
-  } else {
-    sessions.send(coordinatorId, notice, actor);
+    return sessions.notify(coordinatorId, notice, actor);
   }
+
+  return sessions.send(coordinatorId, notice, actor);
 }
 
 class BadRequest extends Error {}

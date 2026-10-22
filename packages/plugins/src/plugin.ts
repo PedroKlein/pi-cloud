@@ -75,6 +75,15 @@ export interface OfferedModels {
 
 export type ModelOffer = (environmentId: string) => OfferedModels;
 
+// offline means the Session's host isn't connected right now, so a later send
+// can still reach it.
+export type SendOutcome =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: "not_found" | "archived" | "offline";
+    };
+
 export interface ServerPluginContext {
   // The user this installation belongs to. v1 has exactly one.
   readonly owner: string;
@@ -84,9 +93,9 @@ export interface ServerPluginContext {
     readonly start: (request: StartRequest) => Session;
     readonly get: (id: string) => Session | undefined;
     // Starts a turn, or queues as a follow-up when the Session is busy.
-    readonly send: (id: string, text: string, actor: Actor) => void;
+    readonly send: (id: string, text: string, actor: Actor) => SendOutcome;
     // Adds context the Session reads on its next turn, without starting one.
-    readonly notify: (id: string, text: string, actor: Actor) => void;
+    readonly notify: (id: string, text: string, actor: Actor) => SendOutcome;
     readonly transcript: (id: string) => readonly string[];
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };

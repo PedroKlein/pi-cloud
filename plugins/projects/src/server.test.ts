@@ -3,6 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   eventBus,
   type PluginRoute,
+  type SendOutcome,
   type ServerPluginContext,
   type ServerTool,
 } from "@pi-cloud/plugins";
@@ -52,14 +53,16 @@ function fakeKernel(): {
     kind: Delivered["kind"],
     sessionId: string,
     text: string,
-  ) => {
+  ): SendOutcome => {
     if (offline.has(sessionId)) {
       refused.push(text);
 
-      throw new Error("message not sent: offline");
+      return { ok: false, reason: "offline" };
     }
 
     delivered.push({ kind, text });
+
+    return { ok: true };
   };
 
   const context: ServerPluginContext = {
@@ -102,12 +105,8 @@ function fakeKernel(): {
         return session;
       },
       get: (id) => sessions.get(id),
-      send: (id, text) => {
-        deliver("send", id, text);
-      },
-      notify: (id, text) => {
-        deliver("notify", id, text);
-      },
+      send: (id, text) => deliver("send", id, text),
+      notify: (id, text) => deliver("notify", id, text),
       transcript: (id) => [...(transcripts.get(id) ?? [])],
     },
     routes: {

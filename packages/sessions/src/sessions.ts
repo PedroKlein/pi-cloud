@@ -63,9 +63,9 @@ export type Rejection =
   | "not_kept"
   | "unknown_environment";
 
-export type Result<T> =
+export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly reason: Rejection };
+  | { readonly ok: false; readonly reason: R };
 
 export interface SessionsOptions {
   readonly pollWaitMs?: number;
@@ -436,7 +436,10 @@ export class Sessions {
     };
   }
 
-  send(id: string, command: Command): Result<undefined> {
+  send(
+    id: string,
+    command: Command,
+  ): Result<undefined, "not_found" | "archived" | "offline"> {
     const session = this.#store.get(id);
     if (!session) {
       return { ok: false, reason: "not_found" };
