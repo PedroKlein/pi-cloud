@@ -64,6 +64,17 @@ export const projects: ServerPlugin = {
       }
     });
 
+    // The transcript upload can trail TurnEnded, so a turn notice reads the
+    // transcript when it is delivered, up to where the thread's next turn began.
+    context.events.subscribe("TurnStarted", ({ session }) => {
+      if (store.member(session.id)?.role === "thread") {
+        store.endTurns(
+          session.id,
+          context.sessions.transcript(session.id).length,
+        );
+      }
+    });
+
     context.events.subscribe("SessionStateChanged", ({ session }) => {
       const thread = store.member(session.id);
       const project = thread && store.get(thread.projectId);
@@ -125,7 +136,7 @@ function deliver(
         case "turn": {
           const thread = store.member(delivery.threadId);
           if (thread) {
-            deliverTurn(thread, sessionId, actor, sessions, log);
+            deliverTurn(thread, delivery.end, sessionId, actor, sessions, log);
           }
         }
       }
@@ -142,12 +153,13 @@ function deliver(
 
 function deliverTurn(
   thread: Member,
+  end: number | undefined,
   coordinatorId: string,
   actor: Actor,
   sessions: ServerPluginContext["sessions"],
   log: ServerPluginContext["log"],
 ): void {
-  const transcript = sessions.transcript(thread.sessionId);
+  const transcript = sessions.transcript(thread.sessionId).slice(0, end);
   const error = turnError(transcript);
 
   const notice = threadNotice(

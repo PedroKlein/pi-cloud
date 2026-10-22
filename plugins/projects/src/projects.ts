@@ -27,7 +27,8 @@ export interface Member {
 export type Delivery =
   | { readonly kind: "context"; readonly text: string }
   | { readonly kind: "message"; readonly text: string }
-  | { readonly kind: "turn"; readonly threadId: string };
+  // end is the length of the thread's transcript when its next turn started.
+  | { readonly kind: "turn"; readonly threadId: string; readonly end?: number };
 
 export interface Queued {
   readonly id: number;
@@ -83,6 +84,7 @@ export function projectStore(store: PluginStore): {
     delivery: Delivery,
   ) => void;
   readonly queued: () => readonly Queued[];
+  readonly endTurns: (threadId: string, end: number) => void;
   readonly delivered: (id: number) => void;
 } {
   store.exec(`create table if not exists projects_projects (
@@ -317,6 +319,16 @@ export function projectStore(store: PluginStore): {
         actor: row.actor,
         delivery: JSON.parse(row.delivery) as Delivery,
       })),
+    endTurns: (threadId, end) => {
+      store.run(
+        `update projects_outbox set delivery = json_set(delivery, '$.end', ?)
+          where delivery ->> '$.kind' = 'turn'
+            and delivery ->> '$.threadId' = ?
+            and delivery ->> '$.end' is null`,
+        end,
+        threadId,
+      );
+    },
     delivered: (id) => {
       store.run("delete from projects_outbox where id = ?", id);
     },
