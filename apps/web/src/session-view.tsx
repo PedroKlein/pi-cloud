@@ -15,6 +15,7 @@ import { emptyFeed, type Feed, follow } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
+import { keyBar, type Modifier, modified } from "./keys";
 import { openTerminal } from "./terminal";
 
 type View = "chat" | "terminal";
@@ -366,18 +367,76 @@ function TerminalView({
   readonly sessionId: string;
 }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
+  const send = useRef<(data: string) => void>(() => undefined);
+  const [modifier, setModifier] = useState<Modifier>();
+
+  const typed = useEffectEvent((data: string): string => {
+    setModifier(undefined);
+
+    return modified(data, modifier);
+  });
 
   useEffect(() => {
     if (!box.current) {
       return undefined;
     }
 
-    return openTerminal(sessionId, box.current, () => undefined);
+    const terminal = openTerminal(sessionId, box.current, (data) =>
+      typed(data),
+    );
+
+    send.current = terminal.send;
+
+    return terminal.close;
   }, [sessionId]);
 
+  const keys: readonly {
+    readonly label: string;
+    readonly data?: string;
+    readonly modifier?: Modifier;
+  }[] = [
+    ...keyBar.slice(0, 2),
+    { label: "Ctrl", modifier: "ctrl" },
+    { label: "Alt", modifier: "alt" },
+    ...keyBar.slice(2),
+  ];
+
   return (
-    <div className="min-h-0 flex-1 bg-term-bg px-3 py-2">
-      <div id="terminal" ref={box} className="h-full" />
-    </div>
+    <>
+      <div className="min-h-0 flex-1 bg-term-bg px-3 py-2">
+        <div id="terminal" ref={box} className="h-full" />
+      </div>
+      <div
+        role="toolbar"
+        aria-label="Terminal keys"
+        className="hidden gap-2 overflow-x-auto border-t border-line bg-panel px-2 py-2 max-md:flex pointer-coarse:flex"
+      >
+        {keys.map((key) => (
+          <button
+            key={key.label}
+            type="button"
+            aria-pressed={
+              key.modifier === undefined ? undefined : modifier === key.modifier
+            }
+            // Keeps the focus, and with it the phone keyboard, on the terminal.
+            onPointerDown={(event) => {
+              event.preventDefault();
+            }}
+            onClick={() => {
+              if (key.modifier === undefined) {
+                send.current(key.data ?? "");
+              } else {
+                setModifier(
+                  modifier === key.modifier ? undefined : key.modifier,
+                );
+              }
+            }}
+            className="h-10 min-w-12 shrink-0 cursor-pointer rounded-md border border-line bg-elevated px-3 font-mono text-label text-fg aria-pressed:border-accent aria-pressed:bg-accent-tint"
+          >
+            {key.label}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
