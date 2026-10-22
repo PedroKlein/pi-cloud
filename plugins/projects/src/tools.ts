@@ -5,8 +5,9 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Actor, ModelRef, ToolResult } from "@pi-cloud/protocol";
 import { type WorkState, workStates } from "./model";
-import { messageText, threadNotice, threadPrompt, threadView } from "./prompts";
+import { threadNotice, threadPrompt, threadView } from "./prompts";
 import type { Member, Project, ProjectStore } from "./projects";
+import { messageText } from "./transcript";
 
 const pageSize = 20;
 
@@ -290,7 +291,6 @@ export function projectTools(
             { ...member, workState: state },
             sessions.get(member.sessionId),
             `set its work state to ${state}${note === undefined ? "" : `: ${note.replace(/\.+$/, "")}`}`,
-            [],
           ),
         });
 
