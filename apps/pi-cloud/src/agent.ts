@@ -191,7 +191,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     removal: Removal,
     sessionLog: Log,
   ): Promise<RemovalReport> => {
-    const { sessionId, workspace, force } = removal;
+    const { sessionId, generation, workspace, force } = removal;
     await stopping.get(sessionId);
 
     const report = await removeWorkspace(
@@ -204,9 +204,11 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       return { outcome: "kept", reason: String(error) };
     });
 
-    await reportRemoval(agent, sessionId, report).catch((error: unknown) => {
-      sessionLog("workspace removal not reported", { error: String(error) });
-    });
+    await reportRemoval(agent, sessionId, { ...report, generation }).catch(
+      (error: unknown) => {
+        sessionLog("workspace removal not reported", { error: String(error) });
+      },
+    );
 
     return report;
   };

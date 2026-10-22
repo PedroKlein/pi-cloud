@@ -10,7 +10,7 @@ import {
   liveSurface,
   type ModelRef,
   type Removal,
-  type RemovalReport,
+  type RemovalPost,
   type Session,
   type SessionEvent,
   type SessionStatus,
@@ -244,20 +244,23 @@ export class Sessions {
     return { ok: true, value: this.#view(forced) };
   }
 
-  reportRemoval(id: string, report: RemovalReport): Result<undefined> {
+  reportRemoval(id: string, report: RemovalPost): Result<undefined> {
     const session = this.#store.get(id);
     if (!session) {
       return { ok: false, reason: "not_found" };
     }
 
-    // An unarchive can land while the removal runs. The Session then stays
-    // unarchived, but its workspace is gone and comes back from restore.
+    // An unarchive can land while the removal runs, and a new archive after
+    // it. The workspace is gone either way and comes back from restore, but
+    // only a report from this archive's generation settles the removal.
+    const settles =
+      session.archivedAt !== null && report.generation === session.generation;
+
     this.#update({
       ...session,
       workspace:
         report.outcome === "removed" ? report.restore : session.workspace,
-      workspaceRemoval:
-        session.archivedAt === null ? session.workspaceRemoval : report.outcome,
+      workspaceRemoval: settles ? report.outcome : session.workspaceRemoval,
     });
 
     return { ok: true, value: undefined };
@@ -569,8 +572,9 @@ export class Sessions {
   #removals(provider: string): readonly Removal[] {
     return this.#store
       .pendingRemovals(provider)
-      .map(({ id, workspace, workspaceRemoval }) => ({
+      .map(({ id, generation, workspace, workspaceRemoval }) => ({
         sessionId: id,
+        generation,
         workspace,
         force: workspaceRemoval === "forced",
       }));

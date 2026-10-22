@@ -111,6 +111,7 @@ export interface WorkPoll {
 
 export interface Removal {
   readonly sessionId: string;
+  readonly generation: number;
   readonly workspace: Workspace;
   readonly force: boolean;
 }
@@ -126,6 +127,10 @@ export type RemovalReport =
   // from what the remotes still hold of its branch.
   | { readonly outcome: "removed"; readonly restore: Workspace }
   | { readonly outcome: "kept"; readonly reason: string };
+
+// A report as the agent posts it, with the generation of the Removal it
+// answers.
+export type RemovalPost = RemovalReport & { readonly generation: number };
 
 export interface StartFailure {
   readonly generation: number;

@@ -3,7 +3,7 @@ import {
   type Assignment,
   type Command,
   type LivePost,
-  type RemovalReport,
+  type RemovalPost,
   type StartFailure,
   type ToolCall,
   type ToolSpec,
@@ -101,7 +101,7 @@ export async function reportStartFailure(
 export async function reportRemoval(
   agent: Agent,
   sessionId: string,
-  report: RemovalReport,
+  report: RemovalPost,
 ): Promise<void> {
   await call(agent, `/agent/sessions/${sessionId}/workspace`, {
     method: "POST",
