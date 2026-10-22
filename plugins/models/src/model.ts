@@ -53,6 +53,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStrings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
+const isIntegers = (value: unknown): value is number[] =>
+  Array.isArray(value) && value.every((item) => Number.isInteger(item));
+
+const isQuota = (value: unknown): value is NonNullable<Unhealthy["quota"]> =>
+  isRecord(value) &&
+  typeof value["spent"] === "number" &&
+  typeof value["cap"] === "number" &&
+  typeof value["currency"] === "string";
+
 // The shape a gateway needs to start. Sessions report anything finer, such as
 // a model their machine doesn't have.
 export function aliasProblem(value: unknown): string | undefined {
@@ -66,14 +75,9 @@ export function aliasProblem(value: unknown): string | undefined {
   }
 
   for (const [name, backend] of backends) {
-    if (!isRecord(backend) || !isRecord(backend["tiers"])) {
-      return `backend ${name} needs a tiers object`;
-    }
-
-    for (const [tier, models] of Object.entries(backend["tiers"])) {
-      if (typeof models !== "string" && !isStrings(models)) {
-        return `tier ${tier} of ${name} must be a model id or a list of them`;
-      }
+    const problem = backendProblem(name, backend);
+    if (problem !== undefined) {
+      return problem;
     }
   }
 
@@ -90,6 +94,37 @@ export function aliasProblem(value: unknown): string | undefined {
   return undefined;
 }
 
+function backendProblem(name: string, backend: unknown): string | undefined {
+  if (!isRecord(backend) || !isRecord(backend["tiers"])) {
+    return `backend ${name} needs a tiers object`;
+  }
+
+  for (const [tier, models] of Object.entries(backend["tiers"])) {
+    if (typeof models !== "string" && !isStrings(models)) {
+      return `tier ${tier} of ${name} must be a model id or a list of them`;
+    }
+  }
+
+  const { capStatusCodes, forceOnly, resetSchedule, quotaHint } = backend;
+  if (capStatusCodes !== undefined && !isIntegers(capStatusCodes)) {
+    return `capStatusCodes of ${name} must be a list of status codes`;
+  }
+
+  if (forceOnly !== undefined && typeof forceOnly !== "boolean") {
+    return `forceOnly of ${name} must be true or false`;
+  }
+
+  if (resetSchedule !== undefined && typeof resetSchedule !== "string") {
+    return `resetSchedule of ${name} must be a schedule name`;
+  }
+
+  if (quotaHint !== undefined && typeof quotaHint !== "string") {
+    return `quotaHint of ${name} must be text`;
+  }
+
+  return undefined;
+}
+
 export function healthFrom(value: unknown): Health | undefined {
   if (!isRecord(value) || !isRecord(value["unhealthyUntil"])) {
     return undefined;
@@ -97,15 +132,20 @@ export function healthFrom(value: unknown): Health | undefined {
 
   const unhealthyUntil: Record<string, Unhealthy> = {};
   for (const [backend, entry] of Object.entries(value["unhealthyUntil"])) {
-    if (
-      !isRecord(entry) ||
-      typeof entry["until"] !== "string" ||
-      typeof entry["reason"] !== "string"
-    ) {
+    if (!isRecord(entry)) {
       return undefined;
     }
 
-    unhealthyUntil[backend] = entry as unknown as Unhealthy;
+    const { until, reason, quota } = entry;
+    if (typeof until !== "string" || typeof reason !== "string") {
+      return undefined;
+    }
+
+    unhealthyUntil[backend] = {
+      until,
+      reason,
+      ...(isQuota(quota) && { quota }),
+    };
   }
 
   return { version: 1, unhealthyUntil };

@@ -193,6 +193,29 @@ test("refuses an alias config without backends", async () => {
   expect(response.status).toBe(400);
 });
 
+test("refuses a backend whose settings have the wrong types", async () => {
+  const { id: environmentId } = await environment();
+
+  for (const settings of [
+    { capStatusCodes: 402 },
+    { capStatusCodes: ["402"] },
+    { forceOnly: "yes" },
+    { resetSchedule: 1 },
+    { quotaHint: false },
+  ]) {
+    const response = await api(
+      `/api/plugins/models/environments/${environmentId}`,
+      {
+        aliases: {
+          backends: { primary: { tiers: { medium: "m" }, ...settings } },
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+  }
+});
+
 test("lists an Environment's aliases first and gives a session with no model its default alias", async () => {
   const { id: environmentId } = await environment();
 
