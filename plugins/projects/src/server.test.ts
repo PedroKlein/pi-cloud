@@ -471,3 +471,82 @@ test("reads a thread's messages around transcript lines that aren't text", async
     isError: false,
   });
 });
+
+async function projectView(kernel: FakeKernel): Promise<ProjectView> {
+  const list = await kernel.route()(
+    new Request("http://pi-cloud/projects"),
+    "projects",
+    undefined,
+  );
+
+  const [summary] = (await list.json()) as { id: string }[];
+
+  const response = await kernel.route()(
+    new Request(`http://pi-cloud/projects/${summary?.id ?? ""}`),
+    `projects/${summary?.id ?? ""}`,
+    undefined,
+  );
+
+  return (await response.json()) as ProjectView;
+}
+
+async function messageProject(
+  kernel: FakeKernel,
+  text: unknown,
+): Promise<Response> {
+  const { id } = await projectView(kernel);
+
+  return kernel.route()(
+    new Request(`http://pi-cloud/projects/${id}/message`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+    `projects/${id}/message`,
+    undefined,
+  );
+}
+
+test("shows the coordinator's last reply on the Project", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId } = await startProject(kernel);
+
+  expect((await projectView(kernel)).coordinatorSays).toBeNull();
+
+  kernel.transcripts
+    .get(coordinatorId)
+    ?.push(userLine("how is it going?"), replyLine("One thread needs you."));
+
+  expect((await projectView(kernel)).coordinatorSays).toBe(
+    "One thread needs you.",
+  );
+
+  kernel.unreadable.add(coordinatorId);
+
+  expect((await projectView(kernel)).coordinatorSays).toBeNull();
+});
+
+test("sends a message from the Project page to its coordinator, even while it is offline", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId } = await startProject(kernel);
+
+  expect((await messageProject(kernel, "start a docs thread")).status).toBe(
+    202,
+  );
+
+  expect(kernel.delivered).toEqual([
+    { kind: "send", text: "start a docs thread" },
+  ]);
+
+  expect((await messageProject(kernel, "  ")).status).toBe(400);
+
+  kernel.offline.add(coordinatorId);
+  expect((await messageProject(kernel, "again")).status).toBe(202);
+  expect(kernel.delivered).toHaveLength(1);
+
+  kernel.offline.delete(coordinatorId);
+  await until(() => kernel.delivered.length > 1);
+
+  expect(kernel.delivered[1]).toEqual({ kind: "send", text: "again" });
+}, 10_000);

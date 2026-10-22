@@ -258,6 +258,19 @@ async function route(
       );
     }
 
+    if (project && child === "message" && request.method === "POST") {
+      const { text } = ((await request.json()) ?? {}) as { text?: unknown };
+
+      if (typeof text !== "string" || text.trim() === "") {
+        throw new BadRequest("text must not be empty");
+      }
+
+      store.enqueue(project.coordinatorId, user, { kind: "message", text });
+      deliver(store, context);
+
+      return new Response(null, { status: 202 });
+    }
+
     if (project && child === "memory" && name !== undefined) {
       const content = store.readMemory(project.id, decodeURIComponent(name));
 
@@ -412,9 +425,21 @@ function view(
     threadModel: project.threadModel,
     coordinatorId: project.coordinatorId,
     coordinatorState: runState(sessions.get(project.coordinatorId)),
+    coordinatorSays: coordinatorSays(project, sessions),
     threads: store
       .threads(project.id)
       .map((thread) => threadView(thread, sessions.get(thread.sessionId))),
     memory: store.memory(project.id),
   };
+}
+
+function coordinatorSays(
+  project: Project,
+  sessions: ServerPluginContext["sessions"],
+): string | null {
+  try {
+    return lastReply(sessions.transcript(project.coordinatorId)) ?? null;
+  } catch {
+    return null;
+  }
 }

@@ -46,6 +46,7 @@ export interface ProjectView {
   readonly threadModel: string | null;
   readonly coordinatorId: string;
   readonly coordinatorState: RunState;
+  readonly coordinatorSays: string | null;
   readonly threads: readonly ThreadView[];
   readonly memory: readonly MemoryFileView[];
 }

@@ -341,28 +341,26 @@ test("creates a Project and shares a file through its library", async () => {
     fauxAssistantMessage([fauxText("noted")]),
   ]);
 
-  await page.getByRole("button", { name: "Open coordinator" }).click();
-  await page.locator("#status", { hasText: "idle" }).waitFor();
-  await page.locator("#prompt-text").fill("start a docs thread");
-  await page.locator("#prompt-text").press("Enter");
+  const coordinator = page.getByRole("region", { name: "Coordinator" });
+  await coordinator.getByText("No reply yet.").waitFor();
 
-  await page
-    .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
-    .waitFor();
+  await coordinator
+    .getByLabel("Message the coordinator")
+    .fill("start a docs thread");
 
-  await page
-    .locator("#plugin-nav")
-    .getByRole("link", { name: "Projects" })
-    .click();
+  await coordinator.getByLabel("Message the coordinator").press("Enter");
 
-  await page.getByRole("button", { name: /^Site/ }).click();
+  await coordinator.getByText(/^(ok|noted)$/).waitFor();
 
-  const row = page.locator("tr", { hasText: "Docs" });
-  await row.locator("td", { hasText: /^e2e$/ }).waitFor();
+  const card = page
+    .getByRole("region", { name: "Working" })
+    .getByRole("article", { name: "Docs" });
+
+  await card.getByText(/^e2e · /).waitFor();
 
   // The thread's reply wakes the coordinator, and both take scripted replies
   // that later tests would otherwise lose to them.
-  await row.getByRole("button", { name: "Docs" }).click();
+  await card.getByRole("button", { name: "Docs" }).click();
 
   await page
     .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
