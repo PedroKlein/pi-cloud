@@ -7,6 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import {
   fauxAssistantMessage,
+  type FauxResponseFactory,
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
@@ -1416,6 +1417,106 @@ test("takes a queued message back and keeps the rest queued with their images", 
   expect(lastContext).toContain("iVBORw0KGgo=");
   expect(lastContext).not.toContain("second");
 });
+
+test.each(["steer", "followUp"] as const)(
+  "keeps a %s message an extension queued when a queued message is taken back",
+  async (delivery) => {
+    const { faux, models } = await fauxModels(root);
+    await writeFile(join(root, "notes.txt"), "notes");
+    let release = (): void => undefined;
+    let extension: ExtensionAPI | undefined;
+    const contexts: string[] = [];
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const reply =
+      (text: string): FauxResponseFactory =>
+      (context) => {
+        contexts.push(
+          JSON.stringify(
+            context.messages.filter(({ role }) => role === "user"),
+          ),
+        );
+
+        return fauxAssistantMessage([fauxText(text)]);
+      };
+
+    faux.setResponses([
+      async () => {
+        await gate;
+
+        return fauxAssistantMessage([
+          fauxToolCall("read", { path: "notes.txt" }),
+        ]);
+      },
+      reply("read it"),
+      reply("noted"),
+    ]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, {
+        models,
+        plugins: [
+          {
+            name: "background",
+            extension: () => (pi: ExtensionAPI) => {
+              extension = pi;
+            },
+          },
+        ],
+      }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "first" });
+    await fake.waitFor(() => faux.state.callCount === 1);
+
+    extension?.sendMessage(
+      {
+        customType: "background",
+        content: "a background task finished",
+        display: true,
+      },
+      { triggerTurn: true, deliverAs: delivery },
+    );
+
+    fake.send({
+      actor: "user:local",
+      type: "message",
+      text: "second",
+      delivery,
+    });
+
+    await fake.waitFor(() => fake.events.some((e) => e.type === "queue"));
+
+    fake.send({
+      actor: "user:local",
+      type: "unqueue",
+      delivery,
+      text: "second",
+    });
+
+    await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+    release();
+
+    await fake.waitFor(
+      () =>
+        fake.events.filter((e) => e.type === "status" && e.status === "idle")
+          .length === 2,
+    );
+
+    await hosted.stop();
+
+    expect(contexts.at(-1)).toContain("a background task finished");
+    expect(contexts.join()).not.toContain("second");
+  },
+);
 
 test("leaves a message Pi already read when asked to take it back", async () => {
   const { faux, models } = await fauxModels(root);

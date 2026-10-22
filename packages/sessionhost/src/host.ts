@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { ImageContent } from "@earendil-works/pi-ai";
+import { contentText, type ImageContent } from "@earendil-works/pi-ai";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -362,28 +362,73 @@ function unqueue(
   { delivery, text }: Extract<Command, { type: "unqueue" }>,
   queuedImages: ReadonlyMap<string, ImageContent[]>,
 ): string | undefined {
-  const queued =
-    delivery === "steer"
-      ? session.getSteeringMessages()
-      : session.getFollowUpMessages();
+  const queued = queuedMessages(session.agent);
 
-  if (!queued.includes(text)) {
+  const index = queued[delivery].findIndex(
+    (message) =>
+      message.role === "user" && contentText(message.content, "") === text,
+  );
+
+  if (index === -1) {
     return undefined;
   }
 
-  const { steering, followUp } = session.clearQueue();
-  const from = delivery === "steer" ? steering : followUp;
-  from.splice(from.indexOf(text), 1);
+  queued[delivery].splice(index, 1);
+  session.clearQueue();
 
-  for (const kept of steering) {
-    void session.steer(kept, queuedImages.get(kept));
-  }
-
-  for (const kept of followUp) {
-    void session.followUp(kept, queuedImages.get(kept));
-  }
+  void requeue(session, "steer", queued.steer, queuedImages);
+  void requeue(session, "followUp", queued.followUp, queuedImages);
 
   return text;
+}
+
+type Delivery = Extract<Command, { type: "unqueue" }>["delivery"];
+
+type AgentMessage = AgentSession["messages"][number];
+
+// Pi's agent shows its queues only through peekQueuedMessages, which returns
+// the steering queue, or the follow-up queue when no steering is queued.
+function queuedMessages(
+  agent: AgentSession["agent"],
+): Record<Delivery, AgentMessage[]> {
+  const { steeringMode, followUpMode } = agent;
+  agent.steeringMode = "all";
+  agent.followUpMode = "all";
+
+  const steeringOrFollowUp = agent.peekQueuedMessages();
+  agent.clearSteeringQueue();
+  const followUp = agent.peekQueuedMessages();
+
+  const steering =
+    steeringOrFollowUp[0] === followUp[0] ? [] : steeringOrFollowUp;
+
+  for (const message of steering) {
+    agent.steer(message);
+  }
+
+  agent.steeringMode = steeringMode;
+  agent.followUpMode = followUpMode;
+
+  return { steer: steering, followUp };
+}
+
+// Queues messages one at a time so they keep their order. User messages go
+// through Pi's session, which lists them in its queue, and messages from
+// extensions go straight to the agent, as Pi queued them.
+async function requeue(
+  session: AgentSession,
+  delivery: Delivery,
+  messages: readonly AgentMessage[],
+  queuedImages: ReadonlyMap<string, ImageContent[]>,
+): Promise<void> {
+  for (const message of messages) {
+    if (message.role === "user") {
+      const text = contentText(message.content, "");
+      await session[delivery](text, queuedImages.get(text));
+    } else {
+      session.agent[delivery](message);
+    }
+  }
 }
 
 function images(attached: readonly ImageAttachment[]): ImageContent[] {
