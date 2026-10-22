@@ -768,3 +768,19 @@ test("sends comments on diff lines to Pi as one message", async () => {
     .getByText("1 comment on the diff")
     .waitFor({ state: "detached" });
 }, 30_000);
+
+test("keeps the closed sessions drawer out of reach on a phone", async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(server.url.href);
+
+  const newSession = page.getByRole("button", { name: "New session" });
+  await page.getByRole("button", { name: "Open sessions" }).click();
+  await newSession.waitFor();
+
+  await page.getByRole("link", { name: "Projects" }).click();
+  await newSession.waitFor({ state: "hidden" });
+
+  expect(await newSession.count()).toBe(0);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+});
