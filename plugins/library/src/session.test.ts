@@ -69,3 +69,20 @@ test("refuses to publish a file over the size limit without sending it", async (
 
   expect(requests).toEqual(["GET member", "PUT files/limit.bin"]);
 });
+
+test("publishes a file under its everyday name", async () => {
+  const screenshot = "Screenshot 2026-10-22 at 10.15.32\u202fAM.png";
+  await writeFile(join(cwd, screenshot), "png");
+  await writeFile(join(cwd, "invoice (1).pdf"), "pdf");
+  const requests: string[] = [];
+  const publish = await publisher(requests);
+
+  await publish(screenshot);
+  await publish("invoice (1).pdf");
+
+  expect(requests).toEqual([
+    "GET member",
+    `PUT files/${encodeURIComponent(screenshot)}`,
+    "PUT files/invoice%20(1).pdf",
+  ]);
+});

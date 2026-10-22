@@ -897,7 +897,7 @@ test("refuses library file names made only of dots", async () => {
   );
 
   expect(text).not.toContain("Published");
-  expect(text).toContain("file names may use letters, digits, spaces");
+  expect(text).toContain("file names can't be empty, longer than 200");
   expect(await (await api(files)).json()).toEqual([]);
 
   expect(
@@ -945,10 +945,8 @@ test("accepts library file names with letters from any script", async () => {
   expect(await put("日本.txt")).toBe(200);
 
   expect(
-    await Promise.all(
-      ["a/b.txt", "a\\b.txt", "a\tb.txt", "\u0301x.txt", "..."].map(put),
-    ),
-  ).toEqual([400, 400, 400, 400, 400]);
+    await Promise.all(["a/b.txt", "a\\b.txt", "a\tb.txt", "..."].map(put)),
+  ).toEqual([400, 400, 400, 400]);
 
   await until(
     async () =>
