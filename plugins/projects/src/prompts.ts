@@ -72,6 +72,28 @@ export function runState(session: Session | undefined): RunState {
   }
 }
 
+// A message waits only for a Session that will take it: a failed start never
+// comes back, and ADR 0006 refuses input while the provider is offline.
+export function unreachable(
+  name: string,
+  session: Session | undefined,
+): string | undefined {
+  if (session?.status === "failed") {
+    return `${name} failed to start: ${session.error ?? "no error was given"}`;
+  }
+
+  switch (runState(session)) {
+    case "archived":
+      return `${name} is archived`;
+    case "offline":
+      return `${name} is on a machine that is offline`;
+    case "working":
+    case "idle":
+    case "interrupted":
+      return undefined;
+  }
+}
+
 export function threadView(
   thread: Member,
   session: Session | undefined,

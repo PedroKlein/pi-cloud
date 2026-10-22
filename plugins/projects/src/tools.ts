@@ -5,7 +5,7 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Actor, ModelRef, ToolResult } from "@pi-cloud/protocol";
 import { type WorkState, workStates } from "./model";
-import { threadNotice, threadPrompt, threadView } from "./prompts";
+import { threadNotice, threadPrompt, threadView, unreachable } from "./prompts";
 import type { Member, Project, ProjectStore } from "./projects";
 import { messageText } from "./transcript";
 
@@ -182,6 +182,15 @@ export function projectTools(
       "coordinator",
       (input, { project, actor }) => {
         const thread = threadOf(project, input["thread"]);
+
+        const refused = unreachable(
+          `thread "${thread.title}"`,
+          sessions.get(thread.sessionId),
+        );
+
+        if (refused !== undefined) {
+          throw new Error(refused);
+        }
 
         projects.enqueue(thread.sessionId, actor, {
           kind: "message",

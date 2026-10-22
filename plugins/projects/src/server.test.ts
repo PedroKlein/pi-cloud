@@ -731,7 +731,7 @@ test("lists each Project with its repositories, coordinator state and blocked th
   ]);
 });
 
-test("sends a message from the Project page to its coordinator, even while it is offline", async () => {
+test("sends a message from the Project page to its coordinator, and holds it for one that is still starting", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);
   const { coordinatorId } = await startProject(kernel);
@@ -746,6 +746,7 @@ test("sends a message from the Project page to its coordinator, even while it is
 
   expect((await messageProject(kernel, "  ")).status).toBe(400);
 
+  kernel.update(coordinatorId, { status: "starting" });
   kernel.offline.add(coordinatorId);
   expect((await messageProject(kernel, "again")).status).toBe(202);
   expect(kernel.delivered).toHaveLength(1);
@@ -754,4 +755,100 @@ test("sends a message from the Project page to its coordinator, even while it is
   await until(() => kernel.delivered.length > 1);
 
   expect(kernel.delivered[1]).toEqual({ kind: "send", text: "again" });
+}, 10_000);
+
+const restored: Partial<Session> = {
+  status: "idle",
+  error: null,
+  archivedAt: null,
+  online: true,
+};
+
+test("refuses a message from the Project page that its coordinator can't get", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId } = await startProject(kernel);
+
+  const refuses = async (
+    changes: Partial<Session>,
+    error: string,
+  ): Promise<void> => {
+    kernel.update(coordinatorId, changes);
+    const response = await messageProject(kernel, "stop every thread");
+    kernel.update(coordinatorId, restored);
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error });
+  };
+
+  await refuses(
+    { online: false },
+    "the coordinator is on a machine that is offline",
+  );
+
+  await refuses(
+    { status: "failed", error: "clone failed" },
+    "the coordinator failed to start: clone failed",
+  );
+
+  await refuses(
+    { status: "stopped", archivedAt: new Date().toISOString() },
+    "the coordinator is archived",
+  );
+
+  expect((await messageProject(kernel, "carry on")).status).toBe(202);
+  expect(kernel.delivered).toEqual([{ kind: "send", text: "carry on" }]);
+}, 10_000);
+
+test("tells the coordinator when a thread can't get its message", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+  const coordinator = { session: kernel.session(coordinatorId), actor: user };
+  const messageThread = kernel.tool("message_thread");
+
+  const refuses = async (
+    changes: Partial<Session>,
+    error: string,
+  ): Promise<void> => {
+    kernel.update(threadId, changes);
+
+    const result = await messageThread.run(
+      { thread: threadId, text: "stop" },
+      coordinator,
+    );
+
+    kernel.update(threadId, restored);
+
+    expect(result).toEqual({ text: error, isError: true });
+  };
+
+  await refuses(
+    { status: "stopped", archivedAt: new Date().toISOString() },
+    'thread "Bump version" is archived',
+  );
+
+  await refuses(
+    { status: "failed", error: "clone failed" },
+    'thread "Bump version" failed to start: clone failed',
+  );
+
+  await refuses(
+    { online: false },
+    'thread "Bump version" is on a machine that is offline',
+  );
+
+  expect(
+    await messageThread.run(
+      { thread: threadId, text: "carry on" },
+      coordinator,
+    ),
+  ).toEqual({
+    text: 'Message queued for thread "Bump version".',
+    isError: false,
+  });
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered).toEqual([{ kind: "send", text: "carry on" }]);
 }, 10_000);

@@ -11,6 +11,7 @@ import {
   runState,
   threadNotice,
   threadView,
+  unreachable,
 } from "./prompts";
 import {
   type Delivery,
@@ -274,6 +275,15 @@ async function route(
 
       if (typeof text !== "string" || text.trim() === "") {
         throw new BadRequest("text must not be empty");
+      }
+
+      const refused = unreachable(
+        "the coordinator",
+        context.sessions.get(project.coordinatorId),
+      );
+
+      if (refused !== undefined) {
+        return Response.json({ error: refused }, { status: 409 });
       }
 
       store.enqueue(project.coordinatorId, user, { kind: "message", text });
