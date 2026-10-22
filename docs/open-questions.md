@@ -104,11 +104,12 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 ### Extension system
 
 - What is the smallest stable Pi Cloud extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
-- May a Session install extensions, or only propose them? OpenHands installs UI extensions disabled and lets only the user enable them ([research](research.md#openhands)).
+- Resolved: a Session may propose a plugin but only the user enables it, and third-party plugins install turned off ([ADR 0022](adr/0022-plugin-model-v2.md#installing-third-party-plugins)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
-- What capabilities must an extension declare?
+- Resolved for v2: a plugin declares `capabilities` and `requires` in its manifest; the exact capability names are open ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest)).
 - Which first-party features must prove the public extension surface?
 - How are blocking or faulty trusted extensions diagnosed and disabled safely?
+- Do browsers resolve `*.localhost` for previews, and can a compiled Bun binary import plugin files from outside itself? Both are checked when ADR 0022 is built.
 
 ## Explicitly postponed
 
