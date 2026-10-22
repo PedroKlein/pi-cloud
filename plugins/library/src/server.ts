@@ -17,7 +17,17 @@ export const library: ServerPlugin = {
     });
 
     context.routes.handle(async (request, path, caller) => {
-      const target = resolve(path.split("/"), caller, store);
+      let target: Target | undefined;
+      try {
+        target = resolve(path.split("/"), caller, store);
+      } catch (error) {
+        if (error instanceof URIError) {
+          return Response.json({ error: error.message }, { status: 400 });
+        }
+
+        throw error;
+      }
+
       if (target === undefined) {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
