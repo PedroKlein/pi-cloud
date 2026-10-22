@@ -108,7 +108,11 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
           ),
         ),
       notify: (message, level) => {
-        publish({ type: "notify", message, level: level ?? "info" });
+        publish({
+          type: "notify",
+          message: stripVTControlCharacters(message),
+          level: level ?? "info",
+        });
       },
       setStatus: (key, value) => {
         publish({

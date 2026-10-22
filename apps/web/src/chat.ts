@@ -56,6 +56,12 @@ interface Entry {
   };
 }
 
+// Extensions color the text they post for Pi's TUI: CSI sequences such as
+// colors, and OSC sequences such as links.
+const terminalCodes =
+  // eslint-disable-next-line no-control-regex -- escape codes are what it matches
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+
 export function chatItems(line: string): readonly ChatItem[] {
   const entry = JSON.parse(line) as Entry;
   const at = entry.timestamp;
@@ -72,7 +78,7 @@ function entryItems(entry: Entry): readonly ChatItem[] {
     entry.display === true &&
     typeof entry.content === "string"
   ) {
-    return [{ role: "note", text: entry.content }];
+    return [{ role: "note", text: entry.content.replace(terminalCodes, "") }];
   }
 
   if (entry.type !== "message" || !message) {
