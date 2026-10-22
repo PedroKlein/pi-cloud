@@ -4,8 +4,9 @@ import type {
   WebPlugin,
 } from "@pi-cloud/plugins/web";
 import { Button, cn, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useEffect, useState } from "react";
+import { Fragment, type ReactElement, useEffect, useState } from "react";
 import type { CheckoutChanges, PullRequest } from "../src/report";
+import { type DiffComment, reviewMessage } from "./comments";
 import { type DiffFile, type DiffLine, parseDiff } from "./diff";
 
 export const changes: WebPlugin = {
@@ -69,6 +70,34 @@ function Checkout({
   const diff = parseDiff(patch);
   const added = diff.reduce((sum, file) => sum + file.added, 0);
   const removed = diff.reduce((sum, file) => sum + file.removed, 0);
+  const [comments, setComments] = useState<readonly DiffComment[]>([]);
+  const [sendError, setSendError] = useState<string>();
+
+  const review: Review = {
+    comments,
+    add: (path, line, removedLine, text) => {
+      setComments((current) => [
+        ...current,
+        { checkout: name, path, line, removed: removedLine, text },
+      ]);
+    },
+    remove: (comment) => {
+      setComments((current) => current.filter((c) => c !== comment));
+    },
+  };
+
+  const send = (): void => {
+    setSendError(undefined);
+
+    session.send(reviewMessage(comments)).then(
+      () => {
+        setComments([]);
+      },
+      (error: unknown) => {
+        setSendError(error instanceof Error ? error.message : String(error));
+      },
+    );
+  };
 
   return (
     <div className="relative">
@@ -90,10 +119,33 @@ function Checkout({
           {truncated ? (
             <p className="text-fg-dim">The patch is too large to show.</p>
           ) : (
-            diff.map((file) => <FileDiff key={file.path} file={file} />)
+            diff.map((file) => (
+              <FileDiff key={file.path} file={file} review={review} />
+            ))
           )}
         </div>
       </details>
+      {comments.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-label text-fg-dim">
+          {`${String(comments.length)} ${comments.length === 1 ? "comment" : "comments"} on the diff`}
+          <Button variant="primary" onClick={send}>
+            Send to Pi
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setComments([]);
+            }}
+          >
+            Discard
+          </Button>
+          {sendError !== undefined && (
+            <span role="alert" className="text-failed">
+              {sendError}
+            </span>
+          )}
+        </div>
+      )}
       {branched && (
         <PullRequestActions
           name={name}
@@ -285,7 +337,27 @@ const marks: Readonly<Record<DiffLine["kind"], string>> = {
   note: " ",
 };
 
-function FileDiff({ file }: { readonly file: DiffFile }): ReactElement {
+interface Review {
+  readonly comments: readonly DiffComment[];
+  readonly add: (
+    path: string,
+    line: number,
+    removed: boolean,
+    text: string,
+  ) => void;
+  readonly remove: (comment: DiffComment) => void;
+}
+
+function FileDiff({
+  file,
+  review,
+}: {
+  readonly file: DiffFile;
+  readonly review: Review;
+}): ReactElement {
+  const [drafting, setDrafting] = useState<string>();
+  const comments = review.comments.filter(({ path }) => path === file.path);
+
   return (
     <details open className="rounded-md border border-line bg-code">
       <summary className="sticky top-0 flex cursor-pointer items-center justify-between gap-3 rounded-t-md border-b border-line bg-elevated px-3 py-1.5 font-mono text-mono-sm text-fg">
@@ -296,7 +368,7 @@ function FileDiff({ file }: { readonly file: DiffFile }): ReactElement {
         </span>
       </summary>
       <table className="w-full border-collapse font-mono text-mono-sm">
-        {file.hunks.map((hunk) => (
+        {file.hunks.map((hunk, hunkIndex) => (
           <tbody key={hunk.header}>
             <tr>
               <td
@@ -306,26 +378,145 @@ function FileDiff({ file }: { readonly file: DiffFile }): ReactElement {
                 {hunk.header}
               </td>
             </tr>
-            {hunk.lines.map((line, index) => (
-              <tr
-                key={`${String(index)}-${line.kind}`}
-                className={lineStyles[line.kind]}
-              >
-                <td className="w-10 px-2 text-right text-fg-dim select-none">
-                  {line.oldLine}
-                </td>
-                <td className="w-10 px-2 text-right text-fg-dim select-none">
-                  {line.newLine}
-                </td>
-                <td className="w-4 text-fg-dim select-none">
-                  {marks[line.kind]}
-                </td>
-                <td className="pr-3 whitespace-pre-wrap">{line.text}</td>
-              </tr>
-            ))}
+            {hunk.lines.map((line, index) => {
+              const at = line.newLine ?? line.oldLine;
+              const removed = line.kind === "remove";
+              const row = `${String(hunkIndex)}-${String(index)}`;
+              const where = `${file.path} ${removed ? "removed " : ""}line ${String(at)}`;
+
+              return (
+                <Fragment key={`${String(index)}-${line.kind}`}>
+                  <tr className={cn("group/line", lineStyles[line.kind])}>
+                    <td className="w-10 px-2 text-right text-fg-dim select-none">
+                      {line.oldLine}
+                    </td>
+                    <td className="w-10 px-2 text-right text-fg-dim select-none">
+                      {line.newLine}
+                    </td>
+                    <td className="w-5 text-fg-dim select-none">
+                      {at === undefined || line.kind === "note" ? (
+                        marks[line.kind]
+                      ) : (
+                        <button
+                          type="button"
+                          aria-label={`Comment on ${where}`}
+                          onClick={() => {
+                            setDrafting(row);
+                          }}
+                          className="flex size-4 cursor-pointer items-center justify-center rounded-sm text-fg-dim opacity-0 group-hover/line:bg-accent group-hover/line:text-on-accent group-hover/line:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                        >
+                          <Icon name="plus" className="size-3" />
+                        </button>
+                      )}
+                    </td>
+                    <td className="pr-3 whitespace-pre-wrap">{line.text}</td>
+                  </tr>
+                  {comments
+                    .filter(
+                      (comment) =>
+                        comment.line === at && comment.removed === removed,
+                    )
+                    .map((comment, number) => (
+                      <tr key={`comment-${String(number)}`}>
+                        <td colSpan={4} className="px-3 py-1.5">
+                          <div className="flex items-start gap-2 rounded-md border border-line bg-elevated px-3 py-2 font-sans text-ui text-fg">
+                            <span className="flex-1 whitespace-pre-wrap">
+                              {comment.text}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Delete comment on ${where}`}
+                              onClick={() => {
+                                review.remove(comment);
+                              }}
+                              className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-dim hover:bg-hover hover:text-fg"
+                            >
+                              <Icon name="x" className="size-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  {at !== undefined && drafting === row && (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-1.5">
+                        <CommentForm
+                          label={`Comment on ${where}`}
+                          onSave={(text) => {
+                            review.add(file.path, at, removed, text);
+                            setDrafting(undefined);
+                          }}
+                          onCancel={() => {
+                            setDrafting(undefined);
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         ))}
       </table>
     </details>
+  );
+}
+
+function CommentForm({
+  label,
+  onSave,
+  onCancel,
+}: {
+  readonly label: string;
+  readonly onSave: (text: string) => void;
+  readonly onCancel: () => void;
+}): ReactElement {
+  const [text, setText] = useState("");
+
+  const save = (): void => {
+    if (text.trim() !== "") {
+      onSave(text);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        save();
+      }}
+      className="flex flex-col gap-2 rounded-md border border-accent bg-elevated p-2 font-sans"
+    >
+      <textarea
+        aria-label={label}
+        autoFocus
+        rows={2}
+        value={text}
+        placeholder="Leave a comment for Pi"
+        onChange={(event) => {
+          setText(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            save();
+          }
+
+          if (event.key === "Escape") {
+            onCancel();
+          }
+        }}
+        className="resize-none bg-transparent text-ui text-fg placeholder:text-fg-dim focus:outline-none"
+      />
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit" disabled={text.trim() === ""}>
+          Add comment
+        </Button>
+      </div>
+    </form>
   );
 }

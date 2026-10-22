@@ -701,3 +701,70 @@ test("takes a queued message back into the composer", async () => {
     .locator('#chat li[data-role="assistant"]', { hasText: "finally done" })
     .waitFor();
 }, 30_000);
+
+test("sends comments on diff lines to Pi as one message", async () => {
+  const project = join(root, "review");
+  execFileSync("git", ["init", "--quiet", project]);
+  await writeFile(join(project, "notes.txt"), "old notes\n");
+  execFileSync("git", ["add", "."], { cwd: project });
+
+  execFileSync(
+    "git",
+    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "first"],
+    { cwd: project },
+  );
+
+  faux.setResponses([
+    fauxAssistantMessage([
+      fauxToolCall("write", { path: "notes.txt", content: "new notes\n" }),
+    ]),
+    fauxAssistantMessage([fauxText("rewrote them")]),
+    fauxAssistantMessage([fauxText("will fix")]),
+  ]);
+
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(project);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.locator("#prompt-text").fill("rewrite the notes");
+  await page.locator("#prompt-text").press("Enter");
+
+  const changes = page.locator('#plugin-panels [data-plugin="changes"]');
+  await changes.getByText("Changes (1 file)").click();
+
+  await changes
+    .getByRole("button", { name: "Comment on notes.txt line 1" })
+    .click();
+
+  const comment = changes.getByRole("textbox", {
+    name: "Comment on notes.txt line 1",
+  });
+
+  await comment.fill("keep the old wording");
+  await comment.press("Enter");
+  await changes.getByText("1 comment on the diff").waitFor();
+  await changes.getByRole("button", { name: "Send to Pi" }).click();
+
+  await page
+    .locator('#chat li[data-role="user"]', {
+      hasText: "notes.txt:1`: keep the old wording",
+    })
+    .waitFor();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "will fix" })
+    .waitFor();
+
+  await changes
+    .getByText("1 comment on the diff")
+    .waitFor({ state: "detached" });
+}, 30_000);
