@@ -312,11 +312,20 @@ async function commitAll(path: string, message: string): Promise<void> {
   await git(path, "commit", "--quiet", "-m", message);
 }
 
-// owner/name for a github.com remote in any of git's URL forms.
-function gitHubRepository(url: string): string | undefined {
-  return /^(?:https:\/\/|ssh:\/\/git@|git@)github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(
-    url,
-  )?.[1];
+// owner/name for a github.com remote in any of git's URL forms, which can carry
+// credentials or a port. git's scp-like git@github.com:owner/name form doesn't
+// parse as a URL.
+function gitHubRepository(remote: string): string | undefined {
+  const url = URL.parse(remote);
+
+  if (url !== null && url.hostname !== "github.com") {
+    return undefined;
+  }
+
+  const path =
+    url?.pathname ?? /^git@github\.com:(.*)$/.exec(remote)?.[1] ?? "";
+
+  return /^\/?([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(path)?.[1];
 }
 
 function composeUrl(

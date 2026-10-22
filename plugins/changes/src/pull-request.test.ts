@@ -59,11 +59,12 @@ async function sessionCheckout(): Promise<{
 }
 
 // Runs /pr with args on the checkout and returns where its pull request ended
-// up.
+// up. Everything it publishes and logs on the way goes into said.
 async function pr(
   checkout: Checkout,
   args: string,
   complete: Complete = async () => Promise.resolve("Edit the readme\n\nWhy."),
+  said: string[] = [],
 ): Promise<PullRequest | undefined> {
   let outcome: PullRequest | undefined;
 
@@ -73,12 +74,15 @@ async function pr(
 
   const cloud: SessionCloud = {
     publish: (_key, data) => {
+      said.push(JSON.stringify(data));
       outcome = (data as readonly PullRequest[]).at(-1);
     },
     askQuestions: unused,
     checkouts: [checkout],
     request: unused,
-    log: () => undefined,
+    log: (message, fields) => {
+      said.push(`${message} ${JSON.stringify(fields)}`);
+    },
   };
 
   const command = pullRequestCommand(cloud, () => undefined);
@@ -255,4 +259,62 @@ test("describes a change set too large for the diff view from the head of its pa
   expect(prompt).toContain("data.json");
   expect(prompt).toContain("2 files changed");
   expect(prompt.length).toBeLessThan(60_000);
+});
+
+// Points origin at remote while git still pushes to the bare repository, and
+// runs /pr with args.
+async function prThrough(
+  remote: string,
+  args: string,
+): Promise<{
+  readonly outcome: PullRequest | undefined;
+  readonly said: string;
+}> {
+  const { origin, checkout } = await sessionCheckout();
+  const said: string[] = [];
+
+  await git(checkout.path, "remote", "set-url", "origin", remote);
+  await git(checkout.path, "config", `url.${origin}.insteadOf`, remote);
+  await writeFile(join(checkout.path, "README.md"), "hello again\n");
+
+  const outcome = await pr(checkout, args, undefined, said);
+
+  return { outcome, said: said.join("\n") };
+}
+
+test.each([
+  "https://github.com/acme/widgets.git",
+  "https://github.com/acme/widgets/",
+  "git@github.com:acme/widgets.git",
+  "ssh://git@github.com/acme/widgets.git",
+  "ssh://git@github.com:22/acme/widgets.git",
+  "https://ghp_secret@github.com/acme/widgets.git",
+  "https://x-access-token:ghs_secret@github.com/acme/widgets.git",
+])("composes the pull request on GitHub for %s", async (remote) => {
+  const { outcome, said } = await prThrough(remote, "compose");
+
+  expect(outcome).toMatchObject({ status: "compose", reason: null });
+
+  const url = new URL(outcome?.status === "compose" ? outcome.url : "");
+
+  expect(`${url.origin}${url.pathname}`).toBe(
+    "https://github.com/acme/widgets/compare/pi-cloud%2Fsession",
+  );
+
+  expect(said).not.toContain("secret");
+});
+
+test("only pushes to a remote that names github.com but is elsewhere", async () => {
+  const { outcome, said } = await prThrough(
+    "https://github.com:secret@example.com/acme/widgets.git",
+    "compose",
+  );
+
+  expect(outcome).toEqual({
+    name: "",
+    status: "pushed",
+    branch: "pi-cloud/session",
+  });
+
+  expect(said).not.toContain("secret");
 });
