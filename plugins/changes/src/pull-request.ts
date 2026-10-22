@@ -1,23 +1,31 @@
 import { execFile } from "node:child_process";
+import { relative } from "node:path";
 import { promisify } from "node:util";
+import type { SessionCloud } from "@pi-cloud/plugins";
 import { workspaceChanges } from "./changes";
 import type { PullRequest } from "./report";
 
 const run = promisify(execFile);
 
-export type Mode = "pr" | "draft" | "compose";
+type Mode = "pr" | "draft" | "compose";
 
-export interface Description {
+const modes: Readonly<Record<string, Mode>> = {
+  "": "pr",
+  draft: "draft",
+  compose: "compose",
+};
+
+const describePrompt = `Write a pull request title and description for the commits and patch below.
+Reply with the title alone on the first line, then a blank line, then the description in Markdown.
+Keep the title under 72 characters. Describe what changed and why, not each file.`;
+
+// The Session model's reply to a prompt, or undefined when it has no model.
+export type Complete = (prompt: string) => Promise<string | undefined>;
+
+interface Description {
   readonly title: string;
   readonly body: string;
 }
-
-// Writes a title and description for the commits and patch, or returns
-// undefined to fall back to the commits alone.
-export type Describe = (
-  commits: readonly string[],
-  patch: string,
-) => Promise<Description | undefined>;
 
 type Outcome = PullRequest extends infer P
   ? P extends PullRequest
@@ -28,13 +36,106 @@ type Outcome = PullRequest extends infer P
 const pullRequestKey = (branch: string): string =>
   `branch.${branch}.piCloudPullRequest`;
 
+// Opens the pull requests that /pr asks for, one checkout at a time, and
+// publishes where each stands under "pull-requests". start is false when no
+// checkout on its own session branch matches.
+export function pullRequestCommand(
+  { publish, checkouts, log }: SessionCloud,
+  refresh: (cwd: string) => void,
+): {
+  readonly start: (args: string, cwd: string, complete: Complete) => boolean;
+  readonly showRecorded: (cwd: string) => Promise<void>;
+  readonly settled: () => Promise<void>;
+} {
+  const shown = new Map<string, PullRequest>();
+  let opening = Promise.resolve();
+
+  const show = (state: PullRequest): void => {
+    shown.set(state.name, state);
+    publish("pull-requests", [...shown.values()]);
+  };
+
+  const branches = (cwd: string) =>
+    checkouts.flatMap(({ path, base }) =>
+      base === null ? [] : [{ path, base, name: relative(cwd, path) }],
+    );
+
+  return {
+    start: (args, cwd, complete) => {
+      const { mode, only } = parsePrArgs(args);
+
+      const targets = branches(cwd).filter(
+        ({ name }) => only === undefined || name === only,
+      );
+
+      if (targets.length === 0) {
+        return false;
+      }
+
+      // Commands run before the next queued message, so the push runs
+      // after the handler returns instead of holding the Session.
+      opening = opening.then(async () => {
+        for (const { path, base, name } of targets) {
+          show({ name, status: "working" });
+
+          const started = Date.now();
+
+          const outcome = await openPullRequest(
+            path,
+            base,
+            mode,
+            complete,
+          ).catch((error: unknown): Outcome => ({
+            status: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          }));
+
+          show({ name, ...outcome });
+
+          log("pull request", {
+            name,
+            mode,
+            status: outcome.status,
+            ms: Date.now() - started,
+          });
+        }
+
+        refresh(cwd);
+      });
+
+      return true;
+    },
+    showRecorded: async (cwd) => {
+      for (const { path, name } of branches(cwd)) {
+        const url = await recordedPullRequest(path);
+        if (url !== undefined) {
+          show({ name, status: "open", url });
+        }
+      }
+    },
+    settled: async () => opening,
+  };
+}
+
+function parsePrArgs(args: string): {
+  readonly mode: Mode;
+  readonly only: string | undefined;
+} {
+  const [first = "", second] = args.trim().split(/\s+/);
+  const mode = Object.hasOwn(modes, first) ? modes[first] : undefined;
+
+  return mode === undefined
+    ? { mode: "pr", only: first }
+    : { mode, only: second };
+}
+
 // Commits what the diff view shows, pushes the session branch and opens its
 // pull request (ADR 0021).
-export async function openPullRequest(
+async function openPullRequest(
   path: string,
   base: string,
   mode: Mode,
-  describe: Describe,
+  complete: Complete,
 ): Promise<Outcome> {
   const branch = await git(path, "symbolic-ref", "--short", "HEAD").catch(
     () => {
@@ -52,18 +153,25 @@ export async function openPullRequest(
 
   const dirty = (await git(path, "status", "--porcelain")) !== "";
 
-  if (commits.length === 0 && !dirty && existing === undefined) {
+  if (existing !== undefined) {
+    if (dirty) {
+      const { title } = await described(path, base, branch, commits, complete);
+      await commitAll(path, title);
+    }
+
+    await git(path, "push", "--quiet", "--set-upstream", "origin", "HEAD");
+
+    return { status: "open", url: existing };
+  }
+
+  if (commits.length === 0 && !dirty) {
     throw new Error("nothing to push: the branch has no changes yet");
   }
 
-  const description =
-    existing === undefined || dirty
-      ? await described(path, base, branch, commits, describe)
-      : undefined;
+  const description = await described(path, base, branch, commits, complete);
 
-  if (dirty && description) {
-    await git(path, "add", "--all");
-    await git(path, "commit", "--quiet", "-m", description.title);
+  if (dirty) {
+    await commitAll(path, description.title);
   }
 
   await git(path, "push", "--quiet", "--set-upstream", "origin", "HEAD");
@@ -72,11 +180,7 @@ export async function openPullRequest(
     await git(path, "config", "--get", "remote.origin.url").catch(() => ""),
   );
 
-  if (existing !== undefined) {
-    return { status: "open", url: existing };
-  }
-
-  if (repository === undefined || description === undefined) {
+  if (repository === undefined) {
     return { status: "pushed", branch };
   }
 
@@ -118,7 +222,7 @@ export async function openPullRequest(
 }
 
 // The pull request opened earlier for the checkout's branch, if any.
-export async function recordedPullRequest(
+async function recordedPullRequest(
   path: string,
   branch?: string,
 ): Promise<string | undefined> {
@@ -135,27 +239,37 @@ export async function recordedPullRequest(
   );
 }
 
+// The model's title and description for the commits and patch, or the
+// commits alone when it gives none.
 async function described(
   path: string,
   base: string,
   branch: string,
   commits: readonly string[],
-  describe: Describe,
+  complete: Complete,
 ): Promise<Description> {
   const changes = await workspaceChanges(path, base);
+  const patch = (changes?.patch ?? "").slice(0, 40_000);
 
-  const written = await describe(commits, changes?.patch ?? "").catch(
-    () => undefined,
-  );
+  const reply = await complete(
+    `${describePrompt}\n\nCommits:\n${commits.join("\n")}\n\nPatch:\n${patch}`,
+  ).catch(() => undefined);
 
-  if (written) {
-    return written;
+  const [title = "", ...rest] = (reply ?? "").trim().split("\n");
+
+  if (title.trim() !== "") {
+    return { title: title.trim(), body: rest.join("\n").trim() };
   }
 
   return {
     title: commits.length === 1 ? (commits[0] ?? branch) : branch,
     body: commits.map((subject) => `- ${subject}`).join("\n"),
   };
+}
+
+async function commitAll(path: string, message: string): Promise<void> {
+  await git(path, "add", "--all");
+  await git(path, "commit", "--quiet", "-m", message);
 }
 
 // owner/name for a github.com remote in any of git's URL forms.
