@@ -1586,6 +1586,53 @@ test("removes several repositories only when none of them would lose work", asyn
   );
 });
 
+test("removes a repository worktree of a bare repository kept in a folder's .git", async () => {
+  const tools = join(root, "tools");
+  await run("git", ["clone", "--bare", repository, join(tools, ".git")]);
+
+  await git(
+    tools,
+    "config",
+    "remote.origin.fetch",
+    "+refs/heads/*:refs/remotes/origin/*",
+  );
+
+  await git(tools, "fetch", "origin");
+  await git(tools, "worktree", "add", join(tools, "main"), "main");
+  const dir = join(root, "workspaces", "s1");
+  const options = { dir, folders: [tools] };
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pi-cloud/s1",
+    repositories: [{ repository }],
+  } as const;
+
+  await prepareWorkspace(workspace, options, noLog);
+  await commit(join(dir, "origin"), "work.txt");
+  await git(join(dir, "origin"), "push", "origin", "pi-cloud/s1");
+
+  const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
+
+  expect(report).toMatchObject({
+    outcome: "removed",
+    restore: { repositories: [{ restorePoint: "origin/pi-cloud/s1" }] },
+  });
+
+  expect(await git(tools, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(tools, "worktree", "list")).not.toContain(dir);
+
+  await prepareWorkspace(
+    report.outcome === "removed" ? report.restore : workspace,
+    options,
+    noLog,
+  );
+
+  expect(await readFile(join(dir, "origin", "work.txt"), "utf8")).toBe(
+    "work.txt\n",
+  );
+});
+
 test("removes a repository worktree whose session branch was renamed and leaves the renamed branch", async () => {
   const checkout = await checkoutWithRemote();
   const dir = join(root, "workspaces", "s1");
