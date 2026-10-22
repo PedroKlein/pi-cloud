@@ -744,6 +744,68 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
   expect(stat(dirty)).rejects.toThrow();
 });
 
+test("keeps a clone with unpushed commits off its session branch unless forced", async () => {
+  const workspace = {
+    kind: "clone",
+    repository,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  const losses = [
+    async (dir: string) => {
+      await git(dir, "branch", "--move", "pi-cloud/s1", "feat/x");
+      await commit(dir, "renamed.txt");
+    },
+    async (dir: string) => {
+      await git(dir, "switch", "--create", "feat/y");
+      await commit(dir, "other.txt");
+      await git(dir, "branch", "--delete", "--force", "pi-cloud/s1");
+    },
+    async (dir: string) => {
+      await git(dir, "switch", "--detach");
+      await commit(dir, "detached.txt");
+    },
+  ];
+
+  for (const [i, make] of losses.entries()) {
+    const dir = join(root, "workspaces", `s${String(i)}`);
+    await prepareWorkspace(workspace, { dir, folders: [] }, noLog);
+    await make(dir);
+
+    expect(
+      await removeWorkspace(workspace, { dir, force: false }, noLog),
+    ).toEqual({ outcome: "kept", reason: "unpushed commits" });
+
+    expect((await stat(dir)).isDirectory()).toBe(true);
+
+    expect(
+      (await removeWorkspace(workspace, { dir, force: true }, noLog)).outcome,
+    ).toBe("removed");
+
+    expect(stat(dir)).rejects.toThrow();
+  }
+});
+
+test("removes a clean clone of an empty repository", async () => {
+  const empty = join(root, "empty.git");
+  await run("git", ["init", "--bare", empty]);
+
+  const workspace = {
+    kind: "clone",
+    repository: empty,
+    branch: "pi-cloud/s1",
+  } as const;
+
+  const dir = join(root, "workspaces", "s1");
+  await prepareWorkspace(workspace, { dir, folders: [] }, noLog);
+
+  expect(
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({ outcome: "removed", restore: workspace });
+
+  expect(stat(dir)).rejects.toThrow();
+});
+
 test("reports a workspace that is already gone as removed", async () => {
   const checkout = await checkoutWithRemote();
 

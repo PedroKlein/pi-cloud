@@ -353,13 +353,24 @@ async function lossOf(
     return "uncommitted changes";
   }
 
-  if (!hasBranch) {
+  // Deleting a clone drops all of its branches and HEAD, whatever became of
+  // the session branch. Removing a worktree deletes only the session branch.
+  if (workspace.kind === "clone" ? !present : !hasBranch) {
     return null;
   }
 
   const unpushed =
     workspace.kind === "clone"
-      ? await git(dir, "rev-list", "--branches", "--not", "--remotes")
+      ? await git(
+          dir,
+          "rev-list",
+          // A clone of an empty repository has no HEAD commit yet.
+          "--ignore-missing",
+          "HEAD",
+          "--branches",
+          "--not",
+          "--remotes",
+        )
       : await git(
           absolute(workspace.path),
           "rev-list",
