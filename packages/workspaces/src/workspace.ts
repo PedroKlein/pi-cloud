@@ -397,8 +397,26 @@ async function lossOf(
     return "uncommitted changes";
   }
 
-  // Deleting a clone drops all of its branches and HEAD, whatever became of
-  // the session branch. Removing a worktree deletes only the session branch.
+  // Removing a worktree drops its HEAD and the session branch, while other
+  // branches and the stash stay in the checkout it came from. Deleting a clone
+  // drops its HEAD, branches and stash, whatever became of the session branch.
+  if (
+    workspace.kind === "worktree" &&
+    present &&
+    (await git(
+      dir,
+      "rev-list",
+      "--ignore-missing",
+      "HEAD",
+      "--not",
+      `--exclude=${workspace.branch}`,
+      "--branches",
+      "--remotes",
+    )) !== ""
+  ) {
+    return "unpushed commits";
+  }
+
   if (
     workspace.kind === "clone"
       ? !present
@@ -416,6 +434,7 @@ async function lossOf(
           "--ignore-missing",
           "HEAD",
           "--branches",
+          "refs/stash",
           "--not",
           "--remotes",
         )

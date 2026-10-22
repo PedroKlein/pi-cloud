@@ -760,6 +760,21 @@ test("keeps a worktree with work git would lose unless forced", async () => {
       reason: "unpushed commits",
       make: async (dir: string) => commit(dir, "local.txt"),
     },
+    {
+      reason: "unpushed commits",
+      make: async (dir: string) => {
+        await git(dir, "switch", "--detach");
+        await commit(dir, "detached.txt");
+      },
+    },
+    {
+      reason: "unpushed commits",
+      make: async (dir: string, branch: string) => {
+        await git(dir, "switch", "--detach");
+        await git(dir, "branch", "--delete", "--force", branch);
+        await commit(dir, "detached.txt");
+      },
+    },
   ];
 
   for (const [i, { reason, make }] of losses.entries()) {
@@ -772,7 +787,7 @@ test("keeps a worktree with work git would lose unless forced", async () => {
     } as const;
 
     await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
-    await make(dir);
+    await make(dir, workspace.branch);
 
     expect(
       await removeWorkspace(workspace, { dir, force: false }, noLog),
@@ -793,6 +808,11 @@ test("keeps a worktree with work git would lose unless forced", async () => {
 });
 
 test("removes a clean clone and keeps one with unpushed commits", async () => {
+  await git(repository, "switch", "--detach");
+  await commit(repository, "released.txt");
+  await git(repository, "tag", "release");
+  await git(repository, "switch", "main");
+
   const workspace = {
     kind: "clone",
     repository,
@@ -849,6 +869,10 @@ test("keeps a clone with unpushed commits off its session branch unless forced",
     async (dir: string) => {
       await git(dir, "switch", "--detach");
       await commit(dir, "detached.txt");
+    },
+    async (dir: string) => {
+      await writeFile(join(dir, "README.md"), "edited\n");
+      await git(dir, "-c", "user.name=t", "-c", "user.email=t@t", "stash");
     },
   ];
 
