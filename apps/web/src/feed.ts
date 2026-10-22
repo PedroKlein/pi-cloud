@@ -36,6 +36,7 @@ export interface Feed {
   };
   readonly editorText: { readonly text: string } | undefined;
   readonly commands: readonly SlashCommand[];
+  readonly files: readonly string[];
 }
 
 export const emptyFeed: Feed = {
@@ -52,6 +53,7 @@ export const emptyFeed: Feed = {
   queue: { steering: [], followUp: [] },
   editorText: undefined,
   commands: [],
+  files: [],
 };
 
 export interface FollowOptions {
@@ -205,6 +207,10 @@ export function follow(
         return;
       case "commands":
         update({ commands: event.commands });
+
+        return;
+      case "files":
+        update({ files: event.paths });
 
         return;
       case "editor_text":

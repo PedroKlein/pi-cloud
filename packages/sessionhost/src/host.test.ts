@@ -24,6 +24,9 @@ import { fauxModels } from "./testdata/models";
 
 let root: string;
 
+// What the composer's menus list, published at every start.
+const listings: readonly LiveEvent["type"][] = ["commands", "files"];
+
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "sessionhost-host-"));
 });
@@ -273,7 +276,7 @@ test("keeps the latest status when a live post fails", async () => {
 
   expect(logs).toContain("live events dropped");
 
-  expect(fake.events.filter((e) => e.type !== "commands")).toEqual([
+  expect(fake.events.filter((e) => !listings.includes(e.type))).toEqual([
     { type: "status", status: "idle" },
   ]);
 
@@ -314,7 +317,9 @@ test("resends extension status and widgets when a live post fails", async () => 
   await hosted.stop();
 
   expect(
-    fake.events.filter((e) => e.type !== "status" && e.type !== "commands"),
+    fake.events.filter(
+      (e) => e.type !== "status" && !listings.includes(e.type),
+    ),
   ).toEqual([
     { type: "extension_status", key: "build", text: "running" },
     {
@@ -740,7 +745,9 @@ test("forwards extension status, widgets, title and editor text", async () => {
   await hosted.stop();
 
   expect(
-    fake.events.filter((e) => e.type !== "status" && e.type !== "commands"),
+    fake.events.filter(
+      (e) => e.type !== "status" && !listings.includes(e.type),
+    ),
   ).toEqual([
     { type: "extension_status", key: "build", text: "2 running" },
     {
@@ -1551,4 +1558,99 @@ test("starts with its first message, its system prompt text and plugins' extensi
   expect(JSON.stringify(system)).toContain("You coordinate project X.");
   expect(JSON.stringify(system)).toContain('"name":"plugin_tool"');
   expect(roles(again.lines).filter((role) => role === "user")).toHaveLength(1);
+});
+
+function filesOf(events: readonly LiveEvent[]): readonly string[] | undefined {
+  const last = events.findLast((e) => e.type === "files");
+
+  return last?.type === "files" ? last.paths : undefined;
+}
+
+test("lists a checkout's tracked and untracked files for mentions, and again after a turn", async () => {
+  const { faux, models } = await fauxModels(root);
+  const work = join(root, "work");
+  await mkdir(join(work, "src"), { recursive: true });
+  await writeFile(join(work, ".gitignore"), "dist/\n");
+  await writeFile(join(work, "src", "main.ts"), "main\n");
+  await mkdir(join(work, "dist"));
+  await writeFile(join(work, "dist", "out.js"), "out\n");
+  await promisify(execFile)("git", ["init", "--quiet"], { cwd: work });
+  await promisify(execFile)("git", ["add", "src"], { cwd: work });
+  await writeFile(join(work, "notes.md"), "notes\n");
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("write", { path: "added.txt", content: "new\n" })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: work,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => filesOf(fake.events) !== undefined);
+
+  expect(fake.events.find((e) => e.type === "files")).toEqual({
+    type: "files",
+    paths: [".gitignore", "notes.md", "src/main.ts"],
+    truncated: false,
+  });
+
+  fake.send({ actor: "user:local", type: "message", text: "add a file" });
+
+  await fake.waitFor(
+    () => filesOf(fake.events)?.includes("added.txt") ?? false,
+  );
+
+  await hosted.stop();
+
+  expect(filesOf(fake.events)).toEqual([
+    ".gitignore",
+    "added.txt",
+    "notes.md",
+    "src/main.ts",
+  ]);
+});
+
+test("walks a folder outside git for mentions, skipping hidden folders and node_modules", async () => {
+  const { models } = await fauxModels(root);
+  const work = join(root, "work");
+  await mkdir(join(work, "lib"), { recursive: true });
+  await mkdir(join(work, "node_modules", "dep"), { recursive: true });
+  await mkdir(join(work, ".cache"), { recursive: true });
+  await writeFile(join(work, "lib", "a.ts"), "a\n");
+  await writeFile(join(work, "readme.md"), "r\n");
+  await writeFile(join(work, "node_modules", "dep", "index.js"), "d\n");
+  await writeFile(join(work, ".cache", "x"), "x\n");
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: work,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  await fake.waitFor(() => filesOf(fake.events) !== undefined);
+  await hosted.stop();
+
+  expect(filesOf(fake.events)).toEqual(["lib/a.ts", "readme.md"]);
 });

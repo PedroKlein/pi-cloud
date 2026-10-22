@@ -357,6 +357,13 @@ test("creates a Project and shares a file through its library", async () => {
   const row = page.locator("tr", { hasText: "Docs" });
   await row.locator("td", { hasText: /^e2e$/ }).waitFor();
 
+  // The thread takes the last scripted reply; later tests script their own.
+  await row.getByRole("button", { name: "Docs" }).click();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
+    .waitFor();
+
   await page
     .locator("#plugin-nav")
     .getByRole("link", { name: "Library" })
@@ -482,6 +489,43 @@ test("picks a slash command from the composer's menu", async () => {
   await page
     .locator('#chat li[data-role="user"]', {
       hasText: "Review the current diff.",
+    })
+    .waitFor();
+}, 30_000);
+
+test("mentions a workspace file from the composer's menu", async () => {
+  const project = join(root, "mentions");
+  execFileSync("git", ["init", "--quiet", project]);
+  await writeFile(join(project, "mention-target.md"), "notes\n");
+  faux.setResponses([fauxAssistantMessage([fauxText("read it")])]);
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(project);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const box = page.locator("#prompt-text");
+  await box.pressSequentially("summarize @mention-ta");
+
+  await page
+    .getByRole("listbox", { name: "Files" })
+    .getByRole("option", { name: "@mention-target.md" })
+    .click();
+
+  expect(await box.inputValue()).toBe("summarize @mention-target.md ");
+  await box.press("Enter");
+
+  await page
+    .locator('#chat li[data-role="user"]', {
+      hasText: "summarize @mention-target.md",
     })
     .waitFor();
 }, 30_000);

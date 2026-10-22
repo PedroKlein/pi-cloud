@@ -11,6 +11,7 @@ import type {
   SlashCommand,
   ToolSpec,
 } from "@pi-cloud/protocol";
+import { workspaceFiles } from "./files";
 import { remoteUI } from "./ui";
 import { type SessionOptions, startSession, stopSession } from "./session";
 import { openTerminal } from "./terminal";
@@ -67,6 +68,7 @@ const resent: readonly LiveEvent["type"][] = [
   "widget",
   "title",
   "commands",
+  "files",
   "queue",
   "plugin",
 ];
@@ -162,11 +164,16 @@ export async function hostSession(
   });
 
   const transcript = transcriptSync(session, stream, log);
+  const files = filesFeed(session.sessionManager.getCwd(), live, log);
 
   const unsubscribe = session.subscribe((event) => {
     const liveEvent = toLiveEvent(event);
     if (liveEvent) {
       live.push(liveEvent);
+    }
+
+    if (event.type === "agent_settled") {
+      files.refresh();
     }
 
     if (
@@ -220,6 +227,7 @@ export async function hostSession(
 
   live.push({ type: "status", status: "idle" });
   live.push({ type: "commands", commands: slashCommands(session) });
+  files.refresh();
   transcript.sync();
 
   const firstMessage = options.firstMessage ?? null;
@@ -235,6 +243,7 @@ export async function hostSession(
   return {
     stop: async () => {
       detach();
+      files.stop();
       terminals.close();
 
       prompts.cancelAll();
@@ -331,6 +340,38 @@ async function run(
 
       return;
   }
+}
+
+// Publishes the workspace's paths when they differ from the last ones sent.
+function filesFeed(
+  cwd: string,
+  live: { push: (event: LiveEvent) => void },
+  log: Log,
+): { readonly refresh: () => void; readonly stop: () => void } {
+  let sent = "";
+  let stopped = false;
+
+  return {
+    refresh: () => {
+      workspaceFiles(cwd).then(
+        ({ paths, truncated }) => {
+          const key = `${String(truncated)}\0${paths.join("\0")}`;
+          if (stopped || key === sent) {
+            return;
+          }
+
+          sent = key;
+          live.push({ type: "files", paths, truncated });
+        },
+        (error: unknown) => {
+          log("listing workspace files failed", { error: String(error) });
+        },
+      );
+    },
+    stop: () => {
+      stopped = true;
+    },
+  };
 }
 
 // The same list Pi's RPC mode answers get_commands with.
