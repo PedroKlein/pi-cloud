@@ -8,11 +8,9 @@ import { type Actor, checkoutName } from "@pi-cloud/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
 import {
   coordinatorPrompt,
-  messagedCoordinator,
   runState,
   threadNotice,
   threadView,
-  turnError,
 } from "./prompts";
 import {
   type Member,
@@ -22,6 +20,7 @@ import {
   type Queued,
 } from "./projects";
 import { modelRef, projectTools, workState } from "./tools";
+import { lastReply, messagedCoordinator, turnError } from "./transcript";
 
 const deliveryMs = 1000;
 const errorLimit = 300;
@@ -84,7 +83,7 @@ export const projects: ServerPlugin = {
       ) {
         store.enqueue(project.coordinatorId, "plugin:projects", {
           kind: "message",
-          text: threadNotice(thread, session, `stopped: ${session.status}`, []),
+          text: threadNotice(thread, session, `stopped: ${session.status}`),
         });
       }
     });
@@ -188,7 +187,7 @@ function deliverTurn(
     error === undefined
       ? "finished a turn"
       : `ended its turn with a model error: ${error.slice(0, errorLimit)}`,
-    transcript,
+    lastReply(transcript),
   );
 
   if (error !== undefined) {
