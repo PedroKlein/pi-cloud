@@ -1,12 +1,19 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type { TerminalResize } from "@pi-cloud/protocol";
+import type { TerminalControl } from "@pi-cloud/protocol";
 
 export function openTerminal(
   sessionId: string,
+  terminalId: string,
   container: HTMLElement,
   typed: (data: string) => string,
-): { readonly send: (data: string) => void; readonly close: () => void } {
+): {
+  readonly send: (data: string) => void;
+  // Leaves the shell running for the next socket.
+  readonly close: () => void;
+  // Ends the shell, as closing its tab does.
+  readonly end: () => void;
+} {
   const token = (name: string): string =>
     getComputedStyle(container).getPropertyValue(name).trim();
 
@@ -46,6 +53,7 @@ export function openTerminal(
   url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("cols", String(terminal.cols));
   url.searchParams.set("rows", String(terminal.rows));
+  url.searchParams.set("terminal", terminalId);
   const socket = new WebSocket(url);
   socket.binaryType = "arraybuffer";
   const encoder = new TextEncoder();
@@ -61,7 +69,7 @@ export function openTerminal(
           type: "resize",
           cols: terminal.cols,
           rows: terminal.rows,
-        } satisfies TerminalResize),
+        } satisfies TerminalControl),
       );
     }
   };
@@ -95,19 +103,30 @@ export function openTerminal(
   observer.observe(container);
   terminal.focus();
 
+  const close = (): void => {
+    socket.removeEventListener("close", closed);
+    observer.disconnect();
+    input.dispose();
+    resize.dispose();
+    socket.close();
+    themeChanges.disconnect();
+    terminal.dispose();
+  };
+
   return {
     send: (data) => {
       send(data);
       terminal.focus();
     },
-    close: () => {
-      socket.removeEventListener("close", closed);
-      observer.disconnect();
-      input.dispose();
-      resize.dispose();
-      socket.close();
-      themeChanges.disconnect();
-      terminal.dispose();
+    close,
+    end: () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({ type: "close" } satisfies TerminalControl),
+        );
+      }
+
+      close();
     },
   };
 }

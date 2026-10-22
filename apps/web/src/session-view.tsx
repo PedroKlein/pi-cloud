@@ -1,4 +1,4 @@
-import type { Environment, Session } from "@pi-cloud/protocol";
+import type { Environment, Session, TerminalTab } from "@pi-cloud/protocol";
 import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -189,7 +189,7 @@ export function SessionView({
       </div>
 
       {view === "terminal" && !archived ? (
-        <TerminalView sessionId={sessionId} />
+        <TerminalView sessionId={sessionId} terminals={feed.terminals} />
       ) : (
         <>
           <ChatView feed={feed} place={place} />
@@ -363,12 +363,23 @@ function ViewSwitch({
 
 function TerminalView({
   sessionId,
+  terminals,
 }: {
   readonly sessionId: string;
+  readonly terminals: readonly TerminalTab[];
 }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
   const send = useRef<(data: string) => void>(() => undefined);
+  const end = useRef<() => void>(() => undefined);
   const [modifier, setModifier] = useState<Modifier>();
+
+  const [active, setActive] = useState(
+    () => terminals[0]?.id ?? crypto.randomUUID(),
+  );
+
+  const tabs = terminals.some(({ id }) => id === active)
+    ? terminals
+    : [...terminals, { id: active, label: "New terminal" }];
 
   const typed = useEffectEvent((data: string): string => {
     setModifier(undefined);
@@ -381,14 +392,15 @@ function TerminalView({
       return undefined;
     }
 
-    const terminal = openTerminal(sessionId, box.current, (data) =>
+    const terminal = openTerminal(sessionId, active, box.current, (data) =>
       typed(data),
     );
 
     send.current = terminal.send;
+    end.current = terminal.end;
 
     return terminal.close;
-  }, [sessionId]);
+  }, [sessionId, active]);
 
   const keys: readonly {
     readonly label: string;
@@ -403,6 +415,58 @@ function TerminalView({
 
   return (
     <>
+      <div
+        role="tablist"
+        aria-label="Terminals"
+        className="flex items-center gap-1 overflow-x-auto border-b border-line bg-term-bg px-2 pt-1.5"
+      >
+        {tabs.map(({ id, label }) => (
+          <span
+            key={id}
+            className="group/tab flex shrink-0 items-center rounded-t-md text-label text-fg-dim has-aria-selected:bg-panel has-aria-selected:text-fg-strong"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={id === active}
+              onClick={() => {
+                setActive(id);
+              }}
+              className="cursor-pointer py-1.5 pl-3 font-mono"
+            >
+              {label}
+            </button>
+            <button
+              type="button"
+              aria-label={`Close ${label}`}
+              onClick={() => {
+                if (id === active) {
+                  end.current();
+                }
+
+                setActive(
+                  terminals.find((other) => other.id !== id)?.id ??
+                    crypto.randomUUID(),
+                );
+              }}
+              className="invisible cursor-pointer px-2 py-1.5 group-has-aria-selected/tab:visible"
+            >
+              <Icon name="x" className="size-3.5" />
+            </button>
+          </span>
+        ))}
+        <Button
+          variant="ghost"
+          iconOnly
+          aria-label="New terminal"
+          onClick={() => {
+            setActive(crypto.randomUUID());
+          }}
+          className="h-7 w-7"
+        >
+          <Icon name="plus" className="size-4" />
+        </Button>
+      </div>
       <div className="min-h-0 flex-1 bg-term-bg px-3 py-2">
         <div id="terminal" ref={box} className="h-full" />
       </div>

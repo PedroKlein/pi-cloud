@@ -1261,7 +1261,10 @@ test("closes the command stream of an interrupted attempt", async () => {
   expect(received).toEqual([]);
 });
 
-async function openTerminal(sessionId: string): Promise<{
+async function openTerminal(
+  sessionId: string,
+  terminalId?: string,
+): Promise<{
   readonly socket: WebSocket;
   readonly output: (until: string) => Promise<string>;
   readonly closed: Promise<void>;
@@ -1270,6 +1273,10 @@ async function openTerminal(sessionId: string): Promise<{
     `/api/sessions/${sessionId}/terminal?cols=80&rows=24`,
     server.url,
   );
+
+  if (terminalId !== undefined) {
+    url.searchParams.set("terminal", terminalId);
+  }
 
   url.protocol = "ws:";
   const socket = new WebSocket(url);
@@ -1599,6 +1606,53 @@ test("marks a session failed when its repository cannot be cloned", async () => 
   ).json()) as Session;
 
   expect(stored.error).toContain("git clone failed");
+});
+
+test("keeps a shell running after its socket closes and replays its output to the next one", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const first = await openTerminal(session.id, "kept");
+
+  first.socket.send(encoder.encode("KEPT=yes; echo first=$((1+1))\n"));
+  await first.output("first=2");
+  first.socket.close();
+  await first.closed;
+
+  const surfaces = await follow(session.id, (events) =>
+    events.some((e) => e.type === "live" && e.event.type === "terminals"),
+  );
+
+  const again = await openTerminal(session.id, "kept");
+
+  expect(await again.output("first=2")).toContain("first=2");
+
+  again.socket.send(encoder.encode("echo kept=$KEPT\n"));
+
+  expect(await again.output("kept=yes")).toContain("kept=yes");
+
+  expect(surfaces.filter((e) => e.type === "live").at(-1)).toEqual({
+    type: "live",
+    event: {
+      type: "terminals",
+      terminals: [{ id: "kept", label: "Terminal 1" }],
+    },
+  });
+});
+
+test("ends a shell when its tab is closed", async () => {
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+  const first = await openTerminal(session.id, "closing");
+
+  first.socket.send(encoder.encode("KEPT=yes; echo ready\n"));
+  await first.output("ready");
+  first.socket.send(JSON.stringify({ type: "close" }));
+  await first.closed;
+
+  const again = await openTerminal(session.id, "closing");
+  again.socket.send(encoder.encode("echo value=${KEPT:-none}\n"));
+
+  expect(await again.output("value=none")).toContain("value=none");
 });
 
 test("resizes the terminal", async () => {

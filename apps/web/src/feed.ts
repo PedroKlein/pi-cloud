@@ -4,6 +4,7 @@ import type {
   Session,
   SessionEvent,
   SlashCommand,
+  TerminalTab,
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 
@@ -39,6 +40,7 @@ export interface Feed {
   readonly commands: readonly SlashCommand[];
   readonly files: readonly string[];
   readonly settings: Settings | undefined;
+  readonly terminals: readonly TerminalTab[];
 }
 
 export const emptyFeed: Feed = {
@@ -57,6 +59,7 @@ export const emptyFeed: Feed = {
   commands: [],
   files: [],
   settings: undefined,
+  terminals: [],
 };
 
 export interface FollowOptions {
@@ -216,6 +219,10 @@ export function follow(
         update({ files: event.paths });
 
         return;
+      case "terminals":
+        update({ terminals: event.terminals });
+
+        return;
       case "settings":
         update({ settings: event });
 
@@ -248,7 +255,13 @@ export function follow(
   events.addEventListener("open", () => {
     statuses.clear();
     widgets.clear();
-    update({ ...surfaces(), prompts: [], queue: emptyFeed.queue });
+
+    update({
+      ...surfaces(),
+      prompts: [],
+      queue: emptyFeed.queue,
+      terminals: [],
+    });
   });
 
   events.addEventListener("message", (message: MessageEvent<string>) => {
