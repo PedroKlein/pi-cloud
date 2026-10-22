@@ -668,8 +668,9 @@ async function worktreeFolder(path: string): Promise<string | undefined> {
     : dirname(dirname(dirname(resolve(path, gitdir.trim()))));
 }
 
-// Never a remote branch that merely contains the session's commit, since such
-// a branch may have unrelated commits on top.
+// The session's own remote branch, or else its commit. Never another remote
+// branch that holds that commit, since such a branch may have unrelated
+// commits on top, or gain them before the session comes back.
 async function restorePoint(
   repository: string,
   branch: string,
@@ -687,26 +688,18 @@ async function restorePoint(
       "for-each-ref",
       "--contains",
       tip,
-      "--format=%(objectname) %(refname:lstrip=2)%00",
+      "--format=%(refname:lstrip=2)%00",
       "refs/remotes",
     ),
   )
-    .map((line) => {
-      const [commit = "", name = ""] = line.trim().split(" ");
-
-      return { commit, name };
-    })
-    .filter(({ name }) => name !== "" && !name.endsWith("/HEAD"));
+    .map((name) => name.trim())
+    .filter((name) => name !== "" && !name.endsWith("/HEAD"));
 
   if (refs.length === 0) {
     return null;
   }
 
-  return (
-    refs.find(({ name }) => name.endsWith(`/${branch}`))?.name ??
-    refs.find(({ commit }) => commit === tip)?.name ??
-    tip
-  );
+  return refs.find((name) => name.endsWith(`/${branch}`)) ?? tip;
 }
 
 async function cloneWithMirror(
