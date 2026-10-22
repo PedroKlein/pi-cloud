@@ -60,7 +60,6 @@ export type Rejection =
   | "stale_generation"
   | "offline"
   | "archived"
-  | "not_archived"
   | "not_kept"
   | "unknown_environment";
 
@@ -256,15 +255,14 @@ export class Sessions {
       return { ok: false, reason: "not_found" };
     }
 
-    if (session.archivedAt === null) {
-      return { ok: false, reason: "not_archived" };
-    }
-
+    // An unarchive can land while the removal runs. The Session then stays
+    // unarchived, but its workspace is gone and comes back from restore.
     this.#update({
       ...session,
       workspace:
         report.outcome === "removed" ? report.restore : session.workspace,
-      workspaceRemoval: report.outcome,
+      workspaceRemoval:
+        session.archivedAt === null ? session.workspaceRemoval : report.outcome,
     });
 
     return { ok: true, value: undefined };

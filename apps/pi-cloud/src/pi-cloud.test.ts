@@ -1803,6 +1803,84 @@ test("removes a clean worktree on archive and brings its pushed work back on una
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
 });
 
+test("brings pushed work back when unarchived while its worktree is being removed", async () => {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+  await writeFile(join(dir, "work.txt"), "work\n");
+  await inRepository(dir, "add", ".");
+  await inRepository(dir, "commit", "--quiet", "-m", "work");
+  await inRepository(dir, "push", "--quiet", "origin", branch);
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  while (!agentLogs.some((line) => line.startsWith("unloading session"))) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  await api(`/api/sessions/${session.id}/unarchive`, {});
+
+  const restarted = await sessionWhere(
+    session.id,
+    (s) => s.generation === 2 && s.status === "idle",
+  );
+
+  expect(agentLogs.some((line) => line.startsWith("workspace removed"))).toBe(
+    true,
+  );
+
+  expect(restarted.workspace).toMatchObject({ startPoint: `origin/${branch}` });
+  expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+});
+
+test("stores the restore point of a removal reported after unarchive", async () => {
+  const session = await createSession("vm", {
+    kind: "worktree",
+    path: root,
+  });
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const work = await asAgent("vm", "/agent/work", {
+    running: [],
+    folders: [],
+    models: [],
+  });
+
+  expect(await work.json()).toMatchObject({
+    remove: [{ sessionId: session.id }],
+  });
+
+  await api(`/api/sessions/${session.id}/unarchive`, {});
+
+  const restore = {
+    ...session.workspace,
+    startPoint: "origin/pi-cloud/restored",
+  };
+
+  const reported = await asAgent(
+    "vm",
+    `/agent/sessions/${session.id}/workspace`,
+    { outcome: "removed", restore },
+  );
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(reported.status).toBe(204);
+  expect(stored.workspace).toEqual(restore);
+  expect(stored.archivedAt).toBeNull();
+  expect(stored.workspaceRemoval).toBeNull();
+});
+
 test("checks several repositories out in one workspace and shows each one's changes", async () => {
   const checkout = await pushedCheckout();
   const remote = join(root, "remote.git");

@@ -35,7 +35,6 @@ const rejectionStatus = {
   stale_generation: 409,
   offline: 409,
   archived: 409,
-  not_archived: 409,
   not_kept: 409,
   unknown_environment: 400,
 } as const satisfies Record<Rejection, number>;
