@@ -27,6 +27,12 @@ const reconnectMs = { initial: 500, max: 20_000 };
 const pollTimeoutMs = 30_000;
 const requestTimeoutMs = 30_000;
 
+// Terminal output is not replayed (ADR 0006), so a terminal this far behind
+// the server is closed instead of buffered without bound. The built-in
+// provider shares the server's event loop, where tens of MB can queue for a
+// moment while everything is healthy, so the limit sits well above that.
+const maxTerminalBufferedBytes = 64 * 1024 * 1024;
+
 class HttpError extends Error {
   readonly status: number;
 
@@ -241,6 +247,15 @@ function openTerminalSocket(
         pending.push(data);
       } else if (socket.readyState === WebSocket.OPEN) {
         socket.send(data);
+
+        if (socket.bufferedAmount > maxTerminalBufferedBytes) {
+          log("terminal fell behind", {
+            path,
+            bufferedAmount: socket.bufferedAmount,
+          });
+
+          socket.terminate();
+        }
       }
     },
     close: () => {
