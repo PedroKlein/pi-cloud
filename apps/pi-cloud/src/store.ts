@@ -198,8 +198,16 @@ export function openStore(path: string): SessionStore & {
   const get = db.prepare(`${withProvider} where sessions.id = ?`);
   const list = db.prepare(`${withProvider} order by sessions.created_at desc`);
 
+  const unarchived = db.prepare(
+    `${withProvider} where sessions.archived_at is null order by sessions.created_at desc`,
+  );
+
   const byProvider = db.prepare(
     `${withProvider} where environments.provider = ? and status in (select value from json_each(?)) order by sessions.created_at`,
+  );
+
+  const pendingRemovals = db.prepare(
+    `${withProvider} where environments.provider = ? and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
   );
 
   const toEnvironment = (row: EnvironmentRow): StoredEnvironment => ({
@@ -265,12 +273,24 @@ export function openStore(path: string): SessionStore & {
 
       return row && toSession(row);
     },
-    list: () => (list.all() as unknown as SessionRow[]).map(toSession),
+    list: ({ includeArchived }) =>
+      (
+        (includeArchived ? list : unarchived).all() as unknown as SessionRow[]
+      ).map(toSession),
     byProvider: (provider, statuses) =>
       (
         byProvider.all(
           provider,
           JSON.stringify(statuses),
+        ) as unknown as SessionRow[]
+      ).map(toSession),
+    pendingRemovals: (provider) =>
+      (
+        pendingRemovals.all(
+          provider,
+          "stopped" satisfies SessionStatus,
+          "pending" satisfies WorkspaceRemoval,
+          "forced" satisfies WorkspaceRemoval,
         ) as unknown as SessionRow[]
       ).map(toSession),
     ensureEnvironment: (provider) => {

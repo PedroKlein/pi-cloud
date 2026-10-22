@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { StoredSession } from "@pi-cloud/sessions";
 import { openStore } from "./store";
 
 let root: string;
@@ -99,6 +100,136 @@ test("opens a migrated database again", () => {
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
   });
+
+  store.close();
+});
+
+function sessionIn(
+  environmentId: string,
+  provider: string,
+  fields: Partial<StoredSession> & Pick<StoredSession, "id" | "createdAt">,
+): StoredSession {
+  return {
+    environmentId,
+    ownerId: "local",
+    provider,
+    workspace: { kind: "clone", repository: "r", branch: fields.id },
+    model: null,
+    systemPrompt: null,
+    firstMessage: null,
+    title: null,
+    status: "stopped",
+    generation: 1,
+    interruptedAt: null,
+    error: null,
+    archivedAt: null,
+    workspaceRemoval: null,
+    ...fields,
+  };
+}
+
+test("lists sessions newest first and leaves archived ones out unless asked", () => {
+  const store = openStore(join(root, "server.db"));
+  store.ensureEnvironment("vm");
+  const vm = store.environments()[0]?.id ?? "";
+
+  for (const session of [
+    sessionIn(vm, "vm", {
+      id: "old",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      status: "idle",
+    }),
+    sessionIn(vm, "vm", {
+      id: "archived",
+      createdAt: "2026-10-02T00:00:00.000Z",
+      archivedAt: "2026-10-03T00:00:00.000Z",
+    }),
+    sessionIn(vm, "vm", {
+      id: "new",
+      createdAt: "2026-10-04T00:00:00.000Z",
+      status: "queued",
+    }),
+  ]) {
+    store.insert(session);
+  }
+
+  const ids = (includeArchived: boolean): string[] =>
+    store.list({ includeArchived }).map(({ id }) => id);
+
+  expect(ids(false)).toEqual(["new", "old"]);
+  expect(ids(true)).toEqual(["new", "archived", "old"]);
+
+  store.close();
+});
+
+test("lists a provider's stopped sessions whose workspace is waiting to be removed, oldest first", () => {
+  const store = openStore(join(root, "server.db"));
+  store.ensureEnvironment("vm");
+  store.ensureEnvironment("laptop");
+
+  const environments = new Map(
+    store.environments().map(({ provider, id }) => [provider, id]),
+  );
+
+  const vm = environments.get("vm") ?? "";
+  const archivedAt = "2026-10-10T00:00:00.000Z";
+
+  const forced = sessionIn(vm, "vm", {
+    id: "forced",
+    createdAt: "2026-10-03T00:00:00.000Z",
+    archivedAt,
+    workspaceRemoval: "forced",
+  });
+
+  for (const session of [
+    forced,
+    sessionIn(vm, "vm", {
+      id: "pending",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      archivedAt,
+      workspaceRemoval: "pending",
+    }),
+    sessionIn(vm, "vm", {
+      id: "removed",
+      createdAt: "2026-10-02T00:00:00.000Z",
+      archivedAt,
+      workspaceRemoval: "removed",
+    }),
+    sessionIn(vm, "vm", {
+      id: "kept",
+      createdAt: "2026-10-04T00:00:00.000Z",
+      archivedAt,
+      workspaceRemoval: "kept",
+    }),
+    sessionIn(vm, "vm", {
+      id: "nothing to remove",
+      createdAt: "2026-10-05T00:00:00.000Z",
+      archivedAt,
+    }),
+    sessionIn(vm, "vm", {
+      id: "running",
+      createdAt: "2026-10-06T00:00:00.000Z",
+      status: "running",
+      workspaceRemoval: "pending",
+    }),
+    sessionIn(environments.get("laptop") ?? "", "laptop", {
+      id: "elsewhere",
+      createdAt: "2026-10-07T00:00:00.000Z",
+      archivedAt,
+      workspaceRemoval: "pending",
+    }),
+  ]) {
+    store.insert(session);
+  }
+
+  const removals = store.pendingRemovals("vm");
+
+  expect(removals.map(({ id }) => id)).toEqual(["pending", "forced"]);
+  expect(removals[1]).toEqual(forced);
+
+  expect(store.pendingRemovals("laptop").map(({ id }) => id)).toEqual([
+    "elsewhere",
+  ]);
 
   store.close();
 });
