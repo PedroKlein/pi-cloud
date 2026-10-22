@@ -281,6 +281,29 @@ test("ends a turn at Pi's last message, not at notes posted after it", () => {
   expect(turn?.ended).toBe("2026-10-22T10:00:07.000Z");
 });
 
+test("keeps a turn's end when a live notice without a time joins it", () => {
+  const items = [
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:00.000Z",
+      message: { role: "user", content: "fix it" },
+    },
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:06.000Z",
+      message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+    },
+  ].flatMap((entry) => chatItems(JSON.stringify(entry)));
+
+  const [turn] = turns(
+    [...items, { role: "error", text: "Login cancelled" } as const].map(
+      (item, key) => ({ ...item, key }),
+    ),
+  );
+
+  expect(turn?.ended).toBe("2026-10-22T10:00:06.000Z");
+});
+
 test("tallies a turn's work by kind of step", () => {
   const steps = ["read", "read", "edit", "write", "bash", "grep"].map(
     (name) => ({ name }),
