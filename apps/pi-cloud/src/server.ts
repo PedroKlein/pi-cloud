@@ -11,6 +11,7 @@ import {
   type LivePost,
   type ModelRef,
   type QuestionAnswer,
+  type RemovalPost,
   type RemovalReport,
   type RepositoryCheckout,
   type Selection,
@@ -324,7 +325,7 @@ export function createHandler(
       "POST",
       /^\/agent\/sessions\/([^/]+)\/workspace$/,
       async (request, [id = ""]) => {
-        const report = removalReport(await readJson(request));
+        const report = removalPost(await readJson(request));
         log("workspace removal reported", { sessionId: id, ...report });
 
         return reply(sessions.reportRemoval(id, report), 204);
@@ -806,6 +807,15 @@ function startFailure(body: unknown): StartFailure {
   return {
     generation: integerOf("generation", generation),
     error: textOf("error", error),
+  };
+}
+
+function removalPost(body: unknown): RemovalPost {
+  const { generation } = fieldsOf(body);
+
+  return {
+    ...removalReport(body),
+    generation: integerOf("generation", generation),
   };
 }
 

@@ -22,6 +22,7 @@ const none: Work = { start: [], unload: [], remove: [] };
 
 const removal: Removal = {
   sessionId: "s2",
+  generation: 1,
   workspace: { kind: "clone", repository: "r", branch: "b" },
   force: false,
 };
