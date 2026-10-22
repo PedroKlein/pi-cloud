@@ -258,6 +258,21 @@ const toolCallLines = (name: string, result: string): string[] => [
   }),
 ];
 
+const bashLine = JSON.stringify({
+  type: "message",
+  message: {
+    role: "bashExecution",
+    command: "git status",
+    output: "clean",
+    exitCode: 0,
+    cancelled: false,
+    truncated: false,
+    timestamp: 1,
+  },
+});
+
+const cutLine = '{"type":"message","message":{"role":"assis';
+
 function turn(
   kernel: FakeKernel,
   threadId: string,
@@ -410,3 +425,48 @@ test("refuses memory file names made only of dots", async () => {
 
   expect(results.map(({ isError }) => isError)).toEqual([true, true, false]);
 }, 10_000);
+
+test("quotes a thread's reply when later transcript lines can't be read as text", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+
+  turn(kernel, threadId, [
+    userLine("bump the version"),
+    replyLine("bumped to v2"),
+    bashLine,
+    cutLine,
+  ]);
+
+  await until(() => kernel.delivered.length > 0);
+
+  expect(kernel.delivered[0]?.kind).toBe("send");
+  expect(kernel.delivered[0]?.text).toContain("finished a turn");
+  expect(kernel.delivered[0]?.text).toContain("Its last reply: bumped to v2");
+}, 10_000);
+
+test("reads a thread's messages around transcript lines that aren't text", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+
+  kernel.transcripts
+    .get(threadId)
+    ?.push(userLine("bump the version"), cutLine, bashLine, replyLine("done"));
+
+  const read = await kernel
+    .tool("read_thread")
+    .run(
+      { thread: threadId },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  expect(read).toEqual({
+    text: [
+      'Thread "Bump version", page 1 of 1, oldest first:',
+      "[user] bump the version",
+      "[assistant] done",
+    ].join("\n\n"),
+    isError: false,
+  });
+});
