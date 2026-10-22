@@ -127,6 +127,7 @@ function fakeKernel(): {
 
         return [...(transcripts.get(id) ?? [])];
       },
+      transcriptLength: (id) => transcripts.get(id)?.length ?? 0,
     },
     routes: {
       handle: (handler) => {

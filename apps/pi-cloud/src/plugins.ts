@@ -196,6 +196,7 @@ function pluginSessions(sessions: Sessions): ServerPluginContext["sessions"] {
     notify: (id, text, actor) =>
       sessions.send(id, { actor, type: "context", text }),
     transcript: (id) => sessions.transcript(id),
+    transcriptLength: (id) => sessions.transcriptLength(id),
   };
 }
 

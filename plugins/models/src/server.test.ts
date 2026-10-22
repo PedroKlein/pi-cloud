@@ -66,6 +66,7 @@ function registered(signal: AbortSignal): PluginRoute {
       send: unused,
       notify: unused,
       transcript: unused,
+      transcriptLength: unused,
     },
     routes: {
       handle: (route) => {
