@@ -966,3 +966,135 @@ test("runs a Project's threads across two machines and two repositories", async 
   laptop.abort();
   await laptopDone;
 }, 30_000);
+
+test("holds a thread's turn notice while the coordinator's machine is offline", async () => {
+  const app = await repository("app");
+
+  const startLaptop = async (signal: AbortSignal): Promise<void> =>
+    runAgent({
+      server: server?.url.href ?? "",
+      provider: "laptop",
+      dataDir: join(root, "laptop"),
+      agentDir: join(root, "pi"),
+      extensionPaths: [],
+      folders: [],
+      models: { runtime, model: faux.getModel() },
+      log: () => undefined,
+      signal,
+    });
+
+  let laptop = new AbortController();
+  let laptopDone = startLaptop(laptop.signal);
+
+  const environments = await until(
+    async () =>
+      (await (await api("/api/environments")).json()) as Environment[],
+    (list) => list.length === 2,
+  );
+
+  const local = environments.find(({ provider }) => provider === "local");
+  const onLaptop = environments.find(({ provider }) => provider === "laptop");
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const coordinator = context.messages.some(
+      (message) =>
+        message.role === "system" &&
+        JSON.stringify(message).includes("You are the coordinator"),
+    );
+
+    const last = lastUserText(context.messages);
+
+    if (coordinator && last.includes("start it")) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("start_thread", {
+            title: "Tag",
+            message: "bump the version",
+            environment: local?.id ?? "",
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (coordinator) {
+      return fauxAssistantMessage([
+        fauxText(last.includes("[Project notice]") ? "heard it" : "started"),
+      ]);
+    }
+
+    return fauxAssistantMessage([
+      fauxText(last.includes("check the tag") ? "tagged v2" : "bumped to v2"),
+    ]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Release",
+      environment: onLaptop?.id,
+      repositories: [app],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () => project(id),
+    (view) => view.coordinatorState === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "start it",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("heard it"),
+  );
+
+  const { threads } = await until(
+    async () => project(id),
+    (view) =>
+      view.coordinatorState === "idle" &&
+      view.threads.length === 1 &&
+      view.threads.every(({ runState }) => runState === "idle"),
+  );
+
+  laptop.abort();
+  await laptopDone;
+
+  await until(
+    async () => project(id),
+    (view) => view.coordinatorState === "offline",
+  );
+
+  const threadId = threads[0]?.sessionId ?? "";
+
+  await api(`/api/sessions/${threadId}/commands`, {
+    type: "message",
+    text: "check the tag",
+  });
+
+  await until(
+    async () => transcript(threadId),
+    (text) => text.includes("tagged v2"),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  expect(await transcript(coordinatorId)).not.toContain("tagged v2");
+
+  laptop = new AbortController();
+  laptopDone = startLaptop(laptop.signal);
+
+  await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("Its last reply: tagged v2"),
+  );
+
+  laptop.abort();
+  await laptopDone;
+}, 30_000);

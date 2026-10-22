@@ -125,6 +125,14 @@ function deliver(
       continue;
     }
 
+    // A turn notice reads the thread's whole transcript, so don't build one
+    // every second for a Session that can't take it.
+    const state = runState(target);
+    if (state === "offline" || state === "interrupted") {
+      blocked.add(sessionId);
+      continue;
+    }
+
     try {
       switch (delivery.kind) {
         case "message":
