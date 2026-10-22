@@ -353,7 +353,7 @@ export function projectTools(
       "both",
       (input, { project, actor }) => {
         const name = required(input, "name");
-        if (!/^[\w.-]+$/.test(name)) {
+        if (!/^[\w.-]+$/.test(name) || /^\.+$/.test(name)) {
           throw new Error("file names may use letters, digits, . _ and -");
         }
 
