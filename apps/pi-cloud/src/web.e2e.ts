@@ -654,3 +654,50 @@ test("follows the system theme until a theme is picked, and keeps the pick", asy
   await page.getByRole("button", { name: /^Theme: system/ }).waitFor();
   expect(await theme()).toBe("dark");
 });
+
+test("takes a queued message back into the composer", async () => {
+  let release = (): void => undefined;
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  faux.setResponses([
+    async () => {
+      await gate;
+
+      return fauxAssistantMessage([fauxText("finally done")]);
+    },
+  ]);
+
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form
+    .locator("[name=environment]")
+    .selectOption({ label: "e2e (e2e, online)" });
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const box = page.locator("#prompt-text");
+  await box.fill("start");
+  await box.press("Enter");
+  await page.locator("#status", { hasText: "running" }).waitFor();
+
+  await box.fill("not yet");
+  await box.press("Alt+Enter");
+  const takeBack = page.getByRole("button", { name: 'Take back "not yet"' });
+  await takeBack.click();
+  await takeBack.waitFor({ state: "detached" });
+  expect(await box.inputValue()).toBe("not yet");
+
+  release();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "finally done" })
+    .waitFor();
+}, 30_000);

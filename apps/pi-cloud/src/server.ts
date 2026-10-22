@@ -575,6 +575,15 @@ function browserCommand(body: unknown): Command {
 
     case "abort":
       return { actor: user, type: "abort" };
+    case "unqueue": {
+      const { delivery } = fields;
+      if (delivery !== "steer" && delivery !== "followUp") {
+        throw new BadRequest('delivery must be "steer" or "followUp"');
+      }
+
+      return { actor: user, type: "unqueue", delivery, text: text("text") };
+    }
+
     case "answer":
       return {
         actor: user,
@@ -599,7 +608,9 @@ function browserCommand(body: unknown): Command {
     }
 
     default:
-      throw new BadRequest("type must be message, abort, answer or explain");
+      throw new BadRequest(
+        "type must be message, abort, unqueue, answer or explain",
+      );
   }
 }
 

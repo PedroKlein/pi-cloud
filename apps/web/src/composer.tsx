@@ -90,15 +90,34 @@ export function Composer({
       ))}
 
       {[
-        ...steering.map((t) => ["Steering", t]),
-        ...followUp.map((t) => ["Follow-up", t]),
-      ].map(([kind, queued], index) => (
+        ...steering.map((t) => ["steer", t] as const),
+        ...followUp.map((t) => ["followUp", t] as const),
+      ].map(([delivery, queued], index) => (
         <p
-          key={`${String(index)}-${String(queued)}`}
-          className="max-w-[80%] self-end rounded-lg border border-dashed border-line-strong bg-elevated px-3 py-1 text-ui text-fg-dim"
+          key={`${String(index)}-${queued}`}
+          className="flex max-w-[80%] items-start gap-2 self-end rounded-lg border border-dashed border-line-strong bg-elevated py-1 pr-1 pl-3 text-ui text-fg-dim"
         >
-          <span className="mr-2 text-caption font-medium">{kind}</span>
-          {queued}
+          <span>
+            <span className="mr-2 text-caption font-medium">
+              {delivery === "steer" ? "Steering" : "Follow-up"}
+            </span>
+            {queued}
+          </span>
+          <button
+            type="button"
+            aria-label={`Take back "${queued}"`}
+            title="Take back"
+            onClick={() => {
+              command(sessionId, {
+                type: "unqueue",
+                delivery,
+                text: queued,
+              }).catch(report);
+            }}
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md hover:bg-hover hover:text-fg"
+          >
+            <Icon name="x" className="size-3.5" />
+          </button>
         </p>
       ))}
 
