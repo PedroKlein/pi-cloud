@@ -41,12 +41,21 @@ interface Hosted {
   readonly session: Promise<HostedSession | undefined>;
 }
 
+interface Unreported {
+  readonly generation: number;
+  readonly force: boolean;
+  readonly report: RemovalReport;
+}
+
 export async function runAgent(options: AgentOptions): Promise<void> {
   const { log } = options;
   const agent = { server: options.server, provider: options.provider };
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
   const removing = new Map<string, Promise<RemovalReport>>();
+  // A second run of a removal finds its workspace gone and can't tell what it
+  // held, so a report the server hasn't accepted is kept to send again.
+  const unreported = new Map<string, Unreported>();
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
@@ -96,13 +105,16 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     };
 
     await stopping.get(sessionId);
-    const report = await removing.get(sessionId);
+
+    const report =
+      (await removing.get(sessionId)) ?? unreported.get(sessionId)?.report;
+
     if (hosted.get(sessionId)?.generation !== generation) {
       return undefined;
     }
 
-    // An unarchive can overtake a removal, so the assignment may still name
-    // the workspace that removal just deleted.
+    // An unarchive can overtake a removal or its report, so the assignment
+    // may still name the workspace that removal deleted.
     const workspace =
       report?.outcome === "removed" ? report.restore : assignment.workspace;
 
@@ -194,17 +206,30 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     const { sessionId, generation, workspace, force } = removal;
     await stopping.get(sessionId);
 
-    const report = await removeWorkspace(
-      workspace,
-      { dir: workspaceDir(sessionId), force },
-      sessionLog,
-    ).catch((error: unknown): RemovalReport => {
-      sessionLog("workspace removal failed", { error: String(error) });
+    const held = unreported.get(sessionId);
+    const again = held?.generation === generation && held.force === force;
+    if (again) {
+      sessionLog("resending workspace removal report", { generation });
+    }
 
-      return { outcome: "kept", reason: String(error) };
-    });
+    const report = again
+      ? held.report
+      : await removeWorkspace(
+          workspace,
+          { dir: workspaceDir(sessionId), force },
+          sessionLog,
+        ).catch((error: unknown): RemovalReport => {
+          sessionLog("workspace removal failed", { error: String(error) });
 
-    await reportRemoval(agent, sessionId, { ...report, generation }).catch(
+          return { outcome: "kept", reason: String(error) };
+        });
+
+    unreported.set(sessionId, { generation, force, report });
+
+    await reportRemoval(agent, sessionId, { ...report, generation }).then(
+      () => {
+        unreported.delete(sessionId);
+      },
       (error: unknown) => {
         sessionLog("workspace removal not reported", { error: String(error) });
       },
