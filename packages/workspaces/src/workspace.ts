@@ -273,20 +273,41 @@ async function reusedCheckout(
 // again from restore.
 export async function removeWorkspace(
   workspace: Workspace,
-  options: { readonly dir: string; readonly force: boolean },
+  options: {
+    readonly dir: string;
+    readonly force: boolean;
+    readonly folders?: readonly string[];
+  },
   log: Log,
 ): Promise<RemovalReport> {
   if (workspace.kind !== "repositories") {
     return removeCheckout(workspace, options, log);
   }
 
-  const { dir, force } = options;
+  const { dir, force, folders = [] } = options;
   const { branch } = workspace;
+
+  let remotes: Promise<ReadonlyMap<string, string>> | undefined;
+
+  // A repository worktree whose folder is gone still has its session branch
+  // in the checkout it came from, found as prepareWorkspace found it.
+  const source = async (repository: string): Promise<string | undefined> => {
+    const folder = (await (remotes ??= checkoutsByRemote(folders))).get(
+      repositoryKey(repository),
+    );
+
+    return folder !== undefined && (await branchExists(folder, branch))
+      ? folder
+      : undefined;
+  };
 
   const checkouts = await Promise.all(
     workspace.repositories.map(async (checkout) => {
       const path = checkoutPath(dir, checkout.repository);
-      const folder = await worktreeFolder(path);
+
+      const folder =
+        (await worktreeFolder(path)) ??
+        ((await exists(path)) ? undefined : await source(checkout.repository));
 
       return {
         checkout,
