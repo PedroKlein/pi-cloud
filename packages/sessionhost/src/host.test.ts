@@ -1803,6 +1803,69 @@ test("runs server tools through the stream and gives the model their result", as
   expect(fake.lines.join()).toContain("the server said forty-two");
 });
 
+test("fails a server tool whose result never arrives, so the turn still ends", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("lookup", { key: "answer" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("the lookup failed")]),
+  ]);
+
+  const fake = fakeStream({
+    tools: [
+      {
+        name: "lookup",
+        description: "Looks a key up on the server",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      serverToolTimeoutMs: 50,
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "look it up" });
+  await fake.waitFor(() => fake.lines.join().includes("the lookup failed"));
+
+  fake.send({
+    actor: "plugin:test",
+    type: "tool_result",
+    id: fake.toolCalls[0]?.id ?? "",
+    result: { text: "too late", isError: false },
+  });
+
+  await hosted.stop();
+
+  const result = fake.lines
+    .map(
+      (line) =>
+        JSON.parse(line) as { message?: { role: string; isError?: boolean } },
+    )
+    .find((entry) => entry.message?.role === "toolResult");
+
+  expect(result?.message?.isError).toBe(true);
+  expect(JSON.stringify(result)).toContain("no result from the server");
+  expect(fake.lines.join()).not.toContain("too late");
+
+  expect(fake.events.filter((e) => e.type === "status")).toEqual([
+    { type: "status", status: "idle" },
+    { type: "status", status: "running" },
+    { type: "status", status: "idle" },
+  ]);
+});
+
 test("lets a plugin's tools reach its own server routes", async () => {
   const { faux, models } = await fauxModels(root);
 

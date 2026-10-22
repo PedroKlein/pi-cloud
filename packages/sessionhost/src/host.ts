@@ -39,6 +39,7 @@ export interface SessionStream {
 export interface HostOptions extends SessionOptions {
   readonly plugins?: readonly SessionPlugin[];
   readonly firstMessage?: string | null;
+  readonly serverToolTimeoutMs?: number;
 }
 
 export interface TerminalPeer {
@@ -128,7 +129,11 @@ export async function hostSession(
     live.push(event);
   });
 
-  const calls = serverTools(await stream.tools(), stream.callTool);
+  const calls = serverTools(
+    await stream.tools(),
+    stream.callTool,
+    options.serverToolTimeoutMs,
+  );
 
   const plugins = (options.plugins ?? []).map((plugin) => ({
     plugin,
