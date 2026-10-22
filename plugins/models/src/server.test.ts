@@ -152,3 +152,16 @@ test("a config wait returns when the server stops", async () => {
 
   expect(await waited).toBe(seen);
 });
+
+test("a config wait after the server stopped answers 503 so the Session backs off", async () => {
+  const server = new AbortController();
+  const route = registered(server.signal);
+  const seen = await configVersion(route);
+  server.abort();
+
+  const request = new Request(`http://models/config?after=${String(seen)}`);
+  const response = await route(request, "config", caller);
+
+  expect(response.status).toBe(503);
+  expect(getEventListeners(server.signal, "abort")).toHaveLength(0);
+});
