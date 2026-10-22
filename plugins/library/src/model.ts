@@ -18,6 +18,8 @@ export const nameRule = "file names may use letters, digits, spaces, . _ and -";
 
 export function validName(name: string): boolean {
   return (
-    name.length <= 200 && /^[\w.-][\w .-]*$/.test(name) && !/^\.+$/.test(name)
+    name.length <= 200 &&
+    /^[\p{L}\d_.-][\p{L}\p{M}\d_ .-]*$/u.test(name) &&
+    !/^\.+$/.test(name)
   );
 }

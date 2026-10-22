@@ -907,6 +907,81 @@ test("refuses library file names made only of dots", async () => {
   ).rejects.toThrow("ENOENT");
 }, 30_000);
 
+test("accepts library file names with letters from any script", async () => {
+  const a = await repository("app");
+  const decomposed = "résumé.pdf".normalize("NFD");
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("publish_file", { path: `app/${decomposed}` })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("tried")]),
+  ]);
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Docs",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  const files = `/api/plugins/library/projects/${id}/files`;
+
+  const put = async (name: string): Promise<number> =>
+    (
+      await fetch(
+        new URL(`${files}/${encodeURIComponent(name)}`, server?.url),
+        { method: "PUT", body: "x" },
+      )
+    ).status;
+
+  expect(await put("Relatório final.pdf")).toBe(200);
+  expect(await put("日本.txt")).toBe(200);
+
+  expect(
+    await Promise.all(
+      ["a/b.txt", "a\\b.txt", "a\tb.txt", "\u0301x.txt", "..."].map(put),
+    ),
+  ).toEqual([400, 400, 400, 400, 400]);
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await writeFile(
+    join(root, "local", "workspaces", coordinatorId, "app", decomposed),
+    "cv\n",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "share the résumé",
+  });
+
+  await until(
+    async () => transcript(coordinatorId),
+    (said) => said.includes("tried"),
+  );
+
+  expect(await (await api(files)).json()).toMatchObject([
+    { name: "Relatório final.pdf", size: 1 },
+    { name: decomposed, size: 3 },
+    { name: "日本.txt", size: 1 },
+  ]);
+
+  expect(
+    await (await api(`${files}/${encodeURIComponent(decomposed)}`)).text(),
+  ).toBe("cv\n");
+}, 30_000);
+
 test("runs a Project's threads across two machines and two repositories", async () => {
   const app = await repository("app");
   const lib = await repository("lib");
