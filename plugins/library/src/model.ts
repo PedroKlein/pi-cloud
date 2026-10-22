@@ -20,6 +20,8 @@ export const sizeRule = `library files are limited to ${String(fileLimit / 1024 
 
 export function validName(name: string): boolean {
   return (
-    name.length <= 200 && /^[\w.-][\w .-]*$/.test(name) && !/^\.+$/.test(name)
+    name.length <= 200 &&
+    /^[\p{L}\d_.-][\p{L}\p{M}\d_ .-]*$/u.test(name) &&
+    !/^\.+$/.test(name)
   );
 }
