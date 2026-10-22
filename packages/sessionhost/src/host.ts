@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -7,6 +8,7 @@ import type {
 import type { SessionPlugin } from "@pi-cloud/plugins";
 import type {
   Command,
+  ImageAttachment,
   LiveEvent,
   SlashCommand,
   ToolSpec,
@@ -187,6 +189,10 @@ export async function hostSession(
   const terminals = hostTerminals(session.sessionManager.getCwd(), stream, log);
   const startTerminal = openTerminalElsewhere ?? terminals.open;
 
+  // Pi's queue keeps only the text, so the images of a queued message are
+  // kept here to queue it again when another is taken back.
+  const queuedImages = new Map<string, ImageContent[]>();
+
   const detach = stream.commands((command) => {
     log("command received", { command: command.type, actor: command.actor });
 
@@ -212,6 +218,19 @@ export async function hostSession(
       calls.result(command.id, command.result);
 
       return;
+    }
+
+    if (command.type === "unqueue") {
+      const back = unqueue(session, command, queuedImages);
+      if (back !== undefined) {
+        live.push({ type: "editor_text", text: back });
+      }
+
+      return;
+    }
+
+    if (command.type === "message" && command.images && session.isStreaming) {
+      queuedImages.set(command.text, images(command.images));
     }
 
     run(session, command).catch((error: unknown) => {
@@ -326,12 +345,7 @@ async function run(
     case "message":
       await session.prompt(command.text, {
         streamingBehavior: command.delivery ?? "steer",
-        ...(command.images && {
-          images: command.images.map((image) => ({
-            type: "image" as const,
-            ...image,
-          })),
-        }),
+        ...(command.images && { images: images(command.images) }),
       });
 
       return;
@@ -340,6 +354,41 @@ async function run(
 
       return;
   }
+}
+
+// Removes text from Pi's queue and queues the rest again in order. Returns
+// the text, or undefined when Pi has already read it.
+function unqueue(
+  session: AgentSession,
+  { delivery, text }: Extract<Command, { type: "unqueue" }>,
+  queuedImages: ReadonlyMap<string, ImageContent[]>,
+): string | undefined {
+  const queued =
+    delivery === "steer"
+      ? session.getSteeringMessages()
+      : session.getFollowUpMessages();
+
+  if (!queued.includes(text)) {
+    return undefined;
+  }
+
+  const { steering, followUp } = session.clearQueue();
+  const from = delivery === "steer" ? steering : followUp;
+  from.splice(from.indexOf(text), 1);
+
+  for (const kept of steering) {
+    void session.steer(kept, queuedImages.get(kept));
+  }
+
+  for (const kept of followUp) {
+    void session.followUp(kept, queuedImages.get(kept));
+  }
+
+  return text;
+}
+
+function images(attached: readonly ImageAttachment[]): ImageContent[] {
+  return attached.map((image) => ({ type: "image", ...image }));
 }
 
 // Publishes the workspace's paths when they differ from the last ones sent.

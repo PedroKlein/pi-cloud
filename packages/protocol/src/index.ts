@@ -322,6 +322,13 @@ export type Command = { readonly actor: Actor } & (
       readonly delivery?: "steer" | "followUp";
     }
   | { readonly type: "abort" }
+  // Takes a queued message back before Pi reads it; the text returns to the
+  // composer as editor_text.
+  | {
+      readonly type: "unqueue";
+      readonly delivery: "steer" | "followUp";
+      readonly text: string;
+    }
   // Context for the model's next turn that doesn't start one.
   | { readonly type: "context"; readonly text: string }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }

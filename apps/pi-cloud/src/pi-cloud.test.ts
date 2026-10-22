@@ -509,6 +509,8 @@ test("rejects commands a browser may not send", async () => {
     [
       { type: "message" },
       { type: "message", text: "hi", delivery: "later" },
+      { type: "unqueue", text: "hi", delivery: "later" },
+      { type: "unqueue", delivery: "steer" },
       { type: "message", text: "hi", images: "cat.png" },
       {
         type: "message",
@@ -552,7 +554,7 @@ test("rejects commands a browser may not send", async () => {
     }),
   );
 
-  expect(statuses).toEqual(Array.from({ length: 11 }, () => 400));
+  expect(statuses).toEqual(Array.from({ length: 13 }, () => 400));
 });
 
 async function asAgent(

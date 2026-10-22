@@ -1188,6 +1188,133 @@ test.each([
   },
 );
 
+test("takes a queued message back and keeps the rest queued with their images", async () => {
+  const { faux, models } = await fauxModels(root);
+  await writeFile(join(root, "notes.txt"), "notes");
+  let release = (): void => undefined;
+  let lastContext = "";
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  faux.setResponses([
+    async () => {
+      await gate;
+
+      return fauxAssistantMessage([
+        fauxToolCall("read", { path: "notes.txt" }),
+      ]);
+    },
+    fauxAssistantMessage([fauxText("read it")]),
+    (context) => {
+      lastContext = JSON.stringify(
+        context.messages.filter(({ role }) => role === "user"),
+      );
+
+      return fauxAssistantMessage([fauxText("queued reply")]);
+    },
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [ask],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "first" });
+  await fake.waitFor(() => faux.state.callCount === 1);
+
+  fake.send({
+    actor: "user:local",
+    type: "message",
+    text: "second",
+    delivery: "followUp",
+  });
+
+  fake.send({
+    actor: "user:local",
+    type: "message",
+    text: "third",
+    images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }],
+    delivery: "followUp",
+  });
+
+  await fake.waitFor(() =>
+    fake.events.some((e) => e.type === "queue" && e.followUp.length === 2),
+  );
+
+  fake.send({
+    actor: "user:local",
+    type: "unqueue",
+    delivery: "followUp",
+    text: "second",
+  });
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+  release();
+
+  await fake.waitFor(() => lastContext !== "");
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type === "editor_text")).toEqual([
+    { type: "editor_text", text: "second" },
+  ]);
+
+  expect(fake.events.filter((e) => e.type === "queue").at(-2)).toEqual({
+    type: "queue",
+    steering: [],
+    followUp: ["third"],
+  });
+
+  expect(lastContext).toContain("third");
+  expect(lastContext).toContain("iVBORw0KGgo=");
+  expect(lastContext).not.toContain("second");
+});
+
+test("leaves a message Pi already read when asked to take it back", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("done")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: root,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [ask],
+    },
+    fake.stream,
+    () => undefined,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "first" });
+  await fake.waitFor(() => roles(fake.lines).at(-1) === "assistant");
+
+  fake.send({
+    actor: "user:local",
+    type: "unqueue",
+    delivery: "steer",
+    text: "first",
+  });
+
+  await hosted.stop();
+
+  expect(fake.events.filter((e) => e.type === "editor_text")).toEqual([]);
+  expect(fake.lines.join()).toContain("first");
+});
+
 async function gitRepository(): Promise<string> {
   const dir = join(root, "repo");
   await mkdir(dir);
