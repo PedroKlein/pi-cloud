@@ -43,11 +43,12 @@ let serverLogs: string[];
 function startAgent(
   provider: string,
   extensionPaths: readonly string[] = [],
+  serverUrl: URL = server.url,
 ): () => Promise<void> {
   const controller = new AbortController();
 
   const done = runAgent({
-    server: server.url.href,
+    server: serverUrl.href,
     provider,
     dataDir: join(root, provider),
     agentDir: join(root, "pi"),
@@ -2066,6 +2067,157 @@ test("brings pushed work back when unarchived while its worktree is being remove
   });
 
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+});
+
+// Forwards an agent's requests to the server. lose(n) can lose the nth
+// workspace removal report on its way to the server, or its reply on the way
+// back.
+function reportLosingProxy(
+  lose: (report: number) => "request" | "reply" | undefined,
+): ReturnType<typeof Bun.serve> {
+  let reports = 0;
+
+  return Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    idleTimeout: 0,
+    fetch: async (request) => {
+      const url = new URL(request.url);
+
+      const loss =
+        request.method === "POST" && url.pathname.endsWith("/workspace")
+          ? lose(++reports)
+          : undefined;
+
+      if (loss === "request") {
+        return new Response(null, { status: 502 });
+      }
+
+      const headers = new Headers(request.headers);
+      headers.delete("host");
+
+      const response = await fetch(
+        new URL(url.pathname + url.search, server.url),
+        {
+          method: request.method,
+          headers,
+          body: request.method === "GET" ? null : await request.arrayBuffer(),
+          signal: request.signal,
+        },
+      );
+
+      return loss === "reply" ? new Response(null, { status: 502 }) : response;
+    },
+  });
+}
+
+async function archivedWithPushedWork(): Promise<{
+  readonly session: Session;
+  readonly dir: string;
+}> {
+  const checkout = await pushedCheckout();
+
+  const session = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  const branch = `pi-cloud/${session.id.slice(0, 8)}`;
+  const dir = join(root, "laptop", "workspaces", session.id);
+  await follow(session.id, status("idle"));
+  await writeFile(join(dir, "work.txt"), "work\n");
+  await inRepository(dir, "add", ".");
+  await inRepository(dir, "commit", "--quiet", "-m", "work");
+  await inRepository(dir, "push", "--quiet", "origin", branch);
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  return { session, dir };
+}
+
+test("sends a lost removal report again instead of removing the worktree twice", async () => {
+  const proxy = reportLosingProxy((report) =>
+    report === 1 ? "request" : undefined,
+  );
+
+  await laptop();
+  const agent = startAgent("laptop", [], proxy.url);
+  try {
+    const { session, dir } = await archivedWithPushedWork();
+    await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+    await api(`/api/sessions/${session.id}/unarchive`, {});
+
+    await sessionWhere(
+      session.id,
+      (s) => s.generation === 2 && s.status === "idle",
+    );
+
+    expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+  } finally {
+    await agent();
+    await proxy.stop(true);
+  }
+});
+
+test("brings pushed work back when unarchived before a lost removal report gets through", async () => {
+  const proxy = reportLosingProxy(() => "request");
+  await laptop();
+  const agent = startAgent("laptop", [], proxy.url);
+  try {
+    const { session, dir } = await archivedWithPushedWork();
+
+    while (
+      !agentLogs.some((line) =>
+        line.startsWith("workspace removal not reported"),
+      )
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    await api(`/api/sessions/${session.id}/unarchive`, {});
+
+    await sessionWhere(
+      session.id,
+      (s) => s.generation === 2 && s.status === "idle",
+    );
+
+    expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
+  } finally {
+    await agent();
+    await proxy.stop(true);
+  }
+});
+
+test("forces a removal whose kept report reached the server but not its reply", async () => {
+  const proxy = reportLosingProxy((report) =>
+    report === 1 ? "reply" : undefined,
+  );
+
+  await laptop();
+  const agent = startAgent("laptop", [], proxy.url);
+  try {
+    const checkout = await pushedCheckout();
+
+    const session = await createSession("laptop", {
+      kind: "worktree",
+      path: checkout,
+    });
+
+    const dir = join(root, "laptop", "workspaces", session.id);
+    await follow(session.id, status("idle"));
+    await writeFile(join(dir, "work.txt"), "work\n");
+    await inRepository(dir, "add", ".");
+    await inRepository(dir, "commit", "--quiet", "-m", "work");
+    await api(`/api/sessions/${session.id}/archive`, {});
+    await sessionWhere(session.id, (s) => s.workspaceRemoval === "kept");
+    await api(`/api/sessions/${session.id}/remove-workspace`, {});
+    await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
+    const leftover = await stat(dir).catch(() => undefined);
+
+    expect(leftover).toBeUndefined();
+  } finally {
+    await agent();
+    await proxy.stop(true);
+  }
 });
 
 test("leaves no worktree behind when archived again while its first removal runs", async () => {
