@@ -2026,6 +2026,72 @@ test("/pr draft commits, pushes and opens a draft pull request that the next sta
   }
 });
 
+test("/pr on a branch that has a pull request commits, pushes and keeps its link", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  const setup = await pullRequestSetup(
+    "echo https://github.com/acme/widgets/pull/9",
+  );
+
+  try {
+    await writeFile(join(setup.repo, "notes.txt"), "new notes\n");
+
+    faux.setResponses([
+      fauxAssistantMessage([fauxText("Add notes\n\nWhy.")]),
+      fauxAssistantMessage([fauxText("Reword the notes\n\nWhy.")]),
+    ]);
+
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, {
+        cwd: setup.repo,
+        models,
+        plugins: [changes],
+        checkouts: [{ path: setup.repo, base: setup.base }],
+      }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    const settled = (): number =>
+      pullRequests(fake.events).filter(({ status }) => status !== "working")
+        .length;
+
+    fake.send({ actor: "user:local", type: "message", text: "/pr" });
+    await fake.waitFor(() => settled() === 1);
+
+    await writeFile(join(setup.repo, "notes.txt"), "newer notes\n");
+    fake.send({ actor: "user:local", type: "message", text: "/pr" });
+    await fake.waitFor(() => settled() === 2);
+
+    await hosted.stop();
+
+    expect(
+      pullRequests(fake.events).filter(({ status }) => status !== "working"),
+    ).toEqual([
+      {
+        name: "",
+        status: "open",
+        url: "https://github.com/acme/widgets/pull/9",
+      },
+      {
+        name: "",
+        status: "open",
+        url: "https://github.com/acme/widgets/pull/9",
+      },
+    ]);
+
+    expect(await setup.remoteLog()).toBe("Reword the notes\nAdd notes\nfirst");
+
+    const calls = (await Bun.file(setup.ghCalls).text()).split("\n");
+    expect(calls.filter((arg) => arg === "create")).toHaveLength(1);
+  } finally {
+    setup.restore();
+  }
+});
+
 test("/pr falls back to GitHub's compose page when gh fails", async () => {
   const { faux, models } = await fauxModels(root);
   const setup = await pullRequestSetup("echo 'not logged in' >&2; exit 1");
