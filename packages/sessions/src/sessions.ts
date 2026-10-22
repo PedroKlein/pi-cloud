@@ -8,6 +8,7 @@ import {
   type LiveEvent,
   type LivePost,
   liveSurface,
+  type ModelRef,
   type Removal,
   type RemovalReport,
   type Session,
@@ -53,6 +54,7 @@ export interface SessionStore {
   ) => void;
   transcript: (id: string, from: number) => readonly string[];
   setTitle: (id: string, title: string) => void;
+  setModel: (id: string, model: ModelRef) => void;
 }
 
 export type Rejection =
@@ -344,10 +346,17 @@ export class Sessions {
       const title = titleAfter(session.title, fresh);
       if (title !== session.title && title !== null) {
         this.#store.setTitle(id, title);
+      }
 
+      const model = modelAfter(session.model, fresh);
+      if (model !== session.model && model !== null) {
+        this.#store.setModel(id, model);
+      }
+
+      if (title !== session.title || model !== session.model) {
         this.#emit(id, {
           type: "session",
-          session: this.#view({ ...session, title }),
+          session: this.#view({ ...session, title, model }),
         });
       }
 
@@ -703,9 +712,38 @@ function titleAfter(
     : Array.from(named.trim()).slice(0, titleLength).join("");
 }
 
-function parsed(
-  line: string,
-): { type?: unknown; name?: unknown; message?: unknown } | undefined {
+// Pi records each switch, and restores the last one when a session resumes.
+function modelAfter(
+  model: ModelRef | null,
+  entries: readonly string[],
+): ModelRef | null {
+  let current = model;
+
+  for (const line of entries) {
+    const entry = parsed(line);
+
+    if (
+      entry?.type === "model_change" &&
+      typeof entry.provider === "string" &&
+      typeof entry.modelId === "string" &&
+      (entry.provider !== current?.provider || entry.modelId !== current.id)
+    ) {
+      current = { provider: entry.provider, id: entry.modelId };
+    }
+  }
+
+  return current;
+}
+
+function parsed(line: string):
+  | {
+      type?: unknown;
+      name?: unknown;
+      message?: unknown;
+      provider?: unknown;
+      modelId?: unknown;
+    }
+  | undefined {
   try {
     const value: unknown = JSON.parse(line);
 

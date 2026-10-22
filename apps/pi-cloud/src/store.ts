@@ -244,6 +244,7 @@ export function openStore(path: string): SessionStore & {
   );
 
   const updateTitle = db.prepare("update sessions set title = ? where id = ?");
+  const updateModel = db.prepare("update sessions set model = ? where id = ?");
 
   const selectTranscript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
@@ -323,6 +324,9 @@ export function openStore(path: string): SessionStore & {
           insertTranscriptLine.run(id, start + i, entry),
         );
       });
+    },
+    setModel: (id, model) => {
+      updateModel.run(JSON.stringify(model), id);
     },
     setTitle: (id, title) => {
       updateTitle.run(title, id);

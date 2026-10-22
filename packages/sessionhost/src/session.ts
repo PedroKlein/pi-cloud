@@ -148,7 +148,13 @@ async function firstModel(
     return options.models?.model;
   }
 
-  const { provider, id } = options.model;
+  return availableModel(runtime, options.model);
+}
+
+export async function availableModel(
+  runtime: ModelRuntime,
+  { provider, id }: ModelRef,
+): Promise<Model<Api>> {
   const models = await runtime.getAvailable(provider);
   const model = models.find((m) => m.id === id);
   if (model === undefined) {

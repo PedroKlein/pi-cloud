@@ -511,6 +511,9 @@ test("rejects commands a browser may not send", async () => {
       { type: "message", text: "hi", delivery: "later" },
       { type: "unqueue", text: "hi", delivery: "later" },
       { type: "unqueue", delivery: "steer" },
+      { type: "set_model", model: "openai/gpt-5" },
+      { type: "set_model", model: { provider: "openai" } },
+      { type: "set_thinking", level: "huge" },
       { type: "message", text: "hi", images: "cat.png" },
       {
         type: "message",
@@ -554,7 +557,7 @@ test("rejects commands a browser may not send", async () => {
     }),
   );
 
-  expect(statuses).toEqual(Array.from({ length: 13 }, () => 400));
+  expect(statuses).toEqual(Array.from({ length: 16 }, () => 400));
 });
 
 test("takes only answers shaped like a prompt's answer", async () => {
@@ -731,6 +734,48 @@ test("titles a session with its first user message until Pi names it", async () 
   });
 
   expect(await titled()).toBe("Login fix");
+});
+
+test("follows the model Pi switches a session to", async () => {
+  const session = await createSession("vm");
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", { running: [], folders: [], models: [] })
+  ).json()) as {
+    start: { generation: number }[];
+  };
+
+  const model = async (): Promise<unknown> =>
+    (
+      (await (await api(`/api/sessions/${session.id}`)).json()) as {
+        model: unknown;
+      }
+    ).model;
+
+  const before = await model();
+
+  await asAgent("vm", `/agent/sessions/${session.id}/transcript`, {
+    generation: work.start[0]?.generation,
+    start: 0,
+    lines: [
+      JSON.stringify({ type: "session", version: 3 }),
+      JSON.stringify({
+        type: "model_change",
+        provider: "google",
+        modelId: "gemini-3.5-flash-lite",
+      }),
+    ],
+  });
+
+  expect(before).not.toEqual({
+    provider: "google",
+    id: "gemini-3.5-flash-lite",
+  });
+
+  expect(await model()).toEqual({
+    provider: "google",
+    id: "gemini-3.5-flash-lite",
+  });
 });
 
 test("keeps the last character whole when it shortens a long title", async () => {

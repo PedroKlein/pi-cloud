@@ -8,6 +8,7 @@ import type {
 import { chatItems, type ChatItem } from "./chat";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
+export type Settings = Extract<LiveEvent, { type: "settings" }>;
 export type Explanation = Extract<LiveEvent, { type: "explanation" }>;
 
 // A question the agent is waiting on, and the explanations asked about it.
@@ -37,6 +38,7 @@ export interface Feed {
   readonly editorText: { readonly text: string } | undefined;
   readonly commands: readonly SlashCommand[];
   readonly files: readonly string[];
+  readonly settings: Settings | undefined;
 }
 
 export const emptyFeed: Feed = {
@@ -54,6 +56,7 @@ export const emptyFeed: Feed = {
   editorText: undefined,
   commands: [],
   files: [],
+  settings: undefined,
 };
 
 export interface FollowOptions {
@@ -211,6 +214,10 @@ export function follow(
         return;
       case "files":
         update({ files: event.paths });
+
+        return;
+      case "settings":
+        update({ settings: event });
 
         return;
       case "editor_text":

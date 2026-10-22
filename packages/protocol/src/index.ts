@@ -273,6 +273,14 @@ export type LiveEvent =
       readonly followUp: readonly string[];
     }
   | { readonly type: "editor_text"; readonly text: string }
+  // The Session's model and reasoning level, and the levels its model takes
+  // (ADR 0023).
+  | {
+      readonly type: "settings";
+      readonly model: ModelRef | null;
+      readonly thinking: ThinkingLevel;
+      readonly levels: readonly ThinkingLevel[];
+    }
   | {
       readonly type: "explanation";
       readonly id: string;
@@ -314,6 +322,8 @@ export function liveSurface(
       return { key: "commands", open: true };
     case "files":
       return { key: "files", open: true };
+    case "settings":
+      return { key: "settings", open: true };
     case "plugin":
       return { key: `plugin:${event.plugin}:${event.key}`, open: true };
     case "queue":
@@ -338,6 +348,19 @@ export interface LivePost {
 }
 
 export type Actor = `user:${string}` | `session:${string}` | `plugin:${string}`;
+
+// Pi's reasoning levels, from none to the most a model allows.
+export const thinkingLevels = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type ThinkingLevel = (typeof thinkingLevels)[number];
 
 export interface SlashCommand {
   readonly name: string;
@@ -369,6 +392,8 @@ export type Command = { readonly actor: Actor } & (
       readonly delivery?: "steer" | "followUp";
     }
   | { readonly type: "abort" }
+  | { readonly type: "set_model"; readonly model: ModelRef }
+  | { readonly type: "set_thinking"; readonly level: ThinkingLevel }
   // Takes a queued message back before Pi reads it; the text returns to the
   // composer as editor_text.
   | {

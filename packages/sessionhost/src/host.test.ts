@@ -37,7 +37,11 @@ import { sessionOptions } from "./testdata/options";
 let root: string;
 
 // What the composer's menus list, published at every start.
-const listings: readonly LiveEvent["type"][] = ["commands", "files"];
+const listings: readonly LiveEvent["type"][] = [
+  "commands",
+  "files",
+  "settings",
+];
 
 const noTerminal = (): void => undefined;
 
@@ -2751,4 +2755,63 @@ test("lists each repository in a folder outside git with git for mentions, leavi
     ],
     truncated: false,
   });
+});
+
+test("switches the session's model and reasoning level on command", async () => {
+  const { faux, models } = await fauxModels(root, {
+    models: [{ id: "quick" }, { id: "deep", reasoning: true }],
+  });
+
+  const { provider } = faux.getModel();
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const settings = (): Extract<LiveEvent, { type: "settings" }>[] =>
+    fake.events.flatMap((event) => (event.type === "settings" ? event : []));
+
+  await fake.waitFor(() => settings().length > 0);
+
+  expect(settings()[0]).toEqual({
+    type: "settings",
+    model: { provider, id: "quick" },
+    thinking: "off",
+    levels: ["off"],
+  });
+
+  fake.send({
+    actor: "user:local",
+    type: "set_model",
+    model: { provider, id: "deep" },
+  });
+
+  await fake.waitFor(() => settings().length > 1);
+
+  expect(settings()[1]?.model).toEqual({ provider, id: "deep" });
+  expect(settings()[1]?.levels).toContain("high");
+
+  fake.send({ actor: "user:local", type: "set_thinking", level: "high" });
+  await fake.waitFor(() => settings().length > 2);
+
+  expect(settings()[2]?.thinking).toBe("high");
+
+  fake.send({
+    actor: "user:local",
+    type: "set_model",
+    model: { provider, id: "missing" },
+  });
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "notify"));
+  await hosted.stop();
+
+  const notice = fake.events.find((e) => e.type === "notify");
+
+  expect(notice).toMatchObject({ type: "notify", level: "error" });
+  expect(notice?.message).toStartWith("set_model failed: ");
+  expect(notice?.message).toContain(`model not available: ${provider}/missing`);
 });
