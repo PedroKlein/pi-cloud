@@ -520,6 +520,83 @@ test("reads a thread page by page and finds nothing past the last page", async (
   expect(pages).not.toContain("page 3 of 2");
 }, 30_000);
 
+test("checks out a repository once when start_thread lists it twice", async () => {
+  const a = await repository("app");
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const seen = JSON.stringify(context.messages);
+    const last = lastUserText(context.messages);
+
+    if (!seen.includes("You are the coordinator")) {
+      return fauxAssistantMessage([fauxText("read it")]);
+    }
+
+    if (last.includes("start it")) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("start_thread", {
+            title: "Read",
+            message: "read",
+            repositories: [a, a],
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    return fauxAssistantMessage([fauxText("ok")]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Twice",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "start it",
+  });
+
+  const [thread] = (
+    await until(
+      async () => project(id),
+      (view) => view.threads.length === 1,
+    )
+  ).threads;
+
+  const threadSession = await until(
+    async () =>
+      (await (
+        await api(`/api/sessions/${thread?.sessionId ?? ""}`)
+      ).json()) as Session,
+    (session) => session.status === "idle" || session.status === "failed",
+  );
+
+  expect(threadSession.workspace).toMatchObject({
+    kind: "repositories",
+    repositories: [{ repository: a }],
+  });
+
+  expect(threadSession.status).toBe("idle");
+}, 30_000);
+
 test("refuses a Project without repositories", async () => {
   const response = await api("/api/plugins/projects/projects", {
     name: "Empty",
