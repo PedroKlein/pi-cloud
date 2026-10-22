@@ -1,5 +1,6 @@
 import {
   json,
+  type NavItemsProps,
   type PageProps,
   useLoaded,
   type WebContext,
@@ -32,11 +33,54 @@ const refreshMs = 3000;
 
 export const projects: WebPlugin = {
   name: "projects",
-  nav: { label: "Projects", Page },
+  nav: { label: "Projects", Page, Items },
 };
 
-function Page({ context }: PageProps): ReactElement {
-  const [open, setOpen] = useState<string>();
+function Items({ context, path }: NavItemsProps): ReactElement {
+  const list = useLoaded(
+    async () => json<ProjectSummary[]>(context.request("projects")),
+    "projects",
+    refreshMs,
+  ).value;
+
+  return (
+    <ul id="project-nav" className="flex flex-col gap-0.5">
+      {list?.map((project) => (
+        <li key={project.id}>
+          <a
+            href={context.href(project.id)}
+            aria-current={path === project.id ? "page" : undefined}
+            className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md py-1.5 pr-2 pl-10.5 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
+          >
+            <span className="truncate text-label font-medium">
+              {project.name}
+            </span>
+            {project.blocked > 0 ? (
+              <Badge state="waiting">{project.blocked} needs you</Badge>
+            ) : (
+              <span />
+            )}
+            <span className="col-span-2 truncate text-caption text-fg-dim">
+              {counted(project.repositories, "repository", "repositories")} ·
+              coordinator {project.coordinatorState}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function counted(count: number, one: string, many: string): string {
+  return `${String(count)} ${count === 1 ? one : many}`;
+}
+
+function Page({ context, path }: PageProps): ReactElement {
+  const open = path === "" ? undefined : path;
+
+  const go = (to: string): void => {
+    location.hash = context.href(to);
+  };
 
   const environments =
     useLoaded(
@@ -45,11 +89,7 @@ function Page({ context }: PageProps): ReactElement {
     ).value ?? [];
 
   return open === undefined ? (
-    <ProjectList
-      context={context}
-      environments={environments}
-      onOpen={setOpen}
-    />
+    <ProjectList context={context} environments={environments} onOpen={go} />
   ) : (
     <ProjectPage
       key={open}
@@ -57,7 +97,7 @@ function Page({ context }: PageProps): ReactElement {
       id={open}
       environments={environments}
       onBack={() => {
-        setOpen(undefined);
+        go("");
       }}
     />
   );

@@ -11,7 +11,8 @@ import {
   shortName,
   workspaceName,
 } from "./names";
-import type { NavEntry } from "./plugins";
+import { PluginBoundary } from "./plugin-boundary";
+import { type NavEntry, pluginContext, pluginRoute } from "./plugins";
 
 export interface SidebarProps {
   readonly nav: readonly NavEntry[];
@@ -33,6 +34,8 @@ export function Sidebar({
   onNewSession,
 }: SidebarProps): ReactElement {
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const page = pluginRoute(route);
 
   const environmentName = (session: Session): string =>
     environments.find((e) => e.id === session.environmentId)?.name ??
@@ -51,33 +54,56 @@ export function Sidebar({
           </span>
           Pi Cloud
         </span>
-        <Button
-          variant="primary"
-          iconOnly
-          aria-label="New session"
-          onClick={onNewSession}
-        >
-          <Icon name="plus" />
-        </Button>
+        <span className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            iconOnly
+            aria-label="Search"
+            aria-expanded={searching}
+            onClick={() => {
+              setSearching(!searching);
+              setQuery("");
+            }}
+          >
+            <Icon name="search" />
+          </Button>
+          <Button
+            variant="primary"
+            iconOnly
+            aria-label="New session"
+            onClick={onNewSession}
+          >
+            <Icon name="plus" />
+          </Button>
+        </span>
       </div>
 
       {nav.length > 0 && (
         <div id="plugin-nav" className="flex flex-col gap-0.5 px-2 pb-1">
-          {nav.map(({ name, label }) => (
-            <a
-              key={name}
-              href={`#plugin/${name}`}
-              aria-current={route === `plugin/${name}` ? "page" : undefined}
-              className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-            >
-              <span
-                aria-hidden="true"
-                className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
+          {nav.map(({ name, label, Items }) => (
+            <div key={name} className="flex flex-col gap-0.5">
+              <a
+                href={`#plugin/${name}`}
+                aria-current={route === `plugin/${name}` ? "page" : undefined}
+                className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
               >
-                {label.slice(0, 1)}
-              </span>
-              {label}
-            </a>
+                <span
+                  aria-hidden="true"
+                  className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
+                >
+                  {label.slice(0, 1)}
+                </span>
+                {label}
+              </a>
+              {Items && (
+                <PluginBoundary name={name}>
+                  <Items
+                    context={pluginContext(name)}
+                    path={page?.name === name ? page.path : undefined}
+                  />
+                </PluginBoundary>
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -100,18 +126,27 @@ export function Sidebar({
         </label>
       </div>
 
-      <div className="px-3 pb-2">
-        <input
-          type="search"
-          aria-label="Search sessions"
-          placeholder="Search sessions"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-          }}
-          className={cn(fieldClass, "w-full py-1 text-label")}
-        />
-      </div>
+      {searching && (
+        <div className="px-3 pb-2">
+          <input
+            type="search"
+            aria-label="Search sessions"
+            placeholder="Search sessions"
+            autoFocus
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSearching(false);
+                setQuery("");
+              }
+            }}
+            className={cn(fieldClass, "w-full py-1 text-label")}
+          />
+        </div>
+      )}
 
       <ul
         id="sessions"

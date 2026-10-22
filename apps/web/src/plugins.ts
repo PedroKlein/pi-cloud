@@ -3,12 +3,14 @@ import { library } from "@pi-cloud/library/web";
 import { models } from "@pi-cloud/models/web";
 import type {
   MountedSession,
+  NavItemsProps,
   WebContext,
   WebPlugin,
 } from "@pi-cloud/plugins/web";
 import { projects } from "@pi-cloud/projects/web";
 import type { SessionEvent } from "@pi-cloud/protocol";
 import { usage } from "@pi-cloud/usage/web";
+import type { ComponentType } from "react";
 import { command } from "./api";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
@@ -45,6 +47,7 @@ export function pluginContext(name: string): WebContext {
     openSession: (sessionId) => {
       location.hash = sessionId;
     },
+    href: (path) => `#plugin/${name}/${path}`,
   };
 }
 
@@ -85,10 +88,22 @@ export function sessionChannel(id: string): {
 export interface NavEntry {
   readonly name: string;
   readonly label: string;
+  readonly Items?: ComponentType<NavItemsProps>;
 }
 
 export function navEntries(): readonly NavEntry[] {
   return enabled.flatMap(({ name, nav }) =>
-    nav ? [{ name, label: nav.label }] : [],
+    nav
+      ? [{ name, label: nav.label, ...(nav.Items && { Items: nav.Items }) }]
+      : [],
   );
+}
+
+// "plugin/projects/p1" is the projects page open at "p1".
+export function pluginRoute(
+  route: string,
+): { readonly name: string; readonly path: string } | undefined {
+  const match = /^plugin\/([^/]+)\/?(.*)$/.exec(route);
+
+  return match ? { name: match[1] ?? "", path: match[2] ?? "" } : undefined;
 }

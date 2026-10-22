@@ -5,6 +5,8 @@ export interface WebContext {
   // Requests go to the plugin's own routes under /api/plugins/<name>/.
   readonly request: (path: string, body?: unknown) => Promise<Response>;
   readonly openSession: (sessionId: string) => void;
+  // The link to a path inside the plugin's own page.
+  readonly href: (path: string) => string;
 }
 
 export interface MountedSession {
@@ -17,6 +19,14 @@ export interface MountedSession {
 
 export interface PageProps {
   readonly context: WebContext;
+  // The rest of the address after the plugin's page, "" on the page itself.
+  readonly path: string;
+}
+
+export interface NavItemsProps {
+  readonly context: WebContext;
+  // The open path inside the plugin's page, undefined when it isn't open.
+  readonly path: string | undefined;
 }
 
 export interface SessionPartProps {
@@ -30,6 +40,8 @@ export interface WebPlugin {
   readonly nav?: {
     readonly label: string;
     readonly Page: ComponentType<PageProps>;
+    // Links listed under the entry in the sidebar, such as each Project.
+    readonly Items?: ComponentType<NavItemsProps>;
   };
   readonly SessionPanel?: ComponentType<SessionPartProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;

@@ -2,6 +2,7 @@ import {
   json,
   type PageProps,
   useLoaded,
+  type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
 import { cn, fieldClass, PageTitle, Section } from "@pi-cloud/ui";
@@ -65,7 +66,10 @@ function Page({ context }: PageProps): ReactElement {
 function ProjectFiles({
   context,
   projectId,
-}: PageProps & { readonly projectId: string }): ReactElement {
+}: {
+  readonly context: WebContext;
+  readonly projectId: string;
+}): ReactElement {
   const base = `projects/${encodeURIComponent(projectId)}`;
 
   const { value, reload } = useLoaded(

@@ -202,6 +202,7 @@ test("finds sessions by search and notifies when one finishes", async () => {
   const id = new URL(page.url()).hash.slice(1);
   const item = page.locator(`#sessions li[data-id="${id}"]`);
 
+  await page.getByRole("button", { name: "Search" }).click();
   const search = page.getByLabel("Search sessions");
   await search.fill("no-such-session");
   await item.waitFor({ state: "detached" });
@@ -361,6 +362,12 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
   await page.getByText("No threads yet.").waitFor();
 
+  await page
+    .locator("#project-nav")
+    .getByRole("link", { name: /^Site/ })
+    .filter({ hasText: "1 repository · coordinator" })
+    .waitFor();
+
   const calls = faux.state.callCount;
 
   faux.setResponses([
@@ -435,15 +442,23 @@ test("shows a plugin page's failure without taking the app down", async () => {
     .getByRole("link", { name: "Projects" })
     .click();
 
+  const pluginPage = page.locator("#plugin-page");
+
+  await pluginPage
+    .getByRole("alert")
+    .filter({ hasText: "projects store is unreadable" })
+    .waitFor();
+
   await page
+    .locator("#plugin-nav")
     .getByRole("alert")
     .filter({ hasText: "projects store is unreadable" })
     .waitFor();
 
   await page.unroute("**/api/plugins/projects/projects");
-  await page.getByRole("button", { name: "Try again" }).click();
+  await pluginPage.getByRole("button", { name: "Try again" }).click();
   await page.getByRole("heading", { name: "New Project" }).waitFor();
-  await page.getByRole("searchbox", { name: "Search sessions" }).waitFor();
+  await page.getByRole("button", { name: "New session" }).waitFor();
 });
 
 test("attaches an image to a message and shows it in the chat", async () => {

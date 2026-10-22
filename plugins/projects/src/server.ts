@@ -244,7 +244,7 @@ async function route(
               context,
             ),
           )
-        : Response.json(summaries(store));
+        : Response.json(summaries(store, context));
     }
 
     const project = resource === "projects" ? store.get(id ?? "") : undefined;
@@ -413,13 +413,24 @@ function create(
   return project;
 }
 
-function summaries(store: ProjectStore): ProjectSummary[] {
-  return store.list().map((project) => ({
-    id: project.id,
-    name: project.name,
-    coordinatorId: project.coordinatorId,
-    threads: store.threads(project.id).length,
-  }));
+function summaries(
+  store: ProjectStore,
+  { sessions }: ServerPluginContext,
+): ProjectSummary[] {
+  return store.list().map((project) => {
+    const threads = store.threads(project.id);
+
+    return {
+      id: project.id,
+      name: project.name,
+      coordinatorId: project.coordinatorId,
+      coordinatorState: runState(sessions.get(project.coordinatorId)),
+      repositories: project.repositories.length,
+      threads: threads.length,
+      blocked: threads.filter((thread) => thread.workState === "blocked")
+        .length,
+    };
+  });
 }
 
 function view(
