@@ -1,6 +1,6 @@
 # 0017: A process per Session
 
-- Status: accepted
+- Status: accepted, amended by [ADR 0027](0027-pi-tui-view.md) (the TUI view runs in the Session process on a virtual terminal)
 - Date: 2026-10-21
 
 ## Context
@@ -23,7 +23,7 @@ How a Runtime isolates Sessions in v2 (shared runner, dedicated pod, Job, harden
 - A child exits when its pipe to the agent closes. An agent crash still interrupts every Session it hosts, as [ADR 0004](0004-first-slice-and-provider-order.md) and [ADR 0006](0006-provider-protocol.md) expect, and no attempt outlives the agent that started it.
 - A child that exits on its own interrupts only its Session. The agent reports it, and the Session reloads idle from its transcript, as after an agent restart.
 - A child that fails to start marks the Session failed with the error, as ADR 0011 does today.
-- Children are spawned with pipes. A PTY for the TUI view can be added when that view is built as a plugin.
+- Children are spawned with pipes. The TUI view draws on a virtual terminal inside the child, so it needs no PTY ([ADR 0027](0027-pi-tui-view.md)).
 - This replaces ADR 0011's "There is no process per Session in v1". The rest of ADR 0011 stands.
 
 ## Consequences
@@ -32,4 +32,4 @@ How a Runtime isolates Sessions in v2 (shared runner, dedicated pod, Job, harden
 - Archiving a Session frees its memory by ending its process.
 - Every live Session pays for its own Bun and Pi process, in memory and start time. Measured on the VM on 2026-10-21: 80 to 90 MB resident per Session process, and a new clone Session answered its first message 8 s after it was created.
 - The built-in provider gets the same behaviour, since it runs the same agent code ([ADR 0012](0012-built-in-provider.md)).
-- A TUI view of a Session becomes possible, as a later plugin.
+- A TUI view of a Session becomes possible ([ADR 0027](0027-pi-tui-view.md)).

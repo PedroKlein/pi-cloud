@@ -9,6 +9,7 @@ import {
 import type {
   AgentSession,
   AgentSessionEvent,
+  ExtensionError,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionPlugin } from "@pi-cloud/plugins";
 import {
@@ -16,6 +17,7 @@ import {
   type ImageAttachment,
   type LiveEvent,
   liveSurface,
+  piTerminal,
   type SlashCommand,
   type ToolSpec,
 } from "@pi-cloud/protocol";
@@ -30,6 +32,7 @@ import {
 } from "./session";
 import { openTerminal, type Terminal } from "./terminal";
 import { serverTools } from "./tools";
+import { piView } from "./tui";
 
 export interface SessionStream {
   uploadTranscript: (
@@ -250,19 +253,39 @@ export async function hostSession(
     plugins.map(async ({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
   );
 
+  const view = piView(
+    options.agentDir,
+    stream,
+    (event) => {
+      live.push(event);
+    },
+    log,
+  );
+
+  const onError = (error: ExtensionError): void => {
+    log("extension error", {
+      extension: error.extensionPath,
+      event: error.event,
+      error: error.error,
+    });
+  };
+
   const session = await startSession(options, {
     ui: prompts.ui,
     tools: [...pluginTools.flat(), ...calls.tools],
-    extensions: plugins.flatMap(({ plugin, cloud }) =>
-      plugin.extension ? [plugin.extension(cloud)] : [],
-    ),
-    onError: (error) => {
-      log("extension error", {
-        extension: error.extensionPath,
-        event: error.event,
-        error: error.error,
-      });
-    },
+    extensions: [
+      view.extension,
+      ...plugins.flatMap(({ plugin, cloud }) =>
+        plugin.extension ? [plugin.extension(cloud)] : [],
+      ),
+    ],
+    onError,
+  });
+
+  const tui = view.host(session, {
+    uiContext: { ...session.extensionRunner.getUIContext(), ...prompts.ui },
+    mode: "rpc",
+    onError,
   });
 
   const transcript = transcriptSync(session, stream, log);
@@ -297,6 +320,12 @@ export async function hostSession(
 
     if (command.type === "explain") {
       prompts.explain(command);
+
+      return;
+    }
+
+    if (command.type === "terminal" && command.terminalId === piTerminal) {
+      tui.open(command);
 
       return;
     }
@@ -398,6 +427,7 @@ export async function hostSession(
   return {
     stop: async () => {
       detach();
+      tui.close();
       files.stop();
 
       prompts.cancelAll();
