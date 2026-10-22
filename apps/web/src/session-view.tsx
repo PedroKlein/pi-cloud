@@ -1,5 +1,5 @@
 import type { Environment, Session } from "@pi-cloud/protocol";
-import { Badge, Button, cn, Icon } from "@pi-cloud/ui";
+import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
 import {
   type ReactElement,
   useCallback,
@@ -128,47 +128,45 @@ export function SessionView({
           )}
         </span>
         {!archived && <ViewSwitch view={view} onChange={setView} />}
-        <div className="flex gap-1">
-          {session && !archived && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                action("archive");
-              }}
-            >
-              <Icon name="archive" />
-              Archive
-            </Button>
-          )}
-          {archived && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                action("unarchive");
-              }}
-            >
-              <Icon name="archive" />
-              Unarchive
-            </Button>
-          )}
-          {session?.workspaceRemoval === "kept" && (
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (
-                  confirm(
-                    "Delete this workspace and its unpushed work for good?",
-                  )
-                ) {
-                  action("remove-workspace");
-                }
-              }}
-            >
-              <Icon name="trash" />
-              Delete workspace
-            </Button>
-          )}
-        </div>
+        {session && (
+          <SessionMenu
+            items={[
+              archived
+                ? {
+                    label: "Unarchive",
+                    icon: "archive",
+                    run: () => {
+                      action("unarchive");
+                    },
+                  }
+                : {
+                    label: "Archive",
+                    icon: "archive",
+                    run: () => {
+                      action("archive");
+                    },
+                  },
+              ...(session.workspaceRemoval === "kept"
+                ? [
+                    {
+                      label: "Delete workspace",
+                      icon: "trash",
+                      danger: true,
+                      run: () => {
+                        if (
+                          confirm(
+                            "Delete this workspace and its unpushed work for good?",
+                          )
+                        ) {
+                          action("remove-workspace");
+                        }
+                      },
+                    } as const,
+                  ]
+                : []),
+            ]}
+          />
+        )}
       </header>
 
       <div
@@ -237,6 +235,89 @@ function StateBadge({
   const badge = sessionBadge(session);
 
   return badge ? <Badge state={badge.state}>{badge.label}</Badge> : null;
+}
+
+interface MenuItem {
+  readonly label: string;
+  readonly icon: IconName;
+  readonly danger?: boolean;
+  readonly run: () => void;
+}
+
+function SessionMenu({
+  items,
+}: {
+  readonly items: readonly MenuItem[];
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const close = (event: Event): void => {
+      if (
+        event instanceof KeyboardEvent
+          ? event.key === "Escape"
+          : box.current?.contains(event.target as Node) !== true
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  return (
+    <div ref={box} className="relative">
+      <Button
+        variant="ghost"
+        iconOnly
+        aria-label="Session actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open);
+        }}
+      >
+        <Icon name="more" />
+      </Button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="Session actions"
+          className="absolute top-full right-0 z-30 mt-1 flex min-w-48 flex-col rounded-lg border border-line bg-elevated p-1 shadow-pop"
+        >
+          {items.map(({ label, icon, danger, run }) => (
+            <button
+              key={label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                run();
+              }}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui hover:bg-hover",
+                danger === true ? "text-failed" : "text-fg",
+              )}
+            >
+              <Icon name={icon} className="size-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ViewSwitch({
