@@ -375,7 +375,8 @@ async function removeCheckout(
   const present = await exists(dir);
 
   const orphaned =
-    workspace.kind === "worktree" && !(await isCheckout(repository));
+    workspace.kind === "worktree" &&
+    (await inWorkTree(repository)) === undefined;
 
   const hasBranch =
     !orphaned &&
@@ -674,8 +675,8 @@ function repositoryKey(url: string): string {
   return scpSyntax ? key.replace(/^([^/:]+):/, "$1/") : key;
 }
 
-// The checkout a worktree at path belongs to, or undefined when path is
-// missing or a checkout of its own.
+// The checkout a worktree at path belongs to, or the folder holding its bare
+// repository, or undefined when path is missing or a checkout of its own.
 // Reads the worktree's .git file rather than asking git, which fails once
 // the checkout is gone: it holds "gitdir: <checkout>/.git/worktrees/<name>".
 async function worktreeFolder(path: string): Promise<string | undefined> {
@@ -1039,16 +1040,23 @@ function absolute(path: string): string {
   );
 }
 
+async function isCheckout(path: string): Promise<boolean> {
+  return (await inWorkTree(path)) === true;
+}
+
+// Whether git finds path inside a work tree, or undefined when it finds no
+// repository there at all. A folder whose .git is a bare repository has a
+// repository but no work tree.
 // git's own error is kept when it refuses a repository, such as one owned by
 // another user, since its message says how to fix that.
-async function isCheckout(path: string): Promise<boolean> {
+async function inWorkTree(path: string): Promise<boolean | undefined> {
   const isDirectory = await stat(path).then(
     (found) => found.isDirectory(),
     () => false,
   );
 
   if (!isDirectory) {
-    return false;
+    return undefined;
   }
 
   try {
@@ -1058,7 +1066,7 @@ async function isCheckout(path: string): Promise<boolean> {
       error instanceof Error &&
       error.message.includes("not a git repository")
     ) {
-      return false;
+      return undefined;
     }
 
     throw error;
