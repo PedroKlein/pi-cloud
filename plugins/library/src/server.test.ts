@@ -140,3 +140,62 @@ test("lists each file of a Project by name with its latest size and writer", asy
     "final",
   );
 });
+
+test("accepts everyday file names and refuses only unsafe ones", async () => {
+  const route = registered();
+
+  const write = async (name: string): Promise<Response> => {
+    const path = `projects/p1/files/${encodeURIComponent(name)}`;
+
+    return route(
+      new Request(`http://library/${path}`, { method: "PUT", body: "x" }),
+      path,
+      undefined,
+    );
+  };
+
+  const everyday = [
+    "John's notes.txt",
+    "Q&A, draft+v2 [final].md",
+    "Screenshot 2026-10-22 at 10.15.32\u202fAM.png",
+    "invoice (1).pdf",
+    "٢٠٢٦.pdf",
+    "第２回.pdf",
+  ];
+
+  const unsafe = [
+    "a\\b.txt",
+    "a/b.txt",
+    "a\tb.txt",
+    "a\nb.txt",
+    "..",
+    " a.txt",
+    "a.txt ",
+    "photo\u202egnp.exe",
+    "x".repeat(201),
+  ];
+
+  const accepted = await Promise.all(everyday.map(write));
+  const refused = await Promise.all(unsafe.map(write));
+
+  expect(accepted.map(({ status }) => status)).toEqual(everyday.map(() => 200));
+  expect(refused.map(({ status }) => status)).toEqual(unsafe.map(() => 400));
+
+  expect(await refused[0]?.json()).toEqual({
+    error:
+      "file names can't be empty, longer than 200 characters or only dots, can't start or end with whitespace, and can't contain /, \\, control characters or text direction controls",
+  });
+
+  expect(await (await get(route, "projects/p1/files")).json()).toMatchObject(
+    everyday.map((name) => ({ name })),
+  );
+
+  const download = await get(
+    route,
+    `projects/p1/files/${encodeURIComponent("invoice (1).pdf")}`,
+  );
+
+  expect(download.headers.get("content-disposition")).toBe(
+    "attachment; filename*=UTF-8''invoice%20%281%29.pdf",
+  );
+});

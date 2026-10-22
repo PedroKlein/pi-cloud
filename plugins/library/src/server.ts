@@ -119,7 +119,7 @@ async function serve(
       : new Response(content, {
           headers: {
             "content-type": "application/octet-stream",
-            "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+            "content-disposition": attachment(name),
           },
         });
   }
@@ -140,4 +140,14 @@ async function serve(
   store.write(projectId, name, content, actor);
 
   return Response.json({ name, size: content.length });
+}
+
+// RFC 8187 leaves ' ( ) and * out of filename*, but encodeURIComponent keeps them.
+function attachment(name: string): string {
+  const encoded = encodeURIComponent(name).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+  return `attachment; filename*=UTF-8''${encoded}`;
 }
