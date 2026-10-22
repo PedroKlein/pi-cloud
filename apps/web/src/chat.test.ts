@@ -1,5 +1,13 @@
 import { expect, test } from "bun:test";
-import { chatItems, describeTool, linkParts, turns } from "./chat";
+import {
+  ago,
+  chatItems,
+  describeTool,
+  duration,
+  linkParts,
+  tally,
+  turns,
+} from "./chat";
 
 const line = (message: unknown): string =>
   JSON.stringify({ type: "message", id: "1", message });
@@ -186,4 +194,71 @@ test("finds the URLs in a note, without the punctuation after them", () => {
   expect(linkParts("No links here")).toEqual([
     { text: "No links here", link: false },
   ]);
+});
+
+test("times a turn from its message to its last entry and names the answering model", () => {
+  const entries = [
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:00.000Z",
+      message: { role: "user", content: "fix it" },
+    },
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:00:30.000Z",
+      message: {
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "toolCall", id: "t1", name: "read", arguments: {} }],
+      },
+    },
+    {
+      type: "message",
+      timestamp: "2026-10-22T10:01:12.000Z",
+      message: {
+        role: "assistant",
+        model: "gpt-5.3-codex",
+        content: [{ type: "text", text: "done" }],
+      },
+    },
+  ];
+
+  const [turn] = turns(
+    entries
+      .flatMap((entry) => chatItems(JSON.stringify(entry)))
+      .map((item, key) => ({ ...item, key })),
+  );
+
+  expect(turn).toMatchObject({
+    started: "2026-10-22T10:00:00.000Z",
+    ended: "2026-10-22T10:01:12.000Z",
+    model: "gpt-5.3-codex",
+    answer: ["done"],
+  });
+
+  expect(duration(turn?.started ?? "", turn?.ended ?? "")).toBe("1m 12s");
+  expect(duration("2026-10-22T10:00:00Z", "2026-10-22T10:00:09Z")).toBe("9s");
+});
+
+test("tallies a turn's work by kind of step", () => {
+  const steps = ["read", "read", "edit", "write", "bash", "grep"].map(
+    (name) => ({ name }),
+  );
+
+  expect(tally(steps)).toEqual([
+    "read 2 files",
+    "edited 2 files",
+    "ran 1 command",
+    "1 other step",
+  ]);
+
+  expect(tally([])).toEqual([]);
+});
+
+test("says how long ago an answer came", () => {
+  const now = Date.parse("2026-10-22T12:00:00Z");
+
+  expect(ago("2026-10-22T11:59:30Z", now)).toBe("just now");
+  expect(ago("2026-10-22T11:58:00Z", now)).toBe("2 min ago");
+  expect(ago("2026-10-22T09:00:00Z", now)).toBe("3 h ago");
 });

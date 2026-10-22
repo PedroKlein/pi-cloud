@@ -282,6 +282,16 @@ test("answers the agent's questions in the prompt card", async () => {
   await card.waitFor({ state: "detached" });
 
   const work = page.locator('#chat li[data-role="work"]');
+
+  await work
+    .locator("summary", { hasText: /Worked for \d+s\s*· 1 other step/ })
+    .waitFor();
+
+  await page
+    .locator('#chat [data-role="answer-meta"]', { hasText: "faux-1" })
+    .getByText("just now")
+    .waitFor();
+
   await work.locator("summary").first().click();
   await work.getByText("Asked").click();
   await work.locator("pre", { hasText: "Large" }).waitFor();
