@@ -1,6 +1,7 @@
 import type {
   ExtensionAPI,
   ExtensionContext,
+  ModelRoute,
   ModelRouteRequest,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
@@ -10,7 +11,6 @@ import {
   candidates,
   failure,
   gatewayProvider,
-  unhealthy,
 } from "./gateway";
 import { mergeHealth, type SessionConfig } from "./model";
 
@@ -64,31 +64,10 @@ export const models: SessionPlugin = {
             id: alias.id,
             name: alias.id,
             thinkingLevels,
-            route: (request, ctx) => {
-              const sticky = stickyOf(request);
-
-              const now = new Date();
-              if (
-                sticky &&
-                !unhealthy(config.health, sticky.model.provider, now) &&
-                candidates(
-                  config.aliases ?? { backends: {} },
-                  config.health,
-                  alias,
-                  now,
-                ).some(({ backend }) => backend === sticky.model.provider)
-              ) {
-                return {
-                  model: sticky.model,
-                  thinkingLevel: request.thinkingLevel,
-                };
-              }
-
-              return {
-                model: pick(config, alias, ctx, now),
-                thinkingLevel: request.thinkingLevel,
-              };
-            },
+            route: (request, ctx) => ({
+              model: routeModel(config, alias, request, ctx),
+              thinkingLevel: request.thinkingLevel,
+            }),
           });
         } catch (error) {
           cloud.log("model alias not registered", {
@@ -171,18 +150,28 @@ function stickyOf(request: ModelRouteRequest): ModelRouteRequest["previous"] {
   }
 }
 
-function pick(
+function routeModel(
   config: SessionConfig,
   alias: Alias,
+  request: ModelRouteRequest,
   ctx: ExtensionContext,
-  now: Date,
-): NonNullable<ReturnType<ExtensionContext["modelRegistry"]["find"]>> {
-  for (const { backend, modelId } of candidates(
+): ModelRoute["model"] {
+  const routable = candidates(
     config.aliases ?? { backends: {} },
     config.health,
     alias,
-    now,
-  )) {
+    new Date(),
+  );
+
+  const sticky = stickyOf(request);
+  if (
+    sticky &&
+    routable.some(({ backend }) => backend === sticky.model.provider)
+  ) {
+    return sticky.model;
+  }
+
+  for (const { backend, modelId } of routable) {
     const model = ctx.modelRegistry.find(backend, modelId);
     if (model && ctx.modelRegistry.hasConfiguredAuth(model)) {
       return model;
