@@ -42,6 +42,7 @@ The v1 acceptance run showed the cost of this ([acceptance](../acceptance/v1.md)
 - A transient error benches only the model that failed, as `provider/model`, since limits such as Gemini's requests per minute are per model. A cap benches the whole provider, as `provider`, since it's the account that ran out. A model is skipped while either is unhealthy.
 - The server keeps health per Environment. In v1 one Environment is one machine.
 - Every Session in that Environment that uses the gateway gets the change and reroutes its next request. The session part waits for changes on a long-polling route, so this needs no protocol addition.
+- A model the provider doesn't have, a 404 or "no longer available", is skipped for a day, until someone edits the alias.
 - A per-minute 429 is a transient error with a one-minute cooldown, not a cap. A cap comes from a provider's cap status codes (402 unless set) or from quota and billing wording, and lasts until its reset schedule, or an hour.
 
 ### Choosing a model
