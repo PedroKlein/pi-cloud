@@ -67,11 +67,19 @@ export async function prepareWorkspace(
 
   await mkdir(dir, { recursive: true });
 
+  let remotes: Promise<ReadonlyMap<string, string>> | undefined;
+
   // Each repository becomes a worktree of a listed folder that has it as a
-  // remote, or a clone when none does.
+  // remote, or a clone when none does. Searching the folders walks every root,
+  // so it waits until a checkout is missing.
   const checkouts = await Promise.all(
     repositories.map(async ({ repository, startPoint, path }) => {
-      const folder = await folderOf(repository, folders);
+      const folder = (await exists(path))
+        ? undefined
+        : (await (remotes ??= checkoutsByRemote(folders))).get(
+            repositoryKey(repository),
+          );
+
       const start = startPoint === undefined ? {} : { startPoint };
 
       const { cwd, base } = await prepareCheckout(
@@ -454,33 +462,43 @@ export async function findCheckouts(
   return [...new Set(found)].sort();
 }
 
-// The checkout under the listed roots whose remotes include repository, if
-// any.
-async function folderOf(
-  repository: string,
+// The checkouts under the listed roots by the repositories their remotes
+// name. When several checkouts have a repository, the first in sorted order
+// gets it.
+async function checkoutsByRemote(
   folders: readonly string[],
-): Promise<string | undefined> {
-  const wanted = repositoryKey(repository);
+): Promise<ReadonlyMap<string, string>> {
+  const checkouts = await Promise.all(
+    (await findCheckouts(folders)).map(async (found) => {
+      const folder = absolute(found);
 
-  for (const folder of await findCheckouts(folders)) {
-    const urls = await git(
-      absolute(folder),
-      "config",
-      "--get-regexp",
-      "^remote\\..*\\.url$",
-    ).catch(() => "");
+      const urls = await git(
+        folder,
+        "config",
+        "--get-regexp",
+        "^remote\\..*\\.url$",
+      ).catch(() => "");
 
-    const matches = urls
+      return { folder, urls };
+    }),
+  );
+
+  const byRemote = new Map<string, string>();
+  for (const { folder, urls } of checkouts) {
+    const keys = urls
       .split("\n")
       .map((line) => line.slice(line.indexOf(" ") + 1))
-      .some((url) => url !== "" && repositoryKey(url) === wanted);
+      .filter((url) => url !== "")
+      .map(repositoryKey);
 
-    if (matches) {
-      return absolute(folder);
+    for (const key of keys) {
+      if (!byRemote.has(key)) {
+        byRemote.set(key, folder);
+      }
     }
   }
 
-  return undefined;
+  return byRemote;
 }
 
 // One spelling for the URLs git accepts for a repository, so that

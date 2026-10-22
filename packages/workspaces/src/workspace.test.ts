@@ -1035,6 +1035,39 @@ test("matches a folder whose scp-style remote path starts with a digit", async (
   expect(await git(checkout, "worktree", "list")).toContain(join(dir, "manim"));
 });
 
+test("makes each repository a worktree of the first checkout under the roots that has it", async () => {
+  const other = join(root, "other");
+  await repositoryAt(other);
+  const folders = join(root, "folders");
+  await mkdir(folders);
+  await git(folders, "clone", repository, "b");
+  await git(folders, "clone", repository, "a");
+  await git(folders, "clone", other, "c");
+  const dir = join(root, "workspaces", "s1");
+
+  await prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository }, { repository: other }],
+    },
+    { dir, folders: [folders] },
+    noLog,
+  );
+
+  expect(await git(join(folders, "a"), "worktree", "list")).toContain(
+    join(dir, "origin"),
+  );
+
+  expect(await git(join(folders, "b"), "worktree", "list")).not.toContain(
+    join(dir, "origin"),
+  );
+
+  expect(await git(join(folders, "c"), "worktree", "list")).toContain(
+    join(dir, "other"),
+  );
+});
+
 test("removes several repositories only when none of them would lose work", async () => {
   const second = join(root, "second");
   await repositoryAt(second);

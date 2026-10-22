@@ -40,11 +40,14 @@ export interface SessionStore {
   insert: (session: StoredSession) => void;
   update: (session: StoredSession) => void;
   get: (id: string) => StoredSession | undefined;
-  list: () => readonly StoredSession[];
+  list: (options: {
+    readonly includeArchived: boolean;
+  }) => readonly StoredSession[];
   byProvider: (
     provider: string,
     statuses: readonly SessionStatus[],
   ) => readonly StoredSession[];
+  pendingRemovals: (provider: string) => readonly StoredSession[];
   transcriptLength: (id: string) => number;
   appendTranscript: (
     id: string,
@@ -179,8 +182,7 @@ export class Sessions {
 
   list({ archived = false } = {}): readonly Session[] {
     return this.#store
-      .list()
-      .filter((session) => archived || session.archivedAt === null)
+      .list({ includeArchived: archived })
       .map((session) => this.#view(session));
   }
 
@@ -202,6 +204,7 @@ export class Sessions {
     };
 
     this.#hosts.get(id)?.end();
+    this.#requestIds.delete(id);
     this.#update(archived);
     this.#wake(session.provider);
     this.#events({ type: "SessionArchived", session: this.#view(archived) });
@@ -439,6 +442,9 @@ export class Sessions {
         replay,
         stop: () => {
           watchers.delete(listener);
+          if (watchers.size === 0 && this.#watchers.get(id) === watchers) {
+            this.#watchers.delete(id);
+          }
         },
       },
     };
@@ -560,12 +566,12 @@ export class Sessions {
 
   #removals(provider: string): readonly Removal[] {
     return this.#store
-      .byProvider(provider, ["stopped"])
-      .flatMap(({ id, workspace, workspaceRemoval }) =>
-        workspaceRemoval === "pending" || workspaceRemoval === "forced"
-          ? [{ sessionId: id, workspace, force: workspaceRemoval === "forced" }]
-          : [],
-      );
+      .pendingRemovals(provider)
+      .map(({ id, workspace, workspaceRemoval }) => ({
+        sessionId: id,
+        workspace,
+        force: workspaceRemoval === "forced",
+      }));
   }
 
   #wake(provider: string): void {
@@ -658,7 +664,7 @@ export class Sessions {
 
   #emitProvider(provider: string): void {
     const sessions = this.#store
-      .list()
+      .list({ includeArchived: true })
       .filter((session) => session.provider === provider);
 
     for (const session of sessions) {
@@ -712,6 +718,10 @@ export class Sessions {
   #update(session: StoredSession): void {
     const previous = this.#store.get(session.id)?.status;
     this.#store.update(session);
+    if (!attempting.includes(session.status)) {
+      this.#surfaces.delete(session.id);
+    }
+
     const view = this.#view(session);
     this.#emit(session.id, { type: "session", session: view });
     if (previous !== undefined && previous !== session.status) {
