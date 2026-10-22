@@ -151,6 +151,8 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
 
     const last = lastUserText(context.messages);
 
+    // Pi runs one turn's tool calls in parallel, so the memory is written a
+    // turn before the thread whose prompt must include it.
     if (coordinator && last.includes("plan the release")) {
       return fauxAssistantMessage(
         [
@@ -158,6 +160,14 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
             name: "MEMORY.md",
             content: "- release is v2",
           }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (coordinator && last.includes("Wrote MEMORY.md")) {
+      return fauxAssistantMessage(
+        [
           fauxToolCall("start_thread", {
             title: "Bump version",
             message: "bump the version",
