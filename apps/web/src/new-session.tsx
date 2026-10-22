@@ -1,8 +1,7 @@
 import type { Environment, Session } from "@pi-cloud/protocol";
-import { Button, Icon } from "@pi-cloud/ui";
+import { Button, Field, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
-  type ReactNode,
   type SubmitEvent,
   useEffect,
   useRef,
@@ -12,7 +11,7 @@ import { api } from "./api";
 import { modelName, modelRef } from "./names";
 
 const field =
-  "h-9 w-full rounded-md border border-line bg-bg px-3 text-ui text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none";
+  "h-9 w-full rounded-md border border-line bg-bg px-3 text-ui text-fg placeholder:text-fg-dim placeholder:font-sans focus:border-accent focus:outline-none";
 
 function workspaceRequest(
   kind: string,
@@ -33,21 +32,6 @@ function workspaceRequest(
     default:
       return { kind, path: where, startPoint };
   }
-}
-
-function Field({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <label className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-label font-medium text-fg-dim">{label}</span>
-      {children}
-    </label>
-  );
 }
 
 export function NewSessionDialog({

@@ -322,8 +322,8 @@ test("creates a Project and shares a file through its library", async () => {
     .click();
 
   const form = page.locator("form.project-create");
-  await form.locator("[name=name]").fill("Site");
-  await form.locator("[name=repositories]").fill(repository);
+  await form.getByLabel("Name").fill("Site");
+  await form.getByLabel("Repository URLs, one per line").fill(repository);
   await form.getByRole("button", { name: "New Project" }).click();
   await page.getByRole("heading", { level: 1, name: "Site" }).waitFor();
   await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
