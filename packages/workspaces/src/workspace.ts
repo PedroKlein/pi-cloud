@@ -52,9 +52,9 @@ export async function prepareWorkspace(
   log: Log,
 ): Promise<PreparedWorkspace> {
   if (workspace.kind !== "repositories") {
-    const { cwd, base } = await prepareCheckout(workspace, options, log);
+    const checkout = await prepareCheckout(workspace, options, log);
 
-    return { cwd, checkouts: [{ path: cwd, base }] };
+    return { cwd: checkout.path, checkouts: [checkout] };
   }
 
   const { dir, folders } = options;
@@ -83,15 +83,13 @@ export async function prepareWorkspace(
 
       const start = startPoint === undefined ? {} : { startPoint };
 
-      const { cwd, base } = await prepareCheckout(
+      return prepareCheckout(
         folder === undefined
           ? { kind: "clone", repository, branch, ...start }
           : { kind: "worktree", path: folder, branch, ...start },
         { ...options, dir: path },
         log,
       );
-
-      return { path: cwd, base };
     }),
   );
 
@@ -109,86 +107,127 @@ export async function prepareWorkspace(
 
 async function prepareCheckout(
   workspace: SingleWorkspace,
-  { dir, folders, mirrors }: WorkspaceOptions,
+  options: WorkspaceOptions,
   log: Log,
-): Promise<{ readonly cwd: string; readonly base: string | null }> {
-  if (workspace.kind !== "clone") {
-    const folder = absolute(workspace.path);
-    if (!(await allowed(folder, folders))) {
-      throw new Error(`folder not allowed: ${workspace.path}`);
-    }
+): Promise<Checkout> {
+  switch (workspace.kind) {
+    case "folder":
+      return {
+        path: await allowedFolder(workspace.path, options.folders),
+        base: null,
+      };
+    case "worktree":
+      return addWorktree(workspace, options, log);
+    case "clone":
+      return cloneCheckout(workspace, options, log);
+  }
+}
 
-    if (workspace.kind === "folder") {
-      return { cwd: folder, base: null };
-    }
+async function addWorktree(
+  workspace: Extract<Workspace, { kind: "worktree" }>,
+  { dir, folders }: WorkspaceOptions,
+  log: Log,
+): Promise<Checkout> {
+  const folder = await allowedFolder(workspace.path, folders);
+  const { branch, startPoint } = workspace;
+
+  const reused = await reusedCheckout(dir, branch, log);
+  if (reused !== undefined) {
+    return reused;
   }
 
-  const { branch } = workspace;
-  if (await exists(dir)) {
-    log("workspace reused", { dir });
-
-    return { cwd: dir, base: await readBase(dir, branch) };
-  }
-
-  if (workspace.kind === "worktree") {
-    if (!(await isCheckout(absolute(workspace.path)))) {
-      throw new Error(
-        `${workspace.path} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
-      );
-    }
-
-    log("adding worktree", { folder: workspace.path, branch, dir });
-
-    await mkdir(dirname(dir), { recursive: true });
-
-    await git(
-      absolute(workspace.path),
-      "worktree",
-      "add",
-      "-b",
-      branch,
-      dir,
-      ...(workspace.startPoint === undefined ? [] : [workspace.startPoint]),
+  if (!(await isCheckout(folder))) {
+    throw new Error(
+      `${workspace.path} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
     );
-
-    const copied = await copyIncluded(workspace.path, dir);
-    log("worktree added", { dir, copied });
-
-    return { cwd: dir, base: await recordBase(dir, branch) };
   }
 
-  const { repository } = workspace;
+  log("adding worktree", { folder: workspace.path, branch, dir });
+
+  await mkdir(dirname(dir), { recursive: true });
+
+  await git(
+    folder,
+    "worktree",
+    "add",
+    "-b",
+    branch,
+    dir,
+    ...(startPoint === undefined ? [] : [startPoint]),
+  );
+
+  const copied = await copyIncluded(folder, dir);
+  log("worktree added", { dir, copied });
+
+  return { path: dir, base: await recordBase(dir, branch) };
+}
+
+async function cloneCheckout(
+  workspace: Extract<Workspace, { kind: "clone" }>,
+  { dir, mirrors }: WorkspaceOptions,
+  log: Log,
+): Promise<Checkout> {
+  const { repository, branch } = workspace;
+
+  const reused = await reusedCheckout(dir, branch, log);
+  if (reused !== undefined) {
+    return reused;
+  }
+
   const partial = `${dir}.partial`;
-  let base: string | null;
   const started = Date.now();
   log("cloning workspace", { repository, branch, dir });
 
   await mkdir(dirname(dir), { recursive: true });
   await rm(partial, { recursive: true, force: true });
-  try {
-    await cloneWithMirror(repository, partial, mirrors, log);
 
-    await git(
-      partial,
-      "switch",
-      "--no-track",
-      "--create",
-      branch,
-      ...(workspace.startPoint === undefined
-        ? []
-        : [await remoteStartPoint(partial, workspace.startPoint)]),
-    );
-
-    base = await recordBase(partial, branch);
-  } catch (error) {
-    await rm(partial, { recursive: true, force: true });
-    throw error;
-  }
+  const base = await cloneInto(partial, workspace, mirrors, log).catch(
+    async (error: unknown) => {
+      await rm(partial, { recursive: true, force: true });
+      throw error;
+    },
+  );
 
   await rename(partial, dir);
   log("workspace cloned", { dir, ms: Date.now() - started });
 
-  return { cwd: dir, base };
+  return { path: dir, base };
+}
+
+async function cloneInto(
+  dir: string,
+  { repository, branch, startPoint }: Extract<Workspace, { kind: "clone" }>,
+  mirrors: string | undefined,
+  log: Log,
+): Promise<string | null> {
+  await cloneWithMirror(repository, dir, mirrors, log);
+
+  await git(
+    dir,
+    "switch",
+    "--no-track",
+    "--create",
+    branch,
+    ...(startPoint === undefined
+      ? []
+      : [await remoteStartPoint(dir, startPoint)]),
+  );
+
+  return recordBase(dir, branch);
+}
+
+async function reusedCheckout(
+  dir: string,
+  branch: string,
+  log: Log,
+): Promise<Checkout | undefined> {
+  if (!(await exists(dir))) {
+    return undefined;
+  }
+
+  log("workspace reused", { dir });
+
+  return { path: dir, base: await readBase(dir, branch) };
 }
 
 // Removes a session's workspace only when git says nothing would be lost in
@@ -407,6 +446,18 @@ async function branchExists(
   );
 }
 
+async function allowedFolder(
+  path: string,
+  roots: readonly string[],
+): Promise<string> {
+  const folder = absolute(path);
+  if (!(await allowed(folder, roots))) {
+    throw new Error(`folder not allowed: ${path}`);
+  }
+
+  return folder;
+}
+
 // A folder is allowed when it is a listed root or inside one. Symlinks are
 // resolved first, so a link can't lead out of a root.
 async function allowed(
@@ -420,13 +471,21 @@ async function allowed(
 
   for (const root of roots) {
     const realRoot = await realpath(absolute(root)).catch(() => undefined);
-    const path = realRoot === undefined ? ".." : relative(realRoot, real);
-    if (path === "" || (path !== ".." && !path.startsWith(`..${sep}`))) {
+
+    if (realRoot !== undefined && inside(realRoot, real)) {
       return true;
     }
   }
 
   return false;
+}
+
+function inside(root: string, folder: string): boolean {
+  const fromRoot = relative(root, folder);
+
+  return (
+    fromRoot === "" || (fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`))
+  );
 }
 
 const checkoutDepth = 4;
@@ -661,7 +720,7 @@ async function inTurn<T>(key: string, work: () => Promise<T>): Promise<T> {
 // Copies the gitignored files that .worktreeinclude names, the same file and
 // rules Claude Code uses: https://code.claude.com/docs/en/worktrees
 async function copyIncluded(source: string, dir: string): Promise<number> {
-  const top = await git(absolute(source), "rev-parse", "--show-toplevel");
+  const top = await git(source, "rev-parse", "--show-toplevel");
   const include = join(top, ".worktreeinclude");
   if (!(await exists(include))) {
     return 0;
