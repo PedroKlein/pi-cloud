@@ -26,7 +26,8 @@ Claude Code makes the same split between host UI and terminal UI: its mods retur
 
 ### Dialogs follow the view
 
-- While a Pi view is attached, the Session's extensions are bound to the TUI, so `select`, `confirm`, `input`, `editor` and `custom` dialogs open there. When it detaches, they are bound back to the web.
+- The TUI binds the Session's extensions once, the first time the Pi view opens, through a UI context that follows the view. While a Pi view is attached, the extensions' UI goes to the TUI, so `select`, `confirm`, `input`, `editor` and `custom` dialogs open there. When it detaches, it goes back to the web.
+- Opening and closing the view again doesn't bind again. Pi runs the extensions' `session_start` on every bind, and extensions post snapshots and notices there, which would land in the transcript each time.
 - A dialog already open stays where it opened. One open in the TUI when its socket closes waits there until the Pi view opens again.
 - The host publishes a `pi_view` live surface with whether the view is attached and the title of the dialog open in it, if any. The chat says when dialogs go to the Pi view, and offers to open it when one is waiting there.
 - A dialog open in the TUI counts as waiting for "Needs you" ([ADR 0025](0025-needs-you.md)), like an open `prompt`.
@@ -38,7 +39,7 @@ Pi Cloud reaches into a few of `InteractiveMode`'s private members, all in one m
 - Quitting (Ctrl+D, Ctrl+C twice, `/quit`, an extension's `shutdown()`) closes the view and binds dialogs back to the web. The Session keeps running.
 - Ctrl+Z shows that suspending isn't available instead of stopping the process.
 - The process-wide signal and error handlers it registers are removed after it starts, so the Session process keeps its own.
-- Attaching binds the TUI again and redraws.
+- Attaching redraws the whole screen.
 
 ### One session per view
 
@@ -47,7 +48,8 @@ Pi Cloud reaches into a few of `InteractiveMode`'s private members, all in one m
 ## Consequences
 
 - Extensions that only work in a terminal work in a hosted Session, and the user keeps Pi's own keys and editor.
-- Every switch between the Pi view and the web runs `session_start` again for the Session's extensions. An extension that starts something there without checking whether it already did may do it twice.
+- The first opening of the Pi view runs `session_start` once more for the Session's extensions. An extension that posts a message or starts something there does it twice.
+- What an extension draws in one UI, such as a widget, stays there. The other UI shows it the next time the extension updates it.
 - Pi Cloud depends on `InteractiveMode` internals. A Pi upgrade can break the view, and the tests say where.
 - A Session that opens the Pi view keeps its TUI in memory until it stops, and the TUI's first start can download `fd` and `rg` as Pi's CLI does.
 - Settings changed in the TUI, such as the model, reach the web with the next settings event, not at once.
