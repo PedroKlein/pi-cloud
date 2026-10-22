@@ -325,6 +325,36 @@ test("tells a plugin why a message did not reach a session", async () => {
   ]);
 });
 
+test("tells a plugin how many lines a session's transcript has", async () => {
+  let sessions: ServerPluginContext["sessions"] | undefined;
+
+  await start([
+    {
+      name: "counter",
+      register: (context) => {
+        sessions = context.sessions;
+      },
+    },
+  ]);
+
+  faux.setResponses([fauxAssistantMessage([fauxText("counted")])]);
+
+  const session = await createSession();
+  await follow(session.id, idle);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "count with me",
+  });
+
+  await follow(session.id, entriesInclude('"counted"'));
+  const lines = sessions?.transcript(session.id) ?? [];
+
+  expect(lines.some((line) => line.includes('"counted"'))).toBe(true);
+  expect(sessions?.transcriptLength(session.id)).toBe(lines.length);
+  expect(sessions?.transcriptLength("missing")).toBe(0);
+});
+
 test("leaves out plugins that are turned off", async () => {
   let registered = false;
 

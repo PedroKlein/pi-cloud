@@ -102,6 +102,7 @@ export interface ServerPluginContext {
     // Adds context the Session reads on its next turn, without starting one.
     readonly notify: (id: string, text: string, actor: Actor) => SendOutcome;
     readonly transcript: (id: string) => readonly string[];
+    readonly transcriptLength: (id: string) => number;
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly models: { readonly offer: (offer: ModelOffer) => void };

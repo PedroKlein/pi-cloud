@@ -512,6 +512,10 @@ export class Sessions {
     return this.#store.transcript(id, 0);
   }
 
+  transcriptLength(id: string): number {
+    return this.#store.transcriptLength(id);
+  }
+
   isCurrent(id: string, generation: number): boolean {
     return this.#current(id, generation).ok;
   }

@@ -68,7 +68,7 @@ export const projects: ServerPlugin = {
       if (store.member(session.id)?.role === "thread") {
         store.endTurns(
           session.id,
-          context.sessions.transcript(session.id).length,
+          context.sessions.transcriptLength(session.id),
         );
       }
     });
