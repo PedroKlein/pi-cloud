@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md))
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md); v2 direction in [ADR 0022](0022-plugin-model-v2.md))
 - Date: 2026-10-21
 
 ## Context
