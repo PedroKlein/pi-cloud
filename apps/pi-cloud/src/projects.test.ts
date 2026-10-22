@@ -446,6 +446,80 @@ test("tells the coordinator about a failed thread turn without waking it", async
   expect(wakes).toHaveLength(0);
 }, 30_000);
 
+test("reads a thread page by page and finds nothing past the last page", async () => {
+  const a = await repository("app");
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const seen = JSON.stringify(context.messages);
+    const last = lastUserText(context.messages);
+
+    if (!seen.includes("You are the coordinator")) {
+      return last.includes("Project memory is empty")
+        ? fauxAssistantMessage([fauxText("listed")])
+        : fauxAssistantMessage(
+            Array.from({ length: 24 }, () => fauxToolCall("memory_list", {})),
+            { stopReason: "toolUse" },
+          );
+    }
+
+    if (last.includes("start it")) {
+      return fauxAssistantMessage(
+        [fauxToolCall("start_thread", { title: "List", message: "list" })],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    const thread = /\(([^)]+)\) finished a turn/.exec(last)?.[1];
+    if (thread !== undefined) {
+      return fauxAssistantMessage(
+        [1, 2, 3].map((page) => fauxToolCall("read_thread", { thread, page })),
+        { stopReason: "toolUse" },
+      );
+    }
+
+    return fauxAssistantMessage([
+      fauxText(last.includes("read_thread") ? "read the pages" : "ok"),
+    ]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  await until(
+    async () => (await (await api("/api/environments")).json()) as unknown[],
+    (environments) => environments.length > 0,
+  );
+
+  const { coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Pages",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "start it",
+  });
+
+  const pages = await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("read the pages"),
+  );
+
+  expect(pages).toContain("page 1 of 2");
+  expect(pages).toContain("page 2 of 2");
+  expect(pages).toContain("has no messages on page 3");
+  expect(pages).not.toContain("page 3 of 2");
+}, 30_000);
+
 test("refuses a Project without repositories", async () => {
   const response = await api("/api/plugins/projects/projects", {
     name: "Empty",

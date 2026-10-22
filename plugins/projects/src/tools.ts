@@ -242,7 +242,10 @@ export function projectTools(
           .flatMap((line) => messageText(line) ?? []);
 
         const end = messages.length - (page - 1) * pageSize;
-        const shown = messages.slice(Math.max(0, end - pageSize), end);
+
+        const shown =
+          end > 0 ? messages.slice(Math.max(0, end - pageSize), end) : [];
+
         if (shown.length === 0) {
           return `Thread "${thread.title}" has no messages on page ${String(page)}.`;
         }
