@@ -243,7 +243,7 @@ export function projectStore(store: PluginStore): {
     memory: (projectId) =>
       (
         store.all(
-          `select name, length(content) as size, updated_at, actor
+          `select name, length(cast(content as blob)) as size, updated_at, actor
             from projects_memory where project_id = ? order by name`,
           projectId,
         ) as { name: string; size: number; updated_at: string; actor: string }[]
@@ -263,7 +263,9 @@ export function projectStore(store: PluginStore): {
       return row?.content;
     },
     writeMemory: (projectId, name, content, actor) => {
-      if (new TextEncoder().encode(content).length > memoryLimit) {
+      const size = new TextEncoder().encode(content).length;
+
+      if (size > memoryLimit) {
         throw new Error(
           `memory files are limited to ${String(memoryLimit / 1024)} KB`,
         );
@@ -290,7 +292,7 @@ export function projectStore(store: PluginStore): {
           values (?, ?, ?, ?, ?)`,
         projectId,
         name,
-        content.length,
+        size,
         actor,
         at,
       );
