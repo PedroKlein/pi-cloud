@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { promisify } from "node:util";
 
 const limit = 5000;
@@ -12,7 +12,7 @@ export interface WorkspaceFiles {
 
 // Paths `@` can mention (ADR 0006): what git tracks plus untracked files it
 // doesn't ignore, or a walk outside git that skips hidden folders and
-// node_modules.
+// node_modules and lists each repository it finds with git.
 export async function workspaceFiles(cwd: string): Promise<WorkspaceFiles> {
   const found = await gitFiles(cwd).catch(async () => walk(cwd));
   const paths = [...new Set(found)].sort();
@@ -38,6 +38,18 @@ async function walk(root: string): Promise<readonly string[]> {
     const entries = await readdir(join(root, dir), {
       withFileTypes: true,
     }).catch(() => []);
+
+    const repositoryPaths = entries.some((entry) => entry.name === ".git")
+      ? await gitFiles(join(root, dir)).catch(() => undefined)
+      : undefined;
+
+    if (repositoryPaths !== undefined) {
+      for (const path of repositoryPaths) {
+        paths.push(posix.join(dir, path));
+      }
+
+      continue;
+    }
 
     for (const entry of entries) {
       const path = dir === "" ? entry.name : `${dir}/${entry.name}`;

@@ -2282,3 +2282,47 @@ test("walks a folder outside git for mentions, skipping hidden folders and node_
 
   expect(filesOf(fake.events)).toEqual(["lib/a.ts", "readme.md"]);
 });
+
+test("lists each repository in a folder outside git with git for mentions, leaving out ignored build output", async () => {
+  const { models } = await fauxModels(root);
+  const work = join(root, "work");
+  const alpha = join(work, "alpha");
+  const beta = join(work, "beta");
+  await mkdir(join(alpha, "src"), { recursive: true });
+  await mkdir(join(alpha, "target"));
+  await writeFile(join(alpha, ".gitignore"), "target/\n");
+  await writeFile(join(alpha, "src", "main.rs"), "main\n");
+  await writeFile(join(alpha, "target", "app"), "app\n");
+  await promisify(execFile)("git", ["init", "--quiet"], { cwd: alpha });
+
+  await promisify(execFile)("git", ["worktree", "add", "--quiet", beta], {
+    cwd: await gitRepository(),
+  });
+
+  await mkdir(join(beta, "target"));
+  await writeFile(join(beta, ".gitignore"), "target/\n");
+  await writeFile(join(beta, "target", "out"), "out\n");
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { cwd: work, models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => filesOf(fake.events) !== undefined);
+  await hosted.stop();
+
+  expect(fake.events.find((e) => e.type === "files")).toEqual({
+    type: "files",
+    paths: [
+      "alpha/.gitignore",
+      "alpha/src/main.rs",
+      "beta/.gitignore",
+      "beta/README.md",
+    ],
+    truncated: false,
+  });
+});
