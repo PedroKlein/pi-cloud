@@ -3,9 +3,9 @@ import type {
   ServerTool,
   ToolCaller,
 } from "@pi-cloud/plugins";
-import type { ModelRef, Session, ToolResult } from "@pi-cloud/protocol";
+import type { Actor, ModelRef, ToolResult } from "@pi-cloud/protocol";
 import { type WorkState, workStates } from "./model";
-import { messageText, runState, threadNotice, threadPrompt } from "./prompts";
+import { messageText, threadNotice, threadPrompt, threadView } from "./prompts";
 import type { Member, Project, ProjectStore } from "./projects";
 
 const pageSize = 20;
@@ -15,22 +15,19 @@ type Handler = (input: Record<string, unknown>, caller: Caller) => string;
 interface Caller {
   readonly member: Member;
   readonly project: Project;
-  readonly caller: ToolCaller;
+  readonly actor: Actor;
 }
 
 export function projectTools(
   projects: ProjectStore,
   { sessions }: Pick<ServerPluginContext, "sessions">,
 ): ServerTool[] {
-  const memberOf = (session: Session): Member | undefined =>
-    projects.member(session.id);
-
   const result = (
     input: unknown,
-    caller: ToolCaller,
+    { session, actor }: ToolCaller,
     handle: Handler,
   ): ToolResult => {
-    const member = memberOf(caller.session);
+    const member = projects.member(session.id);
     const project = member && projects.get(member.projectId);
     if (!member || !project) {
       return failure("this session is not in a Project");
@@ -41,7 +38,7 @@ export function projectTools(
         text: handle((input ?? {}) as Record<string, unknown>, {
           member,
           project,
-          caller,
+          actor,
         }),
         isError: false,
       };
@@ -57,7 +54,7 @@ export function projectTools(
   ): ServerTool => ({
     ...spec,
     appliesTo: (session) => {
-      const member = memberOf(session);
+      const member = projects.member(session.id);
 
       return member !== undefined && (role === "both" || member.role === role);
     },
@@ -105,7 +102,7 @@ export function projectTools(
         ),
       },
       "coordinator",
-      (input, { project, caller }) => {
+      (input, { project, actor }) => {
         const title = required(input, "title");
         const message = required(input, "message");
 
@@ -138,7 +135,7 @@ export function projectTools(
           undefined;
 
         const session = sessions.start({
-          actor: caller.actor,
+          actor,
           ...(environment !== undefined && { environment }),
           workspace: {
             kind: "repositories",
@@ -182,10 +179,10 @@ export function projectTools(
         ),
       },
       "coordinator",
-      (input, { project, caller }) => {
+      (input, { project, actor }) => {
         const thread = threadOf(project, input["thread"]);
 
-        projects.enqueue(thread.sessionId, caller.actor, {
+        projects.enqueue(thread.sessionId, actor, {
           kind: "message",
           text: required(input, "text"),
         });
@@ -209,13 +206,9 @@ export function projectTools(
 
         return threads
           .map((thread) => {
-            const session = sessions.get(thread.sessionId);
-            const workspace = session?.workspace;
+            const view = threadView(thread, sessions.get(thread.sessionId));
 
-            const branch =
-              workspace && "branch" in workspace ? workspace.branch : "none";
-
-            return `${thread.sessionId} · "${thread.title}" · run: ${runState(session)} · work: ${thread.workState} · environment: ${session?.environmentId ?? "?"} · branch: ${branch} · last activity: ${thread.lastActivity}`;
+            return `${view.sessionId} · "${view.title}" · run: ${view.runState} · work: ${view.workState} · environment: ${view.environmentId === "" ? "?" : view.environmentId} · branch: ${view.branch ?? "none"} · last activity: ${view.lastActivity}`;
           })
           .join("\n");
       },
@@ -264,8 +257,8 @@ export function projectTools(
         parameters: object({ text: text("The message") }, ["text"]),
       },
       "thread",
-      (input, { member, project, caller }) => {
-        projects.enqueue(project.coordinatorId, caller.actor, {
+      (input, { member, project, actor }) => {
+        projects.enqueue(project.coordinatorId, actor, {
           kind: "message",
           text: `[Thread "${member.title}" (${member.sessionId})] ${required(input, "text")}`,
         });
@@ -286,12 +279,12 @@ export function projectTools(
         ),
       },
       "thread",
-      (input, { member, project, caller }) => {
+      (input, { member, project, actor }) => {
         const state = workState(input["state"]);
         const note = optional(input, "note");
         projects.setWorkState(member.sessionId, state);
 
-        projects.enqueue(project.coordinatorId, caller.actor, {
+        projects.enqueue(project.coordinatorId, actor, {
           kind: "context",
           text: threadNotice(
             { ...member, workState: state },
@@ -358,7 +351,7 @@ export function projectTools(
         ),
       },
       "both",
-      (input, { project, caller }) => {
+      (input, { project, actor }) => {
         const name = required(input, "name");
         if (!/^[\w.-]+$/.test(name)) {
           throw new Error("file names may use letters, digits, . _ and -");
@@ -368,7 +361,7 @@ export function projectTools(
           project.id,
           name,
           required(input, "content"),
-          caller.actor,
+          actor,
         );
 
         return `Wrote ${name}.`;
