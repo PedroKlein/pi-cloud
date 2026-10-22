@@ -1577,6 +1577,56 @@ test("sends only the stat when the patch is too large", async () => {
   });
 });
 
+test("sends the file list and stat when they alone are larger than the patch limit", async () => {
+  const { models } = await fauxModels(root);
+  const repo = await gitRepository();
+  const folder = join(repo, "node_modules", "@scope", "package", "dist", "esm");
+  const count = 4000;
+  const logs: string[] = [];
+
+  await mkdir(folder, { recursive: true });
+
+  for (let i = 0; i < count; i++) {
+    await writeFile(
+      join(folder, `generated-module-with-a-long-name-${String(i)}.js`),
+      "a\n",
+    );
+  }
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    {
+      cwd: repo,
+      agentDir: join(root, "agent"),
+      sessionDir: join(root, "sessions"),
+      extensionPaths: [],
+      models,
+      plugins: [changes],
+      checkouts: [{ path: repo, base: null }],
+    },
+    fake.stream,
+    (message) => logs.push(message),
+  );
+
+  await fake.waitFor(
+    () =>
+      published(fake.events).length > 0 ||
+      logs.includes("workspace changes failed"),
+  );
+
+  await hosted.stop();
+
+  expect(logs).not.toContain("workspace changes failed");
+
+  const [checkout] = published(fake.events)[0] ?? [];
+
+  expect(checkout).toMatchObject({ patch: "", truncated: true });
+  expect(checkout?.files).toHaveLength(count);
+  expect(checkout?.files.every(({ status }) => status === "A")).toBe(true);
+  expect(checkout?.stat).toContain(`${String(count)} files changed`);
+});
+
 // A session branch on a clone whose origin looks like GitHub but is a bare
 // repository under root, and a gh on PATH that answers with reply.
 async function pullRequestSetup(reply: string): Promise<{
