@@ -45,28 +45,30 @@ function Items({ context, path }: NavItemsProps): ReactElement {
 
   return (
     <ul id="project-nav" className="flex flex-col gap-0.5">
-      {list?.map((project) => (
-        <li key={project.id}>
-          <a
-            href={context.href(project.id)}
-            aria-current={path === project.id ? "page" : undefined}
-            className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md py-1.5 pr-2 pl-10.5 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-          >
-            <span className="truncate text-label font-medium">
-              {project.name}
-            </span>
-            {project.needsYou > 0 ? (
-              <Badge state="waiting">{project.needsYou} needs you</Badge>
-            ) : (
-              <span />
-            )}
-            <span className="col-span-2 truncate text-caption text-fg-dim">
-              {counted(project.repositories, "repository", "repositories")} ·
-              coordinator {project.coordinatorState}
-            </span>
-          </a>
-        </li>
-      ))}
+      {list
+        ?.filter((project) => project.coordinatorState !== "archived")
+        .map((project) => (
+          <li key={project.id}>
+            <a
+              href={context.href(project.id)}
+              aria-current={path === project.id ? "page" : undefined}
+              className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md py-1.5 pr-2 pl-10.5 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
+            >
+              <span className="truncate text-label font-medium">
+                {project.name}
+              </span>
+              {project.needsYou > 0 ? (
+                <Badge state="waiting">{project.needsYou} needs you</Badge>
+              ) : (
+                <span />
+              )}
+              <span className="col-span-2 truncate text-caption text-fg-dim">
+                {counted(project.repositories, "repository", "repositories")} ·
+                coordinator {project.coordinatorState}
+              </span>
+            </a>
+          </li>
+        ))}
     </ul>
   );
 }
