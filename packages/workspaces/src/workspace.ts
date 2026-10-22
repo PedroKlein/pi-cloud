@@ -710,8 +710,16 @@ async function git(cwd: string, ...args: string[]): Promise<string> {
       cwd,
       maxBuffer: 64 * 1024 * 1024,
       // Under systemd there is nobody to answer a credential prompt, so git
-      // must fail instead of waiting for one.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      // must fail instead of waiting for one. Over http it would also wait
+      // forever on a server that stops sending, holding the mirror's turn.
+      // The window is minutes long because a server preparing a large pack
+      // sends only keepalives.
+      env: {
+        GIT_HTTP_LOW_SPEED_LIMIT: "1000",
+        GIT_HTTP_LOW_SPEED_TIME: "300",
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+      },
     });
 
     return stdout.trim();
