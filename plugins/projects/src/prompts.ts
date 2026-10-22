@@ -1,5 +1,5 @@
 import type { Session } from "@pi-cloud/protocol";
-import type { RunState } from "./model";
+import type { RunState, ThreadView } from "./model";
 import type { Member, Project } from "./projects";
 
 const replyLimit = 1500;
@@ -70,6 +70,23 @@ export function runState(session: Session | undefined): RunState {
     case "running":
       return "working";
   }
+}
+
+export function threadView(
+  thread: Member,
+  session: Session | undefined,
+): ThreadView {
+  const workspace = session?.workspace;
+
+  return {
+    sessionId: thread.sessionId,
+    title: thread.title,
+    runState: runState(session),
+    workState: thread.workState,
+    environmentId: session?.environmentId ?? "",
+    branch: workspace && "branch" in workspace ? workspace.branch : null,
+    lastActivity: thread.lastActivity,
+  };
 }
 
 export function threadNotice(

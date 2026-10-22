@@ -60,7 +60,7 @@ interface MemberRow {
 
 const memoryLimit = 16 * 1024;
 
-export function projectStore(store: PluginStore): {
+export interface ProjectStore {
   readonly create: (project: Project) => void;
   readonly list: () => readonly Project[];
   readonly get: (id: string) => Project | undefined;
@@ -86,7 +86,12 @@ export function projectStore(store: PluginStore): {
   readonly queued: () => readonly Queued[];
   readonly endTurns: (threadId: string, end: number) => void;
   readonly delivered: (id: number) => void;
-} {
+}
+
+export function projectStore(
+  store: PluginStore,
+  memberAdded: (member: Member) => void,
+): ProjectStore {
   store.exec(`create table if not exists projects_projects (
     id text primary key,
     owner_id text not null,
@@ -210,6 +215,8 @@ export function projectStore(store: PluginStore): {
         member.workState,
         member.lastActivity,
       );
+
+      memberAdded(member);
     },
     member: (sessionId) => {
       const [row] = store.all(
@@ -336,5 +343,3 @@ export function projectStore(store: PluginStore): {
     },
   };
 }
-
-export type ProjectStore = ReturnType<typeof projectStore>;

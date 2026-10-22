@@ -11,6 +11,7 @@ import {
   messagedCoordinator,
   runState,
   threadNotice,
+  threadView,
   turnError,
 } from "./prompts";
 import {
@@ -28,21 +29,14 @@ const errorLimit = 300;
 export const projects: ServerPlugin = {
   name: "projects",
   register: (context) => {
-    const stored = projectStore(context.store);
-
     // Other plugins, like the library, follow who is in which Project.
-    const store: ProjectStore = {
-      ...stored,
-      addMember: (member) => {
-        stored.addMember(member);
-
-        context.events.publish({
-          type: "projects.MemberAdded",
-          sessionId: member.sessionId,
-          projectId: member.projectId,
-        });
-      },
-    };
+    const store = projectStore(context.store, (member) => {
+      context.events.publish({
+        type: "projects.MemberAdded",
+        sessionId: member.sessionId,
+        projectId: member.projectId,
+      });
+    });
 
     const user: Actor = `user:${context.owner}`;
 
@@ -412,20 +406,9 @@ function view(
     threadModel: project.threadModel,
     coordinatorId: project.coordinatorId,
     coordinatorState: runState(sessions.get(project.coordinatorId)),
-    threads: store.threads(project.id).map((thread) => {
-      const session = sessions.get(thread.sessionId);
-      const workspace = session?.workspace;
-
-      return {
-        sessionId: thread.sessionId,
-        title: thread.title,
-        runState: runState(session),
-        workState: thread.workState,
-        environmentId: session?.environmentId ?? "",
-        branch: workspace && "branch" in workspace ? workspace.branch : null,
-        lastActivity: thread.lastActivity,
-      };
-    }),
+    threads: store
+      .threads(project.id)
+      .map((thread) => threadView(thread, sessions.get(thread.sessionId))),
     memory: store.memory(project.id),
   };
 }

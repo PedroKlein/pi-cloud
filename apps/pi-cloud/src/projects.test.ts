@@ -530,6 +530,72 @@ test("reads a thread page by page and finds nothing past the last page", async (
   expect(pages).not.toContain("page 3 of 2");
 }, 30_000);
 
+test("lists a Project's threads for its coordinator", async () => {
+  const a = await repository("app");
+
+  const reply = (context: {
+    messages: readonly { role: string; content: unknown }[];
+  }): AssistantMessage => {
+    const seen = JSON.stringify(context.messages);
+    const last = lastUserText(context.messages);
+
+    if (seen.includes("You are the coordinator") && last.includes("docs")) {
+      return fauxAssistantMessage(
+        [fauxToolCall("start_thread", { title: "Docs", message: "write" })],
+        { stopReason: "toolUse" },
+      );
+    }
+
+    if (seen.includes("You are the coordinator") && last.includes("Started")) {
+      return fauxAssistantMessage([fauxToolCall("list_threads", {})], {
+        stopReason: "toolUse",
+      });
+    }
+
+    return fauxAssistantMessage([fauxText("done")]);
+  };
+
+  faux.setResponses(Array.from({ length: 20 }, () => reply));
+
+  const [environment] = await until(
+    async () =>
+      (await (await api("/api/environments")).json()) as Environment[],
+    (environments) => environments.length > 0,
+  );
+
+  const { id, coordinatorId } = (await (
+    await api("/api/plugins/projects/projects", {
+      name: "Listed",
+      repositories: [a],
+    })
+  ).json()) as ProjectView;
+
+  await until(
+    async () =>
+      (await (await api(`/api/sessions/${coordinatorId}`)).json()) as Session,
+    (session) => session.status === "idle",
+  );
+
+  await api(`/api/sessions/${coordinatorId}/commands`, {
+    type: "message",
+    text: "start the docs",
+  });
+
+  const listing = await until(
+    async () => transcript(coordinatorId),
+    (text) => text.includes("last activity: "),
+  );
+
+  const [thread] = (await project(id)).threads;
+  const threadId = thread?.sessionId ?? "";
+
+  expect(listing).toContain(`${threadId} · `);
+
+  expect(listing).toContain(
+    ` · work: in_progress · environment: ${environment?.id ?? ""} · branch: pi-cloud/${threadId.slice(0, 8)} · last activity: `,
+  );
+}, 30_000);
+
 test("checks out a repository once when start_thread lists it twice", async () => {
   const a = await repository("app");
 
