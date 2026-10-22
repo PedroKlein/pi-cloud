@@ -623,3 +623,26 @@ test("creates a pull request from the Changes panel", async () => {
     process.env = saved;
   }
 }, 30_000);
+
+test("follows the system theme until a theme is picked, and keeps the pick", async () => {
+  const theme = async (): Promise<string | null> =>
+    page.locator("html").getAttribute("data-theme");
+
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto(server.url.href);
+  expect(await theme()).toBe("light");
+
+  await page.emulateMedia({ colorScheme: "dark" });
+
+  await page.locator('html[data-theme="dark"]').waitFor({ state: "attached" });
+
+  await page.getByRole("button", { name: /^Theme: system/ }).click();
+  expect(await theme()).toBe("light");
+  await page.reload();
+  expect(await theme()).toBe("light");
+
+  await page.getByRole("button", { name: /^Theme: light/ }).click();
+  await page.getByRole("button", { name: /^Theme: dark/ }).click();
+  await page.getByRole("button", { name: /^Theme: system/ }).waitFor();
+  expect(await theme()).toBe("dark");
+});
