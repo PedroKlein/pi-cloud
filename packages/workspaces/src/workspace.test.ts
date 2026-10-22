@@ -1050,6 +1050,24 @@ test("checks several repositories out side by side on the session's branch", asy
   expect(again.checkouts).toEqual(checkouts);
 });
 
+test("fails several repositories only once every checkout has finished", async () => {
+  const dir = join(root, "workspaces", "s1");
+
+  const prepared = prepareWorkspace(
+    {
+      kind: "repositories",
+      branch: "pi-cloud/s1",
+      repositories: [{ repository: join(root, "missing") }, { repository }],
+    },
+    { dir, folders: [] },
+    noLog,
+  );
+
+  expect(prepared).rejects.toThrow(/does not exist|not a git repository/);
+  await prepared.catch(() => undefined);
+  expect(await readdir(dir)).toEqual(["origin"]);
+});
+
 test("matches a folder whose remote names the repository another way", async () => {
   const checkout = await checkoutWithRemote();
 
