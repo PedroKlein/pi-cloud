@@ -190,3 +190,26 @@ test("a session that stops or restarts drops what its Pi was doing", () => {
     streaming: "Working on",
   });
 });
+
+test("the answer stays on screen until the transcript holds the turn's last line", () => {
+  const stream = connect();
+  stream.entry({ role: "user", content: "hi" });
+  stream.live({ type: "text", delta: "Hello" });
+  stream.live({ type: "status", status: "idle", transcriptLength: 2 });
+
+  expect(stream.feeds.at(-1)?.streaming).toBe("Hello");
+
+  stream.entry({ role: "assistant", content: "Hello" });
+
+  expect(stream.feeds.at(-1)?.streaming).toBeUndefined();
+
+  expect(stream.feeds.at(-1)?.items.map(({ role }) => role)).toEqual([
+    "user",
+    "assistant",
+  ]);
+
+  stream.live({ type: "text", delta: "More" });
+  stream.live({ type: "status", status: "idle", transcriptLength: 2 });
+
+  expect(stream.feeds.at(-1)?.streaming).toBeUndefined();
+});

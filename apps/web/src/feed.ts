@@ -136,7 +136,13 @@ export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
       case "status":
         echo = "";
         if (event.status === "idle") {
-          update({ streaming: undefined, tools: [] });
+          // The entry that holds the streamed answer can land after idle.
+          const behind = (event.transcriptLength ?? 0) > lines;
+
+          update({
+            ...(!behind && { streaming: undefined }),
+            tools: [],
+          });
         }
 
         return;
