@@ -109,6 +109,7 @@ test("shows a command the user ran in Pi as a bash step", () => {
     });
 
   const step = (failed: boolean): ChatItem[] => [
+    { role: "user", text: "!ls" },
     { role: "tool", id: "b1", name: "bash", args: { command: "ls" } },
     { role: "result", id: "b1", name: "bash", text: "a.ts\n", failed },
   ];
@@ -116,6 +117,33 @@ test("shows a command the user ran in Pi as a bash step", () => {
   expect(chatItems(ran(0, false))).toEqual(step(false));
   expect(chatItems(ran(2, false))).toEqual(step(true));
   expect(chatItems(ran(undefined, true))).toEqual(step(true));
+});
+
+test("starts a new turn for a command the user ran in Pi, after the last answer", () => {
+  const items = [
+    line({ role: "user", content: [{ type: "text", text: "hi" }] }),
+    line({ role: "assistant", content: [{ type: "text", text: "Hi!" }] }),
+    line({
+      role: "bashExecution",
+      command: "echo x",
+      output: "x\n",
+      exitCode: 0,
+      cancelled: false,
+      truncated: false,
+      timestamp: 1,
+    }),
+  ].flatMap(chatItems);
+
+  expect(turns(items.map((item, key) => ({ ...item, key })))).toMatchObject([
+    { user: "hi", work: [], answer: ["Hi!"] },
+    {
+      user: "!echo x",
+      work: [
+        { kind: "step", step: { name: "bash", args: { command: "echo x" } } },
+      ],
+      answer: [],
+    },
+  ]);
 });
 
 test("skips entries it cannot read instead of failing", () => {
