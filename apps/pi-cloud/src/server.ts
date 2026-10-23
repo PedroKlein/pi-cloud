@@ -28,6 +28,7 @@ import {
   type Workspace,
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
+import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
 import type { Log } from "@pi-cloud/providers";
 import {
   owner,
@@ -113,7 +114,11 @@ export function createHandler(
           );
         }
 
-        return Response.json({ status: "ok", version: serverVersion });
+        return Response.json({
+          status: "ok",
+          version: serverVersion,
+          pi: piVersion,
+        });
       },
     ],
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.names)],

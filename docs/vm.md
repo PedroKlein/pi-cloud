@@ -60,7 +60,7 @@ loginctl enable-linger "$USER"
 journalctl --user -u pi-cloud -f
 ```
 
-The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`. `curl -s 127.0.0.1:7420/healthz` returns the running version, or a 503 when the database can't be read.
+The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`. `curl -s 127.0.0.1:7420/healthz` returns the running version and the Pi version it bundles, or a 503 when the database can't be read.
 
 To update, copy the new binary next to the old one and move it into place, because the running server keeps the old file busy and `scp` can't overwrite it. Then restart the service:
 
