@@ -133,11 +133,11 @@ export function App({
           }
         }}
         className={cn(
-          "z-20 w-sidebar shrink-0 border-r border-line max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(320px,85vw)] max-md:shadow-pop motion-reduce:transition-none",
+          "z-20 w-sidebar shrink-0 border-r border-line max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[min(320px,85vw)] max-md:shadow-pop",
           // Showing it at once lets focus move in; hiding it after the slide keeps the slide visible.
           drawer
-            ? "max-md:transition-[translate]"
-            : "max-md:invisible max-md:-translate-x-full max-md:transition-[translate,visibility]",
+            ? "max-md:motion-safe:transition-[translate]"
+            : "max-md:invisible max-md:-translate-x-full max-md:motion-safe:transition-[translate,visibility]",
         )}
       >
         <Sidebar

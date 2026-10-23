@@ -980,6 +980,19 @@ test("moves focus into the sessions drawer, closes it with Escape and gives focu
   await page.setViewportSize({ width: 1280, height: 720 });
 });
 
+test("opens the sessions drawer without sliding when motion is reduced", async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "Open sessions" }).click();
+
+  expect((await page.locator("aside").boundingBox())?.x).toBe(0);
+
+  await page.emulateMedia({ reducedMotion: null });
+  await page.setViewportSize({ width: 1280, height: 720 });
+});
+
 test("switches a session's model and reasoning level from the composer", async () => {
   await page.goto(server.url.href);
   await page.getByRole("button", { name: "New session" }).click();
