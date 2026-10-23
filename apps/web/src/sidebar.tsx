@@ -157,7 +157,7 @@ export function Sidebar({
             {query === "" ? "No sessions yet." : "No sessions match."}
           </li>
         )}
-        {shown.toReversed().map((session) => (
+        {shown.map((session) => (
           <SessionRow
             key={session.id}
             session={session}

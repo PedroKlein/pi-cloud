@@ -64,7 +64,7 @@ export function matches(
   const text = [
     session.title ?? "",
     shortName(session.workspace),
-    JSON.stringify(session.workspace),
+    ...values(session.workspace),
     environmentName,
     session.model?.id ?? "",
   ]
@@ -72,4 +72,14 @@ export function matches(
     .toLowerCase();
 
   return words.every((word) => text.includes(word));
+}
+
+function values(value: unknown): readonly string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  return typeof value === "object" && value !== null
+    ? Object.values(value).flatMap(values)
+    : [];
 }

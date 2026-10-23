@@ -95,3 +95,17 @@ test("search matches the session's title", () => {
   expect(matches(titled, "login", "laptop")).toBe(true);
   expect(matches(session({}), "login", "laptop")).toBe(false);
 });
+
+test("search ignores the names of workspace fields", () => {
+  const worktree = session({
+    workspace: {
+      kind: "worktree",
+      path: "/home/me/site",
+      branch: "fix-login",
+    },
+  });
+
+  expect(matches(worktree, "path", "laptop")).toBe(false);
+  expect(matches(worktree, "branch", "laptop")).toBe(false);
+  expect(matches(worktree, "fix-login", "laptop")).toBe(true);
+});
