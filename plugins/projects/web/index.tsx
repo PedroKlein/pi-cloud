@@ -15,6 +15,7 @@ import {
   Field,
   fieldClass,
   Icon,
+  isComposing,
   PageTitle,
   Section,
 } from "@pi-cloud/ui";
@@ -419,7 +420,11 @@ function Coordinator({
           aria-label="Message the coordinator"
           placeholder="Ask the coordinator or start new work"
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !isComposing(event)
+            ) {
               event.preventDefault();
               event.currentTarget.form?.requestSubmit();
             }

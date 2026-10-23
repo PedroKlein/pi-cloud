@@ -3,4 +3,5 @@ export { Button } from "./button";
 export { cn } from "./cn";
 export { Field, fieldClass } from "./field";
 export { Icon, type IconName } from "./icon";
+export { isComposing } from "./keys";
 export { PageTitle, Section } from "./page";
