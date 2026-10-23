@@ -1,10 +1,11 @@
-import type {
-  LiveEvent,
-  Prompt,
-  Session,
-  SessionEvent,
-  SlashCommand,
-  TerminalTab,
+import {
+  type LiveEvent,
+  liveSurface,
+  type Prompt,
+  type Session,
+  type SessionEvent,
+  type SlashCommand,
+  type TerminalTab,
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 
@@ -73,10 +74,13 @@ export interface FollowOptions {
   readonly onSession: (session: Session) => void;
 }
 
-export function follow(
-  sessionId: string,
-  { dispatch, onChange, onSession }: FollowOptions,
-): { readonly report: (error: unknown) => void; readonly close: () => void } {
+// Builds the Feed from a Session's event stream, which the caller opens.
+export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
+  readonly open: () => void;
+  readonly receive: (event: SessionEvent) => void;
+  readonly lost: () => void;
+  readonly report: (error: unknown) => void;
+} {
   let feed = emptyFeed;
   let lines = 0;
   let nextKey = 0;
@@ -86,6 +90,10 @@ export function follow(
   let echo = "";
   const statuses = new Map<string, string>();
   const widgets = new Map<string, Widget>();
+
+  // After a reconnect the prompts already shown stay, with their
+  // explanations, until the replay has re-announced the ones still open.
+  const unconfirmed = new Set<string>();
 
   const update = (change: Partial<Feed>): void => {
     feed = { ...feed, ...change };
@@ -159,6 +167,7 @@ export function follow(
 
         return;
       case "prompt":
+        unconfirmed.delete(event.prompt.id);
         if (!feed.prompts.some(({ prompt }) => prompt.id === event.prompt.id)) {
           update({
             prompts: [
@@ -251,32 +260,45 @@ export function follow(
     }
   };
 
-  const events = new EventSource(
-    `/api/sessions/${encodeURIComponent(sessionId)}/events`,
-  );
+  const settle = (event: SessionEvent): void => {
+    const replayed =
+      event.type === "session"
+        ? event.session.waiting
+        : event.type === "entry" || liveSurface(event.event)?.open === true;
 
-  events.addEventListener("error", () => {
-    if (events.readyState === EventSource.CLOSED) {
-      update({ missing: true });
+    if (unconfirmed.size === 0 || replayed) {
+      return;
     }
-  });
 
-  events.addEventListener("open", () => {
+    update({
+      prompts: feed.prompts.filter(({ prompt }) => !unconfirmed.has(prompt.id)),
+    });
+
+    unconfirmed.clear();
+  };
+
+  const open = (): void => {
     statuses.clear();
     widgets.clear();
+    echo = "";
+
+    for (const { prompt } of feed.prompts) {
+      unconfirmed.add(prompt.id);
+    }
 
     update({
       ...surfaces(),
-      prompts: [],
+      streaming: undefined,
+      tools: [],
       queue: emptyFeed.queue,
       terminals: [],
       piView: emptyFeed.piView,
     });
-  });
+  };
 
-  events.addEventListener("message", (message: MessageEvent<string>) => {
-    const event = JSON.parse(message.data) as SessionEvent;
+  const receive = (event: SessionEvent): void => {
     dispatch(event);
+    settle(event);
     switch (event.type) {
       case "session":
         update({ session: event.session });
@@ -306,12 +328,14 @@ export function follow(
 
         return;
     }
-  });
+  };
 
   return {
-    report,
-    close: () => {
-      events.close();
+    open,
+    receive,
+    lost: () => {
+      update({ missing: true });
     },
+    report,
   };
 }
