@@ -2,8 +2,10 @@ import { cn, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
   type ReactNode,
+  memo,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -34,7 +36,7 @@ export function ChatView({
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const top = useRef(0);
-  const shown = turns(feed.items);
+  const shown = useMemo(() => turns(feed.items), [feed.items]);
 
   const live =
     feed.session?.status === "running" ||
@@ -214,7 +216,7 @@ function Greeting({ place }: { readonly place: string }): ReactElement {
   );
 }
 
-function Answer({ text }: { readonly text: string }): ReactElement {
+function Markdown({ text }: { readonly text: string }): ReactElement {
   return (
     <div
       className="prose"
@@ -223,6 +225,8 @@ function Answer({ text }: { readonly text: string }): ReactElement {
     />
   );
 }
+
+const Answer = memo(Markdown);
 
 function WorkBlock({
   turn,

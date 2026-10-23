@@ -4,7 +4,13 @@ import type {
   WebPlugin,
 } from "@pi-cloud/plugins/web";
 import { Button, cn, Icon, isComposing } from "@pi-cloud/ui";
-import { Fragment, type ReactElement, useEffect, useState } from "react";
+import {
+  Fragment,
+  type ReactElement,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { CheckoutChanges, PullRequest } from "../src/report";
 import { type DiffComment, reviewMessage } from "./comments";
 import { type DiffFile, type DiffLine, parseDiff } from "./diff";
@@ -126,7 +132,7 @@ function Checkout({
   readonly session: MountedSession;
   readonly pullRequest: PullRequest | undefined;
 }): ReactElement {
-  const diff = parseDiff(patch);
+  const diff = useMemo(() => parseDiff(patch), [patch]);
   const added = diff.reduce((sum, file) => sum + file.added, 0);
   const removed = diff.reduce((sum, file) => sum + file.removed, 0);
   const [comments, setComments] = useState<readonly DiffComment[]>([]);

@@ -13,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -99,6 +100,42 @@ export function SessionView({
     };
   }, [named]);
 
+  // Kept across renders so plugin parts re-render on their own events, not on
+  // every token.
+  const pluginHeaders = useMemo(
+    () =>
+      enabledPlugins().map(({ name, SessionHeader }) =>
+        SessionHeader ? (
+          <span key={name} data-plugin={name}>
+            <PluginBoundary name={name}>
+              <SessionHeader
+                context={pluginContext(name)}
+                session={channel.session}
+              />
+            </PluginBoundary>
+          </span>
+        ) : null,
+      ),
+    [channel.session],
+  );
+
+  const pluginPanels = useMemo(
+    () =>
+      enabledPlugins().map(({ name, SessionPanel }) =>
+        SessionPanel ? (
+          <div key={name} data-plugin={name} className="empty:hidden">
+            <PluginBoundary name={name}>
+              <SessionPanel
+                context={pluginContext(name)}
+                session={channel.session}
+              />
+            </PluginBoundary>
+          </div>
+        ) : null,
+      ),
+    [channel.session],
+  );
+
   const action = (name: string): void => {
     api(`/api/sessions/${encodeURIComponent(sessionId)}/${name}`, {}).catch(
       reportError,
@@ -145,18 +182,7 @@ export function SessionView({
           id="plugin-header"
           className="flex items-center gap-2 text-caption text-fg-dim"
         >
-          {enabledPlugins().map(({ name, SessionHeader }) =>
-            SessionHeader ? (
-              <span key={name} data-plugin={name}>
-                <PluginBoundary name={name}>
-                  <SessionHeader
-                    context={pluginContext(name)}
-                    session={channel.session}
-                  />
-                </PluginBoundary>
-              </span>
-            ) : null,
-          )}
+          {pluginHeaders}
         </span>
         {!archived && <ViewSwitch view={view} onChange={setView} />}
         {session && (
@@ -204,18 +230,7 @@ export function SessionView({
         id="plugin-panels"
         className="flex flex-col gap-2 border-b border-line px-4 py-2 text-label not-has-[>:not(:empty)]:hidden"
       >
-        {enabledPlugins().map(({ name, SessionPanel }) =>
-          SessionPanel ? (
-            <div key={name} data-plugin={name} className="empty:hidden">
-              <PluginBoundary name={name}>
-                <SessionPanel
-                  context={pluginContext(name)}
-                  session={channel.session}
-                />
-              </PluginBoundary>
-            </div>
-          ) : null,
-        )}
+        {pluginPanels}
       </div>
 
       {shown === "terminal" && (

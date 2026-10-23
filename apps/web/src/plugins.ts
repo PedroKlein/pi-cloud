@@ -31,8 +31,15 @@ export function enabledPlugins(): readonly WebPlugin[] {
   return enabled;
 }
 
+const contexts = new Map<string, WebContext>();
+
 export function pluginContext(name: string): WebContext {
-  return {
+  const cached = contexts.get(name);
+  if (cached) {
+    return cached;
+  }
+
+  const context: WebContext = {
     request: async (path, body) =>
       fetch(`/api/plugins/${name}/${path}`, {
         method: body === undefined ? "GET" : "POST",
@@ -46,6 +53,10 @@ export function pluginContext(name: string): WebContext {
     },
     href: (path) => `#plugin/${name}/${path}`,
   };
+
+  contexts.set(name, context);
+
+  return context;
 }
 
 export interface NavEntry {
