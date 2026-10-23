@@ -157,12 +157,26 @@ function normalize(raw: RawQuestion, index: number): Question {
         );
       }
 
+      const step = raw.step ?? 1;
+
+      if (step <= 0) {
+        throw new Error(
+          `Question "${raw.id}" has step ${String(step)}; step must be above 0.`,
+        );
+      }
+
+      if (raw.min > raw.max) {
+        throw new Error(
+          `Question "${raw.id}" has min ${String(raw.min)} above max ${String(raw.max)}.`,
+        );
+      }
+
       return {
         ...base,
         type: "number",
         min: raw.min,
         max: raw.max,
-        step: raw.step ?? 1,
+        step,
         unit: raw.unit ?? null,
         recommended: raw.recommendedValue ?? null,
       };

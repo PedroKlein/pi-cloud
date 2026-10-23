@@ -43,6 +43,20 @@ test("only sessions that stop working have settled", () => {
   expect(settled(before, after).map(({ id }) => id)).toEqual(["a"]);
 });
 
+test("a session that only started, and never ran, has not finished", () => {
+  const before = [
+    session({ id: "a", status: "starting" }),
+    session({ id: "b", status: "starting" }),
+  ];
+
+  const after = [
+    session({ id: "a", status: "idle" }),
+    session({ id: "b", status: "failed" }),
+  ];
+
+  expect(settled(before, after).map(({ id }) => id)).toEqual(["b"]);
+});
+
 test("a session that starts waiting on an answer gets a notice", () => {
   const before = [
     session({ id: "a", status: "running" }),
