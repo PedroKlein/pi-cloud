@@ -1,6 +1,6 @@
 # 0016: Projects
 
-- Status: accepted
+- Status: accepted, amended 2026-10-23 (Project settings)
 - Date: 2026-10-21
 
 ## Context
@@ -98,6 +98,7 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 
 - A Project's instructions, and then its `MEMORY.md`, are appended to the system prompt of the coordinator and of each thread when it starts. The plugin passes them in the start request, and the session host applies them through Pi's append-system-prompt option.
 - Editing the instructions affects Sessions started after the edit.
+- The Project page's settings also change the Project's name and the model new threads start on. Added 2026-10-23. The repositories and the Environment stay as created, since the coordinator's workspace was built from them. The coordinator's own model is changed in its session, like any other.
 
 ### Notes from building it
 

@@ -99,7 +99,7 @@ function fakeKernel(): {
           ownerId: "pedro",
           provider: "local",
           workspace: { kind: "folder", path: "/work" },
-          model: null,
+          model: request.model ?? null,
           thinking: request.thinking ?? null,
           systemPrompt: request.systemPrompt ?? null,
           firstMessage: request.firstMessage ?? null,
@@ -732,6 +732,66 @@ async function messageProject(
     undefined,
   );
 }
+
+async function editProject(
+  kernel: FakeKernel,
+  changes: unknown,
+): Promise<Response> {
+  const { id } = await projectView(kernel);
+
+  return kernel.route()(
+    new Request(`http://pi-cloud/projects/${id}/settings`, {
+      method: "POST",
+      body: JSON.stringify(changes),
+    }),
+    `projects/${id}/settings`,
+    undefined,
+  );
+}
+
+test("renames a Project and changes the model new threads start on", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId } = await startProject(kernel);
+
+  const edited = await editProject(kernel, {
+    name: " Ship ",
+    threadModel: "openai/gpt-5",
+    instructions: "Keep PRs small.",
+  });
+
+  expect(await edited.json()).toMatchObject({
+    name: "Ship",
+    threadModel: "openai/gpt-5",
+    instructions: "Keep PRs small.",
+  });
+
+  const started = await kernel
+    .tool("start_thread")
+    .run(
+      { title: "Docs", message: "write docs" },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  const threadId = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+
+  expect(kernel.session(threadId).model).toEqual({
+    provider: "openai",
+    id: "gpt-5",
+  });
+
+  await editProject(kernel, { threadModel: "" });
+
+  expect(await projectView(kernel)).toMatchObject({
+    name: "Ship",
+    threadModel: null,
+    instructions: "Keep PRs small.",
+  });
+
+  expect((await editProject(kernel, { name: " " })).status).toBe(400);
+  expect((await editProject(kernel, { threadModel: "gpt" })).status).toBe(400);
+  expect((await projectView(kernel)).name).toBe("Ship");
+});
 
 test("shows the coordinator's last reply on the Project", async () => {
   const kernel = fakeKernel();

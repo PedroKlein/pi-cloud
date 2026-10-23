@@ -156,6 +156,16 @@ function ProjectList({
   );
 }
 
+function modelNames(environments: readonly Environment[]): string[] {
+  return [
+    ...new Set(
+      environments.flatMap((option) =>
+        option.models.map(({ provider, id }) => `${provider}/${id}`),
+      ),
+    ),
+  ];
+}
+
 function CreateForm({
   context,
   environments,
@@ -165,14 +175,7 @@ function CreateForm({
   readonly environments: readonly Environment[];
   readonly onCreated: (id: string) => void;
 }): ReactElement {
-  const models = [
-    ...new Set(
-      environments.flatMap((option) =>
-        option.models.map(({ provider, id }) => `${provider}/${id}`),
-      ),
-    ),
-  ];
-
+  const models = modelNames(environments);
   const [creating, setCreating] = useState(false);
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
@@ -348,11 +351,18 @@ function ProjectPage({
         )}
       </Section>
 
-      <Section title="Instructions">
-        <Instructions
+      <Section title="Settings">
+        <Settings
           context={context}
           path={path}
-          saved={project.instructions}
+          project={project}
+          models={modelNames(
+            environments.filter(
+              (environment) =>
+                project.environmentId === null ||
+                environment.id === project.environmentId,
+            ),
+          )}
         />
       </Section>
 
@@ -632,17 +642,35 @@ function ThreadCard({
   );
 }
 
-function Instructions({
+function Settings({
   context,
   path,
-  saved,
+  project,
+  models,
 }: {
   readonly context: WebContext;
   readonly path: string;
-  readonly saved: string;
+  readonly project: ProjectView;
+  readonly models: readonly string[];
 }): ReactElement {
+  const saved = {
+    name: project.name,
+    threadModel: project.threadModel ?? "",
+    instructions: project.instructions,
+  };
+
   const [draft, setDraft] = useState(saved);
   const [error, setError] = useState("");
+
+  const changed = (Object.keys(saved) as (keyof typeof saved)[]).some(
+    (key) => draft[key] !== saved[key],
+  );
+
+  const edit =
+    (key: keyof typeof saved) =>
+    (event: { readonly target: { readonly value: string } }): void => {
+      setDraft({ ...draft, [key]: event.target.value });
+    };
 
   return (
     <form
@@ -650,27 +678,52 @@ function Instructions({
         event.preventDefault();
         setError("");
 
-        ok(
-          context.request(`${path}/instructions`, { instructions: draft }),
-        ).catch((failure: unknown) => {
-          setError(
-            failure instanceof Error ? failure.message : String(failure),
-          );
-        });
+        ok(context.request(`${path}/settings`, draft)).catch(
+          (failure: unknown) => {
+            setError(
+              failure instanceof Error ? failure.message : String(failure),
+            );
+          },
+        );
       }}
-      className="flex flex-col gap-3"
+      className="grid max-w-xl gap-3"
     >
-      <textarea
-        aria-label="Project instructions"
-        rows={4}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value);
-        }}
-        className={fieldClass}
-      />
-      <Button type="submit" disabled={draft === saved} className="self-start">
-        Save instructions
+      <Field label="Name">
+        <input
+          required
+          value={draft.name}
+          onChange={edit("name")}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Thread model">
+        <input
+          list="project-settings-models"
+          placeholder="The coordinator's model"
+          value={draft.threadModel}
+          onChange={edit("threadModel")}
+          className={cn(fieldClass, "font-mono text-mono-sm")}
+        />
+      </Field>
+      <datalist id="project-settings-models">
+        {models.map((ref) => (
+          <option key={ref} value={ref} />
+        ))}
+      </datalist>
+      <Field label="Instructions">
+        <textarea
+          rows={4}
+          value={draft.instructions}
+          onChange={edit("instructions")}
+          className={fieldClass}
+        />
+      </Field>
+      <p className="text-caption text-fg-dim">
+        New threads use these. The coordinator&apos;s model is in its own model
+        menu.
+      </p>
+      <Button type="submit" disabled={!changed} className="justify-self-start">
+        Save settings
       </Button>
       {error !== "" && (
         <p role="alert" className="text-caption text-failed">
