@@ -47,7 +47,9 @@ const connect = (): {
   readonly open: () => void;
   readonly live: (event: LiveEvent) => void;
   readonly session: (waiting: boolean) => void;
+  readonly entry: (message: unknown) => void;
 } => {
+  let line = 0;
   const feeds: Feed[] = [];
 
   const reader = feedReader({
@@ -66,6 +68,13 @@ const connect = (): {
     },
     session: (waiting) => {
       reader.receive({ type: "session", session: session(waiting) });
+    },
+    entry: (message) => {
+      reader.receive({
+        type: "entry",
+        line: line++,
+        entry: JSON.stringify({ type: "message", message }),
+      });
     },
   };
 };
@@ -113,4 +122,29 @@ test("a reconnect drops text streamed before the stream went down", () => {
   stream.live({ type: "text", delta: " more" });
 
   expect(stream.feeds.at(-1)?.streaming).toBe(" more");
+});
+
+test("a transcript entry keeps a tool running until it holds the tool's result", () => {
+  const stream = connect();
+  stream.live({ type: "tool_start", toolCallId: "t1", toolName: "bash" });
+  stream.live({ type: "tool_start", toolCallId: "t2", toolName: "read" });
+
+  stream.entry({
+    role: "assistant",
+    content: [
+      { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+      { type: "toolCall", id: "t2", name: "read", arguments: {} },
+    ],
+  });
+
+  expect(stream.feeds.at(-1)?.tools.map(({ id }) => id)).toEqual(["t1", "t2"]);
+
+  stream.entry({
+    role: "toolResult",
+    toolCallId: "t2",
+    toolName: "read",
+    content: "done",
+  });
+
+  expect(stream.feeds.at(-1)?.tools.map(({ id }) => id)).toEqual(["t1"]);
 });

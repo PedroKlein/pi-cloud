@@ -317,7 +317,14 @@ export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
           .flatMap((item) => (item.role === "assistant" ? [item.text] : []))
           .join("");
 
-        update({ streaming: undefined, tools: [] });
+        update({
+          streaming: undefined,
+          tools: feed.tools.filter(
+            ({ id }) =>
+              !items.some((item) => item.role === "result" && item.id === id),
+          ),
+        });
+
         add(...items);
 
         return;
