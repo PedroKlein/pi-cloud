@@ -49,6 +49,11 @@ export interface WebPlugin {
 
 // Rejects with the server's error message when the response isn't ok.
 export async function json<T>(response: Promise<Response>): Promise<T> {
+  return (await (await ok(response)).json()) as T;
+}
+
+// Like json, for responses without a body.
+export async function ok(response: Promise<Response>): Promise<Response> {
   const settled = await response;
 
   if (!settled.ok) {
@@ -63,7 +68,7 @@ export async function json<T>(response: Promise<Response>): Promise<T> {
     );
   }
 
-  return (await settled.json()) as T;
+  return settled;
 }
 
 // Loads data for a component, again when key changes, on reload() and

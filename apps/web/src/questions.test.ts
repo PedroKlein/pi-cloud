@@ -9,6 +9,7 @@ import {
   pick,
   setNumber,
   summary,
+  typeNumber,
   typeOther,
 } from "./questions";
 
@@ -74,6 +75,28 @@ test("numbers start in the middle and clamp to the range", () => {
   expect(setNumber(number, initialState(number), Number.NaN).touched).toBe(
     false,
   );
+});
+
+test("the number box keeps what was typed and clamps only the value", () => {
+  const ranged = { ...number, min: 10, max: 100 };
+
+  expect(initialState(ranged).text).toBe("55");
+
+  const five = typeNumber(ranged, initialState(ranged), "5");
+
+  expect(five.text).toBe("5");
+  expect(five.value).toBe(10);
+
+  const fifty = typeNumber(ranged, five, "50");
+
+  expect(fifty.text).toBe("50");
+  expect(fifty.value).toBe(50);
+
+  const cleared = typeNumber(ranged, fifty, "");
+
+  expect(cleared.text).toBe("");
+  expect(cleared.value).toBe(50);
+  expect(setNumber(ranged, cleared, 70).text).toBe("70");
 });
 
 test("answers carry custom picks, notes and the trimmed note", () => {

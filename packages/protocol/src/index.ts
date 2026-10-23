@@ -459,6 +459,10 @@ export type Command = { readonly actor: Actor } & (
 // The terminal id that opens Pi's own TUI instead of a shell (ADR 0027).
 export const piTerminal = "pi";
 
+// The close reason a terminal socket gets when another browser opens the same
+// terminal. Reopening it then would only take it back.
+export const terminalTakenOver = "opened elsewhere";
+
 export interface TerminalTab {
   readonly id: string;
   readonly label: string;
@@ -499,6 +503,8 @@ export interface Session {
   readonly error: string | null;
   readonly archivedAt: string | null;
   readonly workspaceRemoval: WorkspaceRemoval | null;
+  // Why the provider kept the workspace, while workspaceRemoval is "kept".
+  readonly workspaceKeptReason: string | null;
   readonly online: boolean;
   // Pi asked a question and waits for a person to answer it (ADR 0025).
   readonly waiting: boolean;

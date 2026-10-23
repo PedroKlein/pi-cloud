@@ -158,6 +158,7 @@ export class Sessions {
       error: null,
       archivedAt: null,
       workspaceRemoval: null,
+      workspaceKeptReason: null,
     };
 
     this.#store.insert(session);
@@ -194,6 +195,7 @@ export class Sessions {
       status: "stopped",
       archivedAt: new Date().toISOString(),
       workspaceRemoval: session.workspace.kind === "folder" ? null : "pending",
+      workspaceKeptReason: null,
     };
 
     this.#hosts.get(id)?.end();
@@ -220,6 +222,7 @@ export class Sessions {
       status: "queued",
       archivedAt: null,
       workspaceRemoval: null,
+      workspaceKeptReason: null,
     };
 
     this.#update(unarchived);
@@ -238,7 +241,12 @@ export class Sessions {
       return { ok: false, reason: "not_kept" };
     }
 
-    const forced: StoredSession = { ...session, workspaceRemoval: "forced" };
+    const forced: StoredSession = {
+      ...session,
+      workspaceRemoval: "forced",
+      workspaceKeptReason: null,
+    };
+
     this.#update(forced);
     this.#polls.wake(session.provider);
 
@@ -261,7 +269,10 @@ export class Sessions {
       ...session,
       workspace:
         report.outcome === "removed" ? report.restore : session.workspace,
-      workspaceRemoval: settles ? report.outcome : session.workspaceRemoval,
+      ...(settles && {
+        workspaceRemoval: report.outcome,
+        workspaceKeptReason: report.outcome === "kept" ? report.reason : null,
+      }),
     });
 
     return { ok: true, value: undefined };
