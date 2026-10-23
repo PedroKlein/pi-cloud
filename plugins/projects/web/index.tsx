@@ -280,9 +280,13 @@ function ProjectPage({
 
   const project = useLoaded(
     async () => {
-      const response = await context.request(path);
+      const response = context.request(path);
 
-      return response.ok ? ((await response.json()) as ProjectView) : null;
+      if ((await response).status === 404) {
+        return null;
+      }
+
+      return json<ProjectView>(response);
     },
     path,
     refreshMs,
