@@ -110,7 +110,15 @@ export function useSettledNotices(
         continue;
       }
 
-      const notice = new Notification(noticeText(session), { tag: session.id });
+      let notice: Notification;
+
+      // Android Chrome grants permission but throws here: it only allows
+      // notifications from a service worker.
+      try {
+        notice = new Notification(noticeText(session), { tag: session.id });
+      } catch {
+        return;
+      }
 
       notice.addEventListener("click", () => {
         window.focus();
