@@ -661,7 +661,8 @@ function TerminalScreen({
             }}
             onClick={() => {
               if (key.modifier === undefined) {
-                send.current(key.data ?? "");
+                send.current(modified(key.data ?? "", modifier));
+                setModifier(undefined);
               } else {
                 setModifier(
                   modifier === key.modifier ? undefined : key.modifier,
