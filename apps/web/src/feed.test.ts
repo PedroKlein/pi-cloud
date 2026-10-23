@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { LiveEvent, Prompt, Session } from "@pi-cloud/protocol";
 import { type Feed, feedReader } from "./feed";
 
-const session = (waiting: boolean): Session => ({
+const session = (waiting: boolean, change: Partial<Session> = {}): Session => ({
   id: "s",
   environmentId: "e",
   ownerId: "o",
@@ -23,6 +23,7 @@ const session = (waiting: boolean): Session => ({
   workspaceKeptReason: null,
   online: true,
   waiting,
+  ...change,
 });
 
 const prompt = (id: string): Prompt => ({
@@ -46,7 +47,7 @@ const connect = (): {
   readonly feeds: Feed[];
   readonly open: () => void;
   readonly live: (event: LiveEvent) => void;
-  readonly session: (waiting: boolean) => void;
+  readonly session: (waiting: boolean, change?: Partial<Session>) => void;
   readonly entry: (message: unknown) => void;
 } => {
   let line = 0;
@@ -66,8 +67,8 @@ const connect = (): {
     live: (event) => {
       reader.receive({ type: "live", event });
     },
-    session: (waiting) => {
-      reader.receive({ type: "session", session: session(waiting) });
+    session: (waiting, change) => {
+      reader.receive({ type: "session", session: session(waiting, change) });
     },
     entry: (message) => {
       reader.receive({
@@ -147,4 +148,45 @@ test("a transcript entry keeps a tool running until it holds the tool's result",
   });
 
   expect(stream.feeds.at(-1)?.tools.map(({ id }) => id)).toEqual(["t1"]);
+});
+
+test("a session that stops or restarts drops what its Pi was doing", () => {
+  const busy = (): ReturnType<typeof connect> => {
+    const stream = connect();
+    stream.session(true);
+    stream.live({ type: "prompt", prompt: prompt("p1") });
+    stream.live({ type: "tool_start", toolCallId: "t1", toolName: "bash" });
+    stream.live({ type: "text", delta: "Working on" });
+
+    return stream;
+  };
+
+  const live = (feed: Feed | undefined): unknown => ({
+    prompts: prompts(feed),
+    tools: feed?.tools,
+    streaming: feed?.streaming,
+  });
+
+  const idle = { prompts: [], tools: [], streaming: undefined };
+
+  for (const status of ["interrupted", "failed", "stopped"] as const) {
+    const stream = busy();
+    stream.session(false, { status });
+
+    expect(live(stream.feeds.at(-1))).toEqual(idle);
+  }
+
+  const restarted = busy();
+  restarted.session(false, { status: "starting", generation: 2 });
+
+  expect(live(restarted.feeds.at(-1))).toEqual(idle);
+
+  const running = busy();
+  running.session(true, { status: "running" });
+
+  expect(live(running.feeds.at(-1))).toEqual({
+    prompts: ["p1"],
+    tools: [{ id: "t1", name: "bash" }],
+    streaming: "Working on",
+  });
 });

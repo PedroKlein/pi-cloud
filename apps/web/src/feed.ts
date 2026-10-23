@@ -4,6 +4,7 @@ import {
   type Prompt,
   type Session,
   type SessionEvent,
+  type SessionStatus,
   type SlashCommand,
   type TerminalTab,
 } from "@pi-cloud/protocol";
@@ -67,6 +68,9 @@ export const emptyFeed: Feed = {
   terminals: [],
   piView: { attached: false, dialog: null },
 };
+
+// While a Session is in another status, its Pi is gone with what it was doing.
+const piRuns = new Set<SessionStatus>(["starting", "idle", "running"]);
 
 export interface FollowOptions {
   readonly dispatch: (event: SessionEvent) => void;
@@ -277,34 +281,55 @@ export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
     unconfirmed.clear();
   };
 
-  const open = (): void => {
+  const clearLive = (): Partial<Feed> => {
     statuses.clear();
     widgets.clear();
     echo = "";
 
-    for (const { prompt } of feed.prompts) {
-      unconfirmed.add(prompt.id);
-    }
-
-    update({
+    return {
       ...surfaces(),
       streaming: undefined,
       tools: [],
       queue: emptyFeed.queue,
       terminals: [],
       piView: emptyFeed.piView,
-    });
+    };
+  };
+
+  const open = (): void => {
+    for (const { prompt } of feed.prompts) {
+      unconfirmed.add(prompt.id);
+    }
+
+    update(clearLive());
   };
 
   const receive = (event: SessionEvent): void => {
     dispatch(event);
     settle(event);
     switch (event.type) {
-      case "session":
-        update({ session: event.session });
+      case "session": {
+        const { status, generation } = event.session;
+
+        const ended =
+          !piRuns.has(status) ||
+          (feed.session !== undefined &&
+            feed.session.generation !== generation);
+
+        if (ended) {
+          unconfirmed.clear();
+        }
+
+        update({
+          ...(ended && { ...clearLive(), prompts: [] }),
+          session: event.session,
+        });
+
         onSession(event.session);
 
         return;
+      }
+
       case "entry": {
         if (event.line < lines) {
           return;
