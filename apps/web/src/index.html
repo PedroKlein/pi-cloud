@@ -4,6 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pi Cloud</title>
+    <!-- Sets the theme before the first paint; theme.tsx keeps it in sync. -->
+    <script>
+      (function () {
+        var choice = "system";
+
+        try {
+          choice = localStorage.getItem("pi-cloud.theme") || choice;
+        } catch (error) {}
+
+        if (choice !== "light" && choice !== "dark") {
+          choice = matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+        }
+
+        document.documentElement.dataset.theme = choice;
+      })();
+    </script>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
