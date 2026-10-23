@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent";
 import { stderrLog } from "./log";
@@ -30,6 +31,10 @@ const extensionSourcePrefixes = [
   "builtin:",
   "file:",
 ];
+
+// Pi imports its OAuth flows through a path a bundler can't follow, so a
+// compiled binary would find none of them.
+registerBunOAuthFlows();
 
 const [command, ...rest] = process.argv.slice(2);
 const shutdown = new AbortController();
