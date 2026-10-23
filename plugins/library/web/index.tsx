@@ -1,5 +1,6 @@
 import {
   json,
+  ok,
   type PageProps,
   useLoaded,
   type WebContext,
@@ -87,20 +88,27 @@ function ProjectFiles({
     `/api/plugins/library/${base}/files/${encodeURIComponent(name)}`;
 
   const upload = async (chosen: readonly File[]): Promise<void> => {
-    await Promise.all(
-      chosen.map(async (file) => {
-        const response = await fetch(fileUrl(file.name), {
-          method: "PUT",
-          body: file,
-        });
-
-        if (!response.ok) {
-          alert(((await response.json()) as { error: string }).error);
-        }
-      }),
+    const results = await Promise.allSettled(
+      chosen.map(async (file) =>
+        ok(fetch(fileUrl(file.name), { method: "PUT", body: file })),
+      ),
     );
 
     reload();
+
+    const failures = results.flatMap((result) =>
+      result.status === "rejected"
+        ? [
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+          ]
+        : [],
+    );
+
+    if (failures.length > 0) {
+      alert(failures.join("\n"));
+    }
   };
 
   return (
@@ -138,6 +146,7 @@ function ProjectFiles({
             aria-label="Upload files"
             onChange={(event) => {
               void upload([...(event.target.files ?? [])]);
+              event.target.value = "";
             }}
             className="text-caption"
           />

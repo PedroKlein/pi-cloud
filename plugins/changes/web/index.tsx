@@ -3,7 +3,7 @@ import type {
   SessionPartProps,
   WebPlugin,
 } from "@pi-cloud/plugins/web";
-import { Button, cn, Icon } from "@pi-cloud/ui";
+import { Button, cn, Icon, isComposing } from "@pi-cloud/ui";
 import { Fragment, type ReactElement, useEffect, useState } from "react";
 import type { CheckoutChanges, PullRequest } from "../src/report";
 import { type DiffComment, reviewMessage } from "./comments";
@@ -552,12 +552,13 @@ function CommentForm({
           setText(event.target.value);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+          if (event.key === "Enter" && !event.shiftKey && !isComposing(event)) {
             event.preventDefault();
             save();
           }
 
           if (event.key === "Escape") {
+            event.stopPropagation();
             onCancel();
           }
         }}

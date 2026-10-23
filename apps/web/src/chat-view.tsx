@@ -25,12 +25,15 @@ import { renderMarkdown } from "./markdown";
 export function ChatView({
   feed,
   place,
+  hidden,
 }: {
   readonly feed: Feed;
   readonly place: string;
+  readonly hidden: boolean;
 }): ReactElement {
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
+  const top = useRef(0);
   const shown = turns(feed.items);
 
   const live =
@@ -42,10 +45,11 @@ export function ChatView({
 
   useLayoutEffect(() => {
     const box = scroller.current;
-    if (box && atBottom.current) {
-      box.scrollTop = box.scrollHeight;
+    if (box && !hidden) {
+      // A hidden box loses its scroll position, so it is put back on showing.
+      box.scrollTop = atBottom.current ? box.scrollHeight : top.current;
     }
-  }, [feed.items, feed.streaming, feed.tools, feed.prompts]);
+  }, [feed.items, feed.streaming, feed.tools, feed.prompts, hidden]);
 
   return (
     <div
@@ -55,6 +59,8 @@ export function ChatView({
 
         atBottom.current =
           box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+
+        top.current = box.scrollTop;
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >

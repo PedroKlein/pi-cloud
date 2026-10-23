@@ -38,15 +38,16 @@ export function initialState(question: Question): QuestionState {
       return { ...state, picked: recommended ? [recommended.value] : [] };
     }
 
-    case "number":
-      return {
-        ...state,
-        value:
-          question.recommended ??
-          question.min +
-            Math.round((question.max - question.min) / 2 / question.step) *
-              question.step,
-      };
+    case "number": {
+      const value =
+        question.recommended ??
+        question.min +
+          Math.round((question.max - question.min) / 2 / question.step) *
+            question.step;
+
+      return { ...state, value, text: String(value) };
+    }
+
     case "single":
     case "multi":
     case "text":
@@ -109,11 +110,21 @@ export function setNumber(
     return state;
   }
 
-  return {
-    ...state,
-    value: Math.min(question.max, Math.max(question.min, value)),
-    touched: true,
-  };
+  const clamped = Math.min(question.max, Math.max(question.min, value));
+
+  return { ...state, value: clamped, text: String(clamped), touched: true };
+}
+
+// The number box shows what was typed, so "5" on the way to "50" isn't
+// clamped away while the value stays in range.
+export function typeNumber(
+  question: Extract<Question, { type: "number" }>,
+  state: QuestionState,
+  text: string,
+): QuestionState {
+  const value = text.trim() === "" ? Number.NaN : Number(text);
+
+  return { ...setNumber(question, state, value), text };
 }
 
 export function answered(question: Question, state: QuestionState): boolean {

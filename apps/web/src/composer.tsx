@@ -4,7 +4,7 @@ import {
   imageTypes,
   type ModelRef,
 } from "@pi-cloud/protocol";
-import { Button, Icon } from "@pi-cloud/ui";
+import { Button, Icon, isComposing } from "@pi-cloud/ui";
 import {
   type ReactElement,
   type RefObject,
@@ -128,7 +128,15 @@ export function Composer({
       }),
       requestId: crypto.randomUUID(),
       delivery,
-    }).catch(report);
+    }).catch((error: unknown) => {
+      box.value = box.value === "" ? message : `${message}\n${box.value}`;
+
+      setImages((current) =>
+        [...images, ...current].slice(0, imageLimits.count),
+      );
+
+      report(error);
+    });
   };
 
   return (
@@ -257,7 +265,7 @@ export function Composer({
               }
             }}
             onKeyDown={(event) => {
-              if (suggestions.keyDown(event)) {
+              if (isComposing(event) || suggestions.keyDown(event)) {
                 return;
               }
 
