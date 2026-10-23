@@ -677,6 +677,8 @@ function Memory({
   readonly project: ProjectView;
 }): ReactElement {
   const [shown, setShown] = useState<string>();
+  const open = project.memory.find(({ name }) => name === shown);
+  const version = open ? `${open.name} ${open.updatedAt}` : "";
 
   const content = useLoaded(async () => {
     if (shown === undefined) {
@@ -690,7 +692,7 @@ function Memory({
     return reply.ok
       ? ((await reply.json()) as { content: string }).content
       : "";
-  }, shown ?? "").value;
+  }, version).value;
 
   if (project.memory.length === 0) {
     return <p className="text-fg-dim">Memory is empty.</p>;
