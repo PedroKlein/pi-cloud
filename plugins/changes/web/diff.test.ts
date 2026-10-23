@@ -109,6 +109,29 @@ test("reads quoted, spaced and binary paths the way git writes them", () => {
   ]);
 });
 
+test("describes changes that have no lines to show", () => {
+  expect(parseDiff(awkward).map(({ notes }) => notes)).toEqual([
+    ["Binary file changed"],
+    ["Mode changed from 100644 to 100755"],
+    [],
+    ["Renamed from old.txt"],
+    [],
+    [],
+    [],
+  ]);
+
+  expect(
+    parseDiff(
+      [
+        "diff --git a/empty b/empty",
+        "new file mode 100644",
+        "index 0000000..e69de29",
+        "",
+      ].join("\n"),
+    )[0]?.notes,
+  ).toEqual(["Empty file added"]);
+});
+
 test("an empty patch has no files", () => {
   expect(parseDiff("")).toEqual([]);
 });

@@ -14,6 +14,8 @@ export interface DiffFile {
   readonly path: string;
   readonly added: number;
   readonly removed: number;
+  // Binary, renamed, mode-only and empty files, which have no lines to show.
+  readonly notes: readonly string[];
   readonly hunks: readonly DiffHunk[];
 }
 
@@ -90,6 +92,7 @@ function headerPath(text: string): string {
 export function parseDiff(patch: string): readonly DiffFile[] {
   const files: {
     path: string;
+    extended: string[];
     hunks: { header: string; lines: DiffLine[] }[];
   }[] = [];
 
@@ -101,12 +104,14 @@ export function parseDiff(patch: string): readonly DiffFile[] {
     const hunk = file?.hunks.at(-1);
 
     if (line.startsWith("diff --git ")) {
-      files.push({ path: headerPath(line.slice(11)), hunks: [] });
+      files.push({ path: headerPath(line.slice(11)), extended: [], hunks: [] });
 
       continue;
     }
 
     if (file?.hunks.length === 0) {
+      file.extended.push(line);
+
       if (line.startsWith("rename to ")) {
         file.path = unquote(line.slice(10));
       }
@@ -162,14 +167,57 @@ export function parseDiff(patch: string): readonly DiffFile[] {
     }
   }
 
-  return files.map(({ path, hunks }) => {
+  return files.map(({ path, extended, hunks }) => {
     const lines = hunks.flatMap((h) => h.lines);
 
     return {
       path,
       added: lines.filter(({ kind }) => kind === "add").length,
       removed: lines.filter(({ kind }) => kind === "remove").length,
+      notes: notes(extended, hunks.length === 0),
       hunks,
     };
   });
+}
+
+// Describes what git's extended header lines say about a file, such as a
+// binary, renamed or mode-only change that has no lines to show.
+function notes(extended: readonly string[], empty: boolean): string[] {
+  const value = (prefix: string): string | undefined =>
+    extended.find((line) => line.startsWith(prefix))?.slice(prefix.length);
+
+  const renamed = value("rename from ");
+  const oldMode = value("old mode ");
+  const newMode = value("new mode ");
+
+  const binary = extended.some(
+    (line) => line === "GIT binary patch" || line.startsWith("Binary files "),
+  );
+
+  const found: string[] = [];
+
+  let status = "changed";
+  if (value("new file mode ") !== undefined) {
+    status = "added";
+  }
+
+  if (value("deleted file mode ") !== undefined) {
+    status = "deleted";
+  }
+
+  if (binary) {
+    found.push(`Binary file ${status}`);
+  } else if (empty && status !== "changed") {
+    found.push(`Empty file ${status}`);
+  }
+
+  if (renamed !== undefined) {
+    found.push(`Renamed from ${unquote(renamed)}`);
+  }
+
+  if (oldMode !== undefined && newMode !== undefined) {
+    found.push(`Mode changed from ${oldMode} to ${newMode}`);
+  }
+
+  return found;
 }
