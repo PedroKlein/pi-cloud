@@ -69,7 +69,7 @@ scp dist/pi-cloud-linux <vm>:~/.local/bin/pi-cloud.new
 ssh <vm> 'chmod +x ~/.local/bin/pi-cloud.new && mv ~/.local/bin/pi-cloud.new ~/.local/bin/pi-cloud && systemctl --user restart pi-cloud'
 ```
 
-Running Sessions are interrupted and reload idle from their transcript. `/healthz` shows the new version once the server is back.
+Running Sessions are interrupted and reload idle from their transcript. A tool that was running when the service stopped is recorded as interrupted by a restart. `/healthz` shows the new version once the server is back.
 
 ## From the laptop
 
