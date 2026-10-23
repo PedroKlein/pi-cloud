@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import type { LiveEvent, Prompt, Session } from "@pi-cloud/protocol";
-import { type Feed, feedReader } from "./feed";
+import { type EventStream, type Feed, feedReader, followEvents } from "./feed";
 
 const session = (waiting: boolean, change: Partial<Session> = {}): Session => ({
   id: "s",
@@ -212,4 +212,99 @@ test("the answer stays on screen until the transcript holds the turn's last line
   stream.live({ type: "status", status: "idle", transcriptLength: 2 });
 
   expect(stream.feeds.at(-1)?.streaming).toBeUndefined();
+});
+
+test("a failed event stream is opened again until the session is gone", async () => {
+  jest.useFakeTimers();
+  const realFetch = globalThis.fetch;
+  const statuses = [500, 502, 404];
+  const lookups: string[] = [];
+
+  globalThis.fetch = Object.assign(
+    async (input: string | URL | Request) => {
+      lookups.push(input instanceof Request ? input.url : String(input));
+
+      return Promise.resolve(
+        new Response(null, { status: statuses.shift() ?? 404 }),
+      );
+    },
+    { preconnect: realFetch.preconnect },
+  );
+
+  const streams: { url: string; fail: () => void }[] = [];
+
+  const open = (url: string): EventStream => {
+    const errors: (() => void)[] = [];
+
+    const stream = {
+      readyState: 0,
+      CLOSED: 2,
+      addEventListener: (type: string, listener: (event: never) => void) => {
+        if (type === "error") {
+          errors.push(listener as () => void);
+        }
+      },
+      close: () => undefined,
+    };
+
+    streams.push({
+      url,
+      fail: () => {
+        stream.readyState = 2;
+
+        errors.forEach((listener) => {
+          listener();
+        });
+      },
+    });
+
+    return stream;
+  };
+
+  const feeds: Feed[] = [];
+
+  const reader = feedReader({
+    dispatch: () => undefined,
+    onChange: (feed) => feeds.push(feed),
+    onSession: () => undefined,
+  });
+
+  const fail = async (): Promise<void> => {
+    streams.at(-1)?.fail();
+
+    for (let turn = 0; turn < 5; turn++) {
+      await Promise.resolve();
+    }
+
+    jest.advanceTimersByTime(60_000);
+  };
+
+  try {
+    followEvents("s 1", reader, open);
+    await fail();
+    await fail();
+
+    expect(streams.map(({ url }) => url)).toEqual([
+      "/api/sessions/s%201/events",
+      "/api/sessions/s%201/events",
+      "/api/sessions/s%201/events",
+    ]);
+
+    expect(feeds.some(({ missing }) => missing)).toBe(false);
+
+    await fail();
+
+    expect(streams).toHaveLength(3);
+
+    expect(lookups).toEqual([
+      "/api/sessions/s%201",
+      "/api/sessions/s%201",
+      "/api/sessions/s%201",
+    ]);
+
+    expect(feeds.at(-1)?.missing).toBe(true);
+  } finally {
+    globalThis.fetch = realFetch;
+    jest.useRealTimers();
+  }
 });

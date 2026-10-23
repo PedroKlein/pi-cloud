@@ -78,13 +78,19 @@ export interface FollowOptions {
   readonly onSession: (session: Session) => void;
 }
 
-// Builds the Feed from a Session's event stream, which the caller opens.
-export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
+export interface FeedReader {
   readonly open: () => void;
   readonly receive: (event: SessionEvent) => void;
   readonly lost: () => void;
   readonly report: (error: unknown) => void;
-} {
+}
+
+// Builds the Feed from a Session's event stream, which followEvents opens.
+export function feedReader({
+  dispatch,
+  onChange,
+  onSession,
+}: FollowOptions): FeedReader {
   let feed = emptyFeed;
   let lines = 0;
   let nextKey = 0;
@@ -375,5 +381,79 @@ export function feedReader({ dispatch, onChange, onSession }: FollowOptions): {
       update({ missing: true });
     },
     report,
+  };
+}
+
+// The part of a browser EventSource that followEvents uses.
+export interface EventStream {
+  readonly readyState: number;
+  readonly CLOSED: number;
+  addEventListener(
+    type: "open" | "error" | "message",
+    listener: (event: { readonly data: string }) => void,
+  ): void;
+  close(): void;
+}
+
+// Follows a Session's event stream into reader. A browser reconnects by
+// itself after the connection drops, but not after an error response, so the
+// stream is opened again, backing off, until the Session is gone.
+export function followEvents(
+  sessionId: string,
+  reader: FeedReader,
+  connect: (url: string) => EventStream,
+): () => void {
+  const path = `/api/sessions/${encodeURIComponent(sessionId)}`;
+  let events: EventStream | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let failures = 0;
+  let closed = false;
+
+  const reopen = async (): Promise<void> => {
+    const gone = await fetch(path).then(
+      (response) => response.status === 404,
+      () => false,
+    );
+
+    if (closed) {
+      return;
+    }
+
+    if (gone) {
+      reader.lost();
+
+      return;
+    }
+
+    retry = setTimeout(follow, Math.min(1000 * 2 ** failures, 30_000));
+    failures++;
+  };
+
+  const follow = (): void => {
+    const stream = connect(`${path}/events`);
+    events = stream;
+
+    stream.addEventListener("error", () => {
+      if (stream.readyState === stream.CLOSED) {
+        void reopen();
+      }
+    });
+
+    stream.addEventListener("open", () => {
+      failures = 0;
+      reader.open();
+    });
+
+    stream.addEventListener("message", (message) => {
+      reader.receive(JSON.parse(message.data) as SessionEvent);
+    });
+  };
+
+  follow();
+
+  return () => {
+    closed = true;
+    clearTimeout(retry);
+    events?.close();
   };
 }
