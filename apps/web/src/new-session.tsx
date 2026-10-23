@@ -51,6 +51,8 @@ export function NewSessionDialog({
   const [environmentId, setEnvironmentId] = useState("");
   const [kind, setKind] = useState("worktree");
   const [error, setError] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     if (open) {
@@ -68,6 +70,11 @@ export function NewSessionDialog({
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
+
+    if (submitting) {
+      return;
+    }
+
     const form = new FormData(event.currentTarget);
 
     const text = (name: string): string => {
@@ -84,6 +91,8 @@ export function NewSessionDialog({
       return;
     }
 
+    setSubmitting(true);
+
     api("/api/sessions", {
       environment: text("environment"),
       workspace: workspaceRequest(kind, text("location"), text("start-point")),
@@ -95,11 +104,15 @@ export function NewSessionDialog({
     })
       .then(async (response) => {
         setError(undefined);
+        setFormKey((key) => key + 1);
         onClose();
         location.hash = ((await response.json()) as Session).id;
       })
       .catch((reason: unknown) => {
         setError(`Couldn't start the session. ${String(reason)}`);
+      })
+      .finally(() => {
+        setSubmitting(false);
       });
   };
 
@@ -110,7 +123,12 @@ export function NewSessionDialog({
       aria-labelledby="new-session-title"
       className="m-auto w-[min(640px,calc(100vw-32px))] rounded-xl border border-line bg-elevated p-0 text-fg shadow-pop backdrop:bg-black/50 max-sm:mb-0 max-sm:w-full max-sm:rounded-b-none"
     >
-      <form id="create" onSubmit={submit} className="flex flex-col">
+      <form
+        key={formKey}
+        id="create"
+        onSubmit={submit}
+        className="flex flex-col"
+      >
         <header className="flex items-center gap-2 pt-4 pr-4 pb-2 pl-6">
           <h2
             id="new-session-title"
@@ -260,7 +278,7 @@ export function NewSessionDialog({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" type="submit">
+          <Button variant="primary" type="submit" disabled={submitting}>
             Start session
           </Button>
         </footer>
