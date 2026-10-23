@@ -4,6 +4,7 @@ import {
   protocolVersion,
   providerHeader,
   type TerminalControl,
+  terminalTakenOver,
   versionHeader,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -87,7 +88,7 @@ export function terminalBroker(
     }
 
     const key = `${sessionId}/${terminalId}`;
-    end(key, "opened elsewhere");
+    end(key, terminalTakenOver);
 
     pairs.set(key, {
       pending: [],
