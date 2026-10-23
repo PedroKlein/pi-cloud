@@ -1,5 +1,5 @@
 import { Button, cn, Icon } from "@pi-cloud/ui";
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import {
   useEnvironments,
   useHash,
@@ -26,9 +26,44 @@ export function App({
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [drawerRoute, setDrawerRoute] = useState(route);
+  const aside = useRef<HTMLElement>(null);
   const sessions = useSessions(showArchived);
   const environments = useEnvironments();
   useSettledNotices(sessions.value, route);
+
+  if (drawerRoute !== route) {
+    setDrawerRoute(route);
+    setDrawer(false);
+  }
+
+  useEffect(() => {
+    if (!drawer) {
+      return;
+    }
+
+    const opener = document.activeElement;
+
+    aside.current
+      ?.querySelector<HTMLElement>("a[href], button:not(:disabled), input")
+      ?.focus();
+
+    const wide = matchMedia("(width >= 48rem)");
+
+    const close = (): void => {
+      setDrawer(false);
+    };
+
+    wide.addEventListener("change", close);
+
+    return () => {
+      wide.removeEventListener("change", close);
+
+      if (opener instanceof HTMLElement && opener.isConnected) {
+        opener.focus();
+      }
+    };
+  }, [drawer]);
 
   const page = pluginRoute(route);
 
@@ -83,6 +118,12 @@ export function App({
         )}
       />
       <aside
+        ref={aside}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && drawer) {
+            setDrawer(false);
+          }
+        }}
         onClick={(event) => {
           if (event.target instanceof Element && event.target.closest("a")) {
             setDrawer(false);
@@ -106,7 +147,9 @@ export function App({
         />
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">{content()}</main>
+      <main inert={drawer} className="flex min-w-0 flex-1 flex-col">
+        {content()}
+      </main>
 
       <NewSessionDialog
         open={creating}
