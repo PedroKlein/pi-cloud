@@ -173,8 +173,15 @@ function CreateForm({
     ),
   ];
 
+  const [creating, setCreating] = useState(false);
+
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (creating) {
+      return;
+    }
+
+    setCreating(true);
     const data = new FormData(event.currentTarget);
 
     const field = (name: string): string => {
@@ -199,6 +206,7 @@ function CreateForm({
         onCreated(project.id);
       },
       (error: unknown) => {
+        setCreating(false);
         alert(error instanceof Error ? error.message : String(error));
       },
     );
@@ -258,7 +266,12 @@ function CreateForm({
           className={fieldClass}
         />
       </Field>
-      <Button variant="primary" type="submit" className="justify-self-start">
+      <Button
+        variant="primary"
+        type="submit"
+        disabled={creating}
+        className="justify-self-start"
+      >
         New Project
       </Button>
     </form>
@@ -280,9 +293,13 @@ function ProjectPage({
 
   const project = useLoaded(
     async () => {
-      const response = await context.request(path);
+      const response = context.request(path);
 
-      return response.ok ? ((await response.json()) as ProjectView) : null;
+      if ((await response).status === 404) {
+        return null;
+      }
+
+      return json<ProjectView>(response);
     },
     path,
     refreshMs,
@@ -677,6 +694,8 @@ function Memory({
   readonly project: ProjectView;
 }): ReactElement {
   const [shown, setShown] = useState<string>();
+  const open = project.memory.find(({ name }) => name === shown);
+  const version = open ? `${open.name} ${open.updatedAt}` : "";
 
   const content = useLoaded(async () => {
     if (shown === undefined) {
@@ -690,7 +709,7 @@ function Memory({
     return reply.ok
       ? ((await reply.json()) as { content: string }).content
       : "";
-  }, shown ?? "").value;
+  }, version).value;
 
   if (project.memory.length === 0) {
     return <p className="text-fg-dim">Memory is empty.</p>;
