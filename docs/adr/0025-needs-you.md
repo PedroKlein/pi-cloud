@@ -15,6 +15,7 @@ Until now that Session looked like any other running one. Its row said Working, 
 - The server sends a `session` event when `waiting` changes, before the live event that changed it, so an open Session view updates its badge with the prompt.
 - The web shows an online Session that is waiting with a "Needs you" badge, ahead of its status. A browser notice says "Pi needs you in …" when a Session starts waiting, under the same rule as "Pi finished in …".
 - Projects add a `waiting` run state. A thread that is waiting goes in the board's Needs you column whatever its work state, and the Project's "needs you" count is its blocked threads plus its waiting ones.
+- A `review_ready` thread doesn't need you, since it isn't blocked on you. It goes in its own Review column on the board, so the Needs you column and the count always agree. (Amended 2026-10-23.)
 
 ## Consequences
 
