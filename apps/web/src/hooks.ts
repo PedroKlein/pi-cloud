@@ -8,6 +8,7 @@ import {
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { api } from "./api";
 import { noticeText, settled } from "./notices";
+import { responseOrder } from "./responses";
 
 const refreshMs = 2000;
 
@@ -31,14 +32,21 @@ interface Polled<T> {
 // Reads a JSON list from the server and keeps it fresh while mounted.
 function usePolled(path: string): Polled<unknown> {
   const [value, setValue] = useState<readonly unknown[]>([]);
+  const [order] = useState(responseOrder);
 
   const reload = useCallback(() => {
+    const request = order.send();
+
     api(path)
       .then(async (response) => {
-        setValue((await response.json()) as unknown[]);
+        const list = (await response.json()) as unknown[];
+
+        if (order.accept(request)) {
+          setValue(list);
+        }
       })
       .catch(() => undefined);
-  }, [path]);
+  }, [path, order]);
 
   useEffect(() => {
     reload();
@@ -46,8 +54,9 @@ function usePolled(path: string): Polled<unknown> {
 
     return () => {
       clearInterval(timer);
+      order.drop();
     };
-  }, [reload]);
+  }, [reload, order]);
 
   return { value, reload };
 }
