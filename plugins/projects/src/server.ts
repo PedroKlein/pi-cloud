@@ -269,16 +269,8 @@ async function route(
       return Response.json(view(project, store, context));
     }
 
-    if (project && child === "instructions" && request.method === "POST") {
-      const { instructions } = ((await request.json()) ?? {}) as {
-        instructions?: unknown;
-      };
-
-      if (typeof instructions !== "string") {
-        throw new BadRequest("instructions must be text");
-      }
-
-      store.setInstructions(project.id, instructions);
+    if (project && child === "settings" && request.method === "POST") {
+      store.update(project.id, settings(project, await request.json()));
 
       return Response.json(
         view(store.get(project.id) ?? project, store, context),
@@ -343,6 +335,47 @@ function toState(value: unknown): ReturnType<typeof workState> {
   } catch (error) {
     throw new BadRequest((error as Error).message);
   }
+}
+
+// The settings a Project can change after it starts. The repositories and
+// Environment stay, since the coordinator's workspace was built from them.
+function settings(
+  project: Project,
+  body: unknown,
+): Pick<Project, "name" | "instructions" | "threadModel"> {
+  const { name, instructions, threadModel } = (body ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
+    throw new BadRequest("name must not be empty");
+  }
+
+  if (instructions !== undefined && typeof instructions !== "string") {
+    throw new BadRequest("instructions must be text");
+  }
+
+  if (threadModel !== undefined && typeof threadModel !== "string") {
+    throw new BadRequest("thread model must be provider/id");
+  }
+
+  const model =
+    threadModel === undefined
+      ? project.threadModel
+      : threadModel.trim() || null;
+
+  try {
+    modelRef(model ?? undefined);
+  } catch (error) {
+    throw new BadRequest(`thread model: ${(error as Error).message}`);
+  }
+
+  return {
+    name: name?.trim() ?? project.name,
+    instructions: instructions ?? project.instructions,
+    threadModel: model,
+  };
 }
 
 function create(

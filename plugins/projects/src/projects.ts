@@ -64,7 +64,10 @@ export interface ProjectStore {
   readonly create: (project: Project) => void;
   readonly list: () => readonly Project[];
   readonly get: (id: string) => Project | undefined;
-  readonly setInstructions: (id: string, instructions: string) => void;
+  readonly update: (
+    id: string,
+    settings: Pick<Project, "name" | "instructions" | "threadModel">,
+  ) => void;
   readonly addMember: (member: Member) => void;
   readonly member: (sessionId: string) => Member | undefined;
   readonly threads: (projectId: string) => readonly Member[];
@@ -207,10 +210,13 @@ export function projectStore(
 
       return row && toProject(row);
     },
-    setInstructions: (id, instructions) => {
+    update: (id, { name, instructions, threadModel }) => {
       store.run(
-        "update projects_projects set instructions = ? where id = ?",
+        `update projects_projects
+          set name = ?, instructions = ?, thread_model = ? where id = ?`,
+        name,
         instructions,
+        threadModel,
         id,
       );
     },

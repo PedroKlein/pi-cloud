@@ -483,6 +483,19 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
   await page.getByText("No threads yet.").waitFor();
 
+  const settings = page.locator("section", {
+    has: page.getByRole("heading", { level: 2, name: "Settings" }),
+  });
+
+  await settings.getByLabel("Name").fill("Site docs");
+  await settings.getByLabel("Thread model").fill("faux/faux-1");
+  await settings.getByRole("button", { name: "Save settings" }).click();
+  await page.getByRole("heading", { level: 1, name: "Site docs" }).waitFor();
+
+  expect(await settings.getByLabel("Thread model").inputValue()).toBe(
+    "faux/faux-1",
+  );
+
   await page
     .locator("#project-nav")
     .getByRole("link", { name: /^Site/ })

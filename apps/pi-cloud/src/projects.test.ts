@@ -709,7 +709,7 @@ test("refuses a null body and a file name that does not decode", async () => {
   const projects = "/api/plugins/projects";
 
   const responses = [
-    await api(`${projects}/projects/${id}/instructions`, null),
+    await api(`${projects}/projects/${id}/settings`, { instructions: 5 }),
     await api(`${projects}/threads/${coordinatorId}/state`, null),
     await api(`${projects}/projects/${id}/memory/%zz`),
     await api(`/api/plugins/library/projects/${id}/files/%zz`),
