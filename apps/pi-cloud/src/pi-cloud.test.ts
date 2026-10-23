@@ -242,6 +242,7 @@ test("reports itself healthy", async () => {
   expect(await response.json()).toEqual({
     status: "ok",
     version: expect.any(String) as unknown,
+    pi: expect.any(String) as unknown,
   });
 });
 
@@ -2787,8 +2788,12 @@ test("sends browser commands to the session as the owner, whatever the browser c
 });
 
 // An OpenAI-compatible endpoint, since Pi's in-memory faux provider can't
-// reach a Session in another process.
-function fakeModelServer(reply: string): ReturnType<typeof Bun.serve> {
+// reach a Session in another process. With a command, the first request
+// answers with a bash call running it.
+function fakeModelServer(
+  reply: string,
+  command?: string,
+): ReturnType<typeof Bun.serve> {
   const chunk = (choice: object): string =>
     `data: ${JSON.stringify({
       id: "c1",
@@ -2799,17 +2804,40 @@ function fakeModelServer(reply: string): ReturnType<typeof Bun.serve> {
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
     })}\n\n`;
 
+  const toolCall = [
+    chunk({
+      delta: {
+        role: "assistant",
+        tool_calls: [
+          {
+            index: 0,
+            id: "call_1",
+            type: "function",
+            function: { name: "bash", arguments: JSON.stringify({ command }) },
+          },
+        ],
+      },
+    }),
+    chunk({ delta: {}, finish_reason: "tool_calls" }),
+  ];
+
+  const text = [
+    chunk({ delta: { role: "assistant", content: reply } }),
+    chunk({ delta: {}, finish_reason: "stop" }),
+  ];
+
+  let requests = 0;
+
   return Bun.serve({
     port: 0,
-    fetch: () =>
-      new Response(
-        [
-          chunk({ delta: { role: "assistant", content: reply } }),
-          chunk({ delta: {}, finish_reason: "stop" }),
-          "data: [DONE]\n\n",
-        ].join(""),
-        { headers: { "content-type": "text/event-stream" } },
-      ),
+    fetch: () => {
+      requests += 1;
+      const chunks = command !== undefined && requests === 1 ? toolCall : text;
+
+      return new Response([...chunks, "data: [DONE]\n\n"].join(""), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    },
   });
 }
 
@@ -2934,6 +2962,61 @@ test("runs each session in its own process and reloads it when the process dies"
     while (second !== undefined && alive(second)) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);
+
+test("records a tool cut off by its host going down as interrupted, not by its exit code", async () => {
+  const pidFile = join(root, "tool.pid");
+  const model = fakeModelServer("done", `echo $$ > ${pidFile}; exec sleep 30`);
+  await startProcessAgent(model);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "fake", id: "fake-model" },
+      })
+    ).json()) as Session;
+
+    await follow(session.id, status("idle"));
+
+    await api(`/api/sessions/${session.id}/commands`, {
+      type: "message",
+      text: "run something slow",
+    });
+
+    let toolPid = Number.NaN;
+    while (Number.isNaN(toolPid)) {
+      toolPid = Number.parseInt(
+        await readFile(pidFile, "utf8").catch(() => ""),
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    // systemd stops a service by sending SIGTERM to every process in it.
+    const [sessionPid] = sessionPids(session.id);
+    process.kill(sessionPid ?? 0, "SIGTERM");
+    process.kill(toolPid, "SIGTERM");
+
+    const events = await follow(session.id, (seen) =>
+      seen.some(
+        (e) =>
+          e.type === "entry" &&
+          (e.entry.includes("interrupted by a restart") ||
+            e.entry.includes("exited with code 143")),
+      ),
+    );
+
+    const results = events.filter(
+      (e) => e.type === "entry" && e.entry.includes('"toolResult"'),
+    );
+
+    expect(results).toHaveLength(1);
+    expect(JSON.stringify(results)).toContain("interrupted by a restart");
   } finally {
     await model.stop(true);
   }

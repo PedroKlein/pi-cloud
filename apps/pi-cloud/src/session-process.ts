@@ -82,6 +82,14 @@ export async function spawnSession(
 }
 
 export async function runSessionProcess(): Promise<void> {
+  // The agent stops a Session by closing stdin, so SIGTERM here means the
+  // whole host is going down, its tools included. Exiting before a killed
+  // tool's result is saved leaves the call unanswered, and the reload records
+  // it as interrupted rather than as a failed command.
+  process.once("SIGTERM", () => {
+    process.exit(143);
+  });
+
   const input = createInterface({ input: process.stdin });
   const lines = input[Symbol.asyncIterator]();
   const first = await lines.next();
