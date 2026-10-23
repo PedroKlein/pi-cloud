@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   ago,
+  type ChatItem,
   chatItems,
   describeTool,
   duration,
@@ -89,6 +90,40 @@ test("shows tool calls and their results", () => {
   ).toEqual([
     { role: "result", id: "t1", name: "bash", text: "boom", failed: true },
   ]);
+});
+
+test("shows a command the user ran in Pi as a bash step", () => {
+  const ran = (exitCode: number | undefined, cancelled: boolean): string =>
+    JSON.stringify({
+      type: "message",
+      id: "b1",
+      message: {
+        role: "bashExecution",
+        command: "ls",
+        output: "a.ts\n",
+        exitCode,
+        cancelled,
+        truncated: false,
+        timestamp: 1,
+      },
+    });
+
+  const step = (failed: boolean): ChatItem[] => [
+    { role: "tool", id: "b1", name: "bash", args: { command: "ls" } },
+    { role: "result", id: "b1", name: "bash", text: "a.ts\n", failed },
+  ];
+
+  expect(chatItems(ran(0, false))).toEqual(step(false));
+  expect(chatItems(ran(2, false))).toEqual(step(true));
+  expect(chatItems(ran(undefined, true))).toEqual(step(true));
+});
+
+test("skips entries it cannot read instead of failing", () => {
+  expect(chatItems(line({ role: "compactionSummary", summary: "s" }))).toEqual(
+    [],
+  );
+
+  expect(chatItems("{not json")).toEqual([]);
 });
 
 test("shows a failed assistant turn", () => {

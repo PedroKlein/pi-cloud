@@ -2,7 +2,6 @@ import {
   type Environment,
   piTerminal,
   type Session,
-  type SessionEvent,
   type TerminalTab,
   terminalTakenOver,
 } from "@pi-cloud/protocol";
@@ -20,7 +19,7 @@ import {
 import { api } from "./api";
 import { Composer } from "./composer";
 import { ChatView } from "./chat-view";
-import { emptyFeed, type Feed, feedReader } from "./feed";
+import { emptyFeed, type Feed, feedReader, followEvents } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext } from "./plugins";
@@ -60,27 +59,9 @@ export function SessionView({
       },
     });
 
-    const events = new EventSource(
-      `/api/sessions/${encodeURIComponent(sessionId)}/events`,
-    );
-
-    events.addEventListener("error", () => {
-      if (events.readyState === EventSource.CLOSED) {
-        reader.lost();
-      }
-    });
-
-    events.addEventListener("open", reader.open);
-
-    events.addEventListener("message", (message: MessageEvent<string>) => {
-      reader.receive(JSON.parse(message.data) as SessionEvent);
-    });
-
     report.current = reader.report;
 
-    return () => {
-      events.close();
-    };
+    return followEvents(sessionId, reader, (url) => new EventSource(url));
   }, [sessionId, channel]);
 
   const { session } = feed;
