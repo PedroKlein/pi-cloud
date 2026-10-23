@@ -72,7 +72,7 @@ function SessionHeader({ session }: SessionPartProps): ReactElement | null {
     return null;
   }
 
-  const count = changed.reduce((sum, { files }) => sum + files.length, 0);
+  const count = changed.reduce((sum, { fileCount }) => sum + fileCount, 0);
 
   return (
     <>
@@ -124,7 +124,7 @@ function SessionHeader({ session }: SessionPartProps): ReactElement | null {
 }
 
 function Checkout({
-  checkout: { name, files, patch, truncated, branched },
+  checkout: { name, fileCount, patch, truncated, branched },
   session,
   pullRequest,
 }: {
@@ -168,7 +168,7 @@ function Checkout({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-start gap-2">
         <h3 className="flex min-h-control flex-1 items-center gap-1.5 text-label text-fg-dim">
-          {`${name === "" ? "Changes" : `Changes in ${name}`} (${String(files.length)} ${files.length === 1 ? "file" : "files"})`}
+          {`${name === "" ? "Changes" : `Changes in ${name}`} (${String(fileCount)} ${fileCount === 1 ? "file" : "files"})`}
           {!truncated && (
             <span className="font-mono text-mono-sm">
               <span className="text-done">+{added}</span>{" "}
@@ -422,13 +422,20 @@ function FileDiff({
     <details open className="rounded-md border border-line bg-code">
       <summary className="sticky top-0 flex cursor-pointer items-center justify-between gap-3 rounded-t-md border-b border-line bg-elevated px-3 py-1.5 font-mono text-mono-sm text-fg">
         <span className="truncate">{file.path}</span>
-        <span className="shrink-0">
-          <span className="text-done">+{file.added}</span>{" "}
-          <span className="text-failed">−{file.removed}</span>
-        </span>
+        {file.hunks.length > 0 && (
+          <span className="shrink-0">
+            <span className="text-done">+{file.added}</span>{" "}
+            <span className="text-failed">−{file.removed}</span>
+          </span>
+        )}
       </summary>
+      {file.notes.length > 0 && (
+        <p className="px-3 py-1.5 font-sans text-label text-fg-dim">
+          {file.notes.join(" · ")}
+        </p>
+      )}
       <table className="w-full border-collapse font-mono text-mono-sm">
-        {file.hunks.map((hunk, hunkIndex) => (
+        {file.hunks.map((hunk) => (
           <tbody key={hunk.header}>
             <tr>
               <td
@@ -441,11 +448,16 @@ function FileDiff({
             {hunk.lines.map((line, index) => {
               const at = line.newLine ?? line.oldLine;
               const removed = line.kind === "remove";
-              const row = `${String(hunkIndex)}-${String(index)}`;
+
+              const row =
+                at === undefined
+                  ? `note-${String(index)}`
+                  : `${removed ? "old" : "new"}-${String(at)}`;
+
               const where = `${file.path} ${removed ? "removed " : ""}line ${String(at)}`;
 
               return (
-                <Fragment key={`${String(index)}-${line.kind}`}>
+                <Fragment key={row}>
                   <tr className={cn("group/line", lineStyles[line.kind])}>
                     <td className="w-10 px-2 text-right text-fg-dim select-none">
                       {line.oldLine}
