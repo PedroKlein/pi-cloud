@@ -58,6 +58,7 @@ interface Entry {
     readonly output?: string;
     readonly exitCode?: number | null;
     readonly cancelled?: boolean;
+    readonly excludeFromContext?: boolean;
   };
 }
 
@@ -163,7 +164,10 @@ function entryItems(entry: Entry): readonly ChatItem[] {
       const id = entry.id ?? "";
       const command = message.command ?? "";
 
+      const prefix = message.excludeFromContext === true ? "!!" : "!";
+
       return [
+        { role: "user", text: `${prefix}${command}` },
         { role: "tool", id, name: "bash", args: { command } },
         {
           role: "result",
