@@ -530,9 +530,10 @@ function Rank({
                   iconOnly
                   aria-label="Move up"
                   disabled={at === 0}
-                  onClick={() => {
+                  onClick={(event) => {
                     onChange(move(state, at, at - 1));
                     setFocused(value);
+                    keepFocus(event.currentTarget, "Move down");
                   }}
                 >
                   ↑
@@ -542,9 +543,10 @@ function Rank({
                   iconOnly
                   aria-label="Move down"
                   disabled={at === state.picked.length - 1}
-                  onClick={() => {
+                  onClick={(event) => {
                     onChange(move(state, at, at + 1));
                     setFocused(value);
+                    keepFocus(event.currentTarget, "Move up");
                   }}
                 >
                   ↓
@@ -559,6 +561,20 @@ function Rank({
       </ol>
     </Split>
   );
+}
+
+// React re-inserts a moved row, which drops focus, and the button is
+// disabled once the row reaches the end of the list.
+function keepFocus(button: HTMLButtonElement, other: string): void {
+  requestAnimationFrame(() => {
+    const target = button.disabled
+      ? button.parentElement?.querySelector<HTMLElement>(
+          `[aria-label="${other}"]`,
+        )
+      : button;
+
+    target?.focus();
+  });
 }
 
 function NumberInput({

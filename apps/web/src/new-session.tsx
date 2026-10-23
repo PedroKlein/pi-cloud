@@ -48,6 +48,7 @@ export function NewSessionDialog({
   readonly onClose: () => void;
 }): ReactElement {
   const dialog = useRef<HTMLDialogElement>(null);
+  const message = useRef<HTMLTextAreaElement>(null);
   const [environmentId, setEnvironmentId] = useState("");
   const [kind, setKind] = useState("worktree");
   const [error, setError] = useState<string>();
@@ -57,6 +58,7 @@ export function NewSessionDialog({
   useEffect(() => {
     if (open) {
       dialog.current?.showModal();
+      message.current?.focus();
     } else {
       dialog.current?.close();
     }
@@ -145,9 +147,9 @@ export function NewSessionDialog({
           <div className="sm:col-span-2">
             <Field label="What should Pi do?">
               <textarea
+                ref={message}
                 name="first-message"
                 rows={4}
-                autoFocus
                 placeholder="Optional. Leave it empty to start in an idle session."
                 onKeyDown={(event) => {
                   if (
