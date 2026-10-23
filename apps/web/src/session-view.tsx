@@ -74,6 +74,10 @@ export function SessionView({
 
   useEffect(() => {
     document.title = named === undefined ? "Pi Cloud" : `${named} · Pi Cloud`;
+
+    return () => {
+      document.title = "Pi Cloud";
+    };
   }, [named]);
 
   const action = (name: string): void => {
