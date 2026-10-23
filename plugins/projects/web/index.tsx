@@ -494,11 +494,8 @@ const columns: readonly {
   readonly states: readonly WorkState[];
   readonly dot: string;
 }[] = [
-  {
-    label: "Needs you",
-    states: ["blocked", "review_ready"],
-    dot: "bg-waiting",
-  },
+  { label: "Needs you", states: ["blocked"], dot: "bg-waiting" },
+  { label: "Review", states: ["review_ready"], dot: "bg-accent" },
   { label: "Working", states: ["in_progress"], dot: "bg-working" },
   { label: "Failed", states: ["failed"], dot: "bg-failed" },
   { label: "Done", states: ["done"], dot: "bg-done" },
@@ -514,7 +511,7 @@ function ThreadBoard({
   readonly environments: readonly Environment[];
 }): ReactElement {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       {columns.map(({ label, states, dot }, index) => {
         const shown = threads.filter((thread) =>
           index === 0

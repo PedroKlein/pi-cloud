@@ -517,10 +517,24 @@ test("creates a Project and shares a file through its library", async () => {
     .getByRole("article", { name: "Docs" });
 
   await card.getByText(/^e2e · /).waitFor();
+  await card.getByLabel("Work state of Docs").selectOption("review_ready");
+
+  const review = page
+    .getByRole("region", { name: "Review" })
+    .getByRole("article", { name: "Docs" });
+
+  await review.waitFor();
+
+  expect(
+    await page
+      .getByRole("region", { name: "Needs you" })
+      .getByRole("article")
+      .count(),
+  ).toBe(0);
 
   // The thread's reply wakes the coordinator, and both take scripted replies
   // that later tests would otherwise lose to them.
-  await card.getByRole("button", { name: "Docs" }).click();
+  await review.getByRole("button", { name: "Docs" }).click();
 
   await page
     .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
