@@ -18,6 +18,7 @@ import {
   pick,
   type QuestionState,
   setNumber,
+  typeNumber,
   summary,
   typeOther,
 } from "./questions";
@@ -608,8 +609,12 @@ function NumberInput({
           type="number"
           aria-label={`${question.prompt} (value)`}
           {...bounds}
+          value={state.text}
           onChange={(event) => {
-            set(Number(event.target.value));
+            onChange(typeNumber(question, state, event.target.value));
+          }}
+          onBlur={() => {
+            onChange({ ...state, text: String(state.value) });
           }}
           className={cn(fieldClass, "w-28")}
         />
