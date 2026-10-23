@@ -16,6 +16,19 @@ export function sessionChannel(id: string): {
   const entries: SessionEvent[] = [];
   const surfaces = new Map<string, SessionEvent>();
 
+  // A plugin's bug stays its own: the chat and the other plugins still get
+  // the event.
+  const deliver = (
+    listener: (event: SessionEvent) => void,
+    event: SessionEvent,
+  ): void => {
+    try {
+      listener(event);
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
   const remember = (event: SessionEvent): void => {
     if (event.type === "session") {
       latest = event;
@@ -43,7 +56,7 @@ export function sessionChannel(id: string): {
         ];
 
         for (const event of replay) {
-          listener(event);
+          deliver(listener, event);
         }
 
         listeners.add(listener);
@@ -64,7 +77,7 @@ export function sessionChannel(id: string): {
       remember(event);
 
       listeners.forEach((listener) => {
-        listener(event);
+        deliver(listener, event);
       });
     },
   };
