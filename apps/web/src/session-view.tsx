@@ -2,6 +2,7 @@ import {
   type Environment,
   piTerminal,
   type Session,
+  type SessionEvent,
   type TerminalTab,
 } from "@pi-cloud/protocol";
 import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
@@ -17,7 +18,7 @@ import {
 import { api } from "./api";
 import { Composer } from "./composer";
 import { ChatView } from "./chat-view";
-import { emptyFeed, type Feed, follow } from "./feed";
+import { emptyFeed, type Feed, feedReader } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
@@ -48,7 +49,7 @@ export function SessionView({
   }, []);
 
   useEffect(() => {
-    const feedStream = follow(sessionId, {
+    const reader = feedReader({
       dispatch: channel.dispatch,
       onChange: setFeed,
       onSession: () => {
@@ -56,10 +57,26 @@ export function SessionView({
       },
     });
 
-    report.current = feedStream.report;
+    const events = new EventSource(
+      `/api/sessions/${encodeURIComponent(sessionId)}/events`,
+    );
+
+    events.addEventListener("error", () => {
+      if (events.readyState === EventSource.CLOSED) {
+        reader.lost();
+      }
+    });
+
+    events.addEventListener("open", reader.open);
+
+    events.addEventListener("message", (message: MessageEvent<string>) => {
+      reader.receive(JSON.parse(message.data) as SessionEvent);
+    });
+
+    report.current = reader.report;
 
     return () => {
-      feedStream.close();
+      events.close();
     };
   }, [sessionId, channel]);
 
