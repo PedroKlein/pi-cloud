@@ -111,6 +111,7 @@ function fakeKernel(): {
           error: null,
           archivedAt: null,
           workspaceRemoval: null,
+          workspaceKeptReason: null,
           online: true,
           waiting: false,
         };

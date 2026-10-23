@@ -2676,13 +2676,23 @@ test("keeps a worktree with unpushed work on archive until the user forces remov
   await api(`/api/sessions/${session.id}/archive`, {});
   await sessionWhere(session.id, (s) => s.workspaceRemoval === "kept");
 
+  const kept = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
   expect(early.status).toBe(409);
+  expect(kept.workspaceKeptReason).toBe("unpushed commits");
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work\n");
 
   const forced = await api(`/api/sessions/${session.id}/remove-workspace`, {});
   await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
 
+  const removed = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
   expect(forced.status).toBe(200);
+  expect(removed.workspaceKeptReason).toBeNull();
   expect(stat(dir)).rejects.toThrow();
 });
 

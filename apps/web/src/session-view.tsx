@@ -163,7 +163,7 @@ export function SessionView({
                       run: () => {
                         if (
                           confirm(
-                            "Delete this workspace and its unpushed work for good?",
+                            `The workspace was kept: ${session.workspaceKeptReason ?? "unpushed work"}. Delete it for good?`,
                           )
                         ) {
                           action("remove-workspace");

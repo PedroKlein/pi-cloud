@@ -499,6 +499,8 @@ export interface Session {
   readonly error: string | null;
   readonly archivedAt: string | null;
   readonly workspaceRemoval: WorkspaceRemoval | null;
+  // Why the provider kept the workspace, while workspaceRemoval is "kept".
+  readonly workspaceKeptReason: string | null;
   readonly online: boolean;
   // Pi asked a question and waits for a person to answer it (ADR 0025).
   readonly waiting: boolean;
