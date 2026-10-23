@@ -3,6 +3,7 @@ import {
   piTerminal,
   type Session,
   type TerminalTab,
+  terminalTakenOver,
 } from "@pi-cloud/protocol";
 import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
 import {
@@ -425,7 +426,46 @@ function TerminalView({
     () => terminals[0]?.id ?? crypto.randomUUID(),
   );
 
-  const tabs = terminals.some(({ id }) => id === active)
+  const [closed, setClosed] = useState<string>();
+  const [failures, setFailures] = useState(0);
+  const [generation, setGeneration] = useState(0);
+  const [listed, setListed] = useState<string>();
+
+  const shown = terminals.some(({ id }) => id === active);
+  if (shown && listed !== active) {
+    setListed(active);
+  }
+
+  // A listed terminal that drops out of the list has exited.
+  const exited = listed === active && !shown;
+
+  const reopen = useEffectEvent(() => {
+    setClosed(undefined);
+    if (exited) {
+      setActive(terminals[0]?.id ?? crypto.randomUUID());
+    } else {
+      setGeneration(generation + 1);
+    }
+  });
+
+  useEffect(() => {
+    if (closed !== active) {
+      return undefined;
+    }
+
+    const timer = setTimeout(
+      () => {
+        reopen();
+      },
+      exited ? 0 : Math.min(1000 * 2 ** failures, 30_000),
+    );
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [closed, active, exited, failures]);
+
+  const tabs = shown
     ? terminals
     : [...terminals, { id: active, label: "New terminal" }];
 
@@ -483,7 +523,18 @@ function TerminalView({
           <Icon name="plus" className="size-4" />
         </Button>
       </div>
-      <TerminalScreen sessionId={sessionId} terminalId={active} endRef={end} />
+      <TerminalScreen
+        key={generation}
+        sessionId={sessionId}
+        terminalId={active}
+        endRef={end}
+        onClosed={(reason, opened) => {
+          if (reason !== terminalTakenOver) {
+            setFailures(opened ? 0 : failures + 1);
+            setClosed(active);
+          }
+        }}
+      />
     </>
   );
 }
@@ -497,8 +548,8 @@ function TerminalScreen({
   readonly sessionId: string;
   readonly terminalId: string;
   readonly endRef?: RefObject<() => void>;
-  // Pi's TUI was quit, or its socket closed.
-  readonly onClosed?: () => void;
+  // The shell or Pi's TUI ended, or the socket dropped.
+  readonly onClosed?: (reason: string, opened: boolean) => void;
 }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
   const send = useRef<(data: string) => void>(() => undefined);
@@ -510,8 +561,8 @@ function TerminalScreen({
     return modified(data, modifier);
   });
 
-  const closed = useEffectEvent(() => {
-    onClosed?.();
+  const closed = useEffectEvent((reason: string, opened: boolean) => {
+    onClosed?.(reason, opened);
   });
 
   useEffect(() => {
@@ -524,8 +575,8 @@ function TerminalScreen({
       terminalId,
       box.current,
       (data) => typed(data),
-      () => {
-        closed();
+      (reason, opened) => {
+        closed(reason, opened);
       },
     );
 
