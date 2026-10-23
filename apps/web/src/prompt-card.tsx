@@ -126,12 +126,10 @@ function SimplePrompt({
           }}
           className="flex flex-col gap-3"
         >
-          {prompt.kind === "secret" ? (
-            <input
-              type="password"
+          {prompt.kind === "editor" ? (
+            <textarea
               aria-label={prompt.title}
-              autoComplete="off"
-              placeholder={prompt.placeholder ?? ""}
+              rows={8}
               value={text}
               onChange={(event) => {
                 setText(event.target.value);
@@ -139,12 +137,11 @@ function SimplePrompt({
               className={fieldClass}
             />
           ) : (
-            <textarea
+            <input
+              type={prompt.kind === "secret" ? "password" : "text"}
               aria-label={prompt.title}
-              rows={prompt.kind === "editor" ? 8 : 1}
-              placeholder={
-                prompt.kind === "input" ? (prompt.placeholder ?? "") : ""
-              }
+              autoComplete="off"
+              placeholder={prompt.placeholder ?? ""}
               value={text}
               onChange={(event) => {
                 setText(event.target.value);
