@@ -42,17 +42,22 @@ interface Part {
 
 interface Entry {
   readonly type: string;
+  readonly id?: string;
   readonly timestamp?: string;
   readonly content?: unknown;
   readonly display?: boolean;
   readonly message?: {
     readonly role: string;
-    readonly content: string | readonly Part[];
+    readonly content?: string | readonly Part[];
     readonly toolCallId?: string;
     readonly toolName?: string;
     readonly isError?: boolean;
     readonly errorMessage?: string;
     readonly model?: string;
+    readonly command?: string;
+    readonly output?: string;
+    readonly exitCode?: number | null;
+    readonly cancelled?: boolean;
   };
 }
 
@@ -63,7 +68,14 @@ const terminalCodes =
   /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
 export function chatItems(line: string): readonly ChatItem[] {
-  const entry = JSON.parse(line) as Entry;
+  let entry: Entry;
+
+  try {
+    entry = JSON.parse(line) as Entry;
+  } catch {
+    return [];
+  }
+
   const at = entry.timestamp;
 
   return entryItems(entry).map((item) =>
@@ -88,7 +100,7 @@ function entryItems(entry: Entry): readonly ChatItem[] {
   const parts =
     typeof message.content === "string"
       ? [{ type: "text", text: message.content }]
-      : message.content;
+      : (message.content ?? []);
 
   const text = parts
     .flatMap((part) => (part.type === "text" ? (part.text ?? []) : []))
@@ -146,6 +158,23 @@ function entryItems(entry: Entry): readonly ChatItem[] {
           failed: message.isError === true,
         },
       ];
+    // A command the user ran in Pi with "!".
+    case "bashExecution": {
+      const id = entry.id ?? "";
+      const command = message.command ?? "";
+
+      return [
+        { role: "tool", id, name: "bash", args: { command } },
+        {
+          role: "result",
+          id,
+          name: "bash",
+          text: message.output ?? "",
+          failed: message.cancelled === true || (message.exitCode ?? 0) !== 0,
+        },
+      ];
+    }
+
     default:
       return [];
   }
