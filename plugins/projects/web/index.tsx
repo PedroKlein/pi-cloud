@@ -173,8 +173,15 @@ function CreateForm({
     ),
   ];
 
+  const [creating, setCreating] = useState(false);
+
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (creating) {
+      return;
+    }
+
+    setCreating(true);
     const data = new FormData(event.currentTarget);
 
     const field = (name: string): string => {
@@ -199,6 +206,7 @@ function CreateForm({
         onCreated(project.id);
       },
       (error: unknown) => {
+        setCreating(false);
         alert(error instanceof Error ? error.message : String(error));
       },
     );
@@ -258,7 +266,12 @@ function CreateForm({
           className={fieldClass}
         />
       </Field>
-      <Button variant="primary" type="submit" className="justify-self-start">
+      <Button
+        variant="primary"
+        type="submit"
+        disabled={creating}
+        className="justify-self-start"
+      >
         New Project
       </Button>
     </form>
