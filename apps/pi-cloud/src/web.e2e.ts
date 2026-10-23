@@ -959,6 +959,27 @@ test("keeps the closed sessions drawer out of reach on a phone", async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
 });
 
+test("moves focus into the sessions drawer, closes it with Escape and gives focus back", async () => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(server.url.href);
+
+  const menu = page.getByRole("button", { name: "Open sessions" });
+  const newSession = page.getByRole("button", { name: "New session" });
+  await menu.click();
+  await newSession.waitFor();
+
+  expect(await page.locator("aside :focus").count()).toBe(1);
+
+  await page.keyboard.press("Escape");
+  await newSession.waitFor({ state: "hidden" });
+
+  expect(await page.locator(":focus").getAttribute("aria-label")).toBe(
+    "Open sessions",
+  );
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+});
+
 test("switches a session's model and reasoning level from the composer", async () => {
   await page.goto(server.url.href);
   await page.getByRole("button", { name: "New session" }).click();
