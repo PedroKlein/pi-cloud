@@ -4,7 +4,8 @@ import { shortName } from "./names";
 const busy: readonly SessionStatus[] = ["queued", "starting", "running"];
 
 // Sessions that were busy in the last poll and have stopped since, or have
-// started waiting on an answer.
+// started waiting on an answer. A session that only started and went idle
+// has done no work, so it has not finished anything.
 export function settled(
   previous: readonly Session[],
   current: readonly Session[],
@@ -14,11 +15,16 @@ export function settled(
   return current.filter((session) => {
     const was = before.get(session.id);
 
-    return (
-      was !== undefined &&
-      ((busy.includes(was.status) && !busy.includes(session.status)) ||
-        (!was.waiting && session.waiting))
-    );
+    if (was === undefined) {
+      return false;
+    }
+
+    const stopped =
+      busy.includes(was.status) &&
+      !busy.includes(session.status) &&
+      (was.status === "running" || session.status !== "idle");
+
+    return stopped || (!was.waiting && session.waiting);
   });
 }
 
