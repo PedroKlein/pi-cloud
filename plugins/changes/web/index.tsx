@@ -558,6 +558,7 @@ function CommentForm({
           }
 
           if (event.key === "Escape") {
+            event.stopPropagation();
             onCancel();
           }
         }}
