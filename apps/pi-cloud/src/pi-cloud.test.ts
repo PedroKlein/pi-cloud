@@ -242,6 +242,7 @@ test("reports itself healthy", async () => {
   expect(await response.json()).toEqual({
     status: "ok",
     version: expect.any(String) as unknown,
+    pi: expect.any(String) as unknown,
   });
 });
 
