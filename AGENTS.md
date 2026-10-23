@@ -55,11 +55,13 @@ plugins/         features built on the kernel, such as projects (ADR 0015)
 - Mock only at system boundaries: HTTP, database, filesystem and processes.
 - Work in vertical slices: one failing test, the code to pass it, then the next. Don't write all the tests first.
 - Bugs: reproduce with the exact reported command first. Then write a test that fails because of the bug, fix it, and keep the test. No test, no fix, unless an existing test already covers that exact failure (say which one).
+- A bug in the web UI gets its test in `apps/pi-cloud/src/web.e2e.ts` (`bun run test:e2e`) when it shows only in a browser: focus, keys, layout or a phone viewport.
+- Tests that open Pi's own terminal UI need `fd` on `PATH`. Without it Pi tries to download `fd` at startup, and offline the test times out.
 
 ## Done means evidence
 
 - A claim that something works isn't evidence. Before calling work done, show output a reviewer can check against the current commit: test results with their assertions, a command transcript, or a screenshot of running behavior.
-- Run `bun run format`, build, `bun run lint` (zero warnings), `bun run typecheck` and `bun test` before calling work done.
+- Run `bun run format`, build, `bun run lint` (zero warnings), `bun run typecheck` and `bun test` before calling work done, plus `bun run test:e2e` when the web UI changed.
 - When you claim a metric passed, pair it with one that's harder to game. For example, tests pass and no test changed in the same commit as the code it tests.
 
 ## Docs
