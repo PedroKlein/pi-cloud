@@ -35,6 +35,7 @@ interface SessionRow {
   error: string | null;
   archived_at: string | null;
   workspace_removal: WorkspaceRemoval | null;
+  workspace_kept_reason: string | null;
 }
 
 interface EnvironmentRow {
@@ -72,7 +73,8 @@ create table if not exists sessions (
   interrupted_at text,
   error text,
   archived_at text,
-  workspace_removal text
+  workspace_removal text,
+  workspace_kept_reason text
 );
 create table if not exists transcript (
   session_id text not null references sessions (id),
@@ -113,6 +115,7 @@ function migrate(db: DatabaseSync): void {
     "first_message",
     "title",
     "thinking",
+    "workspace_kept_reason",
   ]) {
     if (sessionsTableExists && !hasColumn(column)) {
       db.exec(`alter table sessions add column ${column} text`);
@@ -195,14 +198,15 @@ export function openStore(path: string): SessionStore & {
     error: row.error,
     archivedAt: row.archived_at,
     workspaceRemoval: row.workspace_removal,
+    workspaceKeptReason: row.workspace_kept_reason,
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
-    "update sessions set workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ? where id = ?",
+    "update sessions set workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ?, workspace_kept_reason = ? where id = ?",
   );
 
   const selectAnySession = db.prepare("select 1 from sessions limit 1");
@@ -274,6 +278,7 @@ export function openStore(path: string): SessionStore & {
         s.error,
         s.archivedAt,
         s.workspaceRemoval,
+        s.workspaceKeptReason,
       );
     },
     update: (s) => {
@@ -285,6 +290,7 @@ export function openStore(path: string): SessionStore & {
         s.error,
         s.archivedAt,
         s.workspaceRemoval,
+        s.workspaceKeptReason,
         s.id,
       );
     },
