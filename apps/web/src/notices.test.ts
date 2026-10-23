@@ -20,6 +20,7 @@ const session = (change: Partial<Session>): Session => ({
   error: null,
   archivedAt: null,
   workspaceRemoval: null,
+  workspaceKeptReason: null,
   online: true,
   waiting: false,
   ...change,
