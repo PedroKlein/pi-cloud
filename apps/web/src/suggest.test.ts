@@ -11,6 +11,13 @@ test("opens commands only for a slash at the start of the message", () => {
   expect(trigger("/", 1)).toEqual({ kind: "command", query: "", from: 0 });
   expect(trigger("/review now", 11)).toBeUndefined();
   expect(trigger("see /rev", 8)).toBeUndefined();
+  expect(trigger("/model", 3)).toBeUndefined();
+
+  expect(trigger("/mo now", 3)).toEqual({
+    kind: "command",
+    query: "mo",
+    from: 0,
+  });
 });
 
 test("opens files for an @ word under the caret", () => {

@@ -6,9 +6,15 @@ export interface Trigger {
 }
 
 // A `/` word at the very start lists commands; an `@` word that starts the
-// message or follows whitespace lists files, as in Pi's own editor.
+// message or follows whitespace lists files, as in Pi's own editor. Neither
+// opens with the caret inside a word.
 export function trigger(text: string, caret: number): Trigger | undefined {
   const before = text.slice(0, caret);
+
+  if (/^\S/.test(text.slice(caret))) {
+    return undefined;
+  }
+
   const command = /^\/(\S*)$/.exec(before);
 
   if (command) {
@@ -16,9 +22,8 @@ export function trigger(text: string, caret: number): Trigger | undefined {
   }
 
   const file = /(?:^|\s)@(\S*)$/.exec(before);
-  const after = text.slice(caret);
 
-  if (file && !/^\S/.test(after)) {
+  if (file) {
     const query = file[1] ?? "";
 
     return { kind: "file", query, from: caret - query.length - 1 };

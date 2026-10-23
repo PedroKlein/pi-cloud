@@ -96,6 +96,13 @@ export function useSuggestions(feed: Feed): Suggestions {
         break;
       case "Enter":
       case "Tab": {
+        if (
+          event.key === "Enter" &&
+          (event.shiftKey || event.ctrlKey || event.metaKey)
+        ) {
+          return false;
+        }
+
         const option = options[current];
         if (option) {
           pick(option);

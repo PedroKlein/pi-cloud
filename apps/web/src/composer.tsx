@@ -259,7 +259,13 @@ export function Composer({
             {...suggestions.box}
             onPaste={(event) => {
               const pasted = [...event.clipboardData.files];
-              if (pasted.length > 0) {
+
+              // Excel and Word put a picture of the copied cells or text next
+              // to the text itself, as HTML. A copied file has no HTML.
+              if (
+                pasted.length > 0 &&
+                !event.clipboardData.types.includes("text/html")
+              ) {
                 event.preventDefault();
                 attach(pasted);
               }
@@ -269,10 +275,20 @@ export function Composer({
                 return;
               }
 
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                send(event.metaKey || event.ctrlKey ? "steer" : "followUp");
+              const steer = event.metaKey || event.ctrlKey;
+
+              // On a phone Enter is the only way to start a new line, so the
+              // Send button sends, as in Claude Code on the web.
+              if (
+                event.key !== "Enter" ||
+                event.shiftKey ||
+                (!steer && matchMedia("(pointer: coarse)").matches)
+              ) {
+                return;
               }
+
+              event.preventDefault();
+              send(steer ? "steer" : "followUp");
             }}
             className="resize-none bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
           />
@@ -453,6 +469,11 @@ function SettingsPickers({
         }}
         className={picker}
       >
+        {current === "" && (
+          <option value="" disabled>
+            Choose a model
+          </option>
+        )}
         {names.map((name) => (
           <option key={name} value={name}>
             {name}
