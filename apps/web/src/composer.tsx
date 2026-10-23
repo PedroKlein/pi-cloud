@@ -4,7 +4,7 @@ import {
   imageTypes,
   type ModelRef,
 } from "@pi-cloud/protocol";
-import { Button, Icon } from "@pi-cloud/ui";
+import { Button, Icon, isComposing } from "@pi-cloud/ui";
 import {
   type ReactElement,
   type RefObject,
@@ -257,7 +257,7 @@ export function Composer({
               }
             }}
             onKeyDown={(event) => {
-              if (suggestions.keyDown(event)) {
+              if (isComposing(event) || suggestions.keyDown(event)) {
                 return;
               }
 
