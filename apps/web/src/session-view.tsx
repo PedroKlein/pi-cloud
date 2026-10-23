@@ -207,29 +207,30 @@ export function SessionView({
           }}
         />
       )}
-      {shown === "chat" && (
-        <>
-          <ChatView feed={feed} place={place} />
-          {!archived && (
-            <PiViewNotice
-              piView={feed.piView}
-              onOpen={() => {
-                setView("pi");
-              }}
-            />
-          )}
-          <Composer
-            sessionId={sessionId}
-            feed={feed}
-            models={
-              environments.find(({ id }) => id === session?.environmentId)
-                ?.models ?? []
-            }
-            hidden={archived}
-            report={reportError}
+      <div
+        hidden={shown !== "chat"}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+        <ChatView feed={feed} place={place} hidden={shown !== "chat"} />
+        {!archived && (
+          <PiViewNotice
+            piView={feed.piView}
+            onOpen={() => {
+              setView("pi");
+            }}
           />
-        </>
-      )}
+        )}
+        <Composer
+          sessionId={sessionId}
+          feed={feed}
+          models={
+            environments.find(({ id }) => id === session?.environmentId)
+              ?.models ?? []
+          }
+          hidden={archived}
+          report={reportError}
+        />
+      </div>
     </section>
   );
 }
