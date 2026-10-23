@@ -20,7 +20,8 @@ import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, follow } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
-import { enabledPlugins, pluginContext, sessionChannel } from "./plugins";
+import { enabledPlugins, pluginContext } from "./plugins";
+import { sessionChannel } from "./session-channel";
 import { keyBar, type Modifier, modified } from "./keys";
 import { openTerminal } from "./terminal";
 
