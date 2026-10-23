@@ -435,7 +435,7 @@ function FileDiff({
         </p>
       )}
       <table className="w-full border-collapse font-mono text-mono-sm">
-        {file.hunks.map((hunk, hunkIndex) => (
+        {file.hunks.map((hunk) => (
           <tbody key={hunk.header}>
             <tr>
               <td
@@ -448,11 +448,16 @@ function FileDiff({
             {hunk.lines.map((line, index) => {
               const at = line.newLine ?? line.oldLine;
               const removed = line.kind === "remove";
-              const row = `${String(hunkIndex)}-${String(index)}`;
+
+              const row =
+                at === undefined
+                  ? `note-${String(index)}`
+                  : `${removed ? "old" : "new"}-${String(at)}`;
+
               const where = `${file.path} ${removed ? "removed " : ""}line ${String(at)}`;
 
               return (
-                <Fragment key={`${String(index)}-${line.kind}`}>
+                <Fragment key={row}>
                   <tr className={cn("group/line", lineStyles[line.kind])}>
                     <td className="w-10 px-2 text-right text-fg-dim select-none">
                       {line.oldLine}
