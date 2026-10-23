@@ -3124,6 +3124,31 @@ test("shows Pi's own TUI in the pi terminal and sends what is typed there to the
   });
 }, 20_000);
 
+test("sends a command run with ! in the Pi view to the transcript right away", async () => {
+  const { faux, models } = await fauxModels(root);
+  faux.setResponses([fauxAssistantMessage([fauxText("hello")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models, firstMessage: "hi" }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => roles(fake.lines).includes("assistant"));
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  pi.type("!echo from-the-pi-view");
+  await Bun.sleep(50);
+  pi.type("\r");
+
+  await fake.waitFor(() => roles(fake.lines).includes("bashExecution"));
+  await hosted.stop();
+
+  expect(fake.lines.join()).toContain("from-the-pi-view");
+}, 20_000);
+
 test("shows extension dialogs in the TUI while it is open and in the web after it closes", async () => {
   const { faux, models } = await fauxModels(root);
 

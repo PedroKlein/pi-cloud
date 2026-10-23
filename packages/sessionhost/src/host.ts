@@ -293,6 +293,14 @@ export async function hostSession(
   const transcript = transcriptSync(session, stream, log);
   const files = filesFeed(session.sessionManager.getCwd(), live, log);
 
+  // Pi appends a `!` command's result to the transcript without an event.
+  const recordBashResult = session.recordBashResult.bind(session);
+
+  session.recordBashResult = (...args) => {
+    recordBashResult(...args);
+    transcript.sync();
+  };
+
   const unsubscribe = session.subscribe((event) => {
     const liveEvent = toLiveEvent(event, session);
     if (liveEvent) {
