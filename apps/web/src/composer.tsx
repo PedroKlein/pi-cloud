@@ -128,7 +128,15 @@ export function Composer({
       }),
       requestId: crypto.randomUUID(),
       delivery,
-    }).catch(report);
+    }).catch((error: unknown) => {
+      box.value = box.value === "" ? message : `${message}\n${box.value}`;
+
+      setImages((current) =>
+        [...images, ...current].slice(0, imageLimits.count),
+      );
+
+      report(error);
+    });
   };
 
   return (

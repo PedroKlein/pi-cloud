@@ -1,6 +1,7 @@
 import {
   json,
   type NavItemsProps,
+  ok,
   type PageProps,
   useLoaded,
   type WebContext,
@@ -540,6 +541,9 @@ function ThreadCard({
   readonly needsYou: boolean;
   readonly environment: string;
 }): ReactElement {
+  const [error, setError] = useState("");
+  const [failures, setFailures] = useState(0);
+
   return (
     <article
       aria-label={thread.title}
@@ -573,14 +577,24 @@ function ThreadCard({
           .join(" · ")}
       </p>
       <select
-        key={thread.workState}
+        key={`${thread.workState} ${String(failures)}`}
         aria-label={`Work state of ${thread.title}`}
         defaultValue={thread.workState}
         onChange={(event) => {
-          void context.request(
-            `threads/${encodeURIComponent(thread.sessionId)}/state`,
-            { state: event.target.value },
-          );
+          setError("");
+
+          ok(
+            context.request(
+              `threads/${encodeURIComponent(thread.sessionId)}/state`,
+              { state: event.target.value },
+            ),
+          ).catch((failure: unknown) => {
+            setError(
+              failure instanceof Error ? failure.message : String(failure),
+            );
+
+            setFailures((count) => count + 1);
+          });
         }}
         className={cn(fieldClass, "self-start py-0.5 text-label")}
       >
@@ -590,6 +604,11 @@ function ThreadCard({
           </option>
         ))}
       </select>
+      {error !== "" && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
     </article>
   );
 }
@@ -604,12 +623,21 @@ function Instructions({
   readonly saved: string;
 }): ReactElement {
   const [draft, setDraft] = useState(saved);
+  const [error, setError] = useState("");
 
   return (
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        void context.request(`${path}/instructions`, { instructions: draft });
+        setError("");
+
+        ok(
+          context.request(`${path}/instructions`, { instructions: draft }),
+        ).catch((failure: unknown) => {
+          setError(
+            failure instanceof Error ? failure.message : String(failure),
+          );
+        });
       }}
       className="flex flex-col gap-3"
     >
@@ -625,6 +653,11 @@ function Instructions({
       <Button type="submit" disabled={draft === saved} className="self-start">
         Save instructions
       </Button>
+      {error !== "" && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
     </form>
   );
 }
