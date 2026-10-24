@@ -48,10 +48,12 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 
 - Kubernetes provider, dedicated Session pods, and batch Jobs.
 - Enforced network policy, brokered secrets, and hardened runtimes.
-- Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel ([v2 ideas](v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
+- Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel: a built-in password login, OIDC as a plugin, and a key per Environment for runners ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 - Profiles defined on the server, which every provider uses, including fresh runtimes ([ADR 0031](adr/0031-profiles.md)).
 - Forking a Session to another provider, starting from the server's copy of its transcript ([open question](open-questions.md#workspace-durability)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
+
+v2 is built in this order: Profiles, Environments as pools, authentication, then Kubernetes, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 
 ### Later
 
