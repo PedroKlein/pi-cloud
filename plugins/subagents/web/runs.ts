@@ -215,3 +215,33 @@ export function inspectCommand(
     "--lines 40",
   ].join(" ");
 }
+
+// pi-subagents restarts a run's clock when it leaves the queue; the card keeps
+// counting from the earliest start it saw.
+export function followRun(seen: RunNode | undefined, next: RunNode): RunNode {
+  const starts = [seen?.startedAt, next.startedAt].filter(
+    (at) => at !== undefined,
+  );
+
+  return starts.length === 0
+    ? next
+    : { ...next, startedAt: Math.min(...starts) };
+}
+
+// The child's own prompt is the task the card already shows, padded with
+// pi-subagents' instructions, and its last reply is usually its output.
+export function transcriptOf(reply: InspectReply): {
+  readonly messages: NonNullable<InspectReply["messages"]>;
+  readonly output: string | undefined;
+} {
+  const messages = (reply.messages ?? []).filter(({ role }) => role !== "user");
+
+  const output = reply.finalOutput?.trim();
+  const repeated = messages.some(({ text }) => text.trim() === output);
+
+  return {
+    messages,
+    output:
+      output === undefined || output === "" || repeated ? undefined : output,
+  };
+}

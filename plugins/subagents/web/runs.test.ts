@@ -3,6 +3,7 @@ import {
   currentTool,
   elapsed,
   finishedRuns,
+  followRun,
   inspectCommand,
   inspectReplyOf,
   launchOf,
@@ -13,6 +14,7 @@ import {
   stateLabel,
   toneOf,
   toolCount,
+  transcriptOf,
 } from "./runs";
 
 const run = (children: RunNode[]): RunNode => ({
@@ -155,4 +157,40 @@ test("formats durations and inspect commands", () => {
   expect(inspectCommand("q1", "r1", "step:0")).toBe(
     "/subagents-inspect-rpc q1 r1 step:0 --lines 40",
   );
+});
+
+test("keeps a run's clock from its first start", () => {
+  const queued = { ...run([]), state: "queued", startedAt: 1_000 };
+  const running = { ...run([]), state: "running", startedAt: 4_000 };
+
+  expect(followRun(undefined, queued).startedAt).toBe(1_000);
+  expect(followRun(queued, running)).toEqual({ ...running, startedAt: 1_000 });
+  expect(followRun(running, { ...run([]) }).startedAt).toBe(4_000);
+});
+
+test("shows a step's work without its prompt or a repeated output", () => {
+  const reply = {
+    kind: "pi-subagents.inspect-reply",
+    version: 1,
+    requestId: "q1",
+    task: "List the files\n---\n**Output:** Write your findings to ...",
+    messages: [
+      { role: "user", kind: "text", text: "List the files\n**Output:** ..." },
+      { role: "assistant", kind: "toolCall", text: "ls", name: "ls" },
+      { role: "assistant", kind: "text", text: "Two files.\n" },
+    ],
+    finalOutput: "Two files.",
+  } as const;
+
+  expect(transcriptOf(reply)).toEqual({
+    messages: [
+      { role: "assistant", kind: "toolCall", text: "ls", name: "ls" },
+      { role: "assistant", kind: "text", text: "Two files.\n" },
+    ],
+    output: undefined,
+  });
+
+  expect(
+    transcriptOf({ ...reply, messages: [], finalOutput: "Report" }).output,
+  ).toBe("Report");
 });

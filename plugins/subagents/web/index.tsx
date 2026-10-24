@@ -14,6 +14,7 @@ import {
   elapsed,
   type Finished,
   finishedRuns,
+  followRun,
   inspectCommand,
   inspectKey,
   type InspectReply,
@@ -31,6 +32,7 @@ import {
   type Tone,
   toneOf,
   toolCount,
+  transcriptOf,
 } from "./runs";
 
 // Subagent runs as cards in the chat, and a chip while any run (ADR 0030).
@@ -90,7 +92,7 @@ function useRun(
       );
 
       if (found) {
-        setRun(found);
+        setRun((seen) => followRun(seen, found));
       }
     });
   }, [session, asyncId]);
@@ -255,6 +257,7 @@ function StepDetail({
 }): ReactElement {
   const live = toneOf(step.state) === "running";
   const reply = useInspect(session, asyncId, childId, live);
+  const transcript = reply && transcriptOf(reply);
 
   return (
     <section className="flex min-w-0 flex-col gap-1.5">
@@ -268,12 +271,7 @@ function StepDetail({
       {reply?.error && (
         <p className="text-label text-fg-dim">{reply.error.message}</p>
       )}
-      {reply?.task !== undefined && reply.task !== "" && (
-        <p className="line-clamp-3 text-label whitespace-pre-wrap text-fg-dim">
-          {reply.task}
-        </p>
-      )}
-      {reply?.messages?.map((message, at) => (
+      {transcript?.messages.map((message, at) => (
         <p
           key={at}
           className={cn(
@@ -288,8 +286,8 @@ function StepDetail({
             : message.text}
         </p>
       ))}
-      {reply?.finalOutput !== undefined && (
-        <Output text={reply.finalOutput} failed={step.state === "failed"} />
+      {transcript?.output !== undefined && (
+        <Output text={transcript.output} failed={step.state === "failed"} />
       )}
     </section>
   );
