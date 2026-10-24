@@ -101,8 +101,17 @@ export interface ServerPluginContext {
     readonly subscribe: EventBus["subscribe"];
   };
   readonly sessions: {
-    readonly start: (request: StartRequest) => Session;
+    // With an owner key the plugin owns the Session: it stays out of the
+    // Session list and opens where the plugin's web part says (ADR 0028).
+    readonly start: (request: StartRequest, ownerKey?: string) => Session;
     readonly get: (id: string) => Session | undefined;
+    // The Sessions this plugin owns under the key, newest first.
+    readonly owned: (
+      ownerKey: string,
+      options?: { readonly archived?: boolean },
+    ) => readonly Session[];
+    // Takes ownership of a Session started before owners existed.
+    readonly adopt: (id: string, ownerKey: string) => void;
     // Starts a turn, or queues as a follow-up when the Session is busy.
     readonly send: (id: string, text: string, actor: Actor) => SendOutcome;
     // Adds context the Session reads on its next turn, without starting one.

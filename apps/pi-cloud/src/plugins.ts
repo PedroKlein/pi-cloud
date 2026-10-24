@@ -84,7 +84,6 @@ export function startPlugins(
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
-  const sessions = pluginSessions(deps.sessions);
   for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
@@ -102,7 +101,7 @@ export function startPlugins(
         },
       },
       events: deps.events,
-      sessions,
+      sessions: pluginSessions(deps.sessions, plugin.name),
       routes: {
         handle: (route) => {
           routes.set(plugin.name, route);
@@ -175,10 +174,17 @@ export function startPlugins(
   };
 }
 
-function pluginSessions(sessions: Sessions): ServerPluginContext["sessions"] {
+function pluginSessions(
+  sessions: Sessions,
+  plugin: string,
+): ServerPluginContext["sessions"] {
   return {
-    start: (request) => {
-      const started = sessions.start(request);
+    start: (request, ownerKey) => {
+      const started = sessions.start(
+        request,
+        ownerKey === undefined ? undefined : { plugin, key: ownerKey },
+      );
+
       if (!started.ok) {
         throw new Error(`session not started: ${started.reason}`);
       }
@@ -186,6 +192,11 @@ function pluginSessions(sessions: Sessions): ServerPluginContext["sessions"] {
       return started.value;
     },
     get: (id) => sessions.get(id),
+    owned: (key, { archived = false } = {}) =>
+      sessions.list({ archived, owner: { plugin, key } }),
+    adopt: (id, key) => {
+      sessions.adopt(id, { plugin, key });
+    },
     send: (id, text, actor) =>
       sessions.send(id, {
         actor,

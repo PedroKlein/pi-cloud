@@ -63,7 +63,7 @@ function usePolled(path: string): Polled<unknown> {
 
 export function useSessions(archived: boolean): Polled<Session> {
   return usePolled(
-    `/api/sessions?archived=${String(archived)}`,
+    `/api/sessions?archived=${String(archived)}&owner=all`,
   ) as Polled<Session>;
 }
 

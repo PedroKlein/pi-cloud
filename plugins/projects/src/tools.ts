@@ -135,27 +135,30 @@ export function projectTools(
           sessions.get(project.coordinatorId)?.model ??
           undefined;
 
-        const session = sessions.start({
-          actor,
-          ...(environment !== undefined && { environment }),
-          workspace: {
-            kind: "repositories",
-            repositories: repositories.map((repository) => {
-              const startPoint = startPoints[repository];
+        const session = sessions.start(
+          {
+            actor,
+            ...(environment !== undefined && { environment }),
+            workspace: {
+              kind: "repositories",
+              repositories: repositories.map((repository) => {
+                const startPoint = startPoints[repository];
 
-              return typeof startPoint === "string" && startPoint !== ""
-                ? { repository, startPoint }
-                : { repository };
-            }),
+                return typeof startPoint === "string" && startPoint !== ""
+                  ? { repository, startPoint }
+                  : { repository };
+              }),
+            },
+            ...(model && { model }),
+            systemPrompt: threadPrompt(
+              project,
+              title,
+              projects.readMemory(project.id, "MEMORY.md"),
+            ),
+            firstMessage: message,
           },
-          ...(model && { model }),
-          systemPrompt: threadPrompt(
-            project,
-            title,
-            projects.readMemory(project.id, "MEMORY.md"),
-          ),
-          firstMessage: message,
-        });
+          project.id,
+        );
 
         projects.addMember({
           sessionId: session.id,

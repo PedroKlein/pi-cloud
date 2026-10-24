@@ -12,7 +12,12 @@ import {
   workspaceName,
 } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
-import { type NavEntry, pluginContext, pluginRoute } from "./plugins";
+import {
+  enabledPlugins,
+  type NavEntry,
+  pluginContext,
+  pluginRoute,
+} from "./plugins";
 
 export interface SidebarProps {
   readonly nav: readonly NavEntry[];
@@ -41,8 +46,12 @@ export function Sidebar({
     environments.find((e) => e.id === session.environmentId)?.name ??
     session.provider;
 
-  const shown = sessions.filter((session) =>
-    matches(session, query, environmentName(session)),
+  // A plugin's own Sessions show inside the plugin, and here only in a search
+  // or once the plugin is off (ADR 0028).
+  const shown = sessions.filter(
+    (session) =>
+      (query !== "" || !ownedByEnabled(session)) &&
+      matches(session, query, environmentName(session)),
   );
 
   return (
@@ -175,6 +184,12 @@ export function Sidebar({
   );
 }
 
+function ownedByEnabled({ owner }: Session): boolean {
+  return (
+    owner !== null && enabledPlugins().some(({ name }) => name === owner.plugin)
+  );
+}
+
 function SessionRow({
   session,
   environment,
@@ -188,6 +203,7 @@ function SessionRow({
   const now = useNow();
 
   const meta = [
+    ...(session.owner === null ? [] : [ownerLabel(session.owner.plugin)]),
     ...(session.title === null ? [] : [shortName(session.workspace)]),
     environment?.name ?? session.provider,
     ...(session.model ? [modelName(session.model)] : []),
@@ -217,6 +233,14 @@ function SessionRow({
       </a>
     </li>
   );
+}
+
+function ownerLabel(plugin: string): string {
+  const label =
+    enabledPlugins().find(({ name }) => name === plugin)?.nav?.label ??
+    plugin.charAt(0).toUpperCase() + plugin.slice(1);
+
+  return `from ${label}`;
 }
 
 function EnvironmentStatus({

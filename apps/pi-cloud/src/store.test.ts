@@ -49,6 +49,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     id: "s1",
     environmentId: environments[0]?.id ?? "",
     ownerId: "local",
+    owner: null,
     provider: "local",
     workspace: { kind: "folder", path: "/home/me/repo" },
     model: null,
@@ -80,6 +81,7 @@ test("opens a migrated database again", () => {
     id: "s1",
     environmentId: environment?.id ?? "",
     ownerId: "local",
+    owner: null,
     provider: "vm",
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
@@ -109,6 +111,45 @@ test("opens a migrated database again", () => {
   store.close();
 });
 
+test("lists the Sessions one owner holds and keeps an owner once given", () => {
+  const store = openStore(":memory:");
+  store.ensureEnvironment("vm");
+  const [environment] = store.environments();
+  const id = environment?.id ?? "";
+  const project = { plugin: "projects", key: "p1" };
+
+  store.insert(
+    sessionIn(id, "vm", {
+      id: "owned",
+      createdAt: "2026-10-24T00:00:01.000Z",
+      owner: project,
+    }),
+  );
+
+  store.insert(
+    sessionIn(id, "vm", { id: "old", createdAt: "2026-10-24T00:00:02.000Z" }),
+  );
+
+  store.insert(
+    sessionIn(id, "vm", {
+      id: "other",
+      createdAt: "2026-10-24T00:00:03.000Z",
+      owner: { plugin: "projects", key: "p2" },
+    }),
+  );
+
+  store.setOwner("old", project);
+
+  expect(
+    store.list({ includeArchived: false, owner: project }).map((s) => s.id),
+  ).toEqual(["old", "owned"]);
+
+  expect(store.get("owned")?.owner).toEqual(project);
+  expect(store.list({ includeArchived: false })).toHaveLength(3);
+
+  store.close();
+});
+
 function sessionIn(
   environmentId: string,
   provider: string,
@@ -117,6 +158,7 @@ function sessionIn(
   return {
     environmentId,
     ownerId: "local",
+    owner: null,
     provider,
     workspace: { kind: "clone", repository: "r", branch: fields.id },
     model: null,
