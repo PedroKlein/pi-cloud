@@ -71,22 +71,6 @@ export function useEnvironments(): Polled<Environment> {
   return usePolled("/api/environments") as Polled<Environment>;
 }
 
-export function useNow(everyMs = 30_000): number {
-  const [now, setNow] = useState(Date.now);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, everyMs);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [everyMs]);
-
-  return now;
-}
-
 // Tells the browser when a session stops working, unless it is on screen.
 export function useSettledNotices(
   sessions: readonly Session[],

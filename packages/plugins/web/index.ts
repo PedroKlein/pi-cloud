@@ -1,5 +1,24 @@
-import type { SessionEvent } from "@pi-cloud/protocol";
-import { type ComponentType, useEffect, useEffectEvent, useState } from "react";
+import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import {
+  type ComponentType,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useState,
+} from "react";
+
+// The shell's own Session view, for a plugin page to show a Session in
+// (ADR 0028). A side view is a narrow panel next to the page's main view.
+export interface EmbeddedSessionProps {
+  readonly sessionId: string;
+  readonly layout: "full" | "side";
+  // Replaces the Session's own title in the header.
+  readonly title?: string;
+  // Shown before the title, such as a link back to the page.
+  readonly crumb?: ReactNode;
+  // Buttons at the end of the header.
+  readonly actions?: ReactNode;
+}
 
 export interface WebContext {
   // Requests go to the plugin's own routes under /api/plugins/<name>/.
@@ -7,6 +26,7 @@ export interface WebContext {
   readonly openSession: (sessionId: string) => void;
   // The link to a path inside the plugin's own page.
   readonly href: (path: string) => string;
+  readonly SessionView: ComponentType<EmbeddedSessionProps>;
 }
 
 export interface MountedSession {
@@ -42,7 +62,13 @@ export interface WebPlugin {
     readonly Page: ComponentType<PageProps>;
     // Links listed under the entry in the sidebar, such as each Project.
     readonly Items?: ComponentType<NavItemsProps>;
+    // Paths whose page fills the window, such as an open Project, instead of
+    // scrolling in the shell's column.
+    readonly fills?: (path: string) => boolean;
   };
+  // Where a Session this plugin owns opens, as a path in its page. Links,
+  // search results and notices for it go there (ADR 0028).
+  readonly sessionPath?: (session: Session) => string;
   readonly SessionPanel?: ComponentType<SessionPartProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
 }
@@ -127,4 +153,21 @@ export function useLoaded<T>(
       setVersion((current) => current + 1);
     },
   };
+}
+
+// The current time, again every everyMs, for "5m ago" labels.
+export function useNow(everyMs = 30_000): number {
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, everyMs);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [everyMs]);
+
+  return now;
 }

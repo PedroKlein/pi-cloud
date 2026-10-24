@@ -6,9 +6,11 @@ import type {
   WebContext,
   WebPlugin,
 } from "@pi-cloud/plugins/web";
+import type { Session } from "@pi-cloud/protocol";
 import { projects } from "@pi-cloud/projects/web";
 import { usage } from "@pi-cloud/usage/web";
 import type { ComponentType } from "react";
+import { EmbeddedSession } from "./embedded-session";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
 const webPlugins: readonly WebPlugin[] = [
@@ -52,6 +54,7 @@ export function pluginContext(name: string): WebContext {
       location.hash = sessionId;
     },
     href: (path) => `#plugin/${name}/${path}`,
+    SessionView: EmbeddedSession,
   };
 
   contexts.set(name, context);
@@ -80,4 +83,20 @@ export function pluginRoute(
   const match = /^plugin\/([^/]+)\/?(.*)$/.exec(route);
 
   return match ? { name: match[1] ?? "", path: match[2] ?? "" } : undefined;
+}
+
+// A Session a plugin owns opens in that plugin's page (ADR 0028).
+export function sessionHref(session: Session): string {
+  const plugin = enabled.find(({ name }) => name === session.owner?.plugin);
+  const path = plugin?.sessionPath?.(session);
+
+  return plugin && path !== undefined
+    ? `#plugin/${plugin.name}/${path}`
+    : `#${session.id}`;
+}
+
+export function pageFills(name: string, path: string): boolean {
+  return (
+    enabled.find((plugin) => plugin.name === name)?.nav?.fills?.(path) === true
+  );
 }

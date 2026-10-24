@@ -23,6 +23,7 @@ import {
 } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
+import { usePrimaryId } from "./primary";
 import { TerminalText } from "./terminal-text";
 
 export function ChatView({
@@ -38,6 +39,7 @@ export function ChatView({
   const atBottom = useRef(true);
   const top = useRef(0);
   const shown = useMemo(() => turns(feed.items), [feed.items]);
+  const chatId = usePrimaryId("chat");
 
   const live =
     feed.session?.status === "running" ||
@@ -96,7 +98,7 @@ export function ChatView({
         <Greeting place={place} />
       )}
       <ol
-        id="chat"
+        id={chatId}
         className="mx-auto flex max-w-chat flex-col gap-5 px-4 pt-8 pb-10"
       >
         {shown.map((turn, index) => {
