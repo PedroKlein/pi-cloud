@@ -1483,9 +1483,11 @@ test("rejects an Environment update with a malformed or huge variable", async ()
   });
 
   const badIsolation = await updateEnvironment("laptop", { isolation: "vm" });
+  const badImage = await updateEnvironment("laptop", { image: "--privileged" });
 
   expect(badName.status).toBe(400);
   expect(badIsolation.status).toBe(400);
+  expect(badImage.status).toBe(400);
   expect(tooLarge.status).toBe(400);
 });
 

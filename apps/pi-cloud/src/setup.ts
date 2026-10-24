@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionEnvironment } from "@pi-cloud/protocol";
@@ -106,7 +106,9 @@ async function setUpMachine(
 }
 
 // The script runs as the image's own user, usually root, so it can install
-// packages. Sessions then run as the runner's user.
+// packages. Sessions then run as the runner's user. It runs through docker
+// exec, whose variables the commit doesn't keep, so the image holds no
+// secrets.
 async function setUpImage(
   image: string,
   version: string,
@@ -121,23 +123,38 @@ async function setUpImage(
     return tag;
   }
 
-  const container = `pi-cloud-setup-${version}`;
+  // Another agent on this Docker may set up the same version at once.
+  const container = `pi-cloud-setup-${version}-${randomUUID().slice(0, 8)}`;
   const started = Date.now();
   log("running setup script in image", { image, tag });
 
-  await run(["docker", "rm", "-f", container], { signal });
-
   try {
-    const { code, output } = await run(
+    const created = await run(
       [
         "docker",
         "run",
+        "-d",
         "--name",
         container,
-        ...Object.keys(variables).flatMap((name) => ["-e", name]),
         "--entrypoint",
-        "bash",
+        "sleep",
         image,
+        "infinity",
+      ],
+      { signal },
+    );
+
+    if (created.code !== 0) {
+      throw new Error(`could not start ${image}: ${created.output}`);
+    }
+
+    const { code, output } = await run(
+      [
+        "docker",
+        "exec",
+        ...Object.keys(variables).flatMap((name) => ["-e", name]),
+        container,
+        "bash",
         "-c",
         setupScript,
       ],
@@ -163,7 +180,10 @@ async function setUpImage(
 
     return tag;
   } finally {
-    await run(["docker", "rm", "-f", container], { signal });
+    // Not with the agent's signal, which may be why setup is ending.
+    await run(["docker", "rm", "-f", container], {
+      signal: new AbortController().signal,
+    });
   }
 }
 

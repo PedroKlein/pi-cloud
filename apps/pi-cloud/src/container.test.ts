@@ -20,19 +20,38 @@ test("runs a Session in its image as this user, with its paths, binary and varia
     generation: 2,
     image: "debian:bookworm",
     binary: "/opt/pi-cloud-linux",
-    dataDir: root,
-    folders: ["/code"],
-    cwd: "/code/app",
+    folders: [root, join(root, "missing")],
+    session: {
+      cwd: "/code/app",
+      checkouts: [{ path: "/code/app", base: null }],
+      agentDir: join(root, "profiles", "p1"),
+      sessionDir: join(root, "sessions", "s1"),
+      authPath: join(root, "auth.json"),
+      modelsPath: join(root, "models.json"),
+      extensionPaths: ["/ext/tool.ts", "npm:pi-goal"],
+      trusted: null,
+      systemPrompt: null,
+    },
     variables: { TOKEN: "s3cret" },
   });
 
   const run = container.run.join(" ");
+  const bind = (path: string): string => `type=bind,src=${path},dst=${path}`;
 
   expect(container.name).toBe("pi-session-s1-2");
-  expect(run).toContain(`-v ${root}:${root}`);
-  expect(run).toContain("-v /code:/code");
-  expect(run).toContain("-v /code/app:/code/app");
-  expect(run).toContain("-v /opt/pi-cloud-linux:/usr/local/bin/pi-cloud:ro");
+  expect(run).toContain(bind("/code/app"));
+  expect(run).toContain(bind(root));
+  expect(run).toContain(bind(join(root, "profiles", "p1")));
+  expect(run).toContain(bind(join(root, "sessions", "s1")));
+  expect(run).toContain(`${bind("/ext/tool.ts")},readonly`);
+
+  expect(run).toContain(
+    "type=bind,src=/opt/pi-cloud-linux,dst=/usr/local/bin/pi-cloud,readonly",
+  );
+
+  expect(run).not.toContain("missing");
+  expect(run).not.toContain("auth.json");
+  expect(run).not.toContain("npm:pi-goal");
   expect(run).toContain("-e TOKEN ");
   expect(run).toContain(`--user ${String(process.getuid?.())}:`);
 
@@ -43,5 +62,8 @@ test("runs a Session in its image as this user, with its paths, binary and varia
   expect(run).not.toContain("s3cret");
   expect(container.shell).toContain("pi-session-s1-2");
   expect(container.kill).toEqual(["docker", "kill", "pi-session-s1-2"]);
-  expect((await stat(join(root, "container-home"))).isDirectory()).toBe(true);
+
+  expect((await stat(join(root, "sessions", "s1", "home"))).isDirectory()).toBe(
+    true,
+  );
 });

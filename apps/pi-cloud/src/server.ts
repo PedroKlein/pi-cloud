@@ -690,6 +690,9 @@ function createSession(body: unknown): CreateSession {
 }
 
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// A docker reference: no leading dash, so docker never reads it as a flag.
+const imageName = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/;
 const maxVariables = 200;
 
 // Well under Linux's limit on one environment string, so spawns don't fail.
@@ -711,9 +714,11 @@ function environmentUpdate(body: unknown): EnvironmentUpdate {
   if (
     image !== undefined &&
     image !== null &&
-    (typeof image !== "string" || image.trim() === "")
+    (typeof image !== "string" || !imageName.test(image))
   ) {
-    throw new BadRequest("image must be a non-empty string or null");
+    throw new BadRequest(
+      "image must be an image name, such as debian:12, or null",
+    );
   }
 
   if (setupScript !== undefined && typeof setupScript !== "string") {
@@ -723,7 +728,7 @@ function environmentUpdate(body: unknown): EnvironmentUpdate {
   return {
     ...(name !== undefined && { name: name.trim() }),
     ...(isolationLevel !== undefined && { isolation: isolationLevel }),
-    ...(image !== undefined && { image: image?.trim() ?? null }),
+    ...(image !== undefined && { image }),
     ...(setupScript !== undefined && { setupScript }),
     ...(variables !== undefined && {
       variables: namedValues("variables", variables, false),

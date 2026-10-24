@@ -263,9 +263,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
               generation,
               image,
               binary: sessionBinary(options.sessionBinary),
-              dataDir: options.dataDir,
               folders: options.folders,
-              cwd,
+              session: sessionOptions,
               variables,
             });
 
