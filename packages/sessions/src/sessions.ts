@@ -263,7 +263,10 @@ export class Sessions {
     );
 
     if (source.title !== null) {
-      this.#store.setTitle(forked.value.id, `${source.title} (fork)`);
+      this.#store.setTitle(
+        forked.value.id,
+        `${Array.from(source.title).slice(0, titleLength).join("")} (fork)`,
+      );
     }
 
     return { ok: true, value: this.get(forked.value.id) ?? forked.value };
