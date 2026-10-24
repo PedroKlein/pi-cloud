@@ -93,14 +93,18 @@ export class RunnerPolls {
   }
 
   // A runner that hasn't polled since the server started keeps its lease for
-  // a full lease after the start, so a restart doesn't move its Sessions.
-  leaseLapsed(runner: string): boolean {
+  // a full lease after the start, so a restart doesn't move its Sessions. One
+  // that now polls for another Environment holds no lease in this one.
+  leaseLapsed(runner: string, environment: string): boolean {
     const state = this.#runners.get(runner);
     if (state === undefined) {
       return Date.now() - this.#startedAt >= this.#leaseMs;
     }
 
-    return state.polling === 0 && Date.now() - state.lastPoll >= this.#leaseMs;
+    return (
+      state.environment !== environment ||
+      (state.polling === 0 && Date.now() - state.lastPoll >= this.#leaseMs)
+    );
   }
 
   // The runners that polled for the Environment since the server started.

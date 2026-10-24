@@ -740,7 +740,8 @@ export class Sessions {
 
     const pool = {
       runners: this.#polls.runners(runner.environment),
-      leaseLapsed: (name: string) => this.#polls.leaseLapsed(name),
+      leaseLapsed: (name: string) =>
+        this.#polls.leaseLapsed(name, runner.environment),
     };
 
     // A Session still attempting on another runner is claimable only once

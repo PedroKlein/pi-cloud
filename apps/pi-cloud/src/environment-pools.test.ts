@@ -218,3 +218,19 @@ test("shows a Session offline once its runner joins another Environment", async 
 
   expect(session).toMatchObject({ runner: "mac-1", online: false });
 });
+
+test("moves a clone Session off a runner that joined another Environment", async () => {
+  await claimed("mac-1");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  await claimed("mac-1");
+  await claimed("mac-1", { environment: "elsewhere" });
+
+  expect(await claimed("mac-2")).toMatchObject([
+    { sessionId: clone, generation: 2 },
+  ]);
+});
