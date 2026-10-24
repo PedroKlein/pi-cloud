@@ -72,6 +72,23 @@ test("a compiled server reports the version of Pi it bundles", async () => {
   }
 }, 30_000);
 
+// Extensions such as pi-subagents start Pi themselves, and a machine with only
+// this binary has no other Pi.
+test("a compiled binary runs the Pi it bundles", async () => {
+  const pi = JSON.parse(
+    await readFile(
+      fileURLToPath(
+        import.meta.resolve("@earendil-works/pi-coding-agent/package.json"),
+      ),
+      "utf8",
+    ),
+  ) as { version: string };
+
+  const { stdout } = await run(binary, ["pi", "--version"]);
+
+  expect(stdout.trim()).toBe(pi.version);
+}, 30_000);
+
 // Pi loads its OAuth flows through an import a bundler can't follow. Copilot
 // derives its API host from the token, so the request reaching that host shows
 // the flow ran. A proxy records the host and refuses the connection.

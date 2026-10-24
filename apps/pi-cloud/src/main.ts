@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, main as runPi } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent";
 import { stderrLog } from "./log";
 import { serve } from "./serve";
@@ -16,7 +16,8 @@ const usage = `usage:
                   [--folder <path>]... [--extension <path>]...]
   pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
-                 [--extension <path>]...`;
+                 [--extension <path>]...
+  pi-cloud pi [<pi arguments>]`;
 
 const dataRoot = join(homedir(), ".pi-cloud");
 
@@ -120,6 +121,12 @@ switch (command) {
 
   case "session":
     await runSessionProcess();
+    break;
+
+  // The Pi this binary bundles, for extensions that start Pi themselves.
+  case "pi":
+    process.env["PI_CODING_AGENT"] = "true";
+    await runPi(rest);
     break;
 
   case undefined:

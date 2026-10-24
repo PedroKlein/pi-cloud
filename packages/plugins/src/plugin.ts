@@ -188,6 +188,9 @@ export interface SessionCloud {
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
   readonly checkouts: readonly Checkout[];
+  // An executable that runs the Pi this Session runs, for extensions that
+  // start Pi themselves.
+  readonly piCommand?: string;
   // Sends a request to the plugin's own server routes as this Session.
   readonly request: (path: string, init?: RequestInit) => Promise<Response>;
   readonly log: (

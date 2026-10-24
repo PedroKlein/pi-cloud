@@ -188,6 +188,7 @@
     "plugins/subagents": {
       "name": "@pi-cloud/subagents",
       "dependencies": {
+        "@earendil-works/pi-coding-agent": "1.3.0",
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
         "@pi-cloud/ui": "workspace:*",

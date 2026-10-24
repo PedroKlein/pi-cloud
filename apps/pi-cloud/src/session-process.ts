@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Assignment } from "@pi-cloud/protocol";
@@ -29,9 +30,11 @@ type ChildMessage =
 const stopTimeoutMs = 10_000;
 
 // A compiled binary is its own entry point. From source, Bun runs main.ts.
-const sessionCommand = import.meta.dirname.startsWith("/$bunfs")
-  ? [process.execPath, "session"]
-  : [process.execPath, join(import.meta.dirname, "main.ts"), "session"];
+const entry = import.meta.dirname.startsWith("/$bunfs")
+  ? [process.execPath]
+  : [process.execPath, join(import.meta.dirname, "main.ts")];
+
+const sessionCommand = [...entry, "session"];
 
 // Runs one Session in a child process (ADR 0017). The child asks the agent to
 // open its terminals, since the agent keeps them.
@@ -126,6 +129,7 @@ export async function runSessionProcess(): Promise<void> {
     hosted = await hostSession(
       {
         ...spec.options,
+        piCommand: await writePiLauncher(spec.options.agentDir),
         firstMessage: spec.assignment.firstMessage,
         plugins: sessionPluginsNamed(spec.assignment.plugins),
       },
@@ -154,6 +158,25 @@ export async function runSessionProcess(): Promise<void> {
   }
 
   await stop();
+}
+
+// Extensions that start Pi need one executable, and a machine with only the
+// Pi Cloud binary has no pi command.
+async function writePiLauncher(agentDir: string): Promise<string> {
+  const dir = join(agentDir, "pi-cloud", "bin");
+  const launcher = join(dir, "pi");
+  const staging = `${launcher}.${String(process.pid)}`;
+
+  const quoted = [...entry, "pi"].map(
+    (part) => `'${part.replaceAll("'", "'\\''")}'`,
+  );
+
+  await mkdir(dir, { recursive: true });
+  await writeFile(staging, `#!/bin/sh\nexec ${quoted.join(" ")} "$@"\n`);
+  await chmod(staging, 0o755);
+  await rename(staging, launcher);
+
+  return launcher;
 }
 
 function childMessage(line: string): ChildMessage | undefined {
