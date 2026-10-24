@@ -1,6 +1,6 @@
 # 0015: Plugins
 
-- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md); `TurnEnded` carries the turn's transcript length; v2 direction in [ADR 0022](0022-plugin-model-v2.md); a `nav` entry can list items under it in the sidebar and its page gets the rest of the address)
+- Status: accepted, amended 2026-10-21 (session parts publish plugin live events; `ask`, `changes` and `usage` parts corrected; session parts reach their own server routes; web parts are React components, [ADR 0020](0020-web-stack.md); amended 2026-10-22: session slots can send their Session a message, [ADR 0021](0021-pull-requests.md); `TurnEnded` carries the turn's transcript length; v2 direction in [ADR 0022](0022-plugin-model-v2.md); a `nav` entry can list items under it in the sidebar and its page gets the rest of the address; amended 2026-10-24: owned Sessions, an embeddable Session view and chat slots, [ADR 0028](0028-projects-around-the-coordinator.md))
 - Date: 2026-10-21
 
 ## Context
@@ -87,7 +87,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 
 ### Web UI
 
-- A plugin's web part claims named slots: `nav` (an entry, a page, and optional items listed under the entry, such as each Project; the page gets the rest of the address after `#plugin/<name>/`), `session.panel`, `session.header`, and `message.<type>` renderers for its own custom messages.
+- A plugin's web part claims named slots: `nav` (an entry, a page, and optional items listed under the entry, such as each Project; the page gets the rest of the address after `#plugin/<name>/`), `session.panel`, `session.header`, and the chat slots `tool.<name>`, `notice.<kind>` and `link.<scheme>` ([ADR 0028](0028-projects-around-the-coordinator.md)). The `message.<type>` renderer named here first was never built; `notice.<kind>` replaces it.
 - Each slot is a React component. The web bundle imports plugins statically, so they share the app's React, its data hooks and the `packages/ui` components and tokens ([ADR 0020](0020-web-stack.md)). A plugin styles itself with the same Tailwind token classes and never brings its own colours or fonts.
 - A session slot gets the Session's events and `send(text)`, which posts a message as the user, so a button can run the plugin's own Pi command ([ADR 0021](0021-pull-requests.md)).
 - Its props give it what `ctx` gave it before: requests to its own routes, live events for a Session, opening a Session and navigation.

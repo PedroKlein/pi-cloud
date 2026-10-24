@@ -1,6 +1,6 @@
 # 0016: Projects
 
-- Status: accepted, amended 2026-10-23 (Project settings)
+- Status: accepted, amended 2026-10-23 (Project settings); UI and Session ownership superseded by [ADR 0028](0028-projects-around-the-coordinator.md)
 - Date: 2026-10-21
 
 ## Context
@@ -23,19 +23,19 @@ Threads here can run on different machines, the laptop and the VM. Anything shar
 
 - Projects is the `projects` plugin in `plugins/projects/`. It's on by default.
 - It uses only what ADR 0015 gives every plugin: server tools, events, the start request, routes, its own tables and web slots. The kernel has no Project code.
-- Turning it off hides Projects. Their Sessions stay ordinary Sessions.
+- Turning it off hides Projects. Their Sessions come back in the Session list, tagged ([ADR 0028](0028-projects-around-the-coordinator.md)).
 
 ### Project record
 
 - A Project has an owner, a name, instructions, a list of repository URLs, a default Environment, and its coordinator Session. It lives in the plugin's own table.
 - The plugin also records each member Session with its `role`: `coordinator` or `thread`. The kernel's Session record doesn't change.
-- Coordinators and threads are ordinary Sessions. They use the same session view, terminals, Changes panel and archive as an independent Session.
+- Coordinators and threads are Sessions owned by the plugin ([ADR 0028](0028-projects-around-the-coordinator.md)). They use the same session view, terminals, Changes panel and archive as an independent Session, embedded in the Project page, and stay out of the Session list.
 - Creating a Project creates its coordinator in the default Environment.
 - A Project keeps one coordinator for its whole life. Pi's auto-compaction keeps its context in bounds. Anything that must survive goes in Project memory, and the current threads always come from `list_threads`. A "new coordinator" action can come later. The Project only has to point at a different Session.
 
 ### Talking to a Project
 
-- The plugin's `nav` page is the Project page: the coordinator's session view and a list of its threads.
+- The plugin's `nav` page is the Project page: the coordinator's chat and a rail of its threads ([ADR 0028](0028-projects-around-the-coordinator.md)).
 - The user can open any thread and type into it, the same as any Session.
 
 ### Workspaces with several repositories
@@ -103,7 +103,7 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 ### Notes from building it
 
 - The run state also has `archived`, for a member Session the user archived.
-- The Project page links to the coordinator's session view instead of embedding it, so it reuses the normal session page.
+- The Project page first linked to the coordinator's session view instead of embedding it. [ADR 0028](0028-projects-around-the-coordinator.md) embeds it.
 - `start_thread` takes start points as `start_points`, a map from repository URL to a branch, tag or commit.
 - Notices and messages wait in the plugin's outbox table. A one-second loop delivers them in order and drops those for archived Sessions.
 
@@ -116,4 +116,4 @@ The plugin registers these as server tools (ADR 0015). Their filter gives them o
 - Laptop threads need each repository checked out in an advertised folder, or they clone it.
 - Memory is shared and unlocked. Two threads writing one file at once lose one write, which the log shows.
 - A shared file library for uploads and outputs comes as its own plugin after Projects, still in v1 ([vision](../vision.md#v1-personal-sessions-and-projects-on-your-own-machines)).
-- Deleting or archiving a whole Project isn't decided. Its Sessions can be archived one by one.
+- Archiving a whole Project archives every Session it owns ([ADR 0028](0028-projects-around-the-coordinator.md)). Deleting one isn't decided.

@@ -1,6 +1,6 @@
 # 0025: A Session that needs you
 
-- Status: accepted
+- Status: accepted, amended 2026-10-24 (the threads board became the Project rail, [ADR 0028](0028-projects-around-the-coordinator.md))
 - Date: 2026-10-22
 
 ## Context
@@ -14,8 +14,8 @@ Until now that Session looked like any other running one. Its row said Working, 
 - A Session has `waiting: boolean`. It is true while the Session has an open `prompt` surface in its current generation. The server works it out from the surfaces it tracks, so nothing new is stored and a restart or a new generation clears it.
 - The server sends a `session` event when `waiting` changes, before the live event that changed it, so an open Session view updates its badge with the prompt.
 - The web shows an online Session that is waiting with a "Needs you" badge, ahead of its status. A browser notice says "Pi needs you in …" when a Session starts waiting, under the same rule as "Pi finished in …".
-- Projects add a `waiting` run state. A thread that is waiting goes in the board's Needs you column whatever its work state, and the Project's "needs you" count is its blocked threads plus its waiting ones.
-- A `review_ready` thread doesn't need you, since it isn't blocked on you. It goes in its own Review column on the board, so the Needs you column and the count always agree. (Amended 2026-10-23.)
+- Projects add a `waiting` run state. A thread that is waiting goes in the Needs you group of the Project's threads whatever its work state, and the Project's "needs you" count is its blocked threads plus its waiting ones.
+- A `review_ready` thread doesn't need you, since it isn't blocked on you. It goes in its own Review group, so the Needs you group and the count always agree. (Amended 2026-10-23.)
 
 ## Consequences
 
