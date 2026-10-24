@@ -105,6 +105,9 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 - What is the smallest stable Pi Cloud extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
 - Resolved: a Session may propose a plugin but only the user enables it, and third-party plugins install turned off ([ADR 0022](adr/0022-plugin-model-v2.md#installing-third-party-plugins)).
+- Resolved for v2: plugins are installed and turned on for the whole installation, and changing them restarts the server; each user's Pi personalization stays in their Profile ([ADR 0022](adr/0022-plugin-model-v2.md#plugins-are-per-installation)).
+- Resolved for v2: third-party web parts run in the page like first-party ones, with no sandboxed iframe ([ADR 0022](adr/0022-plugin-model-v2.md#trust)).
+- Is an integrated browser still wanted, and if so as a preview iframe the agent drives through an injected script, or in a desktop app? The CDP screencast was rejected ([ADR 0022](adr/0022-plugin-model-v2.md#no-browser-plugin-yet)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - Resolved for v2: a plugin declares `capabilities` and `requires` in its manifest; the exact capability names are open ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest)).
 - Which first-party features must prove the public extension surface?
