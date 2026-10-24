@@ -868,11 +868,15 @@ export class Sessions {
     }
   }
 
-  // A Session no runner claimed yet is online while its Environment is.
+  // A Session no runner claimed yet is online while its Environment is, and
+  // one that ran is online while its runner is still in that Environment.
   #online(session: StoredSession): boolean {
-    return session.runner === null
-      ? this.#polls.runners(session.provider).some(({ online }) => online)
-      : this.#polls.online(session.runner);
+    return this.#polls
+      .runners(session.provider)
+      .some(
+        ({ name, online }) =>
+          online && (session.runner === null || session.runner === name),
+      );
   }
 
   #view(session: StoredSession): Session {

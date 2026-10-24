@@ -172,12 +172,14 @@ function migrate(db: DatabaseSync): void {
   // Sessions from before pools ran on the runner named after their
   // Environment (ADR 0032).
   if (sessionsTableExists && !hasColumn("runner")) {
-    db.exec(`
-      alter table sessions add column runner text;
-      update sessions set runner = (
-        select provider from environments where id = sessions.environment_id
-      ) where generation > 0;
-    `);
+    transaction(db, () => {
+      db.exec(`
+        alter table sessions add column runner text;
+        update sessions set runner = (
+          select provider from environments where id = sessions.environment_id
+        ) where generation > 0;
+      `);
+    });
   }
 
   // Sessions from before Profiles run with the default one.

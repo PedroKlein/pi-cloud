@@ -3,6 +3,7 @@ import {
   type Assignment,
   type Attempt,
   type Environment,
+  type Session,
   environmentHeader,
   protocolVersion,
   providerHeader,
@@ -36,7 +37,9 @@ async function poll(
     folders = [],
     running = [],
     capacity,
+    environment = "laptops",
   }: {
+    readonly environment?: string;
     readonly folders?: readonly string[];
     readonly running?: readonly Attempt[];
     readonly capacity?: number;
@@ -55,7 +58,7 @@ async function poll(
       headers: {
         [versionHeader]: String(protocolVersion),
         [providerHeader]: runner,
-        [environmentHeader]: "laptops",
+        [environmentHeader]: environment,
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
@@ -153,4 +156,19 @@ test("sends an interrupted Session back to the runner it ran on", async () => {
 
   expect(await poll("mac-2")).toEqual([]);
   expect(ids(await poll("mac-1"))).toEqual([id]);
+});
+
+test("shows a Session offline once its runner joins another Environment", async () => {
+  await poll("mac-1");
+
+  const id = await startSession("/srv/a");
+
+  await poll("mac-1");
+  await poll("mac-1", { environment: "elsewhere" });
+
+  const session = await json<Session>(
+    fetch(new URL(`/api/sessions/${id}`, server.url)),
+  );
+
+  expect(session).toMatchObject({ runner: "mac-1", online: false });
 });
