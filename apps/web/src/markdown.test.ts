@@ -22,3 +22,9 @@ test("links only web addresses", () => {
 
   expect(renderMarkdown("[x](javascript:alert(1))")).not.toContain("<a");
 });
+
+test("marks links of other schemes for the plugin that draws them", () => {
+  expect(renderMarkdown("see [Docs](thread:t-1)")).toBe(
+    '<p>see <span data-link="thread" data-target="t-1">Docs</span></p>\n',
+  );
+});

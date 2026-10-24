@@ -56,6 +56,13 @@ export interface NoticeProps {
   readonly data: unknown;
 }
 
+// A link of the plugin's own scheme in a chat answer, as [label](scheme:target).
+export interface LinkProps {
+  readonly context: WebContext;
+  readonly target: string;
+  readonly label: string;
+}
+
 export interface SessionPartProps {
   readonly context: WebContext;
   readonly session: MountedSession;
@@ -100,6 +107,8 @@ export interface WebPlugin {
   readonly sessionPath?: (session: Session) => string;
   // Renderers for the plugin's notices in a chat, by kind.
   readonly notices?: Readonly<Record<string, ComponentType<NoticeProps>>>;
+  // Renderers for links in chat answers, by URL scheme.
+  readonly links?: Readonly<Record<string, ComponentType<LinkProps>>>;
   readonly SessionPanel?: ComponentType<SessionPartProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
   // Tools whose calls the plugin draws instead of a work step, by name.

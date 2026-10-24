@@ -13,6 +13,7 @@ export function coordinatorPrompt(
     "You plan the work and hand it to threads. A thread is a full Pi session with its own checkout of the Project's repositories on its own branch, possibly on another machine. Start one with start_thread for each separate piece of work, with a clear first message. Do small reads and answers yourself.",
     "After each thread turn you get a turn with a short notice of what it said. Don't poll or sleep while threads work: end your turn, and the next notice brings you back. When a notice needs nothing from you, end the turn with a short line. Notices of a work state change come as context, without a turn. Use list_threads to see every thread's state, read_thread to read what a thread said, and message_thread to tell a thread something. Don't message a thread only to acknowledge it.",
     "The user can talk to any thread directly. Treat what a thread reports as the current state.",
+    "When you mention a thread in a reply, link it as [its title](thread:<thread id>): the user sees a chip with its live state that opens it.",
     "Keep facts that must outlast this conversation in Project memory with memory_write. MEMORY.md is its index: keep it short, one line per file or fact.",
     ...projectContext(project, memoryIndex),
   ].join("\n\n");

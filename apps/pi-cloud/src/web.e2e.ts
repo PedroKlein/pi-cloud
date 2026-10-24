@@ -596,6 +596,22 @@ test("creates a Project and shares a file through its library", async () => {
       .count(),
   ).toBe(0);
 
+  faux.setResponses([
+    fauxAssistantMessage([fauxText(`See [Docs](thread:${threadId}).`)]),
+  ]);
+
+  await page.locator("#prompt-text").fill("where are the docs?");
+  await page.locator("#prompt-text").press("Enter");
+
+  const chip = page
+    .locator('#chat li[data-role="assistant"]')
+    .getByRole("link", { name: /^Docs/ });
+
+  await chip.getByText("Ready for review").waitFor();
+  await chip.click();
+  await side.waitFor();
+  await side.getByRole("button", { name: "Back to threads" }).click();
+
   await page
     .locator("#plugin-nav")
     .getByRole("link", { name: "Library" })

@@ -35,9 +35,16 @@ const marked = new Marked({
       const label = this.parser.parseInline(tokens);
       const target = safeHref(href);
 
-      return target === undefined
-        ? label
-        : `<a href="${escape(target)}" target="_blank" rel="noreferrer">${label}</a>`;
+      if (target !== undefined) {
+        return `<a href="${escape(target)}" target="_blank" rel="noreferrer">${label}</a>`;
+      }
+
+      const scheme = /^([a-z][a-z0-9-]*):(.+)$/.exec(href);
+
+      // A plugin draws links of its own schemes in the chat (ADR 0028).
+      return scheme
+        ? `<span data-link="${escape(scheme[1] ?? "")}" data-target="${escape(scheme[2] ?? "")}">${label}</span>`
+        : label;
     },
     image: ({ text }) => escape(text),
   },
