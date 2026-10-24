@@ -1,6 +1,6 @@
 # 0014: Concept map and Environments
 
-- Status: accepted, Profiles amended by [ADR 0031](0031-profiles.md)
+- Status: accepted, Profiles amended by [ADR 0031](0031-profiles.md), Environments amended by [ADR 0032](0032-environments-and-runners.md)
 - Date: 2026-10-21
 
 ## Context

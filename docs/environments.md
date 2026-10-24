@@ -56,6 +56,8 @@ A running Session cannot transparently switch Environments. Cross-Environment co
 
 ## Revisions
 
+Decided for v2: Environments have no revisions. Editing one rebuilds its cache, and Sessions that start or restart afterwards get the change ([ADR 0032](adr/0032-environments-and-runners.md)). The rest of this section is the earlier proposal.
+
 Environment definitions should be versioned and inspectable.
 
 ```text

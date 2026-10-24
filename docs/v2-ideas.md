@@ -6,7 +6,7 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 
 ## Running a Session on fresh compute
 
-- **Resume mid-turn.** pi-durable commits a tool call's intent before running it and checkpoints every model turn. A process that dies mid-turn picks up where it stopped. A tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. This is the likely answer to resuming a Session in a new pod, and the session host is where it would plug in.
+- **Resume mid-turn.** pi-durable commits a tool call's intent before running it and checkpoints every model turn. A process that dies mid-turn picks up where it stopped. A tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. [ADR 0032](adr/0032-environments-and-runners.md) resumes a Session from its transcript instead, because Pi packages don't run on pi-durable. It is still a candidate engine for Jobs and automations, which Pi Cloud defines itself.
 - **Expiring leases with fencing.** ADR 0006 deferred these. OpenHands' conversation lease holds an owner, a generation and a 45 second TTL. A new owner bumps the generation, and every write checks ownership first. When the owner is on the same host and its pid is dead, takeover is immediate. Our server-side version would be the same rows in SQLite.
 - **Crash-loop guard.** pi-durable parks a task after 5 restarts without progress, reports it once, and offers an explicit retry. A Session that keeps killing its pod needs the same.
 
