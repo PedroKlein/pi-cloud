@@ -12,6 +12,7 @@
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/projects": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",
+    "@pi-cloud/subagents": "workspace:*",
     "@pi-cloud/ui": "workspace:*",
     "@pi-cloud/usage": "workspace:*",
     "@xterm/addon-fit": "0.11.0",

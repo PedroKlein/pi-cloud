@@ -15,7 +15,8 @@ ADR 0028 planned a `tool.<name>` chat slot for Projects. Subagents need it first
 
 ### Subagents are a built-in plugin
 
-- A `subagents` plugin, on by default, bundles pi-subagents and loads it in every Session as a replaceable built-in extension. A user's own pi-subagents, from their Pi packages, replaces it, so their version and settings win.
+- A `subagents` plugin, on by default, loads pi-subagents in every Session. pi-subagents reads files from its own package at run time (its agents, prompts and the runner it starts for background runs), so it can't be compiled into the binary. Instead the plugin names a pinned Pi package, `npm:pi-subagents@<version>`, and Pi installs it the first time a Session starts, as `pi -e npm:<name>` does, into the Pi agent directory's temporary packages. A machine that can't install it, say offline, starts its Sessions without it and logs why.
+- A user's own extension that registers any of the same tools, commands or flags, such as their own pi-subagents from their Pi packages, replaces the plugin's, so their version and settings win. This is Pi's rule for replaceable built-in extensions, applied to a package.
 - Its web part draws runs; the extension does the work. Pi Cloud doesn't fork or patch pi-subagents.
 
 ### Cards in the chat
@@ -23,7 +24,7 @@ ADR 0028 planned a `tool.<name>` chat slot for Projects. Subagents need it first
 - A `subagent` call that launches work shows as a card where the agent called it, not as a step in the work block: the agent, the task, the state (running, done, failed, stopped), the model, the current tool, the tool count and the time.
 - The card follows its run in the live snapshot, by the run id in the call's result. Once the run leaves the snapshot, the card takes its final state from the completion notice pi-subagents adds to the transcript, so a replay shows the same card.
 - Opening the card shows each child: its task, its recent messages and tool calls, and its final output. The web asks for them with pi-subagents' `/subagents-inspect-rpc` command when the card opens, and again every two seconds while the child runs.
-- Other `subagent` calls, such as `status` or `stop`, stay steps in the work block.
+- Other `subagent` calls, such as `status` or `stop`, show as a one-line row like a work step, with the result inside. The slot claims a tool by name, so they render next to the cards rather than inside the work block.
 
 ### The running indicator
 
@@ -31,6 +32,7 @@ ADR 0028 planned a `tool.<name>` chat slot for Projects. Subagents need it first
 
 ### New kernel parts
 
+- **Plugin packages.** A Session part can name Pi packages, `packages: ["npm:<name>@<version>"]`, that every Session loads, with the replacement rule above.
 - **`tool.<name>` slot.** A plugin's web part can claim tool names. A claimed call is drawn by the plugin's component as its own row in the turn, after the work block, in call order. The component gets the call's id, arguments and result (text, details, failed), its status (running, done or failed), and the Session's events and `send`. It is built from the transcript, so it renders the same after a replay. A call nobody claims stays a step in the work block. Live partial results aren't passed yet, since no plugin needs them.
 - **`widget.<key>` slot.** A plugin's web part can claim an extension widget key and draw it in the widget's place, with the widget's rendered lines and the Session's events.
 - **Extension data.** A text widget line `PI_<NAME>_JSON:<json>`, which ADR 0029 hides, is published as an `extension_data` live event with the widget key, the name and the parsed data, or `null` when the widget is removed. It is a live surface, so a browser that connects later gets the latest. Plugins read it from the Session's events; nothing draws it.

@@ -2,8 +2,9 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { promisify, stripVTControlCharacters } from "node:util";
 import {
   fauxAssistantMessage,
@@ -480,6 +481,105 @@ test("sends only the latest of each surface after live posts keep failing", asyn
     { type: "extension_status", key: "build", text: "2 running" },
     { type: "extension_status", key: "lint", text: null },
   ]);
+});
+
+const subagentsPath = dirname(
+  fileURLToPath(import.meta.resolve("pi-subagents/package.json")),
+);
+
+const subagents: SessionPlugin = {
+  name: "subagents",
+  packages: [subagentsPath],
+};
+
+function commandNames(events: readonly LiveEvent[]): string[] {
+  return events.flatMap((event) =>
+    event.type === "commands" ? event.commands.map(({ name }) => name) : [],
+  );
+}
+
+test("loads a plugin's Pi packages in the Session", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models, plugins: [subagents] }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => commandNames(fake.events).length > 0);
+  await hosted.stop();
+
+  expect(commandNames(fake.events)).toContain("subagents-inspect-rpc");
+});
+
+test("lets a user's own extension replace a plugin's package of the same tool", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const own = join(root, "own-subagents.ts");
+
+  await writeFile(
+    own,
+    `export default (pi) => {
+      pi.registerTool({
+        name: "subagent",
+        label: "Subagent",
+        description: "The user's own",
+        parameters: { type: "object", properties: {} },
+        execute: async () => ({ content: [], details: undefined }),
+      });
+      pi.registerCommand("own-subagents", { handler: async () => undefined });
+    };\n`,
+  );
+
+  const hosted = await hostSession(
+    sessionOptions(root, {
+      models,
+      extensionPaths: [own],
+      plugins: [subagents],
+    }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => commandNames(fake.events).length > 0);
+  await hosted.stop();
+
+  expect(commandNames(fake.events)).toContain("own-subagents");
+  expect(commandNames(fake.events)).not.toContain("subagents-inspect-rpc");
+});
+
+test("starts without a plugin package that cannot be installed", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const logs: string[] = [];
+
+  const unreachable: SessionPlugin = {
+    name: "unreachable",
+    packages: ["git:localhost/missing/package"],
+  };
+
+  // Offline, Pi doesn't try to install it at all.
+  delete process.env["PI_OFFLINE"];
+
+  try {
+    const hosted = await hostSession(
+      sessionOptions(root, { models, plugins: [unreachable] }),
+      fake.stream,
+      (message) => logs.push(message),
+      noTerminal,
+    );
+
+    await fake.waitFor(() => commandNames(fake.events).length > 0);
+    await hosted.stop();
+  } finally {
+    process.env["PI_OFFLINE"] = "1";
+  }
+
+  expect(logs).toContain("extension error");
 });
 
 test("resends only the end of a prompt that closed while its live post failed", async () => {

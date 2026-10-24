@@ -10,6 +10,7 @@ import type {
 } from "@pi-cloud/plugins/web";
 import type { Session } from "@pi-cloud/protocol";
 import { projects } from "@pi-cloud/projects/web";
+import { subagents } from "@pi-cloud/subagents/web";
 import { usage } from "@pi-cloud/usage/web";
 import type { ComponentType } from "react";
 import { EmbeddedSession } from "./embedded-session";
@@ -21,6 +22,7 @@ const webPlugins: readonly WebPlugin[] = [
   projects,
   library,
   models,
+  subagents,
 ];
 
 let enabled: readonly WebPlugin[] = [];

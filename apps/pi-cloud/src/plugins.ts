@@ -5,6 +5,7 @@ import { library } from "@pi-cloud/library/server";
 import { models as modelsSession } from "@pi-cloud/models/session";
 import { models } from "@pi-cloud/models/server";
 import { projects } from "@pi-cloud/projects/server";
+import { subagents } from "@pi-cloud/subagents/session";
 import type {
   EventBus,
   ModelOffer,
@@ -36,6 +37,7 @@ export const builtInPlugins: readonly string[] = [
   "projects",
   "library",
   "models",
+  "subagents",
 ];
 
 export const serverPlugins: readonly ServerPlugin[] = [
@@ -49,6 +51,7 @@ const sessionPlugins: readonly SessionPlugin[] = [
   changes,
   librarySession,
   modelsSession,
+  subagents,
 ];
 
 export function sessionPluginsNamed(

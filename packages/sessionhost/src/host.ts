@@ -303,6 +303,7 @@ export async function hostSession(
           : [],
       ),
     ],
+    packages: plugins.flatMap(({ plugin }) => plugin.packages ?? []),
     onError,
   });
 

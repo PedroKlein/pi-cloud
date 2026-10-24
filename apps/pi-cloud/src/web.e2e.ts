@@ -1279,4 +1279,121 @@ test("draws an extension's widget and footer as Pi's TUI does, at the composer's
       "(() => { const box = document.querySelector('#chat').parentElement; return box.scrollHeight - box.scrollTop - box.clientHeight; })()",
     ),
   ).toBeLessThan(2);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+}, 30_000);
+
+test("draws a subagent run as a card in the chat, with a chip while it runs", async () => {
+  const folder = join(root, "delegating");
+  await mkdir(join(folder, ".pi", "extensions"), { recursive: true });
+
+  // Stands in for pi-subagents, which replaces the plugin's copy: it reports
+  // the run in pi-subagents' formats for hosts.
+  await writeFile(
+    join(folder, ".pi", "extensions", "subagents.ts"),
+    `const snapshot = (state) => [
+  "PI_SUBAGENT_ASYNC_JSON:" + JSON.stringify({
+    kind: "pi-subagents.async-status-snapshot",
+    version: 1,
+    runs: [{
+      id: "r1", kind: "subagent", label: "worker", state, startedAt: Date.now() - 5000,
+      children: [{ id: "step:0", kind: "step", label: "worker", state, agent: "worker",
+        model: "faux/faux-1", activity: { toolCount: 3, currentTool: "read" } }],
+    }],
+  }),
+];
+
+export default (pi) => {
+  pi.registerTool({
+    name: "subagent",
+    label: "Subagent",
+    description: "Delegates a task",
+    parameters: { type: "object", properties: {} },
+    execute: async (_id, _params, _signal, _update, ctx) => {
+      ctx.ui.setWidget("subagent-async", snapshot("running"));
+      ctx.ui.setWidget("subagent-fleet-status", ["1 active agent"], { placement: "belowEditor" });
+
+      return { content: [{ type: "text", text: "Async: worker [r1]" }], details: { asyncId: "r1" } };
+    },
+  });
+
+  pi.registerCommand("subagents-inspect-rpc", {
+    handler: async (args, ctx) => {
+      const [requestId] = args.split(" ");
+      const reply = { kind: "pi-subagents.inspect-reply", version: 1, requestId,
+        messages: [{ role: "assistant", kind: "text", text: "Reading the tests" }] };
+
+      ctx.ui.setWidget("subagent-inspect", ["PI_SUBAGENT_INSPECT_JSON:" + JSON.stringify(reply)]);
+      ctx.ui.setWidget("subagent-inspect", undefined);
+    },
+  });
+
+  pi.registerCommand("finish-run", {
+    handler: async (_args, ctx) => {
+      ctx.ui.setWidget("subagent-fleet-status", undefined);
+      ctx.ui.setWidget("subagent-async", undefined);
+      pi.sendMessage({
+        customType: "subagent-notify",
+        content: "Background task completed: **worker**",
+        display: true,
+        details: { runs: [{ agent: "worker", status: "completed", runId: "r1", durationMs: 65000 }] },
+      });
+    },
+  });
+};
+`,
+  );
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("subagent", { agent: "worker", task: "Check the tests" })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("Started a worker")]),
+  ]);
+
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(folder);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const box = page.locator("#prompt-text");
+  await box.fill("check the tests in the background");
+  await box.press("Enter");
+
+  const card = page.locator('#chat li[data-role="card"]', {
+    hasText: "Check the tests",
+  });
+
+  await card.getByText("Running · 3 tools").waitFor();
+  await card.getByText("faux/faux-1 · running read").waitFor();
+
+  await page.getByRole("button", { name: "1 subagent running" }).waitFor();
+
+  await card.getByRole("button", { name: /worker/ }).click();
+  await card.getByText("Reading the tests").waitFor();
+
+  await box.fill("/finish-run");
+  await box.press("Enter");
+  expect(await box.inputValue()).toBe("/finish-run ");
+  await box.press("Enter");
+
+  await card.getByText("Done · 3 tools · 1m 05s").waitFor();
+
+  await page
+    .getByRole("button", { name: "1 subagent running" })
+    .waitFor({ state: "hidden" });
+
+  await page.reload();
+
+  await page
+    .locator('#chat li[data-role="card"]', { hasText: "Check the tests" })
+    .getByText("Done · 1m 05s")
+    .waitFor();
 }, 30_000);
