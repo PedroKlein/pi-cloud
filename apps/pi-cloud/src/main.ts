@@ -13,7 +13,8 @@ const usage = `usage:
   pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
-  pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
+  pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
+                 [--server http://127.0.0.1:7420]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
                  [--extension <path>]...`;
 
@@ -88,6 +89,8 @@ switch (command) {
       args: rest,
       options: {
         name: { type: "string" },
+        environment: { type: "string" },
+        capacity: { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
         "data-dir": { type: "string", default: join(dataRoot, "agent") },
         folder: { type: "string", multiple: true, default: [] },
@@ -95,7 +98,14 @@ switch (command) {
       },
     });
 
-    if (values.name === undefined) {
+    const capacity =
+      values.capacity === undefined ? undefined : Number(values.capacity);
+
+    if (
+      values.name === undefined ||
+      (capacity !== undefined &&
+        !(Number.isSafeInteger(capacity) && capacity > 0))
+    ) {
       process.stderr.write(`${usage}\n`);
       process.exit(2);
     }
@@ -105,6 +115,10 @@ switch (command) {
     await runAgent({
       server: values.server,
       provider: values.name,
+      ...(values.environment !== undefined && {
+        environment: values.environment,
+      }),
+      ...(capacity !== undefined && { capacity }),
       dataDir: absolutePath(values["data-dir"]),
       extensionPaths: values.extension.map(extensionSource),
       folders: values.folder,

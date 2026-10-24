@@ -47,10 +47,13 @@ Options:
 pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
                 [--provider <name> [--data-dir ~/.pi-cloud/server]
                 [--folder <path>]... [--extension <path>]...]
-pi-cloud agent --name <provider> [--server http://127.0.0.1:7420]
-               [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
+pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
+               [--server http://127.0.0.1:7420] [--data-dir ~/.pi-cloud/agent]
+               [--folder <path>]...
                [--extension <path>]...
 ```
+
+Several agents can join one Environment's pool with `--environment <name>` ([ADR 0032](docs/adr/0032-environments-and-runners.md)); without it an agent joins the Environment named after it. `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on.
 
 ## Roadmap
 

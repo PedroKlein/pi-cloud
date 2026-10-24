@@ -56,6 +56,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     ownerId: "local",
     owner: null,
     provider: "local",
+    runner: "local",
     profileId: defaultProfileId,
     workspace: { kind: "folder", path: "/home/me/repo" },
     model: null,
@@ -89,6 +90,7 @@ test("opens a migrated database again", () => {
     ownerId: "local",
     owner: null,
     provider: "vm",
+    runner: null,
     profileId: store.defaultProfileId("local"),
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
@@ -168,6 +170,7 @@ function sessionIn(
     ownerId: "local",
     owner: null,
     provider,
+    runner: null,
     profileId: defaultProfile,
     workspace: { kind: "clone", repository: "r", branch: fields.id },
     model: null,
@@ -236,6 +239,7 @@ test("lists a provider's stopped sessions whose workspace is waiting to be remov
 
   const forced = sessionIn(vm, "vm", {
     id: "forced",
+    runner: "vm",
     createdAt: "2026-10-03T00:00:00.000Z",
     archivedAt,
     workspaceRemoval: "forced",
@@ -272,6 +276,13 @@ test("lists a provider's stopped sessions whose workspace is waiting to be remov
       status: "running",
       workspaceRemoval: "pending",
     }),
+    sessionIn(vm, "vm", {
+      id: "on another runner",
+      runner: "vm-2",
+      createdAt: "2026-10-06T00:00:00.000Z",
+      archivedAt,
+      workspaceRemoval: "pending",
+    }),
     sessionIn(environments.get("laptop") ?? "", "laptop", {
       id: "elsewhere",
       createdAt: "2026-10-07T00:00:00.000Z",
@@ -282,19 +293,24 @@ test("lists a provider's stopped sessions whose workspace is waiting to be remov
     store.insert(session);
   }
 
-  const removals = store.pendingRemovals("vm");
+  const removals = store.pendingRemovals("vm", "vm");
 
   expect(removals.map(({ id }) => id)).toEqual(["pending", "forced"]);
   expect(removals[1]).toEqual(forced);
 
-  expect(store.pendingRemovals("laptop").map(({ id }) => id)).toEqual([
-    "elsewhere",
+  expect(store.pendingRemovals("laptop", "laptop").map(({ id }) => id)).toEqual(
+    ["elsewhere"],
+  );
+
+  expect(store.pendingRemovals("vm", "vm-2").map(({ id }) => id)).toEqual([
+    "pending",
+    "on another runner",
   ]);
 
   store.close();
 });
 
-test("gives Sessions from before Profiles the default Profile", () => {
+test("gives Sessions from before Profiles the default Profile, and from before pools their runner", () => {
   const path = join(root, "server.db");
   const old = new DatabaseSync(path);
 
@@ -330,14 +346,18 @@ test("gives Sessions from before Profiles the default Profile", () => {
     insert into environments values ('e1', 'vm', 'vm', 'local', '2026-10-23T00:00:00.000Z');
     insert into sessions (id, environment_id, owner_id, workspace, status, generation, created_at)
       values ('s1', 'e1', 'local', '{"kind":"folder","path":"/w"}', 'idle', 1, '2026-10-23T00:00:00.000Z');
+    insert into sessions (id, environment_id, owner_id, workspace, status, generation, created_at)
+      values ('s2', 'e1', 'local', '{"kind":"folder","path":"/w"}', 'queued', 0, '2026-10-23T00:00:00.000Z');
   `);
 
   old.close();
 
   const store = openStore(path);
-  const session = store.get("s1");
+  const [ran, queued] = [store.get("s1"), store.get("s2")];
   const defaultProfileId = store.defaultProfileId("local");
   store.close();
 
-  expect(session?.profileId).toBe(defaultProfileId);
+  expect(ran?.profileId).toBe(defaultProfileId);
+  expect(ran?.runner).toBe("vm");
+  expect(queued?.runner).toBeNull();
 });

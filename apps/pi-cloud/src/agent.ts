@@ -33,7 +33,12 @@ import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
   readonly server: string;
+  // The runner's name. It joins the pool of the Environment named here, or
+  // of the one named after it (ADR 0032).
   readonly provider: string;
+  readonly environment?: string;
+  // How many Sessions it runs at once. Absent means no limit.
+  readonly capacity?: number;
   readonly dataDir: string;
   readonly extensionPaths: readonly string[];
   readonly folders: readonly string[];
@@ -59,7 +64,15 @@ interface Unreported {
 
 export async function runAgent(options: AgentOptions): Promise<void> {
   const { log } = options;
-  const agent = { server: options.server, provider: options.provider };
+
+  const agent = {
+    server: options.server,
+    provider: options.provider,
+    ...(options.environment !== undefined && {
+      environment: options.environment,
+    }),
+  };
+
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
   const removing = new Map<string, Promise<RemovalReport>>();
@@ -383,6 +396,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     log,
     signal: options.signal,
     folders: [...new Set([...options.folders, ...checkouts])],
+    ...(options.capacity !== undefined && { capacity: options.capacity }),
     models: () => models,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({

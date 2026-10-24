@@ -28,6 +28,7 @@ interface SessionRow {
   owner_plugin: string | null;
   owner_key: string | null;
   provider: string;
+  runner: string | null;
   profile_id: string;
   workspace: string;
   model: string | null;
@@ -98,6 +99,7 @@ create table if not exists sessions (
   owner_id text not null,
   owner_plugin text,
   owner_key text,
+  runner text,
   profile_id text not null,
   workspace text not null,
   model text,
@@ -165,6 +167,17 @@ function migrate(db: DatabaseSync): void {
 
   if (hasColumn("provider")) {
     migrateToEnvironments(db);
+  }
+
+  // Sessions from before pools ran on the runner named after their
+  // Environment (ADR 0032).
+  if (sessionsTableExists && !hasColumn("runner")) {
+    db.exec(`
+      alter table sessions add column runner text;
+      update sessions set runner = (
+        select provider from environments where id = sessions.environment_id
+      ) where generation > 0;
+    `);
   }
 
   // Sessions from before Profiles run with the default one.
@@ -270,6 +283,7 @@ export function openStore(path: string): SessionStore &
         ? null
         : { plugin: row.owner_plugin, key: row.owner_key },
     provider: row.provider,
+    runner: row.runner,
     profileId: row.profile_id,
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
@@ -288,11 +302,11 @@ export function openStore(path: string): SessionStore &
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, profile_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, runner, profile_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
-    "update sessions set workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ?, workspace_kept_reason = ? where id = ?",
+    "update sessions set runner = ?, workspace = ?, status = ?, generation = ?, interrupted_at = ?, error = ?, archived_at = ?, workspace_removal = ?, workspace_kept_reason = ? where id = ?",
   );
 
   const selectAnySession = db.prepare("select 1 from sessions limit 1");
@@ -322,12 +336,16 @@ export function openStore(path: string): SessionStore &
     "update sessions set owner_plugin = ?, owner_key = ? where id = ?",
   );
 
-  const selectByProvider = db.prepare(
+  const selectByEnvironment = db.prepare(
     `${withProvider} where environments.provider = ? and status in (select value from json_each(?)) order by sessions.created_at`,
   );
 
+  const selectByRunner = db.prepare(
+    `${withProvider} where runner = ? and status in (select value from json_each(?)) order by sessions.created_at`,
+  );
+
   const selectPendingRemovals = db.prepare(
-    `${withProvider} where environments.provider = ? and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
+    `${withProvider} where (runner = ? or (runner is null and environments.provider = ?)) and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
   );
 
   const toEnvironment = (row: EnvironmentRow): StoredEnvironment => ({
@@ -422,6 +440,7 @@ export function openStore(path: string): SessionStore &
         s.ownerId,
         s.owner?.plugin ?? null,
         s.owner?.key ?? null,
+        s.runner,
         s.profileId,
         JSON.stringify(s.workspace),
         s.model && JSON.stringify(s.model),
@@ -441,6 +460,7 @@ export function openStore(path: string): SessionStore &
     },
     update: (s) => {
       updateSession.run(
+        s.runner,
         JSON.stringify(s.workspace),
         s.status,
         s.generation,
@@ -470,16 +490,24 @@ export function openStore(path: string): SessionStore &
     setOwner: (id, { plugin, key }: SessionOwner) => {
       updateOwner.run(plugin, key, id);
     },
-    byProvider: (provider, statuses) =>
+    byEnvironment: (provider, statuses) =>
       (
-        selectByProvider.all(
+        selectByEnvironment.all(
           provider,
           JSON.stringify(statuses),
         ) as unknown as SessionRow[]
       ).map(toSession),
-    pendingRemovals: (provider) =>
+    byRunner: (runner, statuses) =>
+      (
+        selectByRunner.all(
+          runner,
+          JSON.stringify(statuses),
+        ) as unknown as SessionRow[]
+      ).map(toSession),
+    pendingRemovals: (provider, runner) =>
       (
         selectPendingRemovals.all(
+          runner,
           provider,
           "stopped" satisfies SessionStatus,
           "pending" satisfies WorkspaceRemoval,
