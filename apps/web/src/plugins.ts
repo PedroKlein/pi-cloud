@@ -3,8 +3,10 @@ import { library } from "@pi-cloud/library/web";
 import { models } from "@pi-cloud/models/web";
 import type {
   NavItemsProps,
+  ToolCallProps,
   WebContext,
   WebPlugin,
+  WidgetProps,
 } from "@pi-cloud/plugins/web";
 import type { Session } from "@pi-cloud/protocol";
 import { projects } from "@pi-cloud/projects/web";
@@ -60,6 +62,38 @@ export function pluginContext(name: string): WebContext {
   contexts.set(name, context);
 
   return context;
+}
+
+export interface Claimed<Props> {
+  readonly plugin: string;
+  readonly Component: ComponentType<Props>;
+}
+
+// The enabled plugin that draws calls of a tool, if any (ADR 0030).
+export function toolRenderer(name: string): Claimed<ToolCallProps> | undefined {
+  return claimed(name, ({ tools }) => tools);
+}
+
+// The enabled plugin that draws an extension widget, if any (ADR 0030).
+export function widgetRenderer(key: string): Claimed<WidgetProps> | undefined {
+  return claimed(key, ({ widgets }) => widgets);
+}
+
+function claimed<Props>(
+  key: string,
+  slots: (
+    plugin: WebPlugin,
+  ) => Readonly<Record<string, ComponentType<Props>>> | undefined,
+): Claimed<Props> | undefined {
+  for (const plugin of enabled) {
+    const Component = slots(plugin)?.[key];
+
+    if (Component) {
+      return { plugin: plugin.name, Component };
+    }
+  }
+
+  return undefined;
 }
 
 export interface NavEntry {

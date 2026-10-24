@@ -918,7 +918,7 @@ test("logs errors thrown by extension handlers", async () => {
   });
 });
 
-test("forwards extension status, widgets, title and editor text", async () => {
+test("forwards extension status, widgets, data, title and editor text", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
   const extension = join(root, "surfaces.ts");
@@ -930,7 +930,8 @@ test("forwards extension status, widgets, title and editor text", async () => {
     ctx.ui.setStatus("build", "\\x1b[32m2 running\\x1b[39m");
     ctx.ui.setWidget("todo", ["first", "PI_TODO_JSON:{}", "second"]);
     ctx.ui.setWidget("hint", ["below"], { placement: "belowEditor" });
-    ctx.ui.setWidget("payload", ["PI_TODO_JSON:{}"]);
+    ctx.ui.setWidget("payload", ["PI_TODO_JSON:{\\"open\\":2}"]);
+    ctx.ui.setWidget("payload", undefined);
     ctx.ui.setStatus("build", undefined);
     ctx.ui.setTitle("my session");
     ctx.ui.setEditorText("draft");
@@ -959,6 +960,14 @@ test("forwards extension status, widgets, title and editor text", async () => {
       key: "build",
       text: "\x1b[32m2 running\x1b[39m",
     },
+    { type: "extension_data", key: "todo", name: "TODO", data: {} },
+    {
+      type: "extension_data",
+      key: "payload",
+      name: "TODO",
+      data: { open: 2 },
+    },
+    { type: "extension_data", key: "payload", name: "TODO", data: null },
     { type: "extension_status", key: "build", text: null },
     { type: "title", title: "my session" },
     { type: "editor_text", text: "draft" },

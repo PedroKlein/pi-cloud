@@ -44,4 +44,4 @@ Changing Pi isn't an option, and extensions shouldn't need a Pi Cloud API for wh
 - Pi's theme is chosen for a dark terminal. In the web's light theme, extension colours can be hard to read, as they are in the Pi view.
 - The width is the composer's, not each browser's. A narrower browser watching the same Session sees lines cut off.
 - Components that react to keys or the mouse, such as `ctx.ui.custom` dialogs and custom editors, still only work in the Pi view.
-- What extensions write for rpc hosts, such as pi-subagents' snapshots, needs its own view. That is separate work.
+- What extensions write for rpc hosts, such as pi-subagents' snapshots, needs its own view. [ADR 0030](0030-subagents.md) publishes it as extension data for plugins to draw.

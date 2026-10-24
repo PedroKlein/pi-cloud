@@ -27,6 +27,7 @@ export type ChatItem = (
       readonly name: string;
       readonly text: string;
       readonly failed: boolean;
+      readonly details?: unknown;
     }
 ) & { readonly at?: string };
 
@@ -52,6 +53,7 @@ interface Entry {
     readonly toolCallId?: string;
     readonly toolName?: string;
     readonly isError?: boolean;
+    readonly details?: unknown;
     readonly errorMessage?: string;
     readonly model?: string;
     readonly command?: string;
@@ -157,6 +159,7 @@ function entryItems(entry: Entry): readonly ChatItem[] {
           name: message.toolName ?? "tool",
           text,
           failed: message.isError === true,
+          ...(message.details !== undefined && { details: message.details }),
         },
       ];
     // A command the user ran in Pi with "!".
@@ -221,7 +224,11 @@ export interface Step {
   readonly id: string;
   readonly name: string;
   readonly args: unknown;
-  readonly result?: { readonly text: string; readonly failed: boolean };
+  readonly result?: {
+    readonly text: string;
+    readonly failed: boolean;
+    readonly details?: unknown;
+  };
 }
 
 export type Work =
@@ -233,6 +240,8 @@ export interface Turn {
   readonly user: string | undefined;
   readonly images?: readonly ImageAttachment[];
   readonly work: readonly Work[];
+  // Tool calls a plugin draws, in call order (ADR 0030).
+  readonly cards: readonly Step[];
   readonly answer: readonly string[];
   readonly started?: string;
   readonly ended?: string;
@@ -243,6 +252,7 @@ export interface Turn {
 // tool call is the answer; text between tool calls narrates the work.
 export function turns(
   items: readonly (ChatItem & { readonly key: number })[],
+  claimed: (tool: string) => boolean = () => false,
 ): readonly Turn[] {
   const result: {
     key: number;
@@ -275,27 +285,41 @@ export function turns(
     const results = new Map(
       inTurn.flatMap((item) =>
         item.role === "result"
-          ? [[item.id, { text: item.text, failed: item.failed }] as const]
+          ? [
+              [
+                item.id,
+                {
+                  text: item.text,
+                  failed: item.failed,
+                  ...(item.details !== undefined && { details: item.details }),
+                },
+              ] as const,
+            ]
           : [],
       ),
     );
+
+    const cards: Step[] = [];
 
     const work = inTurn.slice(0, lastTool + 1).flatMap((item): Work[] => {
       switch (item.role) {
         case "tool": {
           const found = results.get(item.id);
 
-          return [
-            {
-              kind: "step",
-              step: {
-                id: item.id,
-                name: item.name,
-                args: item.args,
-                ...(found && { result: found }),
-              },
-            },
-          ];
+          const step: Step = {
+            id: item.id,
+            name: item.name,
+            args: item.args,
+            ...(found && { result: found }),
+          };
+
+          if (claimed(item.name)) {
+            cards.push(step);
+
+            return [];
+          }
+
+          return [{ kind: "step", step }];
         }
 
         case "result":
@@ -336,6 +360,7 @@ export function turns(
             : [],
         ),
       ],
+      cards,
       answer: tail.flatMap((item) =>
         item.role === "assistant" ? [item.text] : [],
       ),

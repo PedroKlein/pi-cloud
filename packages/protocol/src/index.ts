@@ -277,6 +277,14 @@ export type LiveEvent =
       readonly lines: readonly string[] | null;
       readonly placement: "aboveEditor" | "belowEditor";
     }
+  // What an extension wrote for hosts in a text widget line
+  // PI_<NAME>_JSON:<json>, or null once the widget is gone (ADR 0030).
+  | {
+      readonly type: "extension_data";
+      readonly key: string;
+      readonly name: string;
+      readonly data: unknown;
+    }
   // An extension's footer, which replaces the statuses row, and header, as
   // rendered lines with their SGR escape codes (ADR 0029).
   | { readonly type: "footer"; readonly lines: readonly string[] | null }
@@ -346,6 +354,8 @@ export function liveSurface(
       return { key: `status:${event.key}`, open: event.text !== null };
     case "widget":
       return { key: `widget:${event.key}`, open: event.lines !== null };
+    case "extension_data":
+      return { key: `data:${event.key}`, open: event.data !== null };
     case "footer":
     case "header":
       return { key: event.type, open: event.lines !== null };

@@ -1,3 +1,4 @@
+import type { MountedSession } from "@pi-cloud/plugins/web";
 import { cn, Icon } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -24,21 +25,25 @@ import {
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
 import { usePrimaryId } from "./primary";
+import { PluginBoundary } from "./plugin-boundary";
+import { pluginContext, toolRenderer } from "./plugins";
 import { TerminalText } from "./terminal-text";
 
 export function ChatView({
   feed,
+  session,
   place,
   hidden,
 }: {
   readonly feed: Feed;
+  readonly session: MountedSession;
   readonly place: string;
   readonly hidden: boolean;
 }): ReactElement {
   const scroller = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const top = useRef(0);
-  const shown = useMemo(() => turns(feed.items), [feed.items]);
+  const shown = useMemo(() => turns(feed.items, claimed), [feed.items]);
   const chatId = usePrimaryId("chat");
 
   const live =
@@ -103,7 +108,10 @@ export function ChatView({
       >
         {shown.map((turn, index) => {
           const last = index === shown.length - 1;
-          const running = last ? feed.tools : [];
+
+          const running = last
+            ? feed.tools.filter(({ name }) => !claimed(name))
+            : [];
 
           return [
             index > 0 && turn.user !== undefined && (
@@ -150,6 +158,11 @@ export function ChatView({
                 ),
               )
             ),
+            ...turn.cards.map((step) => (
+              <li key={`${String(turn.key)}-card-${step.id}`} data-role="card">
+                <ToolCard step={step} session={session} />
+              </li>
+            )),
             ...turn.answer.map((text, at) => (
               <li
                 key={`${String(turn.key)}-answer-${String(at)}`}
@@ -439,5 +452,48 @@ function linked(text: string): ReactNode[] {
     ) : (
       part.text
     ),
+  );
+}
+
+const claimed = (tool: string): boolean => toolRenderer(tool) !== undefined;
+
+// A tool call drawn by the plugin that claims its tool (ADR 0030).
+function ToolCard({
+  step,
+  session,
+}: {
+  readonly step: Step;
+  readonly session: MountedSession;
+}): ReactElement | null {
+  const renderer = toolRenderer(step.name);
+
+  if (!renderer) {
+    return null;
+  }
+
+  const { plugin, Component } = renderer;
+
+  const status = step.result?.failed === true ? "failed" : "done";
+
+  return (
+    <PluginBoundary name={plugin}>
+      <Component
+        context={pluginContext(plugin)}
+        session={session}
+        call={{
+          id: step.id,
+          name: step.name,
+          args: step.args,
+          status: step.result ? status : "running",
+          ...(step.result && {
+            result: {
+              text: step.result.text,
+              details: step.result.details,
+              failed: step.result.failed,
+            },
+          }),
+        }}
+      />
+    </PluginBoundary>
   );
 }

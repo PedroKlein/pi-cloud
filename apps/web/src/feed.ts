@@ -11,6 +11,11 @@ import {
 import { chatItems, type ChatItem } from "./chat";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
+
+export interface ShownWidget {
+  readonly key: string;
+  readonly lines: readonly string[];
+}
 export type Settings = Extract<LiveEvent, { type: "settings" }>;
 export type Explanation = Extract<LiveEvent, { type: "explanation" }>;
 
@@ -32,8 +37,8 @@ export interface Feed {
   readonly tools: readonly { readonly id: string; readonly name: string }[];
   readonly prompts: readonly OpenPrompt[];
   readonly statuses: readonly string[];
-  readonly widgetsAbove: string;
-  readonly widgetsBelow: string;
+  readonly widgetsAbove: readonly ShownWidget[];
+  readonly widgetsBelow: readonly ShownWidget[];
   // An extension's footer, which replaces the statuses, and header (ADR 0029).
   readonly footer: string | undefined;
   readonly header: string | undefined;
@@ -61,8 +66,8 @@ export const emptyFeed: Feed = {
   tools: [],
   prompts: [],
   statuses: [],
-  widgetsAbove: "",
-  widgetsBelow: "",
+  widgetsAbove: [],
+  widgetsBelow: [],
   footer: undefined,
   header: undefined,
   queue: { steering: [], followUp: [] },
@@ -130,16 +135,17 @@ export function feedReader({
   };
 
   const surfaces = (): Partial<Feed> => {
-    const widgetText = (placement: string): string =>
-      [...widgets.values()]
-        .filter((widget) => widget.placement === placement)
-        .flatMap((widget) => widget.lines ?? [])
-        .join("\n");
+    const placed = (placement: string): ShownWidget[] =>
+      [...widgets.values()].flatMap((widget) =>
+        widget.placement === placement && widget.lines
+          ? [{ key: widget.key, lines: widget.lines }]
+          : [],
+      );
 
     return {
       statuses: [...statuses.values()],
-      widgetsAbove: widgetText("aboveEditor"),
-      widgetsBelow: widgetText("belowEditor"),
+      widgetsAbove: placed("aboveEditor"),
+      widgetsBelow: placed("belowEditor"),
       footer: drawn.get("footer"),
       header: drawn.get("header"),
     };
@@ -285,6 +291,7 @@ export function feedReader({
 
         return;
       case "plugin":
+      case "extension_data":
         return;
       case "queue":
         update({
