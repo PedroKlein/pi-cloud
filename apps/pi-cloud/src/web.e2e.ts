@@ -52,6 +52,14 @@ beforeAll(async () => {
   page.setDefaultTimeout(10_000);
 });
 
+// A folder with its own .pi asks before loading it (ADR 0031).
+async function trustRepository(): Promise<void> {
+  await page
+    .locator('[data-role="prompt"]')
+    .getByRole("button", { name: "Trust it", exact: true })
+    .click();
+}
+
 afterAll(async () => {
   await browser.close();
   await server.stop();
@@ -772,6 +780,7 @@ test("picks a slash command from the composer's menu", async () => {
   await form.locator("[name=location]").fill(root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
+  await trustRepository();
 
   const box = page.locator("#prompt-text");
   await box.pressSequentially("/rev");
@@ -1283,6 +1292,7 @@ test("draws an extension's widget and footer as Pi's TUI does, at the composer's
   await form.locator("[name=location]").fill(folder);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
+  await trustRepository();
 
   await page.locator("footer", { hasText: "status: planning" }).waitFor();
 
@@ -1431,6 +1441,7 @@ export default (pi) => {
   await form.locator("[name=location]").fill(folder);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
+  await trustRepository();
 
   const box = page.locator("#prompt-text");
   await box.fill("check the tests in the background");

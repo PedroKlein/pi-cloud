@@ -416,6 +416,21 @@ export async function hostSession(
     }
   });
 
+  // Messages wait for the trust answer, so their turns already have the
+  // repository's configuration.
+  const trusting = asksForTrust(session.sessionManager.getCwd(), options)
+    ? askForTrust(session, stream, log).then(
+        () => {
+          live.push({ type: "commands", commands: slashCommands(session) });
+        },
+        (error: unknown) => {
+          log("repository trust failed", { error: String(error) });
+
+          live.push({ type: "notify", level: "error", message: String(error) });
+        },
+      )
+    : Promise.resolve();
+
   const detach = stream.commands((command) => {
     log("command received", { command: command.type, actor: command.actor });
 
@@ -497,22 +512,27 @@ export async function hostSession(
       return;
     }
 
-    run(session, command).then(
-      async () => {
-        if (command.type === "set_model" || command.type === "set_thinking") {
-          live.push(await settings(session));
-        }
-      },
-      (error: unknown) => {
-        log("command failed", { command: command.type, error: String(error) });
+    (command.type === "message" ? trusting : Promise.resolve())
+      .then(async () => run(session, command))
+      .then(
+        async () => {
+          if (command.type === "set_model" || command.type === "set_thinking") {
+            live.push(await settings(session));
+          }
+        },
+        (error: unknown) => {
+          log("command failed", {
+            command: command.type,
+            error: String(error),
+          });
 
-        live.push({
-          type: "notify",
-          level: "error",
-          message: `${command.type} failed: ${String(error)}`,
-        });
-      },
-    );
+          live.push({
+            type: "notify",
+            level: "error",
+            message: `${command.type} failed: ${String(error)}`,
+          });
+        },
+      );
   });
 
   live.push({ type: "status", status: "idle" });
@@ -522,21 +542,6 @@ export async function hostSession(
   transcript.sync();
 
   let stopped = false;
-
-  // The first message waits for the trust answer, so its turn already has
-  // the repository's configuration.
-  const trusting = asksForTrust(session.sessionManager.getCwd(), options)
-    ? askForTrust(session, stream, log).then(
-        () => {
-          live.push({ type: "commands", commands: slashCommands(session) });
-        },
-        (error: unknown) => {
-          log("repository trust failed", { error: String(error) });
-
-          live.push({ type: "notify", level: "error", message: String(error) });
-        },
-      )
-    : Promise.resolve();
 
   const firstMessage = options.firstMessage ?? null;
   if (
