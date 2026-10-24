@@ -5,6 +5,7 @@ import {
   type Attempt,
   type Command,
   type Environment,
+  leaseMs,
   type LiveEvent,
   type LivePost,
   liveSurface,
@@ -101,6 +102,7 @@ export type Result<T, R extends Rejection = Rejection> =
 export interface SessionsOptions {
   readonly pollWaitMs?: number;
   readonly offlineAfterMs?: number;
+  readonly leaseMs?: number;
   readonly events?: (event: KernelEvent) => void;
   readonly sessionPlugins?: readonly string[];
   readonly offeredModels?: ModelOffer;
@@ -140,6 +142,7 @@ export class Sessions {
     this.#polls = new RunnerPolls({
       pollWaitMs: options.pollWaitMs ?? 10_000,
       offlineAfterMs: options.offlineAfterMs ?? 30_000,
+      leaseMs: options.leaseMs ?? leaseMs,
       onlineChanged: (runner) => {
         this.#onlineChanged(runner);
       },
@@ -734,56 +737,89 @@ export class Sessions {
     running: number,
   ): Assignment[] {
     const free = capacity === undefined ? Infinity : capacity - running;
-    const pool = this.#polls.runners(runner.environment);
 
+    const pool = {
+      runners: this.#polls.runners(runner.environment),
+      leaseLapsed: (name: string) => this.#polls.leaseLapsed(name),
+    };
+
+    // A Session still attempting on another runner is claimable only once
+    // that runner's lease lapsed.
     const claimable = this.#store
-      .byEnvironment(runner.environment, claimableStatuses)
-      .filter((session) => placesOn(session, runner.name, pool))
+      .byEnvironment(runner.environment, [...claimableStatuses, ...attempting])
+      .filter(
+        (session) =>
+          (claimableStatuses.includes(session.status) ||
+            session.runner !== runner.name) &&
+          placesOn(session, runner.name, pool),
+      )
       .slice(0, Math.max(free, 0));
 
-    return claimable.flatMap((next) => {
-      const profile = this.#store.profile(next.profileId);
-      if (!profile) {
-        this.#update({
+    return claimable
+      .map((session) => this.#moveOff(session))
+      .flatMap((next) => {
+        const profile = this.#store.profile(next.profileId);
+        if (!profile) {
+          this.#update({
+            ...next,
+            status: "failed",
+            error: "its Profile no longer exists",
+          });
+
+          return [];
+        }
+
+        const session: StoredSession = {
           ...next,
-          status: "failed",
-          error: "its Profile no longer exists",
-        });
+          runner: runner.name,
+          status: "starting",
+          generation: next.generation + 1,
+          error: null,
+        };
 
-        return [];
-      }
+        this.#update(session);
 
-      const session: StoredSession = {
-        ...next,
-        runner: runner.name,
-        status: "starting",
-        generation: next.generation + 1,
-        error: null,
-      };
+        return {
+          sessionId: session.id,
+          generation: session.generation,
+          trusted: this.#trusted(session),
+          profile: {
+            id: profile.id,
+            packages: profile.packages,
+            agentsMd: profile.agentsMd,
+            systemMd: profile.systemMd,
+            appendSystemMd: profile.appendSystemMd,
+            mcpServers: profile.mcpServers,
+            settings: profile.settings,
+          },
+          workspace: session.workspace,
+          model: session.model,
+          thinking: session.thinking,
+          systemPrompt: session.systemPrompt,
+          firstMessage: session.firstMessage,
+          plugins: this.#sessionPlugins,
+        };
+      });
+  }
 
-      this.#update(session);
+  // A turn running on a runner whose lease lapsed is reported as interrupted,
+  // as after an agent restart.
+  #moveOff(session: StoredSession): StoredSession {
+    if (!attempting.includes(session.status)) {
+      return session;
+    }
 
-      return {
-        sessionId: session.id,
-        generation: session.generation,
-        trusted: this.#trusted(session),
-        profile: {
-          id: profile.id,
-          packages: profile.packages,
-          agentsMd: profile.agentsMd,
-          systemMd: profile.systemMd,
-          appendSystemMd: profile.appendSystemMd,
-          mcpServers: profile.mcpServers,
-          settings: profile.settings,
-        },
-        workspace: session.workspace,
-        model: session.model,
-        thinking: session.thinking,
-        systemPrompt: session.systemPrompt,
-        firstMessage: session.firstMessage,
-        plugins: this.#sessionPlugins,
-      };
-    });
+    this.#hosts.get(session.id)?.end();
+
+    const interrupted: StoredSession = {
+      ...session,
+      status: "interrupted",
+      interruptedAt: new Date().toISOString(),
+    };
+
+    this.#update(interrupted);
+
+    return interrupted;
   }
 
   // A command stream whose tunnel died can stay open for minutes, so an

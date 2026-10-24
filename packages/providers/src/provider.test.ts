@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   emptyProfile,
   type Assignment,
@@ -155,4 +156,55 @@ test("reports the running attempts, folders and current models with every poll",
       models: [mini, { provider: "anthropic", id: "claude-haiku" }],
     },
   ]);
+});
+
+test("stops Sessions whose Workspace can move once polls fail for half a lease", async () => {
+  const controller = new AbortController();
+
+  const clone: Assignment = {
+    ...assignment,
+    sessionId: "s2",
+    workspace: { kind: "clone", repository: "r", branch: "b" },
+  };
+
+  const running = new Map<string, Attempt>();
+  const unloaded: Attempt[] = [];
+  let polls = 0;
+
+  const stopped = runProvider({
+    controlPlane: {
+      work: async () => {
+        polls++;
+        if (polls === 1) {
+          return { ...none, start: [assignment, clone] };
+        }
+
+        return Promise.reject(new Error("unreachable"));
+      },
+    },
+    start: (a) => {
+      running.set(a.sessionId, {
+        sessionId: a.sessionId,
+        generation: a.generation,
+      });
+    },
+    unload: (a) => {
+      unloaded.push(a);
+      running.delete(a.sessionId);
+    },
+    remove: () => undefined,
+    running: () => [...running.values()],
+    folders: [],
+    models: () => [],
+    log: () => undefined,
+    signal: controller.signal,
+    retry: { initialMs: 5, maxMs: 5 },
+    leaseMs: 100,
+  });
+
+  await sleep(150);
+  controller.abort();
+  await stopped;
+
+  expect(unloaded).toEqual([{ sessionId: "s2", generation: 1 }]);
 });

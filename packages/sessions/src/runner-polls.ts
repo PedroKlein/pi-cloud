@@ -20,10 +20,13 @@ interface RunnerState {
 }
 
 // A runner stays online for offlineAfterMs after its last poll ends, so the
-// gap between long polls doesn't flip it offline.
+// gap between long polls doesn't flip it offline. Its lease on its Sessions
+// lasts leaseMs after that poll (ADR 0032).
 export class RunnerPolls {
   readonly #pollWaitMs: number;
   readonly #offlineAfterMs: number;
+  readonly #leaseMs: number;
+  readonly #startedAt = Date.now();
   readonly #onlineChanged: (runner: string) => void;
   readonly #runners = new Map<string, RunnerState>();
   readonly #waiting = new Map<string, Set<() => void>>();
@@ -31,10 +34,12 @@ export class RunnerPolls {
   constructor(options: {
     readonly pollWaitMs: number;
     readonly offlineAfterMs: number;
+    readonly leaseMs: number;
     readonly onlineChanged: (runner: string) => void;
   }) {
     this.#pollWaitMs = options.pollWaitMs;
     this.#offlineAfterMs = options.offlineAfterMs;
+    this.#leaseMs = options.leaseMs;
     this.#onlineChanged = options.onlineChanged;
   }
 
@@ -85,6 +90,17 @@ export class RunnerPolls {
       state !== undefined &&
       (state.polling > 0 || Date.now() - state.lastPoll < this.#offlineAfterMs)
     );
+  }
+
+  // A runner that hasn't polled since the server started keeps its lease for
+  // a full lease after the start, so a restart doesn't move its Sessions.
+  leaseLapsed(runner: string): boolean {
+    const state = this.#runners.get(runner);
+    if (state === undefined) {
+      return Date.now() - this.#startedAt >= this.#leaseMs;
+    }
+
+    return state.polling === 0 && Date.now() - state.lastPoll >= this.#leaseMs;
   }
 
   // The runners that polled for the Environment since the server started.
