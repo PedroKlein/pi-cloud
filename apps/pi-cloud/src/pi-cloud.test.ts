@@ -1772,6 +1772,73 @@ test("runs a laptop session in its own worktree of a listed checkout", async () 
   expect(output).toContain(`branch=${branch}`);
 });
 
+test("forks a session into a new one that remembers its chat and starts from its branch", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes('"one"')
+            ? "remembers one"
+            : "forgot",
+        ),
+      ]),
+  ]);
+
+  const checkout = await gitRepository();
+
+  const source = await createSession("laptop", {
+    kind: "worktree",
+    path: checkout,
+  });
+
+  await follow(source.id, status("idle"));
+
+  await api(`/api/sessions/${source.id}/commands`, {
+    type: "message",
+    text: "one",
+  });
+
+  await follow(source.id, (events) => roles(events).includes("assistant"));
+
+  const response = await api(`/api/sessions/${source.id}/fork`, {});
+  const fork = (await response.json()) as Session;
+
+  await follow(fork.id, status("idle"));
+
+  await api(`/api/sessions/${fork.id}/commands`, {
+    type: "message",
+    text: "two",
+  });
+
+  const replay = await follow(
+    fork.id,
+    (events) => roles(events).filter((r) => r === "assistant").length === 2,
+  );
+
+  const missing = await api("/api/sessions/nope/fork", {});
+
+  const stored = (await (
+    await api(`/api/sessions/${fork.id}`)
+  ).json()) as Session;
+
+  expect(response.status).toBe(201);
+
+  expect(fork.workspace).toEqual({
+    kind: "worktree",
+    path: checkout,
+    branch: `pi-cloud/${fork.id.slice(0, 8)}`,
+    startPoint: `pi-cloud/${source.id.slice(0, 8)}`,
+  });
+
+  expect(
+    replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
+  ).toBe(true);
+
+  expect(missing.status).toBe(404);
+  expect(stored.title).toBe("one (fork)");
+});
+
 test("marks a session failed when its folder is not listed", async () => {
   const unlisted = await realpath(
     await mkdtemp(join(tmpdir(), "pi-cloud-unlisted-")),

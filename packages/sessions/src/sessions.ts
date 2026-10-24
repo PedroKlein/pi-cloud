@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { KernelEvent, ModelOffer, StartRequest } from "@pi-cloud/plugins";
 import {
+  type Actor,
   type Assignment,
   type Attempt,
   type Command,
@@ -8,6 +9,7 @@ import {
   type EnvironmentUpdate,
   leaseMs,
   type LiveEvent,
+  movable,
   type LivePost,
   liveSurface,
   type ModelRef,
@@ -26,6 +28,7 @@ import {
   type TrustAnswer,
   type Work,
   type WorkPoll,
+  type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import { placesOn, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
@@ -96,7 +99,8 @@ export type Rejection =
   | "archived"
   | "not_kept"
   | "unknown_environment"
-  | "unknown_profile";
+  | "unknown_profile"
+  | "not_movable";
 
 export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
@@ -215,6 +219,53 @@ export class Sessions {
     });
 
     return { ok: true, value: view };
+  }
+
+  // A fork is a new Session that starts from another's transcript, on its
+  // own branch from the one that Session works on, in any Environment
+  // (ADR 0034). Only what the Session pushed reaches another machine, so a
+  // Session in a folder of its machine forks only within its Environment.
+  // A fork belongs to no plugin, so a plugin's prompt stays behind.
+  fork(
+    id: string,
+    request: { readonly environment?: string; readonly actor: Actor },
+  ): Result<Session> {
+    const source = this.#store.get(id);
+    if (!source) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    const environment = request.environment ?? source.environmentId;
+    if (environment !== source.environmentId && !movable(source.workspace)) {
+      return { ok: false, reason: "not_movable" };
+    }
+
+    const forked = this.start({
+      environment,
+      profile: source.profileId,
+      workspace: forkedWorkspace(source),
+      ...(source.model && { model: source.model }),
+      ...(source.thinking && { thinking: source.thinking }),
+      ...(source.owner === null &&
+        source.systemPrompt !== null && { systemPrompt: source.systemPrompt }),
+      actor: request.actor,
+    });
+
+    if (!forked.ok) {
+      return forked;
+    }
+
+    this.#store.appendTranscript(
+      forked.value.id,
+      0,
+      this.#store.transcript(id, 0),
+    );
+
+    if (source.title !== null) {
+      this.#store.setTitle(forked.value.id, `${source.title} (fork)`);
+    }
+
+    return { ok: true, value: this.get(forked.value.id) ?? forked.value };
   }
 
   list({
@@ -1081,4 +1132,49 @@ function userText(message: unknown): string | null {
     : undefined;
 
   return typeof text === "string" && text.trim() !== "" ? text : null;
+}
+
+// A Session that never started has no branch yet, so its fork starts where
+// it would have. An archived one's branch lives on only at its restore point.
+function forkedWorkspace({
+  workspace,
+  generation,
+}: StoredSession): WorkspaceRequest {
+  if (workspace.kind === "folder") {
+    return workspace;
+  }
+
+  if (workspace.kind === "repositories") {
+    return {
+      kind: "repositories",
+      repositories: workspace.repositories.map((checkout) => {
+        const startPoint =
+          generation === 0
+            ? checkout.startPoint
+            : (checkout.restorePoint ?? workspace.branch);
+
+        return {
+          repository: checkout.repository,
+          ...(startPoint !== undefined && { startPoint }),
+        };
+      }),
+    };
+  }
+
+  const startPoint =
+    generation === 0
+      ? workspace.startPoint
+      : (workspace.restorePoint ?? workspace.branch);
+
+  return workspace.kind === "worktree"
+    ? {
+        kind: "worktree",
+        path: workspace.path,
+        ...(startPoint !== undefined && { startPoint }),
+      }
+    : {
+        kind: "clone",
+        repository: workspace.repository,
+        ...(startPoint !== undefined && { startPoint }),
+      };
 }

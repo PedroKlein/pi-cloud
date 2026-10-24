@@ -135,6 +135,21 @@ export function SessionView({
     [channel.session],
   );
 
+  // The fork starts from this Session's branch, so it gets what was pushed
+  // or, on the same machine, committed.
+  const forkSession = async (id: string): Promise<void> => {
+    try {
+      const response = await api(
+        `/api/sessions/${encodeURIComponent(id)}/fork`,
+        {},
+      );
+
+      location.hash = ((await response.json()) as Session).id;
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
   const action = (name: string): void => {
     api(`/api/sessions/${encodeURIComponent(sessionId)}/${name}`, {}).catch(
       reportError,
@@ -212,6 +227,13 @@ export function SessionView({
                         action("archive");
                       },
                     },
+                {
+                  label: "Fork",
+                  icon: "git-fork",
+                  run: () => {
+                    void forkSession(sessionId);
+                  },
+                },
                 ...(session.workspaceRemoval === "kept"
                   ? [
                       {

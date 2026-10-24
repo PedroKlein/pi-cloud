@@ -53,6 +53,7 @@ const rejectionStatus = {
   not_kept: 409,
   unknown_environment: 400,
   unknown_profile: 400,
+  not_movable: 409,
 } as const satisfies Record<Rejection, number>;
 
 type Route = (
@@ -187,6 +188,28 @@ export function createHandler(
                   !plugins.names.includes(session.owner.plugin),
               ),
         );
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/sessions\/([^/]+)\/fork$/,
+      async (request, [id = ""]) => {
+        const { environment } = createFork(await readJson(request));
+
+        const forked = sessions.fork(id, {
+          ...(environment !== undefined && { environment }),
+          actor: user,
+        });
+
+        if (forked.ok) {
+          log("session forked", {
+            sessionId: forked.value.id,
+            from: id,
+            environmentId: forked.value.environmentId,
+          });
+        }
+
+        return reply(forked, 201);
       },
     ],
     [
@@ -639,6 +662,19 @@ function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
   }
 
   return level;
+}
+
+function createFork(body: unknown): { readonly environment?: string } {
+  const { environment } = (body ?? {}) as Record<string, unknown>;
+  if (environment === undefined || environment === null) {
+    return {};
+  }
+
+  if (typeof environment !== "string" || environment === "") {
+    throw new BadRequest("environment must be a non-empty string");
+  }
+
+  return { environment };
 }
 
 function createSession(body: unknown): CreateSession {
