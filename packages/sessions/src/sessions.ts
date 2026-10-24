@@ -263,7 +263,10 @@ export class Sessions {
     );
 
     if (source.title !== null) {
-      this.#store.setTitle(forked.value.id, `${source.title} (fork)`);
+      this.#store.setTitle(
+        forked.value.id,
+        `${Array.from(source.title).slice(0, titleLength).join("")} (fork)`,
+      );
     }
 
     return { ok: true, value: this.get(forked.value.id) ?? forked.value };
@@ -1066,8 +1069,10 @@ function titleAfter(
     }
   }
 
-  return named === null
-    ? null
+  // Only new names are cut, so a longer title given elsewhere, like a fork's,
+  // stays whole.
+  return named === null || named === title
+    ? named
     : Array.from(named.trim()).slice(0, titleLength).join("");
 }
 

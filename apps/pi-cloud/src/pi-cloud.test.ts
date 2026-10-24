@@ -1795,12 +1795,15 @@ test("runs a laptop session in its own worktree of a listed checkout", async () 
 });
 
 test("forks a session into a new one that remembers its chat and starts from its branch", async () => {
+  // Near the length titles are cut to, so the fork's longer one must survive.
+  const first = `one ${"x".repeat(72)}`;
+
   faux.setResponses([
     fauxAssistantMessage([fauxText("first")]),
     (context) =>
       fauxAssistantMessage([
         fauxText(
-          JSON.stringify(context.messages).includes('"one"')
+          JSON.stringify(context.messages).includes(first)
             ? "remembers one"
             : "forgot",
         ),
@@ -1818,7 +1821,7 @@ test("forks a session into a new one that remembers its chat and starts from its
 
   await api(`/api/sessions/${source.id}/commands`, {
     type: "message",
-    text: "one",
+    text: first,
   });
 
   await follow(source.id, (events) => roles(events).includes("assistant"));
@@ -1858,7 +1861,7 @@ test("forks a session into a new one that remembers its chat and starts from its
   ).toBe(true);
 
   expect(missing.status).toBe(404);
-  expect(stored.title).toBe("one (fork)");
+  expect(stored.title).toBe(`${first} (fork)`);
 });
 
 test("marks a session failed when its folder is not listed", async () => {
