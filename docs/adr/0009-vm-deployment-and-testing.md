@@ -1,6 +1,6 @@
 # 0009: VM deployment and testing
 
-- Status: accepted
+- Status: accepted, amended by [ADR 0034](0034-v2-deployment-and-credentials.md) (v2 runs the server on Kyma as an image and a Helm chart)
 - Date: 2026-10-19
 
 ## Context

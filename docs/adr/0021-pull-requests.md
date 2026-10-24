@@ -1,6 +1,6 @@
 # 0021: Pull Requests From a Session
 
-- Status: accepted
+- Status: accepted, amended by [ADR 0034](0034-v2-deployment-and-credentials.md#git-credentials) (fresh runners get a git token from their Environment)
 - Date: 2026-10-22
 
 ## Context

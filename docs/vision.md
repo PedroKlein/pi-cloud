@@ -47,10 +47,10 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 ### v2: execution platform
 
 - Kubernetes provider, dedicated Session pods, and batch Jobs.
-- Enforced network policy, brokered secrets, and hardened runtimes.
 - Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel: a built-in password login, OIDC as a plugin, and a key per Environment for runners ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 - Profiles defined on the server, which every provider uses, including fresh runtimes ([ADR 0031](adr/0031-profiles.md)).
-- Forking a Session to another provider, starting from the server's copy of its transcript ([open question](open-questions.md#workspace-durability)).
+- Forking a Session onto another runner, starting from the server's copy of its transcript ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)).
+- Pi Cloud on SAP's Kyma as a container image and a Helm chart, with HTTPS in Kyma's gateway ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
 v2 is built in this order: Profiles, Environments as pools, authentication, Kubernetes, then automation plugins such as Jobs, AI workflows and software factories, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
@@ -68,7 +68,7 @@ The scope of v3 is designed once v2 is under way.
 
 ### Later
 
-Everything else under "Expected evolution" below.
+Enforced network policy, brokered secrets and hardened runtimes ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)), and everything else under "Expected evolution" below.
 
 ## Product model
 

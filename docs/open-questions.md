@@ -45,7 +45,7 @@
 - Resolved for v1: a Session's workspace is a folder, a worktree of a folder, or a clone, each of the last two on its own branch, prepared by the provider ([ADR 0012](adr/0012-built-in-provider.md)). How PVCs fit is still open.
 - Resolved for v1: a worktree or clone is removed when its Session is archived, and only if git says nothing would be lost; no age sweep or disk budget yet ([ADR 0013](adr/0013-archive-and-workspace-lifecycle.md)).
 - What is backed up, replicated and exported? OpenHands applies a disk budget and retention, with a trash folder before deletion ([research](research.md#openhands)).
-- Can a Session migrate between providers, or should cross-provider continuation begin as a fork?
+- Resolved for v2: a Session resumes on another runner when its lease lapses, and can be forked onto another runner as a new Session ([ADR 0032](adr/0032-environments-and-runners.md), [ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)).
 
 ### Profiles and personalization
 
@@ -98,8 +98,8 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Resolved for v2: an Environment is configuration plus a pool of runners, and a Session whose runner is lost resumes on another one from the server's transcript [ADR 0032](adr/0032-environments-and-runners.md).
 - Resolved for v2: Environments have no revisions; an image and a setup script make the baseline, cached where the runner can [ADR 0032](adr/0032-environments-and-runners.md).
 - Resolved for v2: an optional image plus a setup script, with the setup cache on a volume where available [ADR 0032](adr/0032-environments-and-runners.md).
-- Which network-policy claims can be strongly enforced on each provider? Network rules are deferred past the first v2 slice [ADR 0032](adr/0032-environments-and-runners.md).
-- Resolved for the first v2 slice: Environment secrets are stored on the server and readable by the Session; brokered secrets come later [ADR 0032](adr/0032-environments-and-runners.md).
+- Which network-policy claims can be strongly enforced on each provider? Network rules are deferred past v2 ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)).
+- Resolved for the first v2 slice: Environment secrets are stored on the server and readable by the Session; brokered secrets come after v2. Stored values are encrypted with a master key, and a git token among them gives runners git access ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
 - May Project coordinators and worker Threads use different default Environments?
 
 ### Extension system
