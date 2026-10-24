@@ -360,6 +360,12 @@ export function createHandler(
       },
     ],
     [
+      "GET",
+      /^\/agent\/sessions\/([^/]+)\/transcript$/,
+      (_request, [id = ""]) =>
+        Response.json({ entries: sessions.transcript(id) }),
+    ],
+    [
       "POST",
       /^\/agent\/sessions\/([^/]+)\/transcript$/,
       async (request, [id = ""]) => {

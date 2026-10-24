@@ -1195,6 +1195,84 @@ test("restarts an interrupted session as a new attempt with its transcript", asy
   expect(stored.online).toBe(true);
 });
 
+test("restarts a session on a runner without its files from the server's transcript", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes('"one"')
+            ? "remembers one"
+            : "forgot",
+        ),
+      ]),
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "one",
+  });
+
+  await follow(session.id, (events) => roles(events).includes("assistant"));
+
+  await laptop();
+
+  await follow(session.id, (events) =>
+    events.some((e) => e.type === "session" && !e.session.online),
+  );
+
+  // Like another runner, which never had the Session's files.
+  await rm(join(root, "laptop", "sessions", session.id), {
+    recursive: true,
+    force: true,
+  });
+
+  startAgent("laptop");
+
+  await follow(
+    session.id,
+    (events) =>
+      events.at(-1)?.type === "session" &&
+      events.some(
+        (e) =>
+          e.type === "session" &&
+          e.session.generation === 2 &&
+          e.session.status === "idle",
+      ),
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "two",
+  });
+
+  const replay = await follow(
+    session.id,
+    (events) => roles(events).filter((r) => r === "assistant").length === 2,
+  );
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(roles(replay).filter((r) => r !== "system")).toEqual([
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+  ]);
+
+  expect(
+    replay.some((e) => e.type === "entry" && e.entry.includes("remembers one")),
+  ).toBe(true);
+
+  expect(stored.interruptedAt).not.toBeNull();
+  expect(stored.online).toBe(true);
+});
+
 test("marks a session failed when its host cannot start", async () => {
   startAgent("broken", [join(root, "missing-extension.ts")]);
   const session = await createSession("broken");

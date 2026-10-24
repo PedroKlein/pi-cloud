@@ -14,6 +14,7 @@ import {
   hostSession,
   hostTerminals,
   modelLister,
+  restoreTranscript,
   type SessionOptions,
   syncProfile,
 } from "@pi-cloud/sessionhost";
@@ -24,6 +25,7 @@ import {
   removeWorkspace,
 } from "@pi-cloud/workspaces";
 import {
+  fetchTranscript,
   httpControlPlane,
   httpSessionStream,
   reportRemoval,
@@ -248,12 +250,22 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         return undefined;
       }
 
+      const sessionDir = join(options.dataDir, "sessions", sessionId);
+
+      const restored = await restoreTranscript(sessionDir, cwd, async () =>
+        fetchTranscript(agent, sessionId),
+      );
+
+      if (restored > 0) {
+        sessionLog("transcript restored from the server", { lines: restored });
+      }
+
       const sessionOptions = {
         cwd,
         checkouts,
         agentDir,
         ...credentials,
-        sessionDir: join(options.dataDir, "sessions", sessionId),
+        sessionDir,
         extensionPaths: options.extensionPaths,
         systemPrompt: assignment.systemPrompt,
         trusted: assignment.trusted ?? null,

@@ -110,6 +110,23 @@ export async function reportStartFailure(
   });
 }
 
+// The server's copy of a Session's transcript, for a runner that has none
+// (ADR 0032).
+export async function fetchTranscript(
+  agent: Agent,
+  sessionId: string,
+): Promise<readonly string[]> {
+  const response = await call(
+    agent,
+    `/agent/sessions/${sessionId}/transcript`,
+    {
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    },
+  );
+
+  return ((await response.json()) as { entries: readonly string[] }).entries;
+}
+
 export async function reportRemoval(
   agent: Agent,
   sessionId: string,
