@@ -9,3 +9,4 @@ export {
 } from "./host";
 export { modelLister, type SessionOptions } from "./session";
 export { syncProfile } from "./profile";
+export { restoreTranscript } from "./restore";
