@@ -13,6 +13,7 @@ const assignment: Assignment = {
   sessionId: "s1",
   generation: 1,
   profile: { id: "profile-1", ...emptyProfile },
+  trusted: null,
   workspace: { kind: "folder", path: "/w" },
   model: null,
   thinking: null,

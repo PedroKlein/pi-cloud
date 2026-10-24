@@ -12,6 +12,7 @@ import {
   createMcpExtension,
   createToolSearchExtension,
   type ExtensionError,
+  hasTrustRequiringProjectResources,
   initTheme,
   type InlineExtension,
   ModelRuntime,
@@ -48,6 +49,9 @@ export interface SessionOptions extends ModelOptions {
   readonly model?: ModelRef;
   readonly thinking?: ThinkingLevel;
   readonly systemPrompt?: string | null;
+  // The user's answer for the repository's own .pi, or null before anyone
+  // was asked (ADR 0031).
+  readonly trusted?: boolean | null;
 }
 
 export interface SessionHost {
@@ -84,6 +88,7 @@ export async function startSession(
   const systemPrompt = options.systemPrompt ?? null;
 
   const services = await loadServices(cwd, options, {
+    projectTrusted: options.trusted ?? !asksForTrust(cwd, options),
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
     extensionFactories: [...builtInExtensions, ...(host?.extensions ?? [])],
     ...(host && { packages: host.packages, onError: host.onError }),
@@ -121,6 +126,15 @@ export async function startSession(
   return session;
 }
 
+// A repository's .pi can run code, so Pi loads it only once the user trusts
+// the repository. Without anything there, there's nothing to ask.
+export function asksForTrust(
+  cwd: string,
+  options: Pick<SessionOptions, "trusted">,
+): boolean {
+  return options.trusted === null && hasTrustRequiringProjectResources(cwd);
+}
+
 // Pi rereads its auth file, so each call sees logins made since.
 export async function modelLister(
   options: ModelOptions,
@@ -142,8 +156,10 @@ async function loadServices(
   {
     packages = [],
     onError = () => undefined,
+    projectTrusted = true,
     ...resources
   }: {
+    readonly projectTrusted?: boolean;
     readonly appendSystemPrompt?: string[];
     readonly extensionFactories?: InlineExtension[];
     readonly packages?: readonly string[];
@@ -151,7 +167,10 @@ async function loadServices(
   } = {},
 ): Promise<AgentSessionServices> {
   const { agentDir } = options;
-  const settingsManager = SettingsManager.create(cwd, agentDir);
+
+  const settingsManager = SettingsManager.create(cwd, agentDir, {
+    projectTrusted,
+  });
 
   const plugins = await pluginPackages(
     packages,

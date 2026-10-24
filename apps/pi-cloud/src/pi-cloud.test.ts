@@ -316,13 +316,34 @@ test("lists the slash commands Pi knows, also for a browser that joins later", a
 
   const session = await createSession("laptop");
 
-  const hasCommands = (events: readonly SessionEvent[]): boolean =>
+  const [asked] = (
+    await follow(session.id, (seen) =>
+      seen.some(
+        (event) => event.type === "live" && event.event.type === "prompt",
+      ),
+    )
+  ).flatMap((event) =>
+    event.type === "live" && event.event.type === "prompt"
+      ? [event.event.prompt]
+      : [],
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "answer",
+    id: asked?.id,
+    value: "Trust it",
+  });
+
+  const hasReview = (events: readonly SessionEvent[]): boolean =>
     events.some(
-      (event) => event.type === "live" && event.event.type === "commands",
+      (event) =>
+        event.type === "live" &&
+        event.event.type === "commands" &&
+        event.event.commands.some(({ name }) => name === "review"),
     );
 
-  await follow(session.id, hasCommands);
-  const replay = await follow(session.id, hasCommands);
+  await follow(session.id, hasReview);
+  const replay = await follow(session.id, hasReview);
 
   const commands = replay.flatMap((event) =>
     event.type === "live" && event.event.type === "commands"

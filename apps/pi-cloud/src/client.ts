@@ -6,6 +6,7 @@ import {
   type RemovalPost,
   type StartFailure,
   type ToolCall,
+  type TrustAnswer,
   type ToolSpec,
   protocolVersion,
   type TerminalControl,
@@ -181,6 +182,10 @@ export function httpSessionStream(
     callTool: async (id, name, input) => {
       const toolCall: ToolCall = { generation, id, name, input };
       await post("tool-calls", toolCall);
+    },
+    answerTrust: async (trusted) => {
+      const answer: TrustAnswer = { generation, trusted };
+      await post("trust", answer);
     },
     pluginRequest: async (plugin, path, init = {}) => {
       const url = new URL(`${base}/plugins/${plugin}/${path}`, agent.server);

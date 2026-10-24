@@ -19,6 +19,8 @@ import {
   type StartFailure,
   type TranscriptAck,
   type TranscriptBatch,
+  trustedRepository,
+  type TrustAnswer,
   type Work,
   type WorkPoll,
 } from "@pi-cloud/protocol";
@@ -41,6 +43,12 @@ export interface SessionStore {
     | (ProfileContent & { readonly id: string; readonly ownerId: string })
     | undefined;
   defaultProfileId: (ownerId: string) => string;
+  repositoryTrust: (ownerId: string, repository: string) => boolean | null;
+  setRepositoryTrust: (
+    ownerId: string,
+    repository: string,
+    trusted: boolean,
+  ) => void;
   ensureEnvironment: (provider: string) => void;
   environments: () => readonly StoredEnvironment[];
   insert: (session: StoredSession) => void;
@@ -382,6 +390,33 @@ export class Sessions {
     }
   }
 
+  // Kept for the repository, so later Sessions in it don't ask again.
+  trust(id: string, answer: TrustAnswer): Result<undefined> {
+    const current = this.#current(id, answer.generation);
+    if (!current.ok) {
+      return current;
+    }
+
+    const repository = trustedRepository(current.value.workspace);
+    if (repository !== undefined) {
+      this.#store.setRepositoryTrust(
+        current.value.ownerId,
+        repository,
+        answer.trusted,
+      );
+    }
+
+    return { ok: true, value: undefined };
+  }
+
+  #trusted(session: StoredSession): boolean | null {
+    const repository = trustedRepository(session.workspace);
+
+    return repository === undefined
+      ? null
+      : this.#store.repositoryTrust(session.ownerId, repository);
+  }
+
   fail(id: string, failure: StartFailure): Result<undefined> {
     const current = this.#current(id, failure.generation);
     if (!current.ok) {
@@ -685,6 +720,7 @@ export class Sessions {
       return {
         sessionId: session.id,
         generation: session.generation,
+        trusted: this.#trusted(session),
         profile: {
           id: profile.id,
           packages: profile.packages,

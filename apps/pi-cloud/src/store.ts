@@ -79,6 +79,12 @@ create table if not exists profiles (
   content text not null,
   created_at text not null
 );
+create table if not exists repository_trust (
+  owner_id text not null,
+  repository text not null,
+  trusted integer not null,
+  primary key (owner_id, repository)
+);
 create table if not exists profile_defaults (
   owner_id text primary key,
   profile_id text not null references profiles (id)
@@ -396,6 +402,14 @@ export function openStore(path: string): SessionStore &
     "select 1 from sessions where profile_id = ? and archived_at is null limit 1",
   );
 
+  const selectTrust = db.prepare(
+    "select trusted from repository_trust where owner_id = ? and repository = ?",
+  );
+
+  const upsertTrust = db.prepare(
+    "insert into repository_trust (owner_id, repository, trusted) values (?, ?, ?) on conflict (owner_id, repository) do update set trusted = excluded.trusted",
+  );
+
   const selectTranscript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
   );
@@ -525,6 +539,15 @@ export function openStore(path: string): SessionStore &
     defaultProfileId: (ownerId) => defaultProfileId(db, ownerId),
     setDefaultProfile: (ownerId, id) => {
       upsertDefault.run(ownerId, id);
+    },
+    repositoryTrust: (ownerId, repository) => {
+      const row = selectTrust.get(ownerId, repository) as
+        { trusted: number } | undefined;
+
+      return row === undefined ? null : row.trusted === 1;
+    },
+    setRepositoryTrust: (ownerId, repository, trusted) => {
+      upsertTrust.run(ownerId, repository, trusted ? 1 : 0);
     },
     profileInUse: (id) => selectProfileUse.get(id) !== undefined,
     plugin: (name) => pluginStore(db, name),

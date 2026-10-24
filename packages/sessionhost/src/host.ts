@@ -27,6 +27,7 @@ import { workspaceFiles } from "./files";
 import { webSurfaces } from "./surfaces";
 import { remoteUI } from "./ui";
 import {
+  asksForTrust,
   availableModel,
   type SessionOptions,
   startSession,
@@ -46,6 +47,8 @@ export interface SessionStream {
   terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
   tools: () => Promise<readonly ToolSpec[]>;
   callTool: (id: string, name: string, input: unknown) => Promise<void>;
+  // Keeps the user's answer for the repository the Session works in.
+  answerTrust: (trusted: boolean) => Promise<void>;
   pluginRequest: (
     plugin: string,
     path: string,
@@ -215,6 +218,74 @@ export function hostTerminals(
       }
     },
   };
+}
+
+const trustIt = "Trust it";
+const distrustIt = "Don't trust it";
+
+// The Session starts without the repository's .pi and loads it once the user
+// trusts the repository (ADR 0031). Only an explicit answer is kept, so a
+// dismissed question, or one a stop cancels, is asked again next time.
+async function askForTrust(
+  session: AgentSession,
+  stream: Pick<SessionStream, "answerTrust">,
+  log: Log,
+): Promise<void> {
+  const answer = await session.extensionRunner
+    .getUIContext()
+    .select(
+      `Trust ${session.sessionManager.getCwd()}? It has its own Pi configuration in .pi, such as extensions, which can run code. Pi Cloud asks once for each repository.`,
+      [trustIt, distrustIt],
+    );
+
+  log("repository trust answered", { answer: answer ?? null });
+
+  if (answer === undefined) {
+    return;
+  }
+
+  if (answer === trustIt) {
+    await loadProjectConfig(session);
+  }
+
+  await stream.answerTrust(answer === trustIt).catch((error: unknown) => {
+    log("repository trust not kept", { error: String(error) });
+  });
+}
+
+// Pi's own /reload waits for the agent too: reloading mid-turn would drop the
+// tools the turn is using.
+async function loadProjectConfig(session: AgentSession): Promise<void> {
+  if (session.isStreaming || session.isCompacting) {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = session.subscribe((event) => {
+        if (event.type === "agent_settled") {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+  }
+
+  session.settingsManager.setProjectTrusted(true);
+
+  const failure = await session.reload().then(
+    () =>
+      session.resourceLoader
+        .getExtensions()
+        .errors.map((e) => `${e.path}: ${e.error}`)
+        .join("; "),
+    (error: unknown) => String(error),
+  );
+
+  if (failure !== "") {
+    session.settingsManager.setProjectTrusted(false);
+    await session.reload();
+
+    throw new Error(
+      `the repository's Pi configuration failed to load: ${failure}`,
+    );
+  }
 }
 
 export async function hostSession(
@@ -450,24 +521,48 @@ export async function hostSession(
   files.refresh();
   transcript.sync();
 
+  let stopped = false;
+
+  // The first message waits for the trust answer, so its turn already has
+  // the repository's configuration.
+  const trusting = asksForTrust(session.sessionManager.getCwd(), options)
+    ? askForTrust(session, stream, log).then(
+        () => {
+          live.push({ type: "commands", commands: slashCommands(session) });
+        },
+        (error: unknown) => {
+          log("repository trust failed", { error: String(error) });
+
+          live.push({ type: "notify", level: "error", message: String(error) });
+        },
+      )
+    : Promise.resolve();
+
   const firstMessage = options.firstMessage ?? null;
   if (
     firstMessage !== null &&
     !session.sessionManager.getEntries().some(({ type }) => type === "message")
   ) {
-    session.prompt(firstMessage).catch((error: unknown) => {
-      log("first message failed", { error: String(error) });
+    void trusting.then(async () => {
+      if (stopped) {
+        return;
+      }
 
-      live.push({
-        type: "notify",
-        level: "error",
-        message: `first message failed: ${String(error)}`,
+      await session.prompt(firstMessage).catch((error: unknown) => {
+        log("first message failed", { error: String(error) });
+
+        live.push({
+          type: "notify",
+          level: "error",
+          message: `first message failed: ${String(error)}`,
+        });
       });
     });
   }
 
   return {
     stop: async () => {
+      stopped = true;
       detach();
       tui.close();
       surfaces.close();

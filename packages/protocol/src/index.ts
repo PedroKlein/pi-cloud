@@ -128,6 +128,9 @@ export interface Assignment {
   readonly generation: number;
   readonly profile: ProfileContent & { readonly id: string };
   readonly workspace: Workspace;
+  // Whether the user trusts the repository's own Pi configuration in .pi, or
+  // null when nobody was asked yet (ADR 0031).
+  readonly trusted: boolean | null;
   readonly model: ModelRef | null;
   readonly thinking: ThinkingLevel | null;
   readonly systemPrompt: string | null;
@@ -186,6 +189,26 @@ export type RemovalReport =
 // A report as the agent posts it, with the generation of the Removal it
 // answers.
 export type RemovalPost = RemovalReport & { readonly generation: number };
+
+export interface TrustAnswer {
+  readonly generation: number;
+  readonly trusted: boolean;
+}
+
+// The repository a workspace's project trust is kept for: a clone's URL or a
+// local checkout's path. A repositories Workspace runs Pi in a folder of
+// checkouts, which has no .pi of its own.
+export function trustedRepository(workspace: Workspace): string | undefined {
+  switch (workspace.kind) {
+    case "clone":
+      return workspace.repository;
+    case "folder":
+    case "worktree":
+      return workspace.path;
+    case "repositories":
+      return undefined;
+  }
+}
 
 export interface StartFailure {
   readonly generation: number;

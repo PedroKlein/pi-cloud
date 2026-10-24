@@ -216,6 +216,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         sessionDir: join(options.dataDir, "sessions", sessionId),
         extensionPaths: options.extensionPaths,
         systemPrompt: assignment.systemPrompt,
+        trusted: assignment.trusted ?? null,
         ...(assignment.model && { model: assignment.model }),
         ...(assignment.thinking && { thinking: assignment.thinking }),
       };
