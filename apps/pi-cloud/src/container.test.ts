@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { containerSession } from "./container";
@@ -15,6 +15,8 @@ afterEach(async () => {
 });
 
 test("runs a Session in its image as this user, with its paths, binary and variable names", async () => {
+  await mkdir(join(root, "logins"));
+
   const container = await containerSession({
     sessionId: "s1",
     generation: 2,
@@ -26,8 +28,8 @@ test("runs a Session in its image as this user, with its paths, binary and varia
       checkouts: [{ path: "/code/app", base: null }],
       agentDir: join(root, "profiles", "p1"),
       sessionDir: join(root, "sessions", "s1"),
-      authPath: join(root, "auth.json"),
-      modelsPath: join(root, "models.json"),
+      authPath: join(root, "logins", "auth.json"),
+      modelsPath: join(root, "logins", "models.json"),
       extensionPaths: ["/ext/tool.ts", "npm:pi-goal"],
       trusted: null,
       systemPrompt: null,
@@ -43,6 +45,7 @@ test("runs a Session in its image as this user, with its paths, binary and varia
   expect(run).toContain(bind(root));
   expect(run).toContain(bind(join(root, "profiles", "p1")));
   expect(run).toContain(bind(join(root, "sessions", "s1")));
+  expect(run).toContain(bind(join(root, "logins")));
   expect(run).toContain(`${bind("/ext/tool.ts")},readonly`);
 
   expect(run).toContain(
