@@ -2160,12 +2160,30 @@ test("rejects requests from other sites", async () => {
   expect(statuses).toEqual([403, 403, 403, 200]);
 });
 
-test("accepts a container Session reaching the server through Docker's host name", async () => {
-  const response = await fetch(new URL("/api/sessions", server.url), {
-    headers: { host: `host.docker.internal:${server.url.port}` },
-  });
+test("accepts only a runner's own calls through Docker's host name", async () => {
+  const session = await createSession("laptop");
+  const host = `host.docker.internal:${server.url.port}`;
 
-  expect(response.status).toBe(200);
+  const reached = async (
+    path: string,
+    headers: Record<string, string> = {},
+  ): Promise<number> =>
+    (
+      await fetch(new URL(path, server.url), {
+        headers: {
+          host,
+          "pi-cloud-protocol": "1",
+          "pi-cloud-provider": "laptop",
+          ...headers,
+        },
+      })
+    ).status;
+
+  const transcript = `/agent/sessions/${session.id}/transcript`;
+
+  expect(await reached(transcript)).toBe(200);
+  expect(await reached(transcript, { origin: `http://${host}` })).toBe(403);
+  expect(await reached("/api/sessions")).toBe(403);
 });
 
 test("does not open a terminal for a request that is not a WebSocket", async () => {

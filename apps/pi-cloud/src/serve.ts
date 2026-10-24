@@ -111,20 +111,28 @@ export function serve(options: ServeOptions): {
   };
 }
 
+const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
 // Docker Desktop and colima containers reach the runner's own loopback, where
-// a laptop's server listens, under Docker's host name.
-const loopback = new Set([
-  "127.0.0.1",
-  "localhost",
-  "[::1]",
-  "host.docker.internal",
-]);
+// a laptop's server listens, under this name. A browser may resolve it through
+// DNS, so for it only a runner's calls count, which a browser page can't make
+// without sending an Origin.
+const dockerHost = "host.docker.internal";
 
 // Without auth, a page on another site, or one reached by DNS rebinding,
 // could otherwise drive sessions and terminals from the user's browser.
 function fromThisSite(request: Request): boolean {
   const host = request.headers.get("host") ?? "";
   const origin = request.headers.get("origin");
+
+  if (
+    URL.canParse(`http://${host}`) &&
+    new URL(`http://${host}`).hostname === dockerHost
+  ) {
+    return (
+      origin === null && new URL(request.url).pathname.startsWith("/agent/")
+    );
+  }
 
   return (
     URL.canParse(`http://${host}`) &&

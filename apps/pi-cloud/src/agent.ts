@@ -121,8 +121,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   for (const path of Object.values(credentials)) {
     const earlier = join(options.dataDir, basename(path));
     if (existsSync(earlier) && !existsSync(path)) {
-      await rename(earlier, path);
-      log("login file moved", { from: earlier, to: path });
+      await rename(earlier, path).then(
+        () => {
+          log("login file moved", { from: earlier, to: path });
+        },
+        (error: unknown) => {
+          log("login file not moved", { from: earlier, error: String(error) });
+        },
+      );
     }
   }
 
