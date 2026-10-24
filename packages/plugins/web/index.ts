@@ -49,6 +49,13 @@ export interface NavItemsProps {
   readonly path: string | undefined;
 }
 
+// A notice the plugin sent a Session, drawn in its chat (ADR 0028).
+export interface NoticeProps {
+  readonly context: WebContext;
+  readonly text: string;
+  readonly data: unknown;
+}
+
 export interface SessionPartProps {
   readonly context: WebContext;
   readonly session: MountedSession;
@@ -91,6 +98,8 @@ export interface WebPlugin {
   // Where a Session this plugin owns opens, as a path in its page. Links,
   // search results and notices for it go there (ADR 0028).
   readonly sessionPath?: (session: Session) => string;
+  // Renderers for the plugin's notices in a chat, by kind.
+  readonly notices?: Readonly<Record<string, ComponentType<NoticeProps>>>;
   readonly SessionPanel?: ComponentType<SessionPartProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
   // Tools whose calls the plugin draws instead of a work step, by name.

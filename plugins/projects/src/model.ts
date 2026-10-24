@@ -53,3 +53,28 @@ export interface ProjectView {
   readonly threads: readonly ThreadView[];
   readonly memory: readonly MemoryFileView[];
 }
+
+// The data of each notice a Project chat draws, by kind (ADR 0028).
+export interface ProjectNotices {
+  readonly thread: {
+    readonly threadId: string;
+    readonly title: string;
+    readonly event: string;
+    readonly runState: RunState;
+    readonly workState: WorkState;
+    readonly reply?: string;
+  };
+  readonly thread_message: {
+    readonly threadId: string;
+    readonly title: string;
+    readonly text: string;
+  };
+  readonly coordinator_message: { readonly text: string };
+}
+
+export type ProjectNotice = {
+  readonly [K in keyof ProjectNotices]: {
+    readonly kind: K;
+    readonly data: ProjectNotices[K];
+  };
+}[keyof ProjectNotices];

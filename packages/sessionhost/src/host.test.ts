@@ -2623,6 +2623,57 @@ test("adds context to the session without starting a turn", async () => {
   expect(roles(fake.lines)).toEqual(["system", "user", "assistant"]);
 });
 
+test("keeps a plugin's notice in the transcript and starts a turn with it", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes("Docs finished a turn")
+            ? "noted"
+            : "no notice",
+        ),
+      ]),
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models, firstMessage: null }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const notice = {
+    plugin: "projects",
+    kind: "thread",
+    data: { threadId: "t1" },
+  };
+
+  fake.send({
+    actor: "plugin:projects",
+    type: "notice",
+    text: "Docs finished a turn",
+    notice,
+    turn: true,
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes("noted"));
+  await hosted.stop();
+
+  const kept = fake.lines
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find(({ type }) => type === "custom_message");
+
+  expect(kept).toMatchObject({
+    customType: "pi-cloud-notice",
+    content: "Docs finished a turn",
+    details: notice,
+  });
+});
+
 test("runs server tools through the stream and gives the model their result", async () => {
   const { faux, models } = await fauxModels(root);
 

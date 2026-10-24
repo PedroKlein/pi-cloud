@@ -1,6 +1,6 @@
 import type { PluginStore } from "@pi-cloud/plugins";
 import type { Actor } from "@pi-cloud/protocol";
-import type { MemoryFileView, Role, WorkState } from "./model";
+import type { MemoryFileView, ProjectNotice, Role, WorkState } from "./model";
 
 export interface Project {
   readonly id: string;
@@ -24,9 +24,13 @@ export interface Member {
   readonly lastActivity: string;
 }
 
+// Deliveries queued before notices existed have none.
 export type Delivery =
-  | { readonly kind: "context"; readonly text: string }
-  | { readonly kind: "message"; readonly text: string }
+  | {
+      readonly kind: "context" | "message";
+      readonly text: string;
+      readonly notice?: ProjectNotice;
+    }
   // end is how many transcript lines the thread's turn ended with.
   | { readonly kind: "turn"; readonly threadId: string; readonly end?: number };
 

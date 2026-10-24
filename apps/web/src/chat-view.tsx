@@ -24,6 +24,8 @@ import {
 } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
+import { PluginBoundary } from "./plugin-boundary";
+import { enabledPlugins, pluginContext } from "./plugins";
 import { usePrimaryId } from "./primary";
 import { PluginBoundary } from "./plugin-boundary";
 import { pluginContext, toolRenderer } from "./plugins";
@@ -140,6 +142,11 @@ export function ChatView({
                   </span>
                 )}
                 {turn.user}
+              </li>
+            ),
+            turn.notice && (
+              <li key={`${String(turn.key)}-notice`} data-role="notice">
+                <Notice notice={turn.notice} />
               </li>
             ),
             hasSteps(turn.work) || running.length > 0 ? (
@@ -412,6 +419,23 @@ function StepMark({
     <Icon name="x" className="size-4 shrink-0 text-failed" />
   ) : (
     <Icon name="check" className="size-4 shrink-0 text-done" />
+  );
+}
+
+function Notice({
+  notice: { text, tag },
+}: {
+  readonly notice: NonNullable<Turn["notice"]>;
+}): ReactElement {
+  const Drawn = enabledPlugins().find(({ name }) => name === tag.plugin)
+    ?.notices?.[tag.kind];
+
+  return Drawn ? (
+    <PluginBoundary name={tag.plugin}>
+      <Drawn context={pluginContext(tag.plugin)} text={text} data={tag.data} />
+    </PluginBoundary>
+  ) : (
+    <WorkNote kind="note" text={text} />
   );
 }
 

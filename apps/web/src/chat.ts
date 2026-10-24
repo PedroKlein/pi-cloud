@@ -1,4 +1,9 @@
-import { type ImageAttachment, imageTypes } from "@pi-cloud/protocol";
+import {
+  type ImageAttachment,
+  imageTypes,
+  type NoticeTag,
+  noticeType,
+} from "@pi-cloud/protocol";
 
 export type ChatItem = (
   | {
@@ -14,6 +19,11 @@ export type ChatItem = (
   | {
       readonly role: "error" | "note";
       readonly text: string;
+    }
+  | {
+      readonly role: "notice";
+      readonly text: string;
+      readonly notice: NoticeTag;
     }
   | {
       readonly role: "tool";
@@ -47,6 +57,8 @@ interface Entry {
   readonly timestamp?: string;
   readonly content?: unknown;
   readonly display?: boolean;
+  readonly customType?: string;
+  readonly details?: unknown;
   readonly message?: {
     readonly role: string;
     readonly content?: string | readonly Part[];
@@ -88,6 +100,11 @@ export function chatItems(line: string): readonly ChatItem[] {
 
 function entryItems(entry: Entry): readonly ChatItem[] {
   const message = entry.message;
+  const notice = noticeOf(entry);
+  if (notice) {
+    return [notice];
+  }
+
   if (
     entry.type === "custom_message" &&
     entry.display === true &&
@@ -220,6 +237,26 @@ export function describeTool(
   };
 }
 
+// A plugin's notice (ADR 0028); one with a tag that doesn't parse stays a note.
+function noticeOf(entry: Entry): ChatItem | undefined {
+  const { customType, content, details } = entry;
+  if (
+    entry.type !== "custom_message" ||
+    customType !== noticeType ||
+    typeof content !== "string" ||
+    typeof details !== "object" ||
+    details === null
+  ) {
+    return undefined;
+  }
+
+  const { plugin, kind, data } = details as Record<string, unknown>;
+
+  return typeof plugin === "string" && typeof kind === "string"
+    ? { role: "notice", text: content, notice: { plugin, kind, data } }
+    : undefined;
+}
+
 export interface Step {
   readonly id: string;
   readonly name: string;
@@ -238,6 +275,8 @@ export type Work =
 export interface Turn {
   readonly key: number;
   readonly user: string | undefined;
+  // A plugin's notice that started the turn, in place of a user message.
+  readonly notice?: { readonly text: string; readonly tag: NoticeTag };
   readonly images?: readonly ImageAttachment[];
   readonly work: readonly Work[];
   // Tool calls a plugin draws, in call order (ADR 0030).
@@ -257,6 +296,7 @@ export function turns(
   const result: {
     key: number;
     user: string | undefined;
+    notice: Turn["notice"];
     images: readonly ImageAttachment[] | undefined;
     started: string | undefined;
     items: ChatItem[];
@@ -264,20 +304,25 @@ export function turns(
 
   for (const item of items) {
     const current = result.at(-1);
-    if (item.role === "user" || !current) {
+    const opens = item.role === "user" || item.role === "notice";
+    if (opens || !current) {
       result.push({
         key: item.key,
         user: item.role === "user" ? item.text : undefined,
+        notice:
+          item.role === "notice"
+            ? { text: item.text, tag: item.notice }
+            : undefined,
         images: item.role === "user" ? item.images : undefined,
         started: item.at,
-        items: item.role === "user" ? [] : [item],
+        items: opens ? [] : [item],
       });
     } else {
       current.items.push(item);
     }
   }
 
-  return result.map(({ key, user, images, started, items: inTurn }) => {
+  return result.map(({ key, user, notice, images, started, items: inTurn }) => {
     const lastTool = inTurn.findLastIndex(
       (item) => item.role === "tool" || item.role === "result",
     );
@@ -330,6 +375,7 @@ export function turns(
         case "note":
           return [{ kind: item.role, text: item.text }];
         case "user":
+        case "notice":
           return [];
       }
     });
@@ -347,6 +393,7 @@ export function turns(
     return {
       key,
       user,
+      ...(notice && { notice }),
       ...(images && { images }),
       ...(started !== undefined && { started }),
       ...(ended !== undefined && { ended }),

@@ -1,6 +1,7 @@
 import {
   json,
   type NavItemsProps,
+  type NoticeProps,
   ok,
   type PageProps,
   useLoaded,
@@ -22,12 +23,14 @@ import {
 } from "@pi-cloud/ui";
 import {
   type ReactElement,
+  type ReactNode,
   type SubmitEvent,
   useEffect,
   useRef,
   useState,
 } from "react";
 import {
+  type ProjectNotices,
   type ProjectSummary,
   type ProjectView,
   type RunState,
@@ -43,7 +46,102 @@ export const projects: WebPlugin = {
   name: "projects",
   nav: { label: "Projects", Page, Items, fills: (path) => path !== "" },
   sessionPath: (session) => `${session.owner?.key ?? ""}/${session.id}`,
+  notices: {
+    thread: ThreadNotice,
+    thread_message: ThreadMessageNotice,
+    coordinator_message: CoordinatorMessageNotice,
+  },
 };
+
+// The server tags each notice it sends with the data its kind draws.
+function noticeData<K extends keyof ProjectNotices>(
+  { data }: NoticeProps,
+  _kind: K,
+): ProjectNotices[K] {
+  return data as ProjectNotices[K];
+}
+
+function ThreadNotice(props: NoticeProps): ReactElement {
+  const { threadId, title, event, workState, runState, reply } = noticeData(
+    props,
+    "thread",
+  );
+
+  const line = (
+    <>
+      <Icon name="chat" className="size-4 shrink-0" />
+      <a href={`#${threadId}`} className="truncate font-medium text-fg">
+        {title}
+      </a>
+      <span className="truncate">
+        {event} · {workStateNames[workState]}
+        {runState === "working" || runState === "idle"
+          ? ""
+          : ` · ${runBadges[runState]?.label ?? runState}`}
+      </span>
+    </>
+  );
+
+  if (reply === undefined) {
+    return (
+      <p className="flex min-w-0 items-center gap-2 px-2 py-1 text-label text-fg-dim">
+        {line}
+      </p>
+    );
+  }
+
+  return (
+    <details className="group px-2 py-1 text-label text-fg-dim">
+      <summary className="flex min-w-0 cursor-pointer list-none items-center gap-2">
+        {line}
+        <Icon
+          name="chevron-right"
+          className="size-4 shrink-0 group-open:rotate-90"
+        />
+      </summary>
+      <p className="mt-1 ml-6 break-words whitespace-pre-wrap">{reply}</p>
+    </details>
+  );
+}
+
+function ThreadMessageNotice(props: NoticeProps): ReactElement {
+  const { threadId, title, text } = noticeData(props, "thread_message");
+
+  return (
+    <MessageNotice
+      from={
+        <a href={`#${threadId}`} className="font-medium text-fg">
+          {title}
+        </a>
+      }
+      text={text}
+    />
+  );
+}
+
+function CoordinatorMessageNotice(props: NoticeProps): ReactElement {
+  const { text } = noticeData(props, "coordinator_message");
+
+  return <MessageNotice from="Coordinator" text={text} />;
+}
+
+function MessageNotice({
+  from,
+  text,
+}: {
+  readonly from: ReactNode;
+  readonly text: string;
+}): ReactElement {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-line px-3 py-2 text-label">
+      <span className="flex items-center gap-2 text-caption text-fg-dim">
+        <Icon name="chat" className="size-3.5 shrink-0" />
+        {from}
+      </span>
+      <p className="break-words whitespace-pre-wrap text-fg">{text}</p>
+    </div>
+  );
+}
 
 function Items({ context, path }: NavItemsProps): ReactElement {
   const list = useLoaded(

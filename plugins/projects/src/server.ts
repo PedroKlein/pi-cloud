@@ -89,7 +89,7 @@ export const projects: ServerPlugin = {
       ) {
         store.enqueue(project.coordinatorId, "plugin:projects", {
           kind: "message",
-          text: threadNotice(thread, session, `stopped: ${session.status}`),
+          ...threadNotice(thread, session, `stopped: ${session.status}`),
         });
       }
     });
@@ -200,9 +200,9 @@ function sendQueued(
 ): SendOutcome {
   switch (delivery.kind) {
     case "message":
-      return sessions.send(sessionId, delivery.text, actor);
+      return sessions.send(sessionId, delivery.text, actor, delivery.notice);
     case "context":
-      return sessions.notify(sessionId, delivery.text, actor);
+      return sessions.notify(sessionId, delivery.text, actor, delivery.notice);
     case "turn": {
       const thread = store.member(delivery.threadId);
 
@@ -224,7 +224,7 @@ function deliverTurn(
   const transcript = sessions.transcript(thread.sessionId).slice(0, end);
   const error = turnError(transcript);
 
-  const notice = threadNotice(
+  const { text, notice } = threadNotice(
     thread,
     sessions.get(thread.sessionId),
     error === undefined
@@ -242,10 +242,10 @@ function deliverTurn(
   // coordinator woken by it tends to retry the thread on the same model, which
   // fails the same way.
   if (error !== undefined || messagedCoordinator(transcript)) {
-    return sessions.notify(coordinatorId, notice, actor);
+    return sessions.notify(coordinatorId, text, actor, notice);
   }
 
-  return sessions.send(coordinatorId, notice, actor);
+  return sessions.send(coordinatorId, text, actor, notice);
 }
 
 class BadRequest extends Error {}

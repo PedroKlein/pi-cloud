@@ -1,5 +1,5 @@
 import type { Session } from "@pi-cloud/protocol";
-import type { RunState, ThreadView } from "./model";
+import type { ProjectNotice, RunState, ThreadView } from "./model";
 import type { Member, Project } from "./projects";
 
 const replyLimit = 1500;
@@ -121,13 +121,29 @@ export function threadNotice(
   session: Session | undefined,
   event: string,
   reply?: string,
-): string {
-  return [
-    `[Project notice] Thread "${thread.title}" (${thread.sessionId}) ${event}. Run state: ${runState(session)}. Work state: ${thread.workState}.`,
-    ...(reply === undefined
-      ? []
-      : [
-          `Its last reply: ${reply.length > replyLimit ? `${reply.slice(0, replyLimit)}…` : reply}`,
-        ]),
-  ].join("\n");
+): { readonly text: string; readonly notice: ProjectNotice } {
+  const state = runState(session);
+
+  const shortReply =
+    reply === undefined || reply.length <= replyLimit
+      ? reply
+      : `${reply.slice(0, replyLimit)}…`;
+
+  return {
+    text: [
+      `[Project notice] Thread "${thread.title}" (${thread.sessionId}) ${event}. Run state: ${state}. Work state: ${thread.workState}.`,
+      ...(shortReply === undefined ? [] : [`Its last reply: ${shortReply}`]),
+    ].join("\n"),
+    notice: {
+      kind: "thread",
+      data: {
+        threadId: thread.sessionId,
+        title: thread.title,
+        event,
+        runState: state,
+        workState: thread.workState,
+        ...(shortReply !== undefined && { reply: shortReply }),
+      },
+    },
+  };
 }

@@ -17,6 +17,7 @@ import {
   type ImageAttachment,
   type LiveEvent,
   liveSurface,
+  noticeType,
   piTerminal,
   type SlashCommand,
   type ToolSpec,
@@ -493,7 +494,15 @@ async function run(
   session: AgentSession,
   command: Extract<
     Command,
-    { type: "message" | "abort" | "context" | "set_model" | "set_thinking" }
+    {
+      type:
+        | "message"
+        | "abort"
+        | "context"
+        | "notice"
+        | "set_model"
+        | "set_thinking";
+    }
   >,
 ): Promise<void> {
   switch (command.type) {
@@ -515,6 +524,20 @@ async function run(
           display: true,
         },
         { triggerTurn: false },
+      );
+
+      return;
+    case "notice":
+      await session.sendCustomMessage(
+        {
+          customType: noticeType,
+          content: command.text,
+          display: true,
+          details: command.notice,
+        },
+        command.turn
+          ? { triggerTurn: true, deliverAs: "followUp" }
+          : { triggerTurn: false },
       );
 
       return;

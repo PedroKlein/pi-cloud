@@ -7,6 +7,7 @@ export type {
   ModelOffer,
   OfferedModels,
   PluginEvent,
+  PluginNotice,
   PluginRoute,
   PluginStore,
   SendOutcome,

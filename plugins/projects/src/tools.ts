@@ -195,9 +195,12 @@ export function projectTools(
           throw new Error(refused);
         }
 
+        const said = required(input, "text");
+
         projects.enqueue(thread.sessionId, actor, {
           kind: "message",
-          text: required(input, "text"),
+          text: said,
+          notice: { kind: "coordinator_message", data: { text: said } },
         });
 
         return `Message queued for thread "${thread.title}".`;
@@ -271,9 +274,19 @@ export function projectTools(
       },
       "thread",
       (input, { member, project, actor }) => {
+        const said = required(input, "text");
+
         projects.enqueue(project.coordinatorId, actor, {
           kind: "message",
-          text: `[Thread "${member.title}" (${member.sessionId})] ${required(input, "text")}`,
+          text: `[Thread "${member.title}" (${member.sessionId})] ${said}`,
+          notice: {
+            kind: "thread_message",
+            data: {
+              threadId: member.sessionId,
+              title: member.title,
+              text: said,
+            },
+          },
         });
 
         return "Message queued for the coordinator.";
@@ -299,7 +312,7 @@ export function projectTools(
 
         projects.enqueue(project.coordinatorId, actor, {
           kind: "context",
-          text: threadNotice(
+          ...threadNotice(
             { ...member, workState: state },
             sessions.get(member.sessionId),
             `set its work state to ${state}${note === undefined ? "" : `: ${note.replace(/\.+$/, "")}`}`,
