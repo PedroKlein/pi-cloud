@@ -588,6 +588,7 @@ test("creates a Project and shares a file through its library", async () => {
     .getByRole("link", { name: "Docs" })
     .first()
     .waitFor();
+
   expect(
     await page
       .locator('#chat li[data-role="user"]')
