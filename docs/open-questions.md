@@ -49,13 +49,13 @@
 
 ### Profiles and personalization
 
-- Which Pi configuration belongs in a Profile versus an Environment or project checkout?
+- Resolved for v2: a Profile is a server record built from Pi packages, instructions, MCP servers and settings; a repository's `.pi` loads on top once trusted, and there are no Environment overlays ([ADR 0031](adr/0031-profiles.md)).
 - Resolved for model aliases: alias config and backend health live on the server per Environment, through a `models` plugin with its own gateway ([ADR 0019](adr/0019-model-aliases.md)).
-- How are credentials excluded from portable Profile data?
+- Resolved: credentials are never in a Profile; each machine keeps provider logins in Pi Cloud's own auth file ([ADR 0031](adr/0031-profiles.md)).
 - How are required packages distinguished from optional packages?
-- When a Profile revision changes, do existing Sessions stay pinned, reload, or migrate?
-- How are extension compatibility and native dependencies validated against an Environment?
-- What is the exact configuration precedence and merge behavior?
+- Resolved: Profiles have no revisions; a Session keeps its Profile and loads its current content whenever its process starts ([ADR 0031](adr/0031-profiles.md)).
+- Resolved for v2: a package that fails to install or load stops the Session from starting, with an error that names it ([ADR 0031](adr/0031-profiles.md)). Checking ahead of time is open.
+- Resolved for v2: Pi's own precedence, with the Profile as personal configuration and a trusted repository's `.pi` as project configuration ([ADR 0031](adr/0031-profiles.md)).
 
 ### Control plane and protocol
 

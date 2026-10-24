@@ -49,7 +49,7 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 - Kubernetes provider, dedicated Session pods, and batch Jobs.
 - Enforced network policy, brokered secrets, and hardened runtimes.
 - Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel ([v2 ideas](v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
-- Fully versioned, portable Profiles for fresh runtimes.
+- Profiles defined on the server, which every provider uses, including fresh runtimes ([ADR 0031](adr/0031-profiles.md)).
 - Forking a Session to another provider, starting from the server's copy of its transcript ([open question](open-questions.md#workspace-durability)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
@@ -85,7 +85,7 @@ Hosted sessions must use Pi's normal runtime and session model. Pi Cloud should 
 
 ### Personalization is portable
 
-The user's required packages, extensions, skills, prompts, instructions, models, MCP servers, and preferences must be available to hosted sessions. This configuration belongs in a versioned Profile so a session can record exactly which personalization it used.
+The user's required packages, extensions, skills, prompts, instructions, models, MCP servers, and preferences must be available to hosted sessions. This configuration belongs in a Profile defined on the server, and each Session records which Profile it uses ([ADR 0031](adr/0031-profiles.md)).
 
 A small mandatory session bridge may be loaded to connect a Pi session to the control plane. It should provide hosting protocol functions only. Projects and automations should remain control-plane capabilities exposed through narrow tools.
 
