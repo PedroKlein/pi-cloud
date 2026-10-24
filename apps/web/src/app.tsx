@@ -10,6 +10,7 @@ import {
 import { ShellMenu } from "./embedded-session";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
+import { EnvironmentsPage } from "./environments";
 import { ProfilesPage } from "./profiles";
 import {
   enabledPlugins,
@@ -121,6 +122,22 @@ export function App({
             profiles={profiles.value}
             selected={profilesRoute[1] ?? ""}
             onChange={profiles.reload}
+          />
+        </div>
+      );
+    }
+
+    const environmentsRoute = /^environments\/?(.*)$/.exec(route);
+    if (environmentsRoute) {
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="p-2 md:hidden">
+            <MenuButton onMenu={openDrawer} />
+          </div>
+          <EnvironmentsPage
+            environments={environments.value}
+            selected={environmentsRoute[1] ?? ""}
+            onChange={environments.reload}
           />
         </div>
       );

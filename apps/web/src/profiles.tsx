@@ -10,28 +10,7 @@ import {
   Section,
 } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
-import { api } from "./api";
-
-async function send(
-  path: string,
-  method: "PUT" | "DELETE",
-  body?: unknown,
-): Promise<Response> {
-  const response = await fetch(path, {
-    method,
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  });
-
-  if (!response.ok) {
-    const { error } = (await response.json()) as { error: string };
-    throw new Error(error);
-  }
-
-  return response;
-}
+import { api, send } from "./api";
 
 const deleteErrors: Readonly<Record<string, string>> = {
   default: "Make another Profile the default before deleting this one.",

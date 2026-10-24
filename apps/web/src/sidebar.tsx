@@ -102,6 +102,19 @@ export function Sidebar({
           </span>
           Profiles
         </a>
+        <a
+          href="#environments"
+          aria-current={route.startsWith("environments") ? "page" : undefined}
+          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
+        >
+          <span
+            aria-hidden="true"
+            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
+          >
+            E
+          </span>
+          Environments
+        </a>
       </div>
 
       {nav.length > 0 && (

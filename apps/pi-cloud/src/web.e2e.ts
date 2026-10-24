@@ -201,6 +201,39 @@ test("starts a session with the task from the New session form", async () => {
     .waitFor();
 }, 30_000);
 
+test("edits an Environment's variables and secrets without showing secret values", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Environments" }).click();
+
+  const editor = page.locator("#environments-page form");
+
+  await editor
+    .getByLabel("Variables, one NAME=value per line")
+    .fill("MODE=test");
+
+  await editor.getByLabel(/^New or replaced secrets/).fill("TOKEN=s3cret");
+  await editor.getByRole("button", { name: "Save" }).click();
+
+  await page
+    .getByRole("list", { name: "Secrets" })
+    .getByText("TOKEN")
+    .waitFor();
+
+  await page.reload();
+
+  expect(
+    await editor.getByLabel("Variables, one NAME=value per line").inputValue(),
+  ).toBe("MODE=test");
+
+  expect(await page.content()).not.toContain("s3cret");
+
+  await page.getByRole("button", { name: "Remove TOKEN" }).click();
+
+  await page
+    .getByRole("list", { name: "Secrets" })
+    .waitFor({ state: "detached" });
+}, 30_000);
+
 test("makes a Profile and starts a session that follows its instructions", async () => {
   let request = "";
 
