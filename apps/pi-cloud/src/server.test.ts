@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
+import {
+  eventBus,
+  type ServerPlugin,
+  type ServerPluginContext,
+} from "@pi-cloud/plugins";
 import {
   type Assignment,
   protocolVersion,
@@ -298,4 +302,79 @@ test("delivers a server tool's result that finished while the provider was offli
       result: { text: '{"say":"hi"}', isError: false },
     },
   ]);
+});
+
+test("lists a plugin's own Sessions only while the plugin is on", async () => {
+  const store = openStore(":memory:");
+  const sessions = new Sessions(store, { pollWaitMs: 0 });
+  store.ensureEnvironment("local");
+  let context: ServerPluginContext | undefined;
+
+  const keeper: ServerPlugin = {
+    name: "keeper",
+    register: (registered) => {
+      context = registered;
+    },
+  };
+
+  const handler = (
+    enabled: readonly string[],
+  ): ((path: string) => Promise<Session[]>) => {
+    const handle = createHandler(
+      sessions,
+      startPlugins([keeper], enabled, {
+        sessions,
+        events: eventBus(() => undefined),
+        store: store.plugin,
+        signal: new AbortController().signal,
+        log: () => undefined,
+      }),
+      store.check,
+      () => undefined,
+    );
+
+    return async (path) =>
+      (await (
+        await handle(new Request(`http://127.0.0.1${path}`))
+      ).json()) as Session[];
+  };
+
+  const on = handler(["keeper"]);
+  const workspace = { kind: "folder", path: "/srv/app" } as const;
+
+  const owned = context?.sessions.start(
+    { actor: "user:local", workspace },
+    "k1",
+  );
+
+  const plain = sessions.start({ actor: "user:local", workspace });
+  const adopted = sessions.start({ actor: "user:local", workspace });
+  if (!owned || !plain.ok || !adopted.ok) {
+    throw new Error("sessions not started");
+  }
+
+  context?.sessions.adopt(adopted.value.id, "k1");
+  context?.sessions.adopt(plain.value.id, "k2");
+  context?.sessions.adopt(plain.value.id, "k1");
+
+  const ids = (list: readonly Session[]): string[] =>
+    list.map(({ id }) => id).toSorted();
+
+  expect(owned.owner).toEqual({ plugin: "keeper", key: "k1" });
+  expect(ids(await on("/api/sessions"))).toEqual([]);
+
+  expect(ids(await on("/api/sessions?owner=all"))).toEqual(
+    ids([owned, plain.value, adopted.value]),
+  );
+
+  expect(ids(context?.sessions.owned("k1") ?? [])).toEqual(
+    ids([owned, adopted.value]),
+  );
+
+  expect(ids(await handler([])("/api/sessions"))).toEqual(
+    ids([owned, plain.value, adopted.value]),
+  );
+
+  sessions.close();
+  store.close();
 });

@@ -136,13 +136,25 @@ export function createHandler(
     [
       "GET",
       /^\/api\/sessions$/,
-      (request) =>
-        Response.json(
-          sessions.list({
-            archived:
-              new URL(request.url).searchParams.get("archived") === "true",
-          }),
-        ),
+      (request) => {
+        const query = new URL(request.url).searchParams;
+
+        const all = sessions.list({
+          archived: query.get("archived") === "true",
+        });
+
+        // An owned Session shows only inside its plugin, unless that plugin
+        // is off (ADR 0028). owner=all is for search and notices.
+        return Response.json(
+          query.get("owner") === "all"
+            ? all
+            : all.filter(
+                (session) =>
+                  session.owner === null ||
+                  !plugins.names.includes(session.owner.plugin),
+              ),
+        );
+      },
     ],
     [
       "POST",

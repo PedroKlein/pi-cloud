@@ -493,10 +493,18 @@ export type SessionStatus =
 
 export type WorkspaceRemoval = "pending" | "forced" | "removed" | "kept";
 
+// The plugin that started a Session and keeps it out of the Session list
+// (ADR 0028), with the plugin's own key, such as a Project's id.
+export interface SessionOwner {
+  readonly plugin: string;
+  readonly key: string;
+}
+
 export interface Session {
   readonly id: string;
   readonly environmentId: string;
   readonly ownerId: string;
+  readonly owner: SessionOwner | null;
   readonly provider: string;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;

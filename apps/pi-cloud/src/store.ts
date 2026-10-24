@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
   ModelRef,
+  SessionOwner,
   SessionStatus,
   ThinkingLevel,
   Workspace,
@@ -21,6 +22,8 @@ interface SessionRow {
   id: string;
   environment_id: string;
   owner_id: string;
+  owner_plugin: string | null;
+  owner_key: string | null;
   provider: string;
   workspace: string;
   model: string | null;
@@ -61,6 +64,8 @@ create table if not exists sessions (
   id text primary key,
   environment_id text not null references environments (id),
   owner_id text not null,
+  owner_plugin text,
+  owner_key text,
   workspace text not null,
   model text,
   system_prompt text,
@@ -116,6 +121,8 @@ function migrate(db: DatabaseSync): void {
     "title",
     "thinking",
     "workspace_kept_reason",
+    "owner_plugin",
+    "owner_key",
   ]) {
     if (sessionsTableExists && !hasColumn(column)) {
       db.exec(`alter table sessions add column ${column} text`);
@@ -184,6 +191,10 @@ export function openStore(path: string): SessionStore & {
     id: row.id,
     environmentId: row.environment_id,
     ownerId: row.owner_id,
+    owner:
+      row.owner_plugin === null || row.owner_key === null
+        ? null
+        : { plugin: row.owner_plugin, key: row.owner_key },
     provider: row.provider,
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
@@ -202,7 +213,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
@@ -222,6 +233,18 @@ export function openStore(path: string): SessionStore & {
 
   const selectUnarchivedSessions = db.prepare(
     `${withProvider} where sessions.archived_at is null order by sessions.created_at desc`,
+  );
+
+  const selectOwnedSessions = db.prepare(
+    `${withProvider} where owner_plugin = ? and owner_key = ? order by sessions.created_at desc`,
+  );
+
+  const selectUnarchivedOwnedSessions = db.prepare(
+    `${withProvider} where owner_plugin = ? and owner_key = ? and sessions.archived_at is null order by sessions.created_at desc`,
+  );
+
+  const updateOwner = db.prepare(
+    "update sessions set owner_plugin = ?, owner_key = ? where id = ?",
   );
 
   const selectByProvider = db.prepare(
@@ -265,6 +288,8 @@ export function openStore(path: string): SessionStore & {
         s.id,
         s.environmentId,
         s.ownerId,
+        s.owner?.plugin ?? null,
+        s.owner?.key ?? null,
         JSON.stringify(s.workspace),
         s.model && JSON.stringify(s.model),
         s.systemPrompt,
@@ -299,13 +324,19 @@ export function openStore(path: string): SessionStore & {
 
       return row && toSession(row);
     },
-    list: ({ includeArchived }) =>
-      (
-        (includeArchived
-          ? selectSessions
-          : selectUnarchivedSessions
-        ).all() as unknown as SessionRow[]
-      ).map(toSession),
+    list: ({ includeArchived, owner: ownedBy }) => {
+      const rows = ownedBy
+        ? (includeArchived
+            ? selectOwnedSessions
+            : selectUnarchivedOwnedSessions
+          ).all(ownedBy.plugin, ownedBy.key)
+        : (includeArchived ? selectSessions : selectUnarchivedSessions).all();
+
+      return (rows as unknown as SessionRow[]).map(toSession);
+    },
+    setOwner: (id, { plugin, key }: SessionOwner) => {
+      updateOwner.run(plugin, key, id);
+    },
     byProvider: (provider, statuses) =>
       (
         selectByProvider.all(

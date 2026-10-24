@@ -556,6 +556,12 @@ test("creates a Project and shares a file through its library", async () => {
     .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
     .waitFor();
 
+  const threadId = new URL(page.url()).hash.slice(1);
+
+  expect(
+    await page.locator(`#sessions li[data-id="${threadId}"]`).count(),
+  ).toBe(0);
+
   while (faux.state.callCount < calls + 4) {
     await Bun.sleep(20);
   }

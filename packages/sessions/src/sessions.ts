@@ -13,6 +13,7 @@ import {
   type RemovalPost,
   type Session,
   type SessionEvent,
+  type SessionOwner,
   type SessionStatus,
   type StartFailure,
   type TranscriptAck,
@@ -40,7 +41,9 @@ export interface SessionStore {
   get: (id: string) => StoredSession | undefined;
   list: (options: {
     readonly includeArchived: boolean;
+    readonly owner?: SessionOwner;
   }) => readonly StoredSession[];
+  setOwner: (id: string, owner: SessionOwner) => void;
   byProvider: (
     provider: string,
     statuses: readonly SessionStatus[],
@@ -122,7 +125,7 @@ export class Sessions {
   }
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
-  start(request: StartRequest): Result<Session> {
+  start(request: StartRequest, ownedBy?: SessionOwner): Result<Session> {
     const environments = this.#store.environments();
 
     const environment =
@@ -140,6 +143,7 @@ export class Sessions {
       id,
       environmentId: environment.id,
       ownerId: owner,
+      owner: ownedBy ?? null,
       provider: environment.provider,
       workspace:
         request.workspace.kind === "folder"
@@ -174,10 +178,35 @@ export class Sessions {
     return { ok: true, value: view };
   }
 
-  list({ archived = false } = {}): readonly Session[] {
+  list({
+    archived = false,
+    owner: ownedBy,
+  }: {
+    readonly archived?: boolean;
+    readonly owner?: SessionOwner;
+  } = {}): readonly Session[] {
     return this.#store
-      .list({ includeArchived: archived })
+      .list({ includeArchived: archived, ...(ownedBy && { owner: ownedBy }) })
       .map((session) => this.#view(session));
+  }
+
+  // Gives an owner to a Session started before it had one. A Session's owner
+  // never changes once set.
+  adopt(id: string, ownedBy: SessionOwner): Result<Session> {
+    const session = this.#store.get(id);
+    if (!session) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (session.owner !== null) {
+      return { ok: true, value: this.#view(session) };
+    }
+
+    this.#store.setOwner(id, ownedBy);
+    const adopted = this.#view({ ...session, owner: ownedBy });
+    this.#emit(id, { type: "session", session: adopted });
+
+    return { ok: true, value: adopted };
   }
 
   archive(id: string): Result<Session> {

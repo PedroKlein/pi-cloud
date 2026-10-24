@@ -41,6 +41,16 @@ export const projects: ServerPlugin = {
 
     const user: Actor = `user:${context.owner}`;
 
+    // Projects from before Sessions had owners (ADR 0028).
+    for (const project of store.list()) {
+      for (const sessionId of [
+        project.coordinatorId,
+        ...store.threads(project.id).map((thread) => thread.sessionId),
+      ]) {
+        context.sessions.adopt(sessionId, project.id);
+      }
+    }
+
     for (const tool of projectTools(store, context)) {
       context.tools.register(tool);
     }
@@ -440,16 +450,21 @@ function create(
         : undefined,
     );
 
-    coordinator = sessions.start({
-      ...(ref && { model: ref }),
-      actor: user,
-      ...(draft.environmentId !== null && { environment: draft.environmentId }),
-      workspace: {
-        kind: "repositories",
-        repositories: urls.map((repository) => ({ repository })),
+    coordinator = sessions.start(
+      {
+        ...(ref && { model: ref }),
+        actor: user,
+        ...(draft.environmentId !== null && {
+          environment: draft.environmentId,
+        }),
+        workspace: {
+          kind: "repositories",
+          repositories: urls.map((repository) => ({ repository })),
+        },
+        systemPrompt: coordinatorPrompt(draft, undefined),
       },
-      systemPrompt: coordinatorPrompt(draft, undefined),
-    });
+      draft.id,
+    );
   } catch (error) {
     throw new BadRequest((error as Error).message);
   }

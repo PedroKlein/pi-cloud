@@ -13,6 +13,7 @@ const member: ToolCaller = {
     id: "session-1",
     environmentId: "environment-1",
     ownerId: "owner",
+    owner: null,
     provider: "local",
     workspace: { kind: "folder", path: "/work" },
     model: null,
@@ -67,6 +68,8 @@ function registered(): PluginRoute {
     sessions: {
       start: unused,
       get: unused,
+      owned: unused,
+      adopt: unused,
       send: unused,
       notify: unused,
       transcript: unused,

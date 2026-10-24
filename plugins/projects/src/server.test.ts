@@ -90,13 +90,17 @@ function fakeKernel(): {
     },
     events,
     sessions: {
-      start: (request) => {
+      start: (request, ownerKey) => {
         const id = `session-${String(sessions.size + 1)}`;
 
         const session: Session = {
           id,
           environmentId: request.environment ?? "laptop",
           ownerId: "pedro",
+          owner:
+            ownerKey === undefined
+              ? null
+              : { plugin: "projects", key: ownerKey },
           provider: "local",
           workspace: { kind: "folder", path: "/work" },
           model: request.model ?? null,
@@ -122,6 +126,14 @@ function fakeKernel(): {
         return session;
       },
       get: (id) => sessions.get(id),
+      owned: (key) =>
+        [...sessions.values()].filter((session) => session.owner?.key === key),
+      adopt: (id, key) => {
+        const session = sessions.get(id);
+        if (session?.owner === null) {
+          sessions.set(id, { ...session, owner: { plugin: "projects", key } });
+        }
+      },
       send: (id, text) => deliver("send", id, text),
       notify: (id, text) => deliver("notify", id, text),
       transcript: (id) => {
@@ -322,6 +334,30 @@ async function until(done: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+test("owns its coordinator and threads, and those started before owners existed", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+
+  const listed = await kernel.route()(
+    new Request("http://pi-cloud/projects"),
+    "projects",
+    undefined,
+  );
+
+  const [project] = (await listed.json()) as ProjectView[];
+  const owner = { plugin: "projects", key: project?.id ?? "" };
+  expect(kernel.session(coordinatorId).owner).toEqual(owner);
+  expect(kernel.session(threadId).owner).toEqual(owner);
+
+  kernel.update(coordinatorId, { owner: null });
+  kernel.update(threadId, { owner: null });
+  projects.register(kernel.context);
+
+  expect(kernel.session(coordinatorId).owner).toEqual(owner);
+  expect(kernel.session(threadId).owner).toEqual(owner);
+});
 
 test("delivers each thread turn held for an offline coordinator with its own reply", async () => {
   const kernel = fakeKernel();
