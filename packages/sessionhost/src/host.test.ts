@@ -64,6 +64,7 @@ function fakeStream(
 ): {
   stream: SessionStream;
   toolCalls: { id: string; name: string; input: unknown }[];
+  trustAnswers: boolean[];
   send: (command: Command) => void;
   events: LiveEvent[];
   lines: string[];
@@ -86,6 +87,7 @@ function fakeStream(
   const lines: string[] = [];
   const uploads: { start: number; count: number }[] = [];
   const toolCalls: { id: string; name: string; input: unknown }[] = [];
+  const trustAnswers: boolean[] = [];
 
   const stream: SessionStream = {
     uploadTranscript: async (start, batch) => {
@@ -138,6 +140,10 @@ function fakeStream(
         throw new Error("the connection closed before the server answered");
       }
     },
+    answerTrust: async (trusted) => {
+      await Promise.resolve();
+      trustAnswers.push(trusted);
+    },
     pluginRequest: async (plugin, path, init) =>
       Promise.resolve(
         Response.json({ plugin, path, body: init?.body ?? null }),
@@ -147,6 +153,7 @@ function fakeStream(
   return {
     stream,
     toolCalls,
+    trustAnswers,
     send: (command) => listener?.(command),
     events,
     lines,
@@ -3632,3 +3639,202 @@ test("lists Pi Cloud's own extensions by name in the TUI", async () => {
   expect(pi.screen()).toContain("<inline:pi-view>");
   expect(pi.screen()).not.toContain("<inline:1>");
 }, 20_000);
+
+async function repositoryWithPiConfig(): Promise<string> {
+  const repository = join(root, "repo");
+  await mkdir(join(repository, ".pi", "extensions"), { recursive: true });
+
+  await writeFile(
+    join(repository, ".pi", "extensions", "repo.ts"),
+    `export default (pi) => {
+      pi.registerCommand("repo-command", {
+        description: "From the repository",
+        handler: async () => {},
+      });
+
+      pi.registerTool({
+        name: "repo_tool",
+        label: "Repo",
+        description: "A tool from the repository",
+        parameters: { type: "object", properties: {} },
+        execute: async () => ({ content: [{ type: "text", text: "ok" }], details: {} }),
+      });
+    };`,
+  );
+
+  return repository;
+}
+
+function hasRepoCommand(events: readonly LiveEvent[]): boolean {
+  const listed = events.findLast((e) => e.type === "commands");
+
+  return (
+    listed?.type === "commands" &&
+    listed.commands.some(({ name }) => name === "repo-command")
+  );
+}
+
+async function answerTrust(
+  fake: ReturnType<typeof fakeStream>,
+  value: string | null,
+): Promise<Extract<LiveEvent, { type: "prompt" }>> {
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+
+  const asked = fake.events.find((e) => e.type === "prompt");
+  if (asked?.type !== "prompt") {
+    throw new Error("not asked");
+  }
+
+  fake.send({
+    actor: "user:local",
+    type: "answer",
+    id: asked.prompt.id,
+    value,
+  });
+
+  return asked;
+}
+
+test("asks once before loading a repository's own .pi, then loads it", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, {
+      models,
+      cwd: await repositoryWithPiConfig(),
+      trusted: null,
+    }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await fake.waitFor(() => fake.events.some((e) => e.type === "prompt"));
+  const before = hasRepoCommand(fake.events);
+  const asked = await answerTrust(fake, "Trust it");
+
+  await fake.waitFor(() => hasRepoCommand(fake.events));
+  await hosted.stop();
+
+  expect(asked.prompt).toMatchObject({
+    kind: "select",
+    options: ["Trust it", "Don't trust it"],
+  });
+
+  expect(before).toBe(false);
+  expect(fake.trustAnswers).toEqual([true]);
+});
+
+test("keeps no trust answer for a question that was dismissed", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const logs: string[] = [];
+
+  const hosted = await hostSession(
+    sessionOptions(root, {
+      models,
+      cwd: await repositoryWithPiConfig(),
+      trusted: null,
+    }),
+    fake.stream,
+    (message) => logs.push(message),
+    noTerminal,
+  );
+
+  await answerTrust(fake, null);
+  await fake.waitFor(() => logs.includes("repository trust answered"));
+  await hosted.stop();
+
+  expect(fake.trustAnswers).toEqual([]);
+  expect(hasRepoCommand(fake.events)).toBe(false);
+});
+
+test("sends the first message once the repository is trusted, with its tools", async () => {
+  const { faux, models } = await fauxModels(root);
+  const seen = Promise.withResolvers<string>();
+
+  faux.setResponses([
+    (context) => {
+      seen.resolve(JSON.stringify(context));
+
+      return fauxAssistantMessage([fauxText("done")]);
+    },
+  ]);
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, {
+      models,
+      cwd: await repositoryWithPiConfig(),
+      trusted: null,
+      firstMessage: "kick off",
+    }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await answerTrust(fake, "Trust it");
+  const request = await seen.promise;
+  await hosted.stop();
+
+  expect(request).toContain("repo_tool");
+});
+
+test("names a repository configuration that fails to load and keeps no answer", async () => {
+  const { models } = await fauxModels(root);
+  const repository = join(root, "repo");
+  await mkdir(join(repository, ".pi", "extensions"), { recursive: true });
+
+  await writeFile(
+    join(repository, ".pi", "extensions", "broken.ts"),
+    `throw new Error("broken on purpose");`,
+  );
+
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models, cwd: repository, trusted: null }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  await answerTrust(fake, "Trust it");
+  await fake.waitFor(() => fake.events.some((e) => e.type === "notify"));
+  await hosted.stop();
+
+  const notice = fake.events.find((e) => e.type === "notify")?.message;
+
+  expect(notice).toContain("the repository's Pi configuration failed to load");
+  expect(notice).toContain("broken on purpose");
+
+  expect(fake.trustAnswers).toEqual([]);
+});
+
+test("uses a repository trust answer given before without asking", async () => {
+  const { models } = await fauxModels(root);
+  const repository = await repositoryWithPiConfig();
+
+  for (const trusted of [true, false]) {
+    const fake = fakeStream();
+
+    const hosted = await hostSession(
+      sessionOptions(root, { models, cwd: repository, trusted }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    await fake.waitFor(() => fake.events.some((e) => e.type === "commands"));
+    await hosted.stop();
+
+    expect({
+      trusted,
+      loaded: hasRepoCommand(fake.events),
+      asked: fake.events.some((e) => e.type === "prompt"),
+    }).toEqual({ trusted, loaded: trusted, asked: false });
+  }
+});

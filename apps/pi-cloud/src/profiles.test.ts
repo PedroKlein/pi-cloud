@@ -287,3 +287,41 @@ test("a Session whose Profile was deleted can't come back", async () => {
   expect(unarchived.status).toBe(400);
   expect(await unarchived.json()).toEqual({ error: "unknown_profile" });
 });
+
+test("keeps a repository trust answer for the next Session in it", async () => {
+  const environment = await vmEnvironment();
+  const workspace = { kind: "folder", path: root };
+
+  const first = await json<Session>(
+    api("/api/sessions", { body: { environment, workspace } }),
+  );
+
+  const [asked] = (await poll()).start;
+
+  expect(asked?.trusted).toBeNull();
+
+  const answered = await fetch(
+    new URL(`/agent/sessions/${first.id}/trust`, server.url),
+    {
+      method: "POST",
+      headers: {
+        "pi-cloud-protocol": "1",
+        "pi-cloud-provider": "vm",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ generation: asked?.generation, trusted: true }),
+    },
+  );
+
+  expect(answered.status).toBe(204);
+
+  const second = await json<Session>(
+    api("/api/sessions", { body: { environment, workspace } }),
+  );
+
+  const { start } = await poll();
+
+  expect(start.find(({ sessionId }) => sessionId === second.id)?.trusted).toBe(
+    true,
+  );
+});

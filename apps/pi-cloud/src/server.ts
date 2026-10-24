@@ -23,6 +23,7 @@ import {
   protocolVersion,
   providerHeader,
   type TranscriptBatch,
+  type TrustAnswer,
   versionHeader,
   type WorkPoll,
   type Workspace,
@@ -341,6 +342,16 @@ export function createHandler(
         log("session failed to start", { sessionId: id, ...failure });
 
         return reply(sessions.fail(id, failure), 204);
+      },
+    ],
+    [
+      "POST",
+      /^\/agent\/sessions\/([^/]+)\/trust$/,
+      async (request, [id = ""]) => {
+        const answer = trustAnswer(await readJson(request));
+        log("repository trust answered", { sessionId: id, ...answer });
+
+        return reply(sessions.trust(id, answer), 204);
       },
     ],
     [
@@ -995,6 +1006,15 @@ function startFailure(body: unknown): StartFailure {
     generation: integerOf("generation", generation),
     error: textOf("error", error),
   };
+}
+
+function trustAnswer(body: unknown): TrustAnswer {
+  const { generation, trusted } = fieldsOf(body);
+  if (typeof trusted !== "boolean") {
+    throw new BadRequest("trusted must be true or false");
+  }
+
+  return { generation: integerOf("generation", generation), trusted };
 }
 
 function removalPost(body: unknown): RemovalPost {
