@@ -51,6 +51,7 @@ export interface ProjectView {
   readonly instructions: string;
   readonly repositories: readonly string[];
   readonly environmentId: string | null;
+  readonly profileId: string | null;
   readonly threadModel: string | null;
   readonly coordinatorId: string;
   readonly coordinatorState: RunState;

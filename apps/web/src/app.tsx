@@ -3,12 +3,14 @@ import { type ReactElement, useEffect, useRef, useState } from "react";
 import {
   useEnvironments,
   useHash,
+  useProfiles,
   useSessions,
   useSettledNotices,
 } from "./hooks";
 import { ShellMenu } from "./embedded-session";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
+import { ProfilesPage } from "./profiles";
 import {
   enabledPlugins,
   type NavEntry,
@@ -33,6 +35,7 @@ export function App({
   const aside = useRef<HTMLElement>(null);
   const sessions = useSessions(showArchived);
   const environments = useEnvironments();
+  const profiles = useProfiles();
   useSettledNotices(sessions.value, route);
 
   if (drawerRoute !== route) {
@@ -107,6 +110,22 @@ export function App({
       return <div className="flex-1" />;
     }
 
+    const profilesRoute = /^profiles\/?(.*)$/.exec(route);
+    if (profilesRoute) {
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="p-2 md:hidden">
+            <MenuButton onMenu={openDrawer} />
+          </div>
+          <ProfilesPage
+            profiles={profiles.value}
+            selected={profilesRoute[1] ?? ""}
+            onChange={profiles.reload}
+          />
+        </div>
+      );
+    }
+
     if (route === "") {
       return (
         <Empty
@@ -176,6 +195,7 @@ export function App({
       <NewSessionDialog
         open={creating}
         environments={environments.value}
+        profiles={profiles.value}
         onClose={() => {
           setCreating(false);
         }}

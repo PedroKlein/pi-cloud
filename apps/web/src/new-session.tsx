@@ -1,5 +1,6 @@
 import {
   type Environment,
+  type Profile,
   type Session,
   thinkingLevels,
 } from "@pi-cloud/protocol";
@@ -41,10 +42,12 @@ function workspaceRequest(
 export function NewSessionDialog({
   open,
   environments,
+  profiles,
   onClose,
 }: {
   readonly open: boolean;
   readonly environments: readonly Environment[];
+  readonly profiles: readonly Profile[];
   readonly onClose: () => void;
 }): ReactElement {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -99,6 +102,7 @@ export function NewSessionDialog({
       environment: text("environment"),
       workspace: workspaceRequest(kind, text("location"), text("start-point")),
       model,
+      ...(text("profile") !== "" && { profile: text("profile") }),
       ...(text("thinking") !== "" && { thinking: text("thinking") }),
       ...(text("first-message") !== "" && {
         firstMessage: text("first-message"),
@@ -259,6 +263,24 @@ export function NewSessionDialog({
               ))}
             </select>
           </Field>
+          <div className="sm:col-span-2">
+            <Field label="Profile">
+              <select
+                key={profiles.find(({ isDefault }) => isDefault)?.id}
+                name="profile"
+                defaultValue={profiles.find(({ isDefault }) => isDefault)?.id}
+                className={field}
+              >
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.isDefault
+                      ? `${profile.name} (default)`
+                      : profile.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
           <datalist id="models">
             {(chosen?.models ?? []).map((model) => (
               <option key={modelName(model)} value={modelName(model)} />

@@ -373,11 +373,19 @@ function toState(value: unknown): ReturnType<typeof workState> {
 function settings(
   project: Project,
   body: unknown,
-): Pick<Project, "name" | "instructions" | "threadModel"> {
-  const { name, instructions, threadModel } = (body ?? {}) as Record<
+): Pick<Project, "name" | "instructions" | "threadModel" | "profileId"> {
+  const { name, instructions, threadModel, profile } = (body ?? {}) as Record<
     string,
     unknown
   >;
+
+  if (
+    profile !== undefined &&
+    profile !== null &&
+    typeof profile !== "string"
+  ) {
+    throw new BadRequest("profile must be a Profile id");
+  }
 
   if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
     throw new BadRequest("name must not be empty");
@@ -406,7 +414,14 @@ function settings(
     name: name?.trim() ?? project.name,
     instructions: instructions ?? project.instructions,
     threadModel: model,
+    profileId: profile === undefined ? project.profileId : profileOf(profile),
   };
+}
+
+function profileOf(profile: string | null): string | null {
+  const id = profile?.trim() ?? "";
+
+  return id === "" ? null : id;
 }
 
 function create(
@@ -415,8 +430,15 @@ function create(
   { sessions, log }: ServerPluginContext,
   user: Actor,
 ): Project {
-  const { name, instructions, repositories, environment, model, threadModel } =
-    (body ?? {}) as Record<string, unknown>;
+  const {
+    name,
+    instructions,
+    repositories,
+    environment,
+    profile,
+    model,
+    threadModel,
+  } = (body ?? {}) as Record<string, unknown>;
 
   if (typeof name !== "string" || name.trim() === "") {
     throw new BadRequest("name is required");
@@ -449,6 +471,7 @@ function create(
       typeof environment === "string" && environment !== ""
         ? environment
         : null,
+    profileId: typeof profile === "string" && profile !== "" ? profile : null,
     threadModel:
       typeof threadModel === "string" && threadModel.trim() !== ""
         ? threadModel.trim()
@@ -478,6 +501,7 @@ function create(
         ...(draft.environmentId !== null && {
           environment: draft.environmentId,
         }),
+        ...(draft.profileId !== null && { profile: draft.profileId }),
         workspace: {
           kind: "repositories",
           repositories: urls.map((repository) => ({ repository })),
@@ -541,6 +565,7 @@ function view(
     instructions: project.instructions,
     repositories: project.repositories,
     environmentId: project.environmentId,
+    profileId: project.profileId,
     threadModel: project.threadModel,
     coordinatorId: project.coordinatorId,
     coordinatorState: runState(sessions.get(project.coordinatorId)),

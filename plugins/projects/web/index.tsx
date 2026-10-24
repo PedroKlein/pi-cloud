@@ -12,7 +12,7 @@ import {
   type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
-import type { Environment } from "@pi-cloud/protocol";
+import type { Environment, Profile } from "@pi-cloud/protocol";
 import {
   Badge,
   type BadgeState,
@@ -474,6 +474,38 @@ function modelNames(environments: readonly Environment[]): string[] {
   ];
 }
 
+function ProfileSelect({
+  name,
+  value,
+  onChange,
+}: {
+  readonly name?: string;
+  readonly value?: string;
+  readonly onChange?: (event: {
+    readonly target: { readonly value: string };
+  }) => void;
+}): ReactElement {
+  const profiles =
+    useLoaded(async () => json<Profile[]>(fetch("/api/profiles")), "profiles")
+      .value ?? [];
+
+  return (
+    <select
+      name={name}
+      value={value}
+      onChange={onChange}
+      className={fieldClass}
+    >
+      <option value="">The default Profile</option>
+      {profiles.map((profile) => (
+        <option key={profile.id} value={profile.id}>
+          {profile.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function CreateForm({
   context,
   environments,
@@ -510,6 +542,7 @@ function CreateForm({
           .filter((url) => url),
         model: field("model"),
         threadModel: field("threadModel"),
+        profile: field("profile"),
         instructions: field("instructions"),
       }),
     ).then(
@@ -539,6 +572,9 @@ function CreateForm({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Profile">
+        <ProfileSelect name="profile" />
       </Field>
       <Field label="Coordinator model">
         <input
@@ -1264,6 +1300,7 @@ function Settings({
   const saved = {
     name: project.name,
     threadModel: project.threadModel ?? "",
+    profile: project.profileId ?? "",
     instructions: project.instructions,
   };
 
@@ -1316,6 +1353,9 @@ function Settings({
           onChange={edit("threadModel")}
           className={cn(fieldClass, "font-mono text-mono-sm")}
         />
+      </Field>
+      <Field label="Profile">
+        <ProfileSelect value={draft.profile} onChange={edit("profile")} />
       </Field>
       <datalist id="project-settings-models">
         {models.map((ref) => (

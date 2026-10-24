@@ -88,6 +88,22 @@ export function Sidebar({
         </span>
       </div>
 
+      <div className="flex flex-col gap-0.5 px-2 pb-0.5">
+        <a
+          href="#profiles"
+          aria-current={route.startsWith("profiles") ? "page" : undefined}
+          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
+        >
+          <span
+            aria-hidden="true"
+            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
+          >
+            P
+          </span>
+          Profiles
+        </a>
+      </div>
+
       {nav.length > 0 && (
         <div id="plugin-nav" className="flex flex-col gap-0.5 px-2 pb-1">
           {nav.map(({ name, label, Items }) => (
