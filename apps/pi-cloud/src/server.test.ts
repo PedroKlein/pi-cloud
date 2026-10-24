@@ -14,7 +14,8 @@ import {
   type WorkPoll,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { Sessions } from "@pi-cloud/sessions";
+import { Profiles } from "@pi-cloud/profiles";
+import { owner, Sessions } from "@pi-cloud/sessions";
 import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { readSse } from "./sse";
@@ -27,6 +28,7 @@ test("reports unhealthy when the database can't be read", async () => {
 
   const handler = createHandler(
     sessions,
+    new Profiles(store, owner),
     startPlugins([], [], {
       sessions,
       events: eventBus(() => undefined),
@@ -81,6 +83,7 @@ function startServer(
 
   const handler = createHandler(
     sessions,
+    new Profiles(store, owner),
     startPlugins([plugin], [plugin.name], {
       sessions,
       events: eventBus(() => undefined),
@@ -322,6 +325,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
   ): ((path: string) => Promise<Session[]>) => {
     const handle = createHandler(
       sessions,
+      new Profiles(store, owner),
       startPlugins([keeper], enabled, {
         sessions,
         events: eventBus(() => undefined),

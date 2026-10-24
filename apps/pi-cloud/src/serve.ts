@@ -1,6 +1,7 @@
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
 import type { Log } from "@pi-cloud/providers";
-import { Sessions, type SessionsOptions } from "@pi-cloud/sessions";
+import { Profiles } from "@pi-cloud/profiles";
+import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
@@ -51,7 +52,14 @@ export function serve(options: ServeOptions): {
     log: options.log,
   });
 
-  const handler = createHandler(sessions, pluginHost, store.check, options.log);
+  const handler = createHandler(
+    sessions,
+    new Profiles(store, owner),
+    pluginHost,
+    store.check,
+    options.log,
+  );
+
   const terminals = terminalBroker(sessions, options.log);
 
   const server = Bun.serve({

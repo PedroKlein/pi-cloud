@@ -29,6 +29,7 @@ import {
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
+import { InvalidProfile, type Profiles } from "@pi-cloud/profiles";
 import type { Log } from "@pi-cloud/providers";
 import {
   owner,
@@ -47,6 +48,7 @@ const rejectionStatus = {
   archived: 409,
   not_kept: 409,
   unknown_environment: 400,
+  unknown_profile: 400,
 } as const satisfies Record<Rejection, number>;
 
 type Route = (
@@ -58,6 +60,7 @@ type RouteTable = readonly (readonly [string, RegExp, Route])[];
 
 export function createHandler(
   sessions: Sessions,
+  profiles: Profiles,
   plugins: PluginHost,
   checkStore: () => void,
   log: Log,
@@ -133,6 +136,7 @@ export function createHandler(
       /^\/api\/environments$/,
       () => Response.json(sessions.environments()),
     ],
+    ...profileRoutes(profiles, log),
     [
       "GET",
       /^\/api\/sessions$/,
@@ -410,7 +414,7 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
-          if (error instanceof BadRequest) {
+          if (error instanceof BadRequest || error instanceof InvalidProfile) {
             return Response.json({ error: error.message }, { status: 400 });
           }
 
@@ -427,6 +431,122 @@ export function createHandler(
 
     return notFound();
   };
+}
+
+const profileRejectionStatus = {
+  not_found: 404,
+  default: 409,
+  in_use: 409,
+} as const;
+
+function profileRoutes(profiles: Profiles, log: Log): RouteTable {
+  const replied = (
+    result: ReturnType<Profiles["update"] | Profiles["remove"]>,
+    status: number,
+  ): Response =>
+    result.ok
+      ? reply(result, status)
+      : Response.json(
+          { error: result.reason },
+          { status: profileRejectionStatus[result.reason] },
+        );
+
+  return [
+    ["GET", /^\/api\/profiles$/, () => Response.json(profiles.list())],
+    [
+      "POST",
+      /^\/api\/profiles$/,
+      async (request) => {
+        const profile = profiles.create(await readJson(request));
+        log("profile created", { profileId: profile.id });
+
+        return Response.json(profile, { status: 201 });
+      },
+    ],
+    // A body with a url imports from a git repository, any other body is an
+    // exported Profile file.
+    [
+      "POST",
+      /^\/api\/profiles\/import$/,
+      async (request) => {
+        const body = await readJson(request);
+
+        const { url } = (body ?? {}) as Record<string, unknown>;
+
+        if (url !== undefined && typeof url !== "string") {
+          throw new BadRequest("url must be a string");
+        }
+
+        const profile =
+          url === undefined
+            ? profiles.import(body)
+            : await profiles.importFromGit(url);
+
+        log("profile imported", { profileId: profile.id });
+
+        return Response.json(profile, { status: 201 });
+      },
+    ],
+    [
+      "GET",
+      /^\/api\/profiles\/([^/]+)$/,
+      (_request, [id = ""]) => {
+        const profile = profiles.get(id);
+
+        return profile ? Response.json(profile) : notFound();
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/profiles\/([^/]+)$/,
+      async (request, [id = ""]) => {
+        const updated = profiles.update(id, await readJson(request));
+        if (updated.ok) {
+          log("profile updated", { profileId: id });
+        }
+
+        return replied(updated, 200);
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/profiles\/([^/]+)$/,
+      (_request, [id = ""]) => {
+        const removed = profiles.remove(id);
+        if (removed.ok) {
+          log("profile deleted", { profileId: id });
+        }
+
+        return replied(removed, 204);
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/profiles\/([^/]+)\/default$/,
+      (_request, [id = ""]) => replied(profiles.makeDefault(id), 200),
+    ],
+    [
+      "GET",
+      /^\/api\/profiles\/([^/]+)\/export$/,
+      (_request, [id = ""]) => {
+        const file = profiles.exportOf(id);
+        if (!file) {
+          return notFound();
+        }
+
+        return new Response(JSON.stringify(file, null, 2), {
+          headers: {
+            "content-type": "application/json",
+            "content-disposition": `attachment; filename="${fileName(file.name)}.json"`,
+          },
+        });
+      },
+    ],
+  ];
+}
+
+function fileName(name: string): string {
+  return name.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "profile";
 }
 
 function reply(result: Result<unknown>, status: number): Response {
@@ -473,6 +593,7 @@ function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
 function createSession(body: unknown): CreateSession {
   const {
     environment,
+    profile,
     workspace,
     model,
     thinking,
@@ -488,8 +609,17 @@ function createSession(body: unknown): CreateSession {
     throw new BadRequest("environment must be a non-empty string");
   }
 
+  if (
+    profile !== undefined &&
+    profile !== null &&
+    (typeof profile !== "string" || profile === "")
+  ) {
+    throw new BadRequest("profile must be a non-empty string");
+  }
+
   const request = {
     ...(typeof environment === "string" && { environment }),
+    ...(typeof profile === "string" && { profile }),
     workspace: workspaceRequest(workspace),
     ...optionalText("systemPrompt", systemPrompt),
     ...optionalText("firstMessage", firstMessage),

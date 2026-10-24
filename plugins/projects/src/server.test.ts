@@ -105,6 +105,7 @@ function fakeKernel(): {
               ? null
               : { plugin: "projects", key: ownerKey },
           provider: "local",
+          profileId: "profile-1",
           workspace: { kind: "folder", path: "/work" },
           model: request.model ?? null,
           thinking: request.thinking ?? null,

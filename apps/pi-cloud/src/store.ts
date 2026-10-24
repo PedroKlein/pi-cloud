@@ -2,15 +2,18 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type {
-  ModelRef,
-  SessionOwner,
-  SessionStatus,
-  ThinkingLevel,
-  Workspace,
-  WorkspaceRemoval,
+import {
+  emptyProfile,
+  type ModelRef,
+  type ProfileContent,
+  type SessionOwner,
+  type SessionStatus,
+  type ThinkingLevel,
+  type Workspace,
+  type WorkspaceRemoval,
 } from "@pi-cloud/protocol";
 import type { PluginStore } from "@pi-cloud/plugins";
+import type { ProfileStore, StoredProfile } from "@pi-cloud/profiles";
 import {
   owner,
   type SessionStore,
@@ -25,6 +28,7 @@ interface SessionRow {
   owner_plugin: string | null;
   owner_key: string | null;
   provider: string;
+  profile_id: string;
   workspace: string;
   model: string | null;
   system_prompt: string | null;
@@ -39,6 +43,14 @@ interface SessionRow {
   archived_at: string | null;
   workspace_removal: WorkspaceRemoval | null;
   workspace_kept_reason: string | null;
+}
+
+interface ProfileRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  content: string;
+  created_at: string;
 }
 
 interface EnvironmentRow {
@@ -59,6 +71,20 @@ create table if not exists environments (
 );
 `;
 
+const profileTables = `
+create table if not exists profiles (
+  id text primary key,
+  owner_id text not null,
+  name text not null,
+  content text not null,
+  created_at text not null
+);
+create table if not exists profile_defaults (
+  owner_id text primary key,
+  profile_id text not null references profiles (id)
+);
+`;
+
 const sessionTables = `
 create table if not exists sessions (
   id text primary key,
@@ -66,6 +92,7 @@ create table if not exists sessions (
   owner_id text not null,
   owner_plugin text,
   owner_key text,
+  profile_id text not null,
   workspace text not null,
   model text,
   system_prompt text,
@@ -93,6 +120,7 @@ create table if not exists transcript (
 // and ones from before Environments named the provider on each Session.
 function migrate(db: DatabaseSync): void {
   db.exec(environmentsTable);
+  db.exec(profileTables);
 
   const columns = db
     .prepare("select name from pragma_table_info('sessions')")
@@ -133,7 +161,46 @@ function migrate(db: DatabaseSync): void {
     migrateToEnvironments(db);
   }
 
+  // Sessions from before Profiles run with the default one.
+  const profileId = defaultProfileId(db, owner);
+  if (sessionsTableExists && !hasColumn("profile_id")) {
+    db.exec(
+      `alter table sessions add column profile_id text not null default '${profileId}'`,
+    );
+  }
+
   db.exec(sessionTables);
+}
+
+// Every owner has a default Profile, which starts empty (ADR 0034).
+function defaultProfileId(db: DatabaseSync, ownerId: string): string {
+  const found = db
+    .prepare("select profile_id from profile_defaults where owner_id = ?")
+    .get(ownerId) as { profile_id: string } | undefined;
+
+  if (found) {
+    return found.profile_id;
+  }
+
+  const id = randomUUID();
+
+  transaction(db, () => {
+    db.prepare(
+      "insert into profiles (id, owner_id, name, content, created_at) values (?, ?, ?, ?, ?)",
+    ).run(
+      id,
+      ownerId,
+      "Default",
+      JSON.stringify(emptyProfile),
+      new Date().toISOString(),
+    );
+
+    db.prepare(
+      "insert into profile_defaults (owner_id, profile_id) values (?, ?)",
+    ).run(ownerId, id);
+  });
+
+  return id;
 }
 
 function migrateToEnvironments(db: DatabaseSync): void {
@@ -174,11 +241,12 @@ function transaction(db: DatabaseSync, run: () => void): void {
   }
 }
 
-export function openStore(path: string): SessionStore & {
-  check: () => void;
-  close: () => void;
-  plugin: (name: string) => PluginStore;
-} {
+export function openStore(path: string): SessionStore &
+  ProfileStore & {
+    check: () => void;
+    close: () => void;
+    plugin: (name: string) => PluginStore;
+  } {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
   }
@@ -196,6 +264,7 @@ export function openStore(path: string): SessionStore & {
         ? null
         : { plugin: row.owner_plugin, key: row.owner_key },
     provider: row.provider,
+    profileId: row.profile_id,
     workspace: JSON.parse(row.workspace) as Workspace,
     model: row.model === null ? null : (JSON.parse(row.model) as ModelRef),
     systemPrompt: row.system_prompt,
@@ -213,7 +282,7 @@ export function openStore(path: string): SessionStore & {
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, profile_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
@@ -278,6 +347,55 @@ export function openStore(path: string): SessionStore & {
   const updateTitle = db.prepare("update sessions set title = ? where id = ?");
   const updateModel = db.prepare("update sessions set model = ? where id = ?");
 
+  const toProfile = (row: ProfileRow): StoredProfile => ({
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    createdAt: row.created_at,
+    ...(JSON.parse(row.content) as ProfileContent),
+  });
+
+  const contentJson = ({
+    packages,
+    agentsMd,
+    systemMd,
+    appendSystemMd,
+    mcpServers,
+    settings,
+  }: ProfileContent): string =>
+    JSON.stringify({
+      packages,
+      agentsMd,
+      systemMd,
+      appendSystemMd,
+      mcpServers,
+      settings,
+    } satisfies ProfileContent);
+
+  const selectProfiles = db.prepare(
+    "select * from profiles where owner_id = ? order by created_at, name",
+  );
+
+  const selectProfile = db.prepare("select * from profiles where id = ?");
+
+  const insertProfile = db.prepare(
+    "insert into profiles (id, owner_id, name, content, created_at) values (?, ?, ?, ?, ?)",
+  );
+
+  const updateProfile = db.prepare(
+    "update profiles set name = ?, content = ? where id = ?",
+  );
+
+  const deleteProfile = db.prepare("delete from profiles where id = ?");
+
+  const upsertDefault = db.prepare(
+    "insert into profile_defaults (owner_id, profile_id) values (?, ?) on conflict (owner_id) do update set profile_id = excluded.profile_id",
+  );
+
+  const selectProfileUse = db.prepare(
+    "select 1 from sessions where profile_id = ? and archived_at is null limit 1",
+  );
+
   const selectTranscript = db.prepare(
     "select entry from transcript where session_id = ? and line >= ? order by line",
   );
@@ -290,6 +408,7 @@ export function openStore(path: string): SessionStore & {
         s.ownerId,
         s.owner?.plugin ?? null,
         s.owner?.key ?? null,
+        s.profileId,
         JSON.stringify(s.workspace),
         s.model && JSON.stringify(s.model),
         s.systemPrompt,
@@ -381,6 +500,33 @@ export function openStore(path: string): SessionStore & {
     check: () => {
       selectAnySession.get();
     },
+    profiles: (ownerId) =>
+      (selectProfiles.all(ownerId) as unknown as ProfileRow[]).map(toProfile),
+    profile: (id) => {
+      const row = selectProfile.get(id) as ProfileRow | undefined;
+
+      return row && toProfile(row);
+    },
+    insertProfile: (profile) => {
+      insertProfile.run(
+        profile.id,
+        profile.ownerId,
+        profile.name,
+        contentJson(profile),
+        profile.createdAt,
+      );
+    },
+    updateProfile: (profile) => {
+      updateProfile.run(profile.name, contentJson(profile), profile.id);
+    },
+    deleteProfile: (id) => {
+      deleteProfile.run(id);
+    },
+    defaultProfileId: (ownerId) => defaultProfileId(db, ownerId),
+    setDefaultProfile: (ownerId, id) => {
+      upsertDefault.run(ownerId, id);
+    },
+    profileInUse: (id) => selectProfileUse.get(id) !== undefined,
     plugin: (name) => pluginStore(db, name),
     close: () => {
       db.close();

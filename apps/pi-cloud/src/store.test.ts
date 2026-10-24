@@ -7,6 +7,7 @@ import type { StoredSession } from "@pi-cloud/sessions";
 import { openStore } from "./store";
 
 let root: string;
+let defaultProfile: string;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "store-"));
@@ -39,7 +40,11 @@ test("keeps sessions from a database that stored a working directory", () => {
   const store = openStore(path);
   const session = store.get("s1");
   const environments = store.environments();
+  const [profile] = store.profiles("local");
+  const defaultProfileId = store.defaultProfileId("local");
   store.close();
+
+  expect(profile).toMatchObject({ id: defaultProfileId, name: "Default" });
 
   expect(environments).toMatchObject([
     { name: "local", provider: "local", ownerId: "local" },
@@ -51,6 +56,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     ownerId: "local",
     owner: null,
     provider: "local",
+    profileId: defaultProfileId,
     workspace: { kind: "folder", path: "/home/me/repo" },
     model: null,
     thinking: null,
@@ -83,6 +89,7 @@ test("opens a migrated database again", () => {
     ownerId: "local",
     owner: null,
     provider: "vm",
+    profileId: store.defaultProfileId("local"),
     workspace: { kind: "clone", repository: "r", branch: "b" },
     model: { provider: "openai", id: "gpt-5-mini" },
     thinking: "high",
@@ -113,6 +120,7 @@ test("opens a migrated database again", () => {
 
 test("lists the Sessions one owner holds and keeps an owner once given", () => {
   const store = openStore(":memory:");
+  defaultProfile = store.defaultProfileId("local");
   store.ensureEnvironment("vm");
   const [environment] = store.environments();
   const id = environment?.id ?? "";
@@ -160,6 +168,7 @@ function sessionIn(
     ownerId: "local",
     owner: null,
     provider,
+    profileId: defaultProfile,
     workspace: { kind: "clone", repository: "r", branch: fields.id },
     model: null,
     thinking: null,
@@ -179,6 +188,7 @@ function sessionIn(
 
 test("lists sessions newest first and leaves archived ones out unless asked", () => {
   const store = openStore(join(root, "server.db"));
+  defaultProfile = store.defaultProfileId("local");
   store.ensureEnvironment("vm");
   const vm = store.environments()[0]?.id ?? "";
 
@@ -213,6 +223,7 @@ test("lists sessions newest first and leaves archived ones out unless asked", ()
 
 test("lists a provider's stopped sessions whose workspace is waiting to be removed, oldest first", () => {
   const store = openStore(join(root, "server.db"));
+  defaultProfile = store.defaultProfileId("local");
   store.ensureEnvironment("vm");
   store.ensureEnvironment("laptop");
 
@@ -281,4 +292,52 @@ test("lists a provider's stopped sessions whose workspace is waiting to be remov
   ]);
 
   store.close();
+});
+
+test("gives Sessions from before Profiles the default Profile", () => {
+  const path = join(root, "server.db");
+  const old = new DatabaseSync(path);
+
+  old.exec(`
+    create table environments (
+      id text primary key,
+      name text not null,
+      provider text not null unique,
+      owner_id text not null,
+      created_at text not null
+    );
+    create table sessions (
+      id text primary key,
+      environment_id text not null references environments (id),
+      owner_id text not null,
+      owner_plugin text,
+      owner_key text,
+      workspace text not null,
+      model text,
+      system_prompt text,
+      first_message text,
+      thinking text,
+      title text,
+      status text not null,
+      generation integer not null,
+      created_at text not null,
+      interrupted_at text,
+      error text,
+      archived_at text,
+      workspace_removal text,
+      workspace_kept_reason text
+    );
+    insert into environments values ('e1', 'vm', 'vm', 'local', '2026-10-23T00:00:00.000Z');
+    insert into sessions (id, environment_id, owner_id, workspace, status, generation, created_at)
+      values ('s1', 'e1', 'local', '{"kind":"folder","path":"/w"}', 'idle', 1, '2026-10-23T00:00:00.000Z');
+  `);
+
+  old.close();
+
+  const store = openStore(path);
+  const session = store.get("s1");
+  const defaultProfileId = store.defaultProfileId("local");
+  store.close();
+
+  expect(session?.profileId).toBe(defaultProfileId);
 });

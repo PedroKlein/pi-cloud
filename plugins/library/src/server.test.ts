@@ -15,6 +15,7 @@ const member: ToolCaller = {
     ownerId: "owner",
     owner: null,
     provider: "local",
+    profileId: "profile-1",
     workspace: { kind: "folder", path: "/work" },
     model: null,
     thinking: null,
