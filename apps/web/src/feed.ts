@@ -11,6 +11,10 @@ import {
 import { chatItems, type ChatItem } from "./chat";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
+
+// Lines an extension writes for hosts to read, such as pi-subagents'
+// PI_SUBAGENT_ASYNC_JSON status snapshots, not for people.
+const hostPayload = /^PI_[A-Z_]+_JSON:/;
 export type Settings = Extract<LiveEvent, { type: "settings" }>;
 export type Explanation = Extract<LiveEvent, { type: "explanation" }>;
 
@@ -128,6 +132,7 @@ export function feedReader({
       [...widgets.values()]
         .filter((widget) => widget.placement === placement)
         .flatMap((widget) => widget.lines ?? [])
+        .filter((line) => !hostPayload.test(line))
         .join("\n");
 
     return {
