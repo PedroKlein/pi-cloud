@@ -1,11 +1,14 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type {
-  Assignment,
-  Attempt,
-  ModelRef,
-  Removal,
-  Work,
-  WorkPoll,
+import {
+  type Assignment,
+  type Attempt,
+  leaseMs,
+  type ModelRef,
+  movable,
+  type Removal,
+  type Work,
+  type WorkPoll,
+  type Workspace,
 } from "@pi-cloud/protocol";
 
 export interface ControlPlane {
@@ -29,6 +32,7 @@ export interface ProviderOptions {
   readonly log: Log;
   readonly signal: AbortSignal;
   readonly retry?: { readonly initialMs: number; readonly maxMs: number };
+  readonly leaseMs?: number;
 }
 
 export async function runProvider(options: ProviderOptions): Promise<void> {
@@ -49,6 +53,23 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
     maxMs: 20_000,
   };
 
+  const workspaces = new Map<string, Workspace>();
+
+  // Half the server's lease, so these Sessions stop before the server can
+  // start them on another runner (ADR 0032).
+  const stopMovableAfterMs = (options.leaseMs ?? leaseMs) / 2;
+
+  const stopMovable = (): void => {
+    for (const attempt of running()) {
+      const workspace = workspaces.get(attempt.sessionId);
+      if (workspace !== undefined && movable(workspace)) {
+        log("stopping session after losing its lease", { ...attempt });
+        unload(attempt);
+      }
+    }
+  };
+
+  let leaseTimer = setTimeout(stopMovable, stopMovableAfterMs);
   let delayMs = initialMs;
   let polls = 0;
   let started = 0;
@@ -69,8 +90,19 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
 
       polls++;
       delayMs = initialMs;
+      clearTimeout(leaseTimer);
+      leaseTimer = setTimeout(stopMovable, stopMovableAfterMs);
+
+      const live = new Set(running().map(({ sessionId }) => sessionId));
+      for (const sessionId of workspaces.keys()) {
+        if (!live.has(sessionId)) {
+          workspaces.delete(sessionId);
+        }
+      }
+
       for (const assignment of work.start) {
         started++;
+        workspaces.set(assignment.sessionId, assignment.workspace);
         log("starting session", { ...assignment, started });
         start(assignment);
       }
@@ -93,5 +125,6 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
     }
   }
 
+  clearTimeout(leaseTimer);
   log("provider stopped", { polls, started });
 }

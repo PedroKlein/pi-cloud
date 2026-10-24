@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   type Assignment,
   type Attempt,
   type Environment,
   type Session,
+  type WorkspaceRequest,
   environmentHeader,
   protocolVersion,
   providerHeader,
@@ -12,13 +14,15 @@ import {
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
 
+const leaseMs = 200;
+
 let server: ReturnType<typeof serve>;
 
 beforeEach(() => {
   server = serve({
     port: 0,
     database: ":memory:",
-    sessions: { pollWaitMs: 0 },
+    sessions: { pollWaitMs: 0, leaseMs },
     log: () => undefined,
   });
 });
@@ -44,7 +48,10 @@ async function poll(
     readonly running?: readonly Attempt[];
     readonly capacity?: number;
   } = {},
-): Promise<readonly Assignment[]> {
+): Promise<{
+  readonly start: readonly Assignment[];
+  readonly unload: readonly Attempt[];
+}> {
   const body: WorkPoll = {
     running,
     folders,
@@ -52,7 +59,7 @@ async function poll(
     ...(capacity !== undefined && { capacity }),
   };
 
-  const work = await json<{ readonly start: readonly Assignment[] }>(
+  return json(
     fetch(new URL("/agent/work", server.url), {
       method: "POST",
       headers: {
@@ -64,16 +71,28 @@ async function poll(
       body: JSON.stringify(body),
     }),
   );
-
-  return work.start;
 }
 
-async function startSession(path: string): Promise<string> {
+async function claimed(
+  runner: string,
+  options?: Parameters<typeof poll>[1],
+): Promise<readonly Assignment[]> {
+  return (await poll(runner, options)).start;
+}
+
+async function startSession(
+  workspace: string | WorkspaceRequest,
+): Promise<string> {
   const session = await json<{ readonly id: string }>(
     fetch(new URL("/api/sessions", server.url), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspace: { kind: "folder", path } }),
+      body: JSON.stringify({
+        workspace:
+          typeof workspace === "string"
+            ? { kind: "folder", path: workspace }
+            : workspace,
+      }),
     }),
   );
 
@@ -85,8 +104,8 @@ function ids(assignments: readonly Assignment[]): readonly string[] {
 }
 
 test("lists every runner that joined an Environment's pool", async () => {
-  await poll("mac-1", { folders: ["/srv/a"], capacity: 2 });
-  await poll("mac-2", { folders: ["/srv/b"] });
+  await claimed("mac-1", { folders: ["/srv/a"], capacity: 2 });
+  await claimed("mac-2", { folders: ["/srv/b"] });
 
   const environments = await json<Environment[]>(
     fetch(new URL("/api/environments", server.url)),
@@ -106,30 +125,30 @@ test("lists every runner that joined an Environment's pool", async () => {
 });
 
 test("places a folder Session on the runner that lists the folder", async () => {
-  await poll("mac-1", { folders: ["/srv/a"] });
-  await poll("mac-2", { folders: ["/srv/b"] });
+  await claimed("mac-1", { folders: ["/srv/a"] });
+  await claimed("mac-2", { folders: ["/srv/b"] });
 
   const id = await startSession("/srv/b/app");
 
-  const onFirst = await poll("mac-1", { folders: ["/srv/a"] });
-  const onSecond = await poll("mac-2", { folders: ["/srv/b"] });
+  const onFirst = await claimed("mac-1", { folders: ["/srv/a"] });
+  const onSecond = await claimed("mac-2", { folders: ["/srv/b"] });
 
   expect(onFirst).toEqual([]);
   expect(ids(onSecond)).toEqual([id]);
 });
 
 test("gives a runner no more Sessions than its capacity has room for", async () => {
-  await poll("mac-1", { capacity: 1 });
+  await claimed("mac-1", { capacity: 1 });
 
   const first = await startSession("/srv/a");
   const second = await startSession("/srv/b");
 
-  const [assigned] = await poll("mac-1", { capacity: 1 });
+  const [assigned] = await claimed("mac-1", { capacity: 1 });
   if (!assigned) {
     throw new Error("no session was assigned");
   }
 
-  const whileFull = await poll("mac-1", {
+  const whileFull = await claimed("mac-1", {
     capacity: 1,
     running: [
       { sessionId: assigned.sessionId, generation: assigned.generation },
@@ -138,24 +157,51 @@ test("gives a runner no more Sessions than its capacity has room for", async () 
 
   expect(assigned.sessionId).toBe(first);
   expect(whileFull).toEqual([]);
-  expect(ids(await poll("mac-2"))).toEqual([second]);
+  expect(ids(await claimed("mac-2"))).toEqual([second]);
 });
 
 test("sends an interrupted Session back to the runner it ran on", async () => {
-  await poll("mac-1");
+  await claimed("mac-1");
 
   const id = await startSession("/srv/a");
 
-  expect(ids(await poll("mac-1"))).toEqual([id]);
+  expect(ids(await claimed("mac-1"))).toEqual([id]);
 
   // mac-1 no longer reports the attempt and has no room to take it again.
-  await poll("mac-1", {
+  await claimed("mac-1", {
     capacity: 1,
     running: [{ sessionId: "other", generation: 1 }],
   });
 
-  expect(await poll("mac-2")).toEqual([]);
-  expect(ids(await poll("mac-1"))).toEqual([id]);
+  expect(await claimed("mac-2")).toEqual([]);
+  expect(ids(await claimed("mac-1"))).toEqual([id]);
+});
+
+test("moves a Session whose Workspace can be cloned again once its runner's lease lapses", async () => {
+  await claimed("mac-1");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  const folder = await startSession("/srv/a");
+  const first = await claimed("mac-1");
+
+  await sleep(leaseMs * 1.5);
+
+  const moved = await claimed("mac-2");
+  const back = await poll("mac-1", { running: [...first] });
+
+  const session = await json<Session>(
+    fetch(new URL(`/api/sessions/${clone}`, server.url)),
+  );
+
+  expect(ids(first)).toEqual([clone, folder]);
+  expect(moved).toMatchObject([{ sessionId: clone, generation: 2 }]);
+  expect(session).toMatchObject({ runner: "mac-2", status: "starting" });
+  expect(back.unload).toEqual([{ sessionId: clone, generation: 1 }]);
+  expect(back.start).toEqual([]);
 });
 
 test("shows a Session offline once its runner joins another Environment", async () => {
@@ -171,4 +217,20 @@ test("shows a Session offline once its runner joins another Environment", async 
   );
 
   expect(session).toMatchObject({ runner: "mac-1", online: false });
+});
+
+test("moves a clone Session off a runner that joined another Environment", async () => {
+  await claimed("mac-1");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  await claimed("mac-1");
+  await claimed("mac-1", { environment: "elsewhere" });
+
+  expect(await claimed("mac-2")).toMatchObject([
+    { sessionId: clone, generation: 2 },
+  ]);
 });

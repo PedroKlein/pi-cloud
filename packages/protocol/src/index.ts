@@ -5,6 +5,16 @@ export const versionHeader = "pi-cloud-protocol";
 export const providerHeader = "pi-cloud-provider";
 export const environmentHeader = "pi-cloud-environment";
 
+// A runner's lease on its Sessions lasts this long after its last poll. Then
+// a Session whose Workspace can be made again elsewhere moves to another
+// runner, so a runner that can't poll stops those Sessions well before
+// (ADR 0032).
+export const leaseMs = 60_000;
+
+export function movable(workspace: Workspace): boolean {
+  return workspace.kind === "clone" || workspace.kind === "repositories";
+}
+
 export interface RepositoryCheckout {
   readonly repository: string;
   readonly startPoint?: string;

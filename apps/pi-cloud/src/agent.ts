@@ -221,6 +221,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         sessionLog,
       );
 
+      // A long clone can outlast the attempt, such as when the runner lost
+      // its lease meanwhile.
+      if (hosted.get(sessionId)?.generation !== generation) {
+        return undefined;
+      }
+
       const sessionOptions = {
         cwd,
         checkouts,
