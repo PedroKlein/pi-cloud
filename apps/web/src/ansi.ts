@@ -1,5 +1,5 @@
 // Text an extension styled for Pi's TUI, split into runs of one style
-// (ADR 0028).
+// (ADR 0029).
 export interface Run {
   readonly text: string;
   readonly style: TextStyle;

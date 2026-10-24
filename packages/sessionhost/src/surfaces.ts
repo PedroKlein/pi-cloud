@@ -53,7 +53,7 @@ const terminalCodes =
   /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
 
 // Renders extensions' widgets, footer and header the way Pi's TUI does, and
-// publishes the lines for the web (ADR 0028).
+// publishes the lines for the web (ADR 0029).
 export function webSurfaces(
   publish: (event: LiveEvent) => void,
   context: SurfaceContext,

@@ -78,7 +78,7 @@ export function piView(
     // post snapshots and notices there. So the TUI binds once, through this
     // context, and opening or closing the view only moves the extensions' UI.
     // What extensions draw around the editor goes to both, so each shows it
-    // (ADR 0028).
+    // (ADR 0029).
     const routed = new Proxy(web.uiContext, {
       get: (_web, key) => {
         if (tuiUI !== undefined && drawn.has(key)) {

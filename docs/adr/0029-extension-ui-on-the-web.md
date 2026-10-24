@@ -1,4 +1,4 @@
-# 0028: Extensions' terminal widgets, header and footer on the web
+# 0029: Extensions' terminal widgets, header and footer on the web
 
 - Status: accepted
 - Date: 2026-10-24
