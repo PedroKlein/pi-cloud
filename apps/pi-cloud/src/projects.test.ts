@@ -1124,7 +1124,7 @@ test("runs a Project's threads across two machines and two repositories", async 
 
   await until(
     async () => transcript(coordinatorId),
-    (text) => (text.match(/finished a turn/g) ?? []).length >= 3,
+    (text) => (text.match(/event\W+finished a turn/g) ?? []).length >= 3,
   );
 
   await api(`/api/sessions/${coordinatorId}/commands`, {
