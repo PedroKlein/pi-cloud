@@ -308,3 +308,23 @@ test("a failed event stream is opened again until the session is gone", async ()
     jest.useRealTimers();
   }
 });
+
+test("keeps extensions' machine-readable widget lines out of the widget text", () => {
+  const { feeds, live } = connect();
+
+  live({
+    type: "widget",
+    key: "subagent-async",
+    lines: ['PI_SUBAGENT_ASYNC_JSON:{"runs":[]}'],
+    placement: "aboveEditor",
+  });
+
+  live({
+    type: "widget",
+    key: "status",
+    lines: ["coder | 0%", 'PI_SUBAGENT_INSPECT_JSON:{"requestId":"r"}'],
+    placement: "aboveEditor",
+  });
+
+  expect(feeds.at(-1)?.widgetsAbove).toBe("coder | 0%");
+});
