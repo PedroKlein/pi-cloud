@@ -3,6 +3,8 @@ import {
   type LinkProps,
   type NavItemsProps,
   type NoticeProps,
+  type ToolCall,
+  type ToolCallProps,
   ok,
   type PageProps,
   useLoaded,
@@ -54,19 +56,48 @@ export const projects: WebPlugin = {
     coordinator_message: CoordinatorMessageNotice,
   },
   links: { thread: ThreadLink },
+  tools: { start_thread: StartThreadCard, message_thread: MessageThreadCard },
 };
 
-function ThreadLink({ context, target, label }: LinkProps): ReactElement {
-  const thread = useLoaded(
+function useThread(
+  context: WebContext,
+  id: string | undefined,
+): ThreadLinkView | undefined {
+  return useLoaded(
     async () =>
-      json<ThreadLinkView>(
-        context.request(`threads/${encodeURIComponent(target)}`),
-      ),
-    target,
+      id === undefined
+        ? undefined
+        : json<ThreadLinkView>(
+            context.request(`threads/${encodeURIComponent(id)}`),
+          ),
+    id ?? "",
     refreshMs,
   ).value;
+}
 
+function StateDot({
+  thread,
+}: {
+  readonly thread: ThreadView | undefined;
+}): ReactElement {
   const group = thread && groupOf(thread);
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-2 shrink-0 rounded-full",
+        group === undefined && "bg-line",
+        thread?.workState === "failed"
+          ? "bg-failed"
+          : group !== undefined && dots[group],
+      )}
+    />
+  );
+}
+
+function ThreadLink({ context, target, label }: LinkProps): ReactElement {
+  const thread = useThread(context, target);
 
   return (
     <a
@@ -77,16 +108,7 @@ function ThreadLink({ context, target, label }: LinkProps): ReactElement {
       }
       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-elevated px-2 align-baseline text-label leading-relaxed font-medium text-fg no-underline hover:bg-hover"
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          group === undefined && "bg-line",
-          thread?.workState === "failed"
-            ? "bg-failed"
-            : group !== undefined && dots[group],
-        )}
-      />
+      <StateDot thread={thread} />
       <span className="truncate">{label}</span>
       {thread && (
         <span className="shrink-0 font-normal text-fg-dim">
@@ -94,6 +116,115 @@ function ThreadLink({ context, target, label }: LinkProps): ReactElement {
         </span>
       )}
     </a>
+  );
+}
+
+function argument(args: unknown, name: string): string | undefined {
+  const value = (args as Record<string, unknown> | null)?.[name];
+
+  return typeof value === "string" ? value : undefined;
+}
+
+function StartThreadCard({ context, call }: ToolCallProps): ReactElement {
+  const threadId = /as (\S+)\.$/.exec(call.result?.text ?? "")?.[1];
+  const thread = useThread(context, threadId);
+  const title = thread?.title ?? argument(call.args, "title") ?? "Thread";
+
+  const status = startStatus(call, thread);
+
+  const open =
+    thread && context.href(`${thread.projectId}/${thread.sessionId}`);
+
+  return (
+    <div
+      aria-label={`Thread ${title}`}
+      className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2"
+    >
+      <StateDot thread={thread} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-label font-medium text-fg-strong">
+          {title}
+        </span>
+        <span
+          className={cn(
+            "truncate text-caption",
+            call.status === "failed" ? "text-failed" : "text-fg-dim",
+          )}
+        >
+          {status}
+        </span>
+      </div>
+      {open !== undefined && (
+        <>
+          <a
+            href={open}
+            aria-label={`Open ${title} beside the coordinator`}
+            className="grid size-7 place-items-center rounded-md text-fg-dim hover:bg-hover hover:text-fg"
+          >
+            <Icon name="panel-right" className="size-4" />
+          </a>
+          <a
+            href={`${open}/full`}
+            aria-label={`Open ${title} fullscreen`}
+            className="grid size-7 place-items-center rounded-md text-fg-dim hover:bg-hover hover:text-fg"
+          >
+            <Icon name="maximize" className="size-4" />
+          </a>
+        </>
+      )}
+    </div>
+  );
+}
+
+function startStatus(call: ToolCall, thread: ThreadView | undefined): string {
+  if (call.status === "running") {
+    return "Starting…";
+  }
+
+  if (call.status === "failed") {
+    return call.result?.text ?? "Didn't start";
+  }
+
+  if (thread === undefined) {
+    return "Started";
+  }
+
+  return [
+    workStateNames[thread.workState],
+    thread.runState === "working" || thread.runState === "idle"
+      ? undefined
+      : runBadges[thread.runState]?.label,
+    thread.branch ?? undefined,
+  ]
+    .filter((part) => part !== undefined)
+    .join(" · ");
+}
+
+function MessageThreadCard({ context, call }: ToolCallProps): ReactElement {
+  const threadId = argument(call.args, "thread");
+  const thread = useThread(context, threadId);
+
+  return (
+    <MessageNotice
+      from={
+        <>
+          To
+          {thread ? (
+            <ThreadLink
+              context={context}
+              target={thread.sessionId}
+              label={thread.title}
+            />
+          ) : (
+            (threadId ?? "a thread")
+          )}
+          {call.status === "failed" && (
+            <span className="text-failed">· {call.result?.text}</span>
+          )}
+        </>
+      }
+      text={argument(call.args, "text") ?? ""}
+    />
   );
 }
 

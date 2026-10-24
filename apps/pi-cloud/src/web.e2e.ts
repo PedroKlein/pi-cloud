@@ -530,6 +530,10 @@ test("creates a Project and shares a file through its library", async () => {
     .first()
     .waitFor();
 
+  const card = page.locator('#chat [aria-label="Thread Docs"]');
+  await card.getByRole("link", { name: "Open Docs fullscreen" }).waitFor();
+  expect(await page.locator("#chat").getByText("start_thread").count()).toBe(0);
+
   const row = rail.getByRole("listitem", { name: "Docs" });
   await row.getByText(/^e2e · /).waitFor();
   await row.getByRole("button", { name: "Actions for Docs" }).click();
