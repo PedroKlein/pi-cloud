@@ -336,7 +336,9 @@ function Items({ context, path }: NavItemsProps): ReactElement {
           <li key={project.id}>
             <a
               href={context.href(project.id)}
-              aria-current={path === project.id ? "page" : undefined}
+              aria-current={
+                path?.split("/")[0] === project.id ? "page" : undefined
+              }
               className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md py-1.5 pr-2 pl-10.5 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
             >
               <span className="truncate text-label font-medium">

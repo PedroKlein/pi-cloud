@@ -554,6 +554,13 @@ test("creates a Project and shares a file through its library", async () => {
   const side = page.getByRole("complementary", { name: "Docs" });
   await side.locator('li[data-role="assistant"]').getByText(/^ok$/).waitFor();
 
+  expect(
+    await page
+      .locator("#project-nav")
+      .getByRole("link", { name: /^Site docs/ })
+      .getAttribute("aria-current"),
+  ).toBe("page");
+
   const threadId = new URL(page.url()).hash.split("/").at(-1) ?? "";
 
   expect(
