@@ -53,6 +53,7 @@ const rejectionStatus = {
   not_kept: 409,
   unknown_environment: 400,
   unknown_profile: 400,
+  not_movable: 409,
 } as const satisfies Record<Rejection, number>;
 
 type Route = (

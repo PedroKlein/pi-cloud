@@ -1818,6 +1818,10 @@ test("forks a session into a new one that remembers its chat and starts from its
 
   const missing = await api("/api/sessions/nope/fork", {});
 
+  const stored = (await (
+    await api(`/api/sessions/${fork.id}`)
+  ).json()) as Session;
+
   expect(response.status).toBe(201);
 
   expect(fork.workspace).toEqual({
@@ -1832,6 +1836,7 @@ test("forks a session into a new one that remembers its chat and starts from its
   ).toBe(true);
 
   expect(missing.status).toBe(404);
+  expect(stored.title).toBe("one (fork)");
 });
 
 test("marks a session failed when its folder is not listed", async () => {

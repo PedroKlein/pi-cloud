@@ -9,6 +9,7 @@ import {
   type EnvironmentUpdate,
   leaseMs,
   type LiveEvent,
+  movable,
   type LivePost,
   liveSurface,
   type ModelRef,
@@ -27,7 +28,6 @@ import {
   type TrustAnswer,
   type Work,
   type WorkPoll,
-  type Workspace,
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import { placesOn, uniqueModels } from "./placement";
@@ -99,7 +99,8 @@ export type Rejection =
   | "archived"
   | "not_kept"
   | "unknown_environment"
-  | "unknown_profile";
+  | "unknown_profile"
+  | "not_movable";
 
 export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
@@ -222,7 +223,9 @@ export class Sessions {
 
   // A fork is a new Session that starts from another's transcript, on its
   // own branch from the one that Session works on, in any Environment
-  // (ADR 0034). Only what the Session pushed reaches another machine.
+  // (ADR 0034). Only what the Session pushed reaches another machine, so a
+  // Session in a folder of its machine forks only within its Environment.
+  // A fork belongs to no plugin, so a plugin's prompt stays behind.
   fork(
     id: string,
     request: { readonly environment?: string; readonly actor: Actor },
@@ -232,27 +235,37 @@ export class Sessions {
       return { ok: false, reason: "not_found" };
     }
 
+    const environment = request.environment ?? source.environmentId;
+    if (environment !== source.environmentId && !movable(source.workspace)) {
+      return { ok: false, reason: "not_movable" };
+    }
+
     const forked = this.start({
-      environment: request.environment ?? source.environmentId,
+      environment,
       profile: source.profileId,
-      workspace: forkedWorkspace(source.workspace),
+      workspace: forkedWorkspace(source),
       ...(source.model && { model: source.model }),
       ...(source.thinking && { thinking: source.thinking }),
-      ...(source.systemPrompt !== null && {
-        systemPrompt: source.systemPrompt,
-      }),
+      ...(source.owner === null &&
+        source.systemPrompt !== null && { systemPrompt: source.systemPrompt }),
       actor: request.actor,
     });
 
-    if (forked.ok) {
-      this.#store.appendTranscript(
-        forked.value.id,
-        0,
-        this.#store.transcript(id, 0),
-      );
+    if (!forked.ok) {
+      return forked;
     }
 
-    return forked;
+    this.#store.appendTranscript(
+      forked.value.id,
+      0,
+      this.#store.transcript(id, 0),
+    );
+
+    if (source.title !== null) {
+      this.#store.setTitle(forked.value.id, `${source.title} (fork)`);
+    }
+
+    return { ok: true, value: this.get(forked.value.id) ?? forked.value };
   }
 
   list({
@@ -1121,29 +1134,47 @@ function userText(message: unknown): string | null {
   return typeof text === "string" && text.trim() !== "" ? text : null;
 }
 
-function forkedWorkspace(workspace: Workspace): WorkspaceRequest {
-  switch (workspace.kind) {
-    case "folder":
-      return workspace;
-    case "worktree":
-      return {
+// A Session that never started has no branch yet, so its fork starts where
+// it would have. An archived one's branch lives on only at its restore point.
+function forkedWorkspace({
+  workspace,
+  generation,
+}: StoredSession): WorkspaceRequest {
+  if (workspace.kind === "folder") {
+    return workspace;
+  }
+
+  if (workspace.kind === "repositories") {
+    return {
+      kind: "repositories",
+      repositories: workspace.repositories.map((checkout) => {
+        const startPoint =
+          generation === 0
+            ? checkout.startPoint
+            : (checkout.restorePoint ?? workspace.branch);
+
+        return {
+          repository: checkout.repository,
+          ...(startPoint !== undefined && { startPoint }),
+        };
+      }),
+    };
+  }
+
+  const startPoint =
+    generation === 0
+      ? workspace.startPoint
+      : (workspace.restorePoint ?? workspace.branch);
+
+  return workspace.kind === "worktree"
+    ? {
         kind: "worktree",
         path: workspace.path,
-        startPoint: workspace.branch,
-      };
-    case "clone":
-      return {
+        ...(startPoint !== undefined && { startPoint }),
+      }
+    : {
         kind: "clone",
         repository: workspace.repository,
-        startPoint: workspace.branch,
+        ...(startPoint !== undefined && { startPoint }),
       };
-    case "repositories":
-      return {
-        kind: "repositories",
-        repositories: workspace.repositories.map(({ repository }) => ({
-          repository,
-          startPoint: workspace.branch,
-        })),
-      };
-  }
 }

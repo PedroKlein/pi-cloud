@@ -263,3 +263,47 @@ test("gives a runner an Environment's secrets without logging them", async () =>
   expect(logged.some((line) => line.includes("session assigned"))).toBe(true);
   expect(logged.join("\n")).not.toContain("s3cret");
 });
+
+test("forks a Session that never started from where it would have, and keeps folder Sessions in their Environment", async () => {
+  await claimed("mac-1");
+  await claimed("vm-1", { environment: "elsewhere" });
+
+  const environments = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url)),
+  );
+
+  const elsewhere = environments.find(
+    ({ provider }) => provider === "elsewhere",
+  );
+
+  const fork = async (id: string): Promise<Response> =>
+    fetch(new URL(`/api/sessions/${id}/fork`, server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ environment: elsewhere?.id }),
+    });
+
+  const folder = await startSession("/srv/a");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+    startPoint: "main",
+  });
+
+  const folderFork = await fork(folder);
+  const cloneFork = await fork(clone);
+  const forked = await json<Session>(Promise.resolve(cloneFork));
+
+  expect(folderFork.status).toBe(409);
+  expect(cloneFork.status).toBe(201);
+
+  expect(forked).toMatchObject({
+    environmentId: elsewhere?.id,
+    workspace: {
+      kind: "clone",
+      repository: "https://example.com/app.git",
+      startPoint: "main",
+    },
+  });
+});
