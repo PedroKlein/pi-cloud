@@ -25,6 +25,8 @@ export interface ProviderOptions {
   readonly start: (assignment: Assignment) => void;
   readonly unload: (attempt: Attempt) => void;
   readonly remove: (removal: Removal) => void;
+  // Every Profile that still exists, after each poll.
+  readonly profiles: (ids: readonly string[]) => void;
   readonly running: () => readonly Attempt[];
   readonly folders: readonly string[];
   readonly capacity?: number;
@@ -41,6 +43,7 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
     start,
     unload,
     remove,
+    profiles,
     running,
     folders,
     models,
@@ -114,6 +117,10 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
       }
 
       work.remove.forEach(remove);
+      // An older server sends none, which mustn't read as every Profile gone.
+      if (Array.isArray(work.profiles)) {
+        profiles(work.profiles);
+      }
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the await above is pending
       if (signal.aborted) {

@@ -115,7 +115,8 @@ export interface SessionsOptions {
   readonly offeredModels?: ModelOffer;
 }
 
-export interface Claim extends Work {
+// The server adds the Profiles, which Sessions don't hold.
+export interface Claim extends Omit<Work, "profiles"> {
   readonly interrupted: readonly Attempt[];
 }
 
@@ -490,7 +491,7 @@ export class Sessions {
       inventory: { folders, models },
     });
 
-    const work = (): Work => ({
+    const work = (): Omit<Work, "profiles"> => ({
       start: signal.aborted
         ? []
         : this.#claimNext(runner, capacity, running.length),

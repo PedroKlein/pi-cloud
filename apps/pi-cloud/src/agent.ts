@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -61,6 +61,7 @@ const relistMs = 60_000;
 
 interface Hosted {
   readonly generation: number;
+  readonly profileId: string;
   readonly session: Promise<HostedSession | undefined>;
 }
 
@@ -87,6 +88,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   // A second run of a removal finds its workspace gone and can't tell what it
   // held, so a report the server hasn't accepted is kept to send again.
   const unreported = new Map<string, Unreported>();
+
+  const profilesDir = join(options.dataDir, "profiles");
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
@@ -148,7 +151,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     { profile }: Assignment,
     sessionLog: Log,
   ): Promise<string> => {
-    const dir = join(options.dataDir, "profiles", profile.id);
+    const dir = join(profilesDir, profile.id);
 
     const synced = (profileSyncs.get(profile.id) ?? Promise.resolve())
       .catch(() => undefined)
@@ -410,8 +413,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     };
 
   let models: readonly ModelRef[] = [];
+  let listings = 0;
 
   const relist = async (): Promise<void> => {
+    // A slower, older listing may still hold a deleted Profile's models.
+    const listing = ++listings;
+
     const lists = await Promise.all(
       [...listers.values()].map(async (lister) =>
         (await lister)().catch((error: unknown) => {
@@ -428,6 +435,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       ).values(),
     ];
 
+    if (listing !== listings) {
+      return;
+    }
+
     if (listed.length !== models.length) {
       log("models listed", { count: listed.length });
     }
@@ -435,13 +446,13 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     models = listed;
   };
 
-  const profileDirs = await readdir(join(options.dataDir, "profiles")).catch(
-    () => [],
-  );
+  const profileDirs = await readdir(profilesDir).catch(() => []);
 
   for (const dir of [
     join(options.dataDir, "models"),
-    ...profileDirs.map((id) => join(options.dataDir, "profiles", id)),
+    ...profileDirs
+      .filter((id) => !id.startsWith("."))
+      .map((id) => join(profilesDir, id)),
   ]) {
     addLister(dir);
   }
@@ -460,6 +471,41 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   // The roots and the checkouts found under them, for the UI to suggest.
   const checkouts = await findCheckouts(options.folders);
   log("checkouts found", { count: checkouts.length });
+
+  // Agents of other servers may share this data directory, so only the
+  // server that first wrote Profile folders here deletes them.
+  const ownsProfiles = await claimProfiles(profilesDir, options.server);
+  let kept: ReadonlySet<string> | undefined;
+  let pruning: Promise<void> | undefined;
+
+  // A Profile deleted on the server leaves its folder here until no Session
+  // uses it, stopping ones included.
+  const prunable = (id: string): boolean =>
+    kept !== undefined &&
+    !kept.has(id) &&
+    stopping.size === 0 &&
+    ![...hosted.values()].some(({ profileId }) => profileId === id);
+
+  const pruneProfiles = async (): Promise<void> => {
+    const ids = await readdir(profilesDir).catch(() => []);
+    let removed = 0;
+
+    for (const id of ids.filter((each) => !each.startsWith("."))) {
+      if (!prunable(id)) {
+        continue;
+      }
+
+      const dir = join(profilesDir, id);
+      listers.delete(dir);
+      await rm(dir, { recursive: true, force: true });
+      removed++;
+      log("deleted profile folder removed", { profileId: id });
+    }
+
+    if (removed > 0) {
+      void relist();
+    }
+  };
 
   await runProvider({
     controlPlane: httpControlPlane(agent),
@@ -484,6 +530,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       hosted.set(sessionId, {
         generation: assignment.generation,
+        profileId: assignment.profile.id,
         session: hostAssignment(assignment, sessionLog),
       });
     },
@@ -508,6 +555,20 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       removing.set(sessionId, removed);
     },
+    profiles: (ids) => {
+      kept = new Set(ids);
+      if (!ownsProfiles || pruning) {
+        return;
+      }
+
+      pruning = pruneProfiles()
+        .catch((error: unknown) => {
+          log("profile folders not pruned", { error: String(error) });
+        })
+        .finally(() => {
+          pruning = undefined;
+        });
+    },
   });
 
   log("stopping sessions", { count: hosted.size });
@@ -517,6 +578,19 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   );
 
   await Promise.all([...stopping.values(), ...removing.values()]);
+}
+
+async function claimProfiles(dir: string, server: string): Promise<boolean> {
+  const marker = join(dir, ".server");
+
+  const owner = await readFile(marker, "utf8").catch(async () => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(marker, server, { flag: "wx" }).catch(() => undefined);
+
+    return readFile(marker, "utf8");
+  });
+
+  return owner === server;
 }
 
 function sessionBinary(configured: string | undefined): string {

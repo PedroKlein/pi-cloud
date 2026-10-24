@@ -29,7 +29,7 @@ const assignment: Assignment = {
   },
 };
 
-const none: Work = { start: [], unload: [], remove: [] };
+const none: Work = { start: [], unload: [], remove: [], profiles: [] };
 
 const removal: Removal = {
   sessionId: "s2",
@@ -38,26 +38,33 @@ const removal: Removal = {
   force: false,
 };
 
-const ignore = { unload: () => undefined, remove: () => undefined };
+const ignore = {
+  unload: () => undefined,
+  remove: () => undefined,
+  profiles: () => undefined,
+};
 
-test("starts, unloads and removes what the server asks and retries failed polls", async () => {
+test("starts, unloads and removes what the server asks, passes on its Profiles and retries failed polls", async () => {
   const controller = new AbortController();
 
   const responses: (() => Work)[] = [
     () => {
       throw new Error("connection refused");
     },
-    () => none,
-    () => ({
-      start: [assignment],
-      unload: [{ sessionId: "s3", generation: 4 }],
-      remove: [removal],
-    }),
+    () => ({ ...none, profiles: ["p1"] }),
+    // As an older server answers, with no Profiles.
+    () =>
+      ({
+        start: [assignment],
+        unload: [{ sessionId: "s3", generation: 4 }],
+        remove: [removal],
+      }) as unknown as Work,
   ];
 
   const started: Assignment[] = [];
   const unloaded: Attempt[] = [];
   const removed: Removal[] = [];
+  const profiles: (readonly string[])[] = [];
   const logs: string[] = [];
   const fields: unknown[] = [];
 
@@ -84,6 +91,9 @@ test("starts, unloads and removes what the server asks and retries failed polls"
     remove: (r) => {
       removed.push(r);
     },
+    profiles: (ids) => {
+      profiles.push(ids);
+    },
     running: () => [],
     folders: [],
     models: () => [],
@@ -98,6 +108,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
   expect(started).toEqual([assignment]);
   expect(unloaded).toEqual([{ sessionId: "s3", generation: 4 }]);
   expect(removed).toEqual([removal]);
+  expect(profiles).toEqual([["p1"], []]);
   expect(logs).toContain("work poll failed");
   expect(logs.at(-1)).toBe("provider stopped");
   expect(JSON.stringify(fields)).not.toContain("s3cret");
@@ -204,6 +215,7 @@ test("stops Sessions whose Workspace can move once polls fail for half a lease",
       running.delete(a.sessionId);
     },
     remove: () => undefined,
+    profiles: () => undefined,
     running: () => [...running.values()],
     folders: [],
     models: () => [],

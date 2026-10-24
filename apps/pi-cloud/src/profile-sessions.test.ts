@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -188,4 +196,66 @@ test("a package that can't be installed stops the Session, naming it", async () 
   const failed = await until(session.id, ({ status }) => status === "failed");
 
   expect(failed.error).toContain(`package ${missing} failed to install`);
+});
+
+test("a machine deletes a deleted Profile's folder once its Sessions stop", async () => {
+  const session = await sessionWith({ agentsMd: "Be brief." });
+  await until(session.id, ({ status }) => status === "idle");
+
+  const dir = join(root, "laptop", "profiles", session.profileId);
+
+  const exists = async (): Promise<boolean> =>
+    stat(dir).then(
+      () => true,
+      () => false,
+    );
+
+  expect(await exists()).toBe(true);
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  await fetch(new URL(`/api/profiles/${session.profileId}`, server.url), {
+    method: "DELETE",
+  });
+
+  const deadline = Date.now() + 5000;
+  while ((await exists()) && Date.now() < deadline) {
+    await sleep(50);
+  }
+
+  expect(await exists()).toBe(false);
+});
+
+test("leaves Profile folders another server wrote in a shared data directory", async () => {
+  const dataDir = join(root, "shared");
+  const folder = join(dataDir, "profiles", "theirs");
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(dataDir, "profiles", ".server"), "http://elsewhere");
+
+  const controller = new AbortController();
+  let polls = 0;
+
+  const done = runAgent({
+    server: server.url.href,
+    provider: "shared",
+    dataDir,
+    extensionPaths: [],
+    folders: [],
+    log: (message) => {
+      if (message === "provider polling for work") {
+        polls++;
+      }
+    },
+    signal: controller.signal,
+  });
+
+  while (polls === 0) {
+    await sleep(20);
+  }
+
+  await sleep(500);
+  controller.abort();
+  await done;
+
+  expect(await stat(folder).then(() => true)).toBe(true);
 });

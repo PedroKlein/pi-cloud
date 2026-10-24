@@ -28,6 +28,7 @@ import {
   type TranscriptBatch,
   type TrustAnswer,
   versionHeader,
+  type Work,
   type WorkPoll,
   type Workspace,
   type WorkspaceRequest,
@@ -379,7 +380,14 @@ export function createHandler(
           log("session unloading", { ...fields, ...attempt });
         }
 
-        return Response.json({ start, unload, remove });
+        const work: Work = {
+          start,
+          unload,
+          remove,
+          profiles: profiles.list().map(({ id }) => id),
+        };
+
+        return Response.json(work);
       },
     ],
     [

@@ -208,6 +208,8 @@ export interface Work {
   readonly start: readonly Assignment[];
   readonly unload: readonly Attempt[];
   readonly remove: readonly Removal[];
+  // Every Profile's id, so runners can delete the folders of the others.
+  readonly profiles: readonly string[];
 }
 
 export type RemovalReport =
