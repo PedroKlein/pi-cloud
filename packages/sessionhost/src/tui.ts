@@ -36,6 +36,13 @@ type WebBindings = Bindings & {
   readonly mode: NonNullable<Bindings["mode"]>;
 };
 
+const drawn = new Set<string | symbol>([
+  "setStatus",
+  "setWidget",
+  "setFooter",
+  "setHeader",
+]);
+
 const oneSession =
   "Pi Cloud keeps one Pi session per session. Start a new session from the sidebar instead.";
 
@@ -70,8 +77,21 @@ export function piView(
     // Pi runs the extensions' session_start on every bind, and extensions
     // post snapshots and notices there. So the TUI binds once, through this
     // context, and opening or closing the view only moves the extensions' UI.
+    // What extensions draw around the editor goes to both, so each shows it
+    // (ADR 0028).
     const routed = new Proxy(web.uiContext, {
       get: (_web, key) => {
+        if (tuiUI !== undefined && drawn.has(key)) {
+          const both = [tuiUI, web.uiContext];
+
+          return (...args: unknown[]) => {
+            for (const ui of both) {
+              const draw = Reflect.get(ui, key) as (...args: unknown[]) => void;
+              draw.apply(ui, args);
+            }
+          };
+        }
+
         const ui = showing() && tuiUI ? tuiUI : web.uiContext;
         const value: unknown = Reflect.get(ui, key);
 

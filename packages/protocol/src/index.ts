@@ -277,6 +277,10 @@ export type LiveEvent =
       readonly lines: readonly string[] | null;
       readonly placement: "aboveEditor" | "belowEditor";
     }
+  // An extension's footer, which replaces the statuses row, and header, as
+  // rendered lines with their SGR escape codes (ADR 0028).
+  | { readonly type: "footer"; readonly lines: readonly string[] | null }
+  | { readonly type: "header"; readonly lines: readonly string[] | null }
   | { readonly type: "title"; readonly title: string }
   // What `/` can run, sent when an attempt starts (ADR 0006).
   | { readonly type: "commands"; readonly commands: readonly SlashCommand[] }
@@ -342,6 +346,9 @@ export function liveSurface(
       return { key: `status:${event.key}`, open: event.text !== null };
     case "widget":
       return { key: `widget:${event.key}`, open: event.lines !== null };
+    case "footer":
+    case "header":
+      return { key: event.type, open: event.lines !== null };
     case "title":
       return { key: "title", open: true };
     case "commands":
@@ -424,6 +431,9 @@ export type Command = { readonly actor: Actor } & (
   | { readonly type: "abort" }
   | { readonly type: "set_model"; readonly model: ModelRef }
   | { readonly type: "set_thinking"; readonly level: ThinkingLevel }
+  // How many columns the web has for extensions' widgets, footer and header
+  // (ADR 0028).
+  | { readonly type: "ui_columns"; readonly columns: number }
   // Takes a queued message back before Pi reads it; the text returns to the
   // composer as editor_text. With sendNow it moves to the steering queue
   // instead, so Pi reads it after its current step.

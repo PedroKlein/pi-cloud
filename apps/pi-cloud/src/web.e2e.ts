@@ -1159,3 +1159,83 @@ test("logs in to a provider from the model menu", async () => {
   await box.press("Enter");
   await page.locator("#chat", { hasText: "Logged out of OpenAI." }).waitFor();
 }, 30_000);
+
+test("draws an extension's widget and footer as Pi's TUI does, at the composer's width", async () => {
+  const folder = join(root, "focus");
+  await mkdir(join(folder, ".pi", "extensions"), { recursive: true });
+
+  await writeFile(
+    join(folder, ".pi", "extensions", "focus.ts"),
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("plan", "planning");
+    ctx.ui.setWidget("focus", (tui, theme) => ({
+      render: (width) => [theme.bold("FOCUS"), theme.fg("accent", "=".repeat(width))],
+      invalidate: () => {},
+    }));
+    ctx.ui.setFooter((tui, theme, footer) => ({
+      render: () => ["status: " + [...footer.getExtensionStatuses().values()].join(" ")],
+      invalidate: () => {},
+    }));
+  });
+};
+`,
+  );
+
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(folder);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  await page.locator("footer", { hasText: "status: planning" }).waitFor();
+
+  const widget = page.locator("pre", { hasText: "FOCUS" });
+  const focus = widget.locator("span", { hasText: "FOCUS" });
+  const rule = widget.locator("span", { hasText: "===" });
+
+  expect(await focus.getAttribute("style")).toContain("font-weight: bold");
+
+  // The rule is as wide as the host was told, so it fills the widget.
+  const filled = async (): Promise<number> => {
+    const [box, line] = await Promise.all([
+      widget.boundingBox(),
+      rule.boundingBox(),
+    ]);
+
+    return (line?.width ?? 0) / (box?.width ?? 1);
+  };
+
+  const columns = async (): Promise<number> =>
+    (await rule.textContent())?.length ?? 0;
+
+  const settled = async (): Promise<number> => {
+    let last = -1;
+
+    for (;;) {
+      await Bun.sleep(500);
+      const now = await columns();
+
+      if (now === last) {
+        return now;
+      }
+
+      last = now;
+    }
+  };
+
+  const wide = await settled();
+  expect(await filled()).toBeGreaterThan(0.85);
+  expect(await filled()).toBeLessThanOrEqual(1);
+
+  await page.setViewportSize({ width: 700, height: 800 });
+
+  expect(await settled()).toBeLessThan(wide);
+  expect(await filled()).toBeGreaterThan(0.85);
+  expect(await filled()).toBeLessThanOrEqual(1);
+}, 30_000);

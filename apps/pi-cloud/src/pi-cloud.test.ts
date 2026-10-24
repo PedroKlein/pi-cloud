@@ -529,6 +529,8 @@ test("rejects commands a browser may not send", async () => {
       { type: "set_model", model: "openai/gpt-5" },
       { type: "set_model", model: { provider: "openai" } },
       { type: "set_thinking", level: "huge" },
+      { type: "ui_columns", columns: 0 },
+      { type: "ui_columns", columns: 12.5 },
       { type: "message", text: "hi", images: "cat.png" },
       {
         type: "message",
@@ -1807,6 +1809,9 @@ test("replays the current extension status, widgets and title to a client that c
       },
       { type: "widget", key: "gone", lines: ["x"], placement: "belowEditor" },
       { type: "widget", key: "gone", lines: null, placement: "belowEditor" },
+      { type: "footer", lines: ["main"] },
+      { type: "header", lines: ["welcome"] },
+      { type: "header", lines: null },
       { type: "title", title: "my session" },
       { type: "editor_text", text: "draft" },
     ],
@@ -1830,6 +1835,7 @@ test("replays the current extension status, widgets and title to a client that c
         placement: "aboveEditor",
       },
     },
+    { type: "live", event: { type: "footer", lines: ["main"] } },
     { type: "live", event: { type: "title", title: "my session" } },
   ]);
 });

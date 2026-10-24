@@ -309,22 +309,18 @@ test("a failed event stream is opened again until the session is gone", async ()
   }
 });
 
-test("keeps extensions' machine-readable widget lines out of the widget text", () => {
-  const { feeds, live } = connect();
+test("shows an extension's footer and header until it removes them or the stream reconnects", () => {
+  const stream = connect();
+  stream.live({ type: "footer", lines: ["main", "\x1b[32mok\x1b[39m"] });
+  stream.live({ type: "header", lines: ["welcome"] });
+  stream.live({ type: "header", lines: null });
 
-  live({
-    type: "widget",
-    key: "subagent-async",
-    lines: ['PI_SUBAGENT_ASYNC_JSON:{"runs":[]}'],
-    placement: "aboveEditor",
+  expect(stream.feeds.at(-1)).toMatchObject({
+    footer: "main\n\x1b[32mok\x1b[39m",
+    header: undefined,
   });
 
-  live({
-    type: "widget",
-    key: "status",
-    lines: ["coder | 0%", 'PI_SUBAGENT_INSPECT_JSON:{"requestId":"r"}'],
-    placement: "aboveEditor",
-  });
+  stream.open();
 
-  expect(feeds.at(-1)?.widgetsAbove).toBe("coder | 0%");
+  expect(stream.feeds.at(-1)?.footer).toBeUndefined();
 });

@@ -23,6 +23,7 @@ import {
 } from "@pi-cloud/protocol";
 import { builtinCommands, builtinOf, runBuiltin, settings } from "./builtins";
 import { workspaceFiles } from "./files";
+import { webSurfaces } from "./surfaces";
 import { remoteUI } from "./ui";
 import {
   availableModel,
@@ -227,6 +228,27 @@ export async function hostSession(
     live.push(event);
   });
 
+  // Extensions draw during startSession, before it returns the session.
+  const started: { session?: AgentSession } = {};
+
+  const surfaces = webSurfaces(
+    (event) => {
+      live.push(event);
+    },
+    {
+      cwd: () => started.session?.sessionManager.getCwd(),
+      providers: () =>
+        new Set(
+          started.session?.modelRuntime
+            .getAvailableSnapshot()
+            .map(({ provider }) => provider),
+        ).size,
+      log,
+    },
+  );
+
+  const ui = { ...prompts.ui, ...surfaces.ui };
+
   const calls = serverTools(
     await stream.tools(),
     stream.callTool,
@@ -271,7 +293,7 @@ export async function hostSession(
   };
 
   const session = await startSession(options, {
-    ui: prompts.ui,
+    ui,
     tools: [...pluginTools.flat(), ...calls.tools],
     extensions: [
       { name: "pi-view", factory: view.extension },
@@ -285,10 +307,12 @@ export async function hostSession(
   });
 
   const tui = view.host(session, {
-    uiContext: { ...session.extensionRunner.getUIContext(), ...prompts.ui },
+    uiContext: { ...session.extensionRunner.getUIContext(), ...ui },
     mode: "rpc",
     onError,
   });
+
+  started.session = session;
 
   const transcript = transcriptSync(session, stream, log);
   const files = filesFeed(session.sessionManager.getCwd(), live, log);
@@ -330,6 +354,12 @@ export async function hostSession(
 
     if (command.type === "explain") {
       prompts.explain(command);
+
+      return;
+    }
+
+    if (command.type === "ui_columns") {
+      surfaces.resize(command.columns);
 
       return;
     }
@@ -438,6 +468,7 @@ export async function hostSession(
     stop: async () => {
       detach();
       tui.close();
+      surfaces.close();
       files.stop();
 
       prompts.cancelAll();

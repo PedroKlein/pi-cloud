@@ -23,6 +23,7 @@ import {
 } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
+import { TerminalText } from "./terminal-text";
 
 export function ChatView({
   feed,
@@ -66,6 +67,11 @@ export function ChatView({
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >
+      {feed.header !== undefined && (
+        <header className="mx-auto max-w-chat px-4 pt-8">
+          <TerminalText text={feed.header} />
+        </header>
+      )}
       {shown.length === 0 && !live && feed.session && (
         <Greeting place={place} />
       )}

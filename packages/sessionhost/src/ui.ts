@@ -3,7 +3,6 @@ import { stripVTControlCharacters } from "node:util";
 import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
-  ExtensionWidgetOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { AskQuestions, Explain } from "@pi-cloud/plugins";
 import type { Answer, Command, LiveEvent, Prompt } from "@pi-cloud/protocol";
@@ -15,8 +14,6 @@ export type RemoteUI = Pick<
   | "input"
   | "editor"
   | "notify"
-  | "setStatus"
-  | "setWidget"
   | "setTitle"
   | "setEditorText"
   | "custom"
@@ -112,30 +109,6 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
           type: "notify",
           message: stripVTControlCharacters(message),
           level: level ?? "info",
-        });
-      },
-      setStatus: (key, value) => {
-        publish({
-          type: "extension_status",
-          key,
-          text: value === undefined ? null : stripVTControlCharacters(value),
-        });
-      },
-      setWidget: (
-        key: string,
-        content:
-          readonly string[] | ((...args: never[]) => unknown) | undefined,
-        options?: ExtensionWidgetOptions,
-      ) => {
-        if (typeof content === "function") {
-          return;
-        }
-
-        publish({
-          type: "widget",
-          key,
-          lines: content?.map((line) => stripVTControlCharacters(line)) ?? null,
-          placement: options?.placement ?? "aboveEditor",
         });
       },
       setTitle: (title) => {

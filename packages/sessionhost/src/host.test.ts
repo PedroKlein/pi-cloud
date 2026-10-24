@@ -424,7 +424,7 @@ test("resends extension status and widgets when a live post fails", async () => 
     noTerminal,
   );
 
-  await fake.waitFor(() => fake.events.length > 0);
+  await fake.waitFor(() => fake.events.some((e) => e.type === "widget"));
   await hosted.stop();
 
   expect(
@@ -433,13 +433,13 @@ test("resends extension status and widgets when a live post fails", async () => 
     ),
   ).toEqual([
     { type: "extension_status", key: "build", text: "running" },
+    { type: "title", title: "my session" },
     {
       type: "widget",
       key: "todo",
-      lines: ["first"],
+      lines: [" first"],
       placement: "aboveEditor",
     },
-    { type: "title", title: "my session" },
   ]);
 });
 
@@ -927,10 +927,10 @@ test("forwards extension status, widgets, title and editor text", async () => {
     extension,
     `export default (pi) => {
   pi.on("session_start", (_event, ctx) => {
-    ctx.ui.setStatus("build", ctx.ui.theme.fg("accent", "2 running"));
-    ctx.ui.setWidget("todo", ["first", "second"]);
+    ctx.ui.setStatus("build", "\\x1b[32m2 running\\x1b[39m");
+    ctx.ui.setWidget("todo", ["first", "PI_TODO_JSON:{}", "second"]);
     ctx.ui.setWidget("hint", ["below"], { placement: "belowEditor" });
-    ctx.ui.setWidget("drawn", () => ({ render: () => [], invalidate: () => {} }));
+    ctx.ui.setWidget("payload", ["PI_TODO_JSON:{}"]);
     ctx.ui.setStatus("build", undefined);
     ctx.ui.setTitle("my session");
     ctx.ui.setEditorText("draft");
@@ -946,7 +946,7 @@ test("forwards extension status, widgets, title and editor text", async () => {
     noTerminal,
   );
 
-  await fake.waitFor(() => fake.events.some((e) => e.type === "editor_text"));
+  await fake.waitFor(() => fake.events.some((e) => e.type === "widget"));
   await hosted.stop();
 
   expect(
@@ -954,22 +954,89 @@ test("forwards extension status, widgets, title and editor text", async () => {
       (e) => e.type !== "status" && !listings.includes(e.type),
     ),
   ).toEqual([
-    { type: "extension_status", key: "build", text: "2 running" },
+    {
+      type: "extension_status",
+      key: "build",
+      text: "\x1b[32m2 running\x1b[39m",
+    },
+    { type: "extension_status", key: "build", text: null },
+    { type: "title", title: "my session" },
+    { type: "editor_text", text: "draft" },
     {
       type: "widget",
       key: "todo",
-      lines: ["first", "second"],
+      lines: [" first", " second"],
       placement: "aboveEditor",
     },
     {
       type: "widget",
       key: "hint",
-      lines: ["below"],
+      lines: [" below"],
       placement: "belowEditor",
     },
-    { type: "extension_status", key: "build", text: null },
-    { type: "title", title: "my session" },
-    { type: "editor_text", text: "draft" },
+  ]);
+});
+
+test("renders extensions' components at the width the web reports", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const extension = join(root, "components.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus("lint", "ok");
+    ctx.ui.setWidget("focus", (tui, theme) => ({
+      render: (width) => [theme.bold("FOCUS") + " " + width, "\\x1b[2Kcleared"],
+      invalidate: () => {},
+    }));
+    ctx.ui.setFooter((tui, theme, footer) => ({
+      render: (width) => [[...footer.getExtensionStatuses().values()].join(",") + " " + width],
+      invalidate: () => {},
+    }));
+    ctx.ui.setHeader(() => ({
+      render: () => ["header"],
+      invalidate: () => {},
+    }));
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    sessionOptions(root, { extensionPaths: [extension], models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const drawn = (): LiveEvent[] =>
+    fake.events.filter(
+      (e) => e.type === "widget" || e.type === "footer" || e.type === "header",
+    );
+
+  await fake.waitFor(() => drawn().length === 3);
+  fake.send({ actor: "user:local", type: "ui_columns", columns: 40 });
+  await fake.waitFor(() => drawn().length === 5);
+  await hosted.stop();
+
+  expect(drawn()).toEqual([
+    {
+      type: "widget",
+      key: "focus",
+      lines: ["\x1b[1mFOCUS\x1b[22m 100", "cleared"],
+      placement: "aboveEditor",
+    },
+    { type: "footer", lines: ["ok 100"] },
+    { type: "header", lines: ["header"] },
+    {
+      type: "widget",
+      key: "focus",
+      lines: ["\x1b[1mFOCUS\x1b[22m 40", "cleared"],
+      placement: "aboveEditor",
+    },
+    { type: "footer", lines: ["ok 40"] },
   ]);
 });
 
@@ -3199,6 +3266,47 @@ test("shows extension dialogs in the TUI while it is open and in the web after i
     type: "pi_view",
     attached: false,
     dialog: null,
+  });
+}, 20_000);
+
+test("shows what extensions draw in both the TUI and the web while the Pi view is open", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const extension = join(root, "mark.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => {
+  pi.registerCommand("mark", {
+    handler: async (_args, ctx) => {
+      ctx.ui.setWidget("mark", ["marked"]);
+    },
+  });
+};
+`,
+  );
+
+  const hosted = await hostSession(
+    sessionOptions(root, { extensionPaths: [extension], models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const pi = openPiView(fake);
+  await fake.waitFor(() => pi.screen().includes("Pi can explain"));
+  pi.type("/mark");
+  await Bun.sleep(50);
+  pi.type("\r");
+  await fake.waitFor(() => pi.screen().includes("marked"));
+  await fake.waitFor(() => fake.events.some((e) => e.type === "widget"));
+  await hosted.stop();
+
+  expect(fake.events).toContainEqual({
+    type: "widget",
+    key: "mark",
+    lines: [" marked"],
+    placement: "aboveEditor",
   });
 }, 20_000);
 
