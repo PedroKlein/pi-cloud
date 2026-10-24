@@ -245,7 +245,10 @@ function ThreadNotice(props: NoticeProps): ReactElement {
   const line = (
     <>
       <Icon name="chat" className="size-4 shrink-0" />
-      <a href={`#${threadId}`} className="truncate font-medium text-fg">
+      <a
+        href={`#${threadId}`}
+        className="max-w-1/2 shrink-0 truncate font-medium text-fg"
+      >
         {title}
       </a>
       <span className="truncate">
