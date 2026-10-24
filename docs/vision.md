@@ -53,7 +53,7 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 - Forking a Session to another provider, starting from the server's copy of its transcript ([open question](open-questions.md#workspace-durability)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
-v2 is built in this order: Profiles, Environments as pools, authentication, then Kubernetes, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
+v2 is built in this order: Profiles, Environments as pools, authentication, Kubernetes, then automation plugins such as Jobs, AI workflows and software factories, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 
 ### v3: a team's control center
 

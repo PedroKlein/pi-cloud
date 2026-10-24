@@ -26,12 +26,14 @@ v2's other decisions are in [ADR 0022](0022-plugin-model-v2.md) (plugins), [ADR 
 2. Environments as pools: leases, resume on another runner, container isolation, image and setup script, variables and secrets (ADR 0032).
 3. Authentication.
 4. The `kubernetes` plugin (ADR 0032).
+5. Automation plugins: Jobs, AI workflows and software factories. They are designed in their own discussion before this step.
 
 Each step is tested on the laptop and the VM before the next, as v1 was. The plugin pieces of ADR 0022 (Session tabs, code blocks, previews, the manifest and third-party install) don't depend on these and are built between steps.
 
 ## Consequences
 
-- Kubernetes comes last, on a kernel that already has Profiles, pools and authentication.
+- Kubernetes comes after Profiles, pools and authentication are in the kernel.
+- Automations come last, so they build on every seam above.
 - Until step 3, Pi Cloud stays behind localhost and SSH tunnels.
 - Login methods follow the same rule as other features: the kernel has the minimum, and the rest are plugins.
 - Server-held Environment secrets from ADR 0032 sit behind a login from step 3 on.
