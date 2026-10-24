@@ -201,6 +201,92 @@ test("starts a session with the task from the New session form", async () => {
     .waitFor();
 }, 30_000);
 
+test("edits an Environment's variables and secrets without showing secret values", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Environments" }).click();
+
+  const editor = page.locator("#environments-page form");
+
+  await editor
+    .getByLabel("Variables, one NAME=value per line")
+    .fill("MODE=test");
+
+  const secrets = editor.getByLabel(/^New or replaced secrets/);
+  await secrets.fill("TOKEN=s3cret");
+  await editor.getByRole("button", { name: "Save" }).click();
+
+  await page
+    .getByRole("list", { name: "Secrets" })
+    .getByText("TOKEN")
+    .waitFor();
+
+  expect(await secrets.inputValue()).toBe("");
+
+  await page.reload();
+
+  expect(
+    await editor.getByLabel("Variables, one NAME=value per line").inputValue(),
+  ).toBe("MODE=test");
+
+  expect(await page.content()).not.toContain("s3cret");
+
+  await page.getByRole("button", { name: "Remove TOKEN" }).click();
+
+  await page
+    .getByRole("list", { name: "Secrets" })
+    .waitFor({ state: "detached" });
+
+  // A change made elsewhere while the page is open survives a save here.
+  const [environment] = (await (
+    await fetch(new URL("/api/environments", server.url))
+  ).json()) as { readonly id: string; readonly name: string }[];
+
+  await fetch(
+    new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image: "elsewhere:1" }),
+    },
+  );
+
+  await editor.getByLabel("Name", { exact: true }).fill("Laptops");
+  await editor.getByRole("button", { name: "Save" }).click();
+
+  const environments = async (): Promise<
+    readonly { readonly name: string }[]
+  > =>
+    (await (await fetch(new URL("/api/environments", server.url))).json()) as {
+      readonly name: string;
+    }[];
+
+  let saved = await environments();
+  while (saved[0]?.name !== "Laptops") {
+    await Bun.sleep(50);
+    saved = await environments();
+  }
+
+  expect(saved[0]).toMatchObject({
+    name: "Laptops",
+    image: "elsewhere:1",
+    variables: { MODE: "test" },
+    secrets: [],
+  });
+
+  await fetch(
+    new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: environment?.name,
+        image: null,
+        variables: {},
+      }),
+    },
+  );
+}, 30_000);
+
 test("makes a Profile and starts a session that follows its instructions", async () => {
   let request = "";
 

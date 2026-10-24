@@ -24,6 +24,27 @@ export async function api(path: string, body?: unknown): Promise<Response> {
   return response;
 }
 
+export async function send(
+  path: string,
+  method: "PUT" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<Response> {
+  const response = await fetch(path, {
+    method,
+    ...(body !== undefined && {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  });
+
+  if (!response.ok) {
+    const { error } = (await response.json()) as { error: string };
+    throw new Error(error);
+  }
+
+  return response;
+}
+
 export async function command(
   sessionId: string,
   body: BrowserCommand,
