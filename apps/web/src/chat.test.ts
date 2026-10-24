@@ -479,6 +479,7 @@ test("opens a turn with a plugin's notice, and keeps an untagged one a note", ()
       user: undefined,
       notice: { text: "Docs finished a turn", tag },
       work: [],
+      cards: [],
       answer: ["noted"],
     },
   ]);

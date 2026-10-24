@@ -25,10 +25,8 @@ import {
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
 import { PluginBoundary } from "./plugin-boundary";
-import { enabledPlugins, pluginContext } from "./plugins";
+import { enabledPlugins, pluginContext, toolRenderer } from "./plugins";
 import { usePrimaryId } from "./primary";
-import { PluginBoundary } from "./plugin-boundary";
-import { pluginContext, toolRenderer } from "./plugins";
 import { TerminalText } from "./terminal-text";
 
 export function ChatView({
