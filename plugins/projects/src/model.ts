@@ -34,6 +34,10 @@ export interface ThreadView {
   readonly lastActivity: string;
 }
 
+export interface ThreadLinkView extends ThreadView {
+  readonly projectId: string;
+}
+
 export interface MemoryFileView {
   readonly name: string;
   readonly size: number;

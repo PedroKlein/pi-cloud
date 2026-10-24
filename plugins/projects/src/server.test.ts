@@ -932,6 +932,29 @@ test("lists each Project with its repositories, coordinator state and the thread
   ]);
 });
 
+test("shows one thread's state and Project for a link to it", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+
+  const thread = async (id: string): Promise<Response> =>
+    kernel.route()(
+      new Request(`http://pi-cloud/threads/${id}`),
+      `threads/${id}`,
+      undefined,
+    );
+
+  expect(await (await thread(threadId)).json()).toMatchObject({
+    sessionId: threadId,
+    projectId: (await projectView(kernel)).id,
+    runState: "idle",
+    workState: "in_progress",
+  });
+
+  expect((await thread(coordinatorId)).status).toBe(404);
+  expect((await thread("nope")).status).toBe(404);
+});
+
 const restored: Partial<Session> = {
   status: "idle",
   error: null,

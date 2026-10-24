@@ -295,6 +295,14 @@ async function route(
     }
 
     const thread = resource === "threads" ? store.member(id ?? "") : undefined;
+
+    if (thread?.role === "thread" && child === undefined) {
+      return Response.json({
+        projectId: thread.projectId,
+        ...threadView(thread, context.sessions.get(thread.sessionId)),
+      });
+    }
+
     if (thread && child === "state" && request.method === "POST") {
       const { state } = ((await request.json()) ?? {}) as { state?: unknown };
       store.setWorkState(thread.sessionId, toState(state));

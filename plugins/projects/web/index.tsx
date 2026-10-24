@@ -1,5 +1,6 @@
 import {
   json,
+  type LinkProps,
   type NavItemsProps,
   type NoticeProps,
   ok,
@@ -33,6 +34,7 @@ import {
   type ProjectNotices,
   type ProjectSummary,
   type ProjectView,
+  type ThreadLinkView,
   type RunState,
   type ThreadView,
   type WorkState,
@@ -51,7 +53,49 @@ export const projects: WebPlugin = {
     thread_message: ThreadMessageNotice,
     coordinator_message: CoordinatorMessageNotice,
   },
+  links: { thread: ThreadLink },
 };
+
+function ThreadLink({ context, target, label }: LinkProps): ReactElement {
+  const thread = useLoaded(
+    async () =>
+      json<ThreadLinkView>(
+        context.request(`threads/${encodeURIComponent(target)}`),
+      ),
+    target,
+    refreshMs,
+  ).value;
+
+  const group = thread && groupOf(thread);
+
+  return (
+    <a
+      href={
+        thread
+          ? context.href(`${thread.projectId}/${thread.sessionId}`)
+          : `#${target}`
+      }
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-line bg-elevated px-2 align-baseline text-label leading-relaxed font-medium text-fg no-underline hover:bg-hover"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-2 shrink-0 rounded-full",
+          group === undefined && "bg-line",
+          thread?.workState === "failed"
+            ? "bg-failed"
+            : group !== undefined && dots[group],
+        )}
+      />
+      <span className="truncate">{label}</span>
+      {thread && (
+        <span className="shrink-0 font-normal text-fg-dim">
+          {workStateNames[thread.workState]}
+        </span>
+      )}
+    </a>
+  );
+}
 
 // The server tags each notice it sends with the data its kind draws.
 function noticeData<K extends keyof ProjectNotices>(
