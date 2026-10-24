@@ -8,6 +8,7 @@ const session = (change: Partial<Session>): Session => ({
   ownerId: "o",
   owner: null,
   provider: "laptop",
+  profileId: "profile-1",
   workspace: { kind: "folder", path: "/home/me/site" },
   model: { provider: "github-copilot", id: "gpt-5.3-codex" },
   thinking: null,

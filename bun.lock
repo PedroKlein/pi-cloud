@@ -30,6 +30,7 @@
         "@pi-cloud/library": "workspace:*",
         "@pi-cloud/models": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/profiles": "workspace:*",
         "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
         "@pi-cloud/providers": "workspace:*",
@@ -76,6 +77,12 @@
       },
       "devDependencies": {
         "@types/react": "19.3.0",
+      },
+    },
+    "packages/profiles": {
+      "name": "@pi-cloud/profiles",
+      "dependencies": {
+        "@pi-cloud/protocol": "workspace:*",
       },
     },
     "packages/protocol": {
@@ -381,6 +388,8 @@
     "@pi-cloud/pi-cloud": ["@pi-cloud/pi-cloud@workspace:apps/pi-cloud"],
 
     "@pi-cloud/plugins": ["@pi-cloud/plugins@workspace:packages/plugins"],
+
+    "@pi-cloud/profiles": ["@pi-cloud/profiles@workspace:packages/profiles"],
 
     "@pi-cloud/projects": ["@pi-cloud/projects@workspace:plugins/projects"],
 

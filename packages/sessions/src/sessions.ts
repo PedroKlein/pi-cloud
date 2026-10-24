@@ -9,6 +9,7 @@ import {
   type LivePost,
   liveSurface,
   type ModelRef,
+  type ProfileContent,
   type Removal,
   type RemovalPost,
   type Session,
@@ -34,6 +35,12 @@ export type StoredEnvironment = Omit<
 export const owner = "local";
 
 export interface SessionStore {
+  profile: (
+    id: string,
+  ) =>
+    | (ProfileContent & { readonly id: string; readonly ownerId: string })
+    | undefined;
+  defaultProfileId: (ownerId: string) => string;
   ensureEnvironment: (provider: string) => void;
   environments: () => readonly StoredEnvironment[];
   insert: (session: StoredSession) => void;
@@ -66,7 +73,8 @@ export type Rejection =
   | "offline"
   | "archived"
   | "not_kept"
-  | "unknown_environment";
+  | "unknown_environment"
+  | "unknown_profile";
 
 export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
@@ -137,6 +145,11 @@ export class Sessions {
       return { ok: false, reason: "unknown_environment" };
     }
 
+    const profileId = request.profile ?? this.#store.defaultProfileId(owner);
+    if (this.#store.profile(profileId)?.ownerId !== owner) {
+      return { ok: false, reason: "unknown_profile" };
+    }
+
     const id = randomUUID();
 
     const session: StoredSession = {
@@ -145,6 +158,7 @@ export class Sessions {
       ownerId: owner,
       owner: ownedBy ?? null,
       provider: environment.provider,
+      profileId,
       workspace:
         request.workspace.kind === "folder"
           ? request.workspace
@@ -244,6 +258,12 @@ export class Sessions {
 
     if (session.archivedAt === null) {
       return { ok: true, value: this.#view(session) };
+    }
+
+    // A Session's Profile is fixed, so once it is deleted the Session can't
+    // run again (ADR 0031).
+    if (!this.#store.profile(session.profileId)) {
+      return { ok: false, reason: "unknown_profile" };
     }
 
     const unarchived: StoredSession = {
@@ -639,8 +659,20 @@ export class Sessions {
       }));
   }
 
+  // A Session loads what its Profile holds at each start (ADR 0031).
   #claimNext(provider: string): Assignment[] {
-    return this.#store.byProvider(provider, claimable).map((next) => {
+    return this.#store.byProvider(provider, claimable).flatMap((next) => {
+      const profile = this.#store.profile(next.profileId);
+      if (!profile) {
+        this.#update({
+          ...next,
+          status: "failed",
+          error: "its Profile no longer exists",
+        });
+
+        return [];
+      }
+
       const session: StoredSession = {
         ...next,
         status: "starting",
@@ -653,6 +685,15 @@ export class Sessions {
       return {
         sessionId: session.id,
         generation: session.generation,
+        profile: {
+          id: profile.id,
+          packages: profile.packages,
+          agentsMd: profile.agentsMd,
+          systemMd: profile.systemMd,
+          appendSystemMd: profile.appendSystemMd,
+          mcpServers: profile.mcpServers,
+          settings: profile.settings,
+        },
         workspace: session.workspace,
         model: session.model,
         thinking: session.thinking,

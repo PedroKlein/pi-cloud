@@ -1,16 +1,18 @@
 import { expect, test } from "bun:test";
-import type {
-  Assignment,
-  Attempt,
-  Removal,
-  Work,
-  WorkPoll,
+import {
+  emptyProfile,
+  type Assignment,
+  type Attempt,
+  type Removal,
+  type Work,
+  type WorkPoll,
 } from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
 const assignment: Assignment = {
   sessionId: "s1",
   generation: 1,
+  profile: { id: "profile-1", ...emptyProfile },
   workspace: { kind: "folder", path: "/w" },
   model: null,
   thinking: null,

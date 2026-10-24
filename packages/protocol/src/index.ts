@@ -74,9 +74,59 @@ export interface ModelRef {
   readonly id: string;
 }
 
+// A Pi package source as Pi's settings take it, with Pi's optional filters
+// for which of its resources load.
+export type PiPackage =
+  | string
+  | {
+      readonly source: string;
+      readonly autoload?: boolean;
+      readonly extensions?: readonly string[];
+      readonly skills?: readonly string[];
+      readonly prompts?: readonly string[];
+      readonly themes?: readonly string[];
+    };
+
+// What a Profile holds: a Pi agent directory without credentials (ADR 0031).
+// An empty text leaves its file out.
+export interface ProfileContent {
+  readonly packages: readonly PiPackage[];
+  readonly agentsMd: string;
+  readonly systemMd: string;
+  readonly appendSystemMd: string;
+  readonly mcpServers: Readonly<Record<string, unknown>>;
+  // Pi settings, such as defaultModel, other than packages.
+  readonly settings: Readonly<Record<string, unknown>>;
+}
+
+export const emptyProfile: ProfileContent = {
+  packages: [],
+  agentsMd: "",
+  systemMd: "",
+  appendSystemMd: "",
+  mcpServers: {},
+  settings: {},
+};
+
+export interface Profile extends ProfileContent {
+  readonly id: string;
+  readonly name: string;
+  readonly ownerId: string;
+  readonly createdAt: string;
+  // New Sessions use the default Profile when nothing else names one.
+  readonly isDefault: boolean;
+}
+
+// The file a Profile is exported to and imported from.
+export interface ProfileExport extends ProfileContent {
+  readonly piCloudProfile: 1;
+  readonly name: string;
+}
+
 export interface Assignment {
   readonly sessionId: string;
   readonly generation: number;
+  readonly profile: ProfileContent & { readonly id: string };
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
   readonly thinking: ThinkingLevel | null;
@@ -534,6 +584,8 @@ export interface Session {
   readonly ownerId: string;
   readonly owner: SessionOwner | null;
   readonly provider: string;
+  // Fixed when the Session is created (ADR 0031).
+  readonly profileId: string;
   readonly workspace: Workspace;
   readonly model: ModelRef | null;
   // The reasoning level a new Session starts at. Pi keeps later changes.
@@ -569,6 +621,7 @@ export interface Environment {
 
 export interface CreateSession {
   readonly environment?: string;
+  readonly profile?: string;
   readonly workspace: WorkspaceRequest;
   readonly model?: ModelRef;
   readonly thinking?: ThinkingLevel;
