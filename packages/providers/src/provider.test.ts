@@ -44,25 +44,27 @@ const ignore = {
   profiles: () => undefined,
 };
 
-test("starts, unloads and removes what the server asks and retries failed polls", async () => {
+test("starts, unloads and removes what the server asks, passes on its Profiles and retries failed polls", async () => {
   const controller = new AbortController();
 
   const responses: (() => Work)[] = [
     () => {
       throw new Error("connection refused");
     },
-    () => none,
-    () => ({
-      start: [assignment],
-      unload: [{ sessionId: "s3", generation: 4 }],
-      remove: [removal],
-      profiles: [],
-    }),
+    () => ({ ...none, profiles: ["p1"] }),
+    // As an older server answers, with no Profiles.
+    () =>
+      ({
+        start: [assignment],
+        unload: [{ sessionId: "s3", generation: 4 }],
+        remove: [removal],
+      }) as unknown as Work,
   ];
 
   const started: Assignment[] = [];
   const unloaded: Attempt[] = [];
   const removed: Removal[] = [];
+  const profiles: (readonly string[])[] = [];
   const logs: string[] = [];
   const fields: unknown[] = [];
 
@@ -89,7 +91,9 @@ test("starts, unloads and removes what the server asks and retries failed polls"
     remove: (r) => {
       removed.push(r);
     },
-    profiles: () => undefined,
+    profiles: (ids) => {
+      profiles.push(ids);
+    },
     running: () => [],
     folders: [],
     models: () => [],
@@ -104,6 +108,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
   expect(started).toEqual([assignment]);
   expect(unloaded).toEqual([{ sessionId: "s3", generation: 4 }]);
   expect(removed).toEqual([removal]);
+  expect(profiles).toEqual([["p1"], []]);
   expect(logs).toContain("work poll failed");
   expect(logs.at(-1)).toBe("provider stopped");
   expect(JSON.stringify(fields)).not.toContain("s3cret");

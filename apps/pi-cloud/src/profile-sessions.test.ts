@@ -225,3 +225,37 @@ test("a machine deletes a deleted Profile's folder once its Sessions stop", asyn
 
   expect(await exists()).toBe(false);
 });
+
+test("leaves Profile folders another server wrote in a shared data directory", async () => {
+  const dataDir = join(root, "shared");
+  const folder = join(dataDir, "profiles", "theirs");
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(dataDir, "profiles", ".server"), "http://elsewhere");
+
+  const controller = new AbortController();
+  let polls = 0;
+
+  const done = runAgent({
+    server: server.url.href,
+    provider: "shared",
+    dataDir,
+    extensionPaths: [],
+    folders: [],
+    log: (message) => {
+      if (message === "provider polling for work") {
+        polls++;
+      }
+    },
+    signal: controller.signal,
+  });
+
+  while (polls === 0) {
+    await sleep(20);
+  }
+
+  await sleep(500);
+  controller.abort();
+  await done;
+
+  expect(await stat(folder).then(() => true)).toBe(true);
+});

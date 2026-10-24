@@ -117,7 +117,10 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
       }
 
       work.remove.forEach(remove);
-      profiles(work.profiles);
+      // An older server sends none, which mustn't read as every Profile gone.
+      if (Array.isArray(work.profiles)) {
+        profiles(work.profiles);
+      }
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the await above is pending
       if (signal.aborted) {
