@@ -25,7 +25,7 @@ The kernel has no Project code ([ADR 0015](0015-plugins.md)). Hiding a Project's
 
 - The web shell lends plugins its Session view as a component: chat, composer, prompts, the Pi and Terminal views, the Changes panel and the header. A plugin page passes the Session id and a layout, `full` or `side`.
 - The Project page uses it for the coordinator chat, the thread side panel and a fullscreen thread. None of that is rebuilt in the plugin.
-- Untrusted web parts in v2 run in an iframe ([ADR 0022](0022-plugin-model-v2.md)), so they get the view through the same context, not as a React import.
+- Third-party web parts in v2 are React components in the page too ([ADR 0022](0022-plugin-model-v2.md#trust)), so they embed the same view.
 
 ### The Project page
 
