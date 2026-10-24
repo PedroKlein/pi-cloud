@@ -63,7 +63,7 @@ A Project is one ongoing goal and coordinating conversation. Its workers are thr
 
 Independent sessions remain first-class. A user does not need to create a Project for work that fits one conversation.
 
-An Environment is a reusable execution definition. A session binds to an Environment revision; a scheduler assigns it to a compatible Runtime supplied by a Runtime Provider. This allows the same control plane to dispatch work locally, to an always-on VM, or to Kubernetes.
+An Environment is a reusable execution definition. A session binds to an Environment, and the server places it on a runner in that Environment's pool ([ADR 0032](adr/0032-environments-and-runners.md)). This allows the same control plane to dispatch work locally, to an always-on VM, or to Kubernetes.
 
 ## Principles
 

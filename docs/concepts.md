@@ -22,9 +22,9 @@ An adapter that supplies execution capacity. Expected provider types include a l
 
 ### Environment
 
-A versioned execution definition served by compatible Runtime Providers. It may define a runtime image or host profile, setup, networking, variables, secret policy, resources, isolation, capacity, and Workspace driver.
+An execution definition plus a pool of runners that serve it. It may define an image, a setup script, variables, secrets, isolation (process or container), capacity, and Workspace storage. It has no revisions [ADR 0032](adr/0032-environments-and-runners.md).
 
-Sessions target an Environment, not a specific machine or pod. In v1 an Environment has exactly one Provider ([ADR 0014](adr/0014-concept-map-and-environments.md)). Whether it can later form a pool across equivalent Providers remains open.
+Sessions target an Environment, not a specific machine or pod. In v1 an Environment has exactly one Provider ([ADR 0014](adr/0014-concept-map-and-environments.md)). In v2 it is a pool of runners [ADR 0032](adr/0032-environments-and-runners.md).
 
 ### Runtime
 

@@ -1,6 +1,6 @@
 # 0006: Provider protocol
 
-- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message; queue by default; the idle status that ends a turn carries its transcript length), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands), and by [ADR 0026](0026-terminals-that-survive.md) (a shell outlives its socket and replays its last output)
+- Status: accepted, built-in provider transport amended by [ADR 0012](0012-built-in-provider.md), amended 2026-10-21 (composer input: images, slash commands, file mentions) and 2026-10-22 (taking back a queued message; queue by default; the idle status that ends a turn carries its transcript length), and by [ADR 0023](0023-session-settings-and-pi-commands.md) (model and reasoning commands, built-in commands), and by [ADR 0026](0026-terminals-that-survive.md) (a shell outlives its socket and replays its last output), and by [ADR 0032](0032-environments-and-runners.md) (expiring leases; a Session resumes on another runner of its Environment)
 - Date: 2026-10-17
 
 ## Context

@@ -89,17 +89,17 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 - When Sessions can move between machines, do they follow Claude Code cloud sessions (resume on fresh compute from the server transcript and a fresh clone), and how does a provider that loses its lease stop its own Sessions? pi-durable resumes mid-turn from its own storage, and OpenHands fences writes with a generation lease ([research](research.md#pi-durable)).
 - What is the default Environment isolation mode for a personal Cell?
-- Can a shared Runtime safely host several full Pi Sessions, or should every active Session get a pod? In v1 each Session is its own process on a shared machine ([ADR 0017](adr/0017-process-per-session.md)). OpenHands runs a container per conversation behind a proxy in the host server ([research](research.md#openhands)).
+- Resolved for v2: a runner's capacity decides how many Sessions share it, and capacity one on Kubernetes is a pod per Session [ADR 0032](adr/0032-environments-and-runners.md). Can a shared Runtime safely host several full Pi Sessions? In v1 each Session is its own process on a shared machine ([ADR 0017](adr/0017-process-per-session.md)). OpenHands runs a container per conversation behind a proxy in the host server ([research](research.md#openhands)).
 - Where do subagents run when the parent Session has a dedicated pod?
 - What resource and concurrency limits prevent nested work from starving other Sessions?
 
 ### Environments
 
-- Can equivalent providers serve one Environment pool? In v1 an Environment has exactly one provider ([ADR 0014](adr/0014-concept-map-and-environments.md)).
-- How are Environment revisions built and cached?
-- Do initial Kubernetes Environments use immutable OCI images, setup volumes, or both?
-- Which network-policy claims can be strongly enforced on each provider?
-- How are readable secrets distinguished from future brokered network credentials?
+- Resolved for v2: an Environment is configuration plus a pool of runners, and a Session whose runner is lost resumes on another one from the server's transcript [ADR 0032](adr/0032-environments-and-runners.md).
+- Resolved for v2: Environments have no revisions; an image and a setup script make the baseline, cached where the runner can [ADR 0032](adr/0032-environments-and-runners.md).
+- Resolved for v2: an optional image plus a setup script, with the setup cache on a volume where available [ADR 0032](adr/0032-environments-and-runners.md).
+- Which network-policy claims can be strongly enforced on each provider? Network rules are deferred past the first v2 slice [ADR 0032](adr/0032-environments-and-runners.md).
+- Resolved for the first v2 slice: Environment secrets are stored on the server and readable by the Session; brokered secrets come later [ADR 0032](adr/0032-environments-and-runners.md).
 - May Project coordinators and worker Threads use different default Environments?
 
 ### Extension system
