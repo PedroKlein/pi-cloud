@@ -46,7 +46,7 @@ const branchTTL = 5000;
 
 // Lines an extension writes for hosts to read, such as pi-subagents'
 // PI_SUBAGENT_ASYNC_JSON status snapshots, not for people.
-const hostPayload = /^PI_[A-Z_]+_JSON:/;
+const hostPayload = /^PI_([A-Z_]+)_JSON:(.*)$/s;
 
 const terminalCodes =
   // eslint-disable-next-line no-control-regex -- escape codes are what it matches
@@ -68,6 +68,27 @@ export function webSurfaces(
   const statuses = new Map<string, string>();
   const shown = new Map<string, { surface: Surface; component: Placed }>();
   const published = new Map<string, string>();
+  const relayed = new Map<string, string>();
+
+  // Publishes the last line a widget wrote for hosts, or that it's gone
+  // (ADR 0030).
+  const relay = (key: string, content: readonly string[] | undefined): void => {
+    const payload = content?.flatMap(payloadOf).at(-1);
+
+    if (payload) {
+      relayed.set(key, payload.name);
+      publish({ type: "extension_data", key, ...payload });
+
+      return;
+    }
+
+    const name = relayed.get(key);
+
+    if (name !== undefined) {
+      relayed.delete(key);
+      publish({ type: "extension_data", key, name, data: null });
+    }
+  };
 
   const flush = (): void => {
     timer = undefined;
@@ -164,6 +185,8 @@ export function webSurfaces(
           placement: options?.placement ?? "aboveEditor",
         };
 
+        relay(key, typeof content === "function" ? undefined : content);
+
         show(
           `widget:${key}`,
           surface,
@@ -210,6 +233,23 @@ function eventOf(surface: Surface, lines: string[] | null): LiveEvent {
         placement: surface.placement,
       }
     : { type: surface.kind, lines };
+}
+
+function payloadOf(
+  line: string,
+): { readonly name: string; readonly data: unknown }[] {
+  const [, name, json] =
+    hostPayload.exec(line.replace(terminalCodes, "")) ?? [];
+
+  if (name === undefined || json === undefined) {
+    return [];
+  }
+
+  try {
+    return [{ name, data: JSON.parse(json) as unknown }];
+  } catch {
+    return [];
+  }
 }
 
 // Pi's TUI draws a text widget as padded lines, cut at ten.

@@ -4,6 +4,7 @@ import {
   imageTypes,
   type ModelRef,
 } from "@pi-cloud/protocol";
+import type { MountedSession } from "@pi-cloud/plugins/web";
 import { Button, Icon, isComposing } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -15,9 +16,11 @@ import {
 } from "react";
 import { command } from "./api";
 import { admit, dataUrl } from "./attachments";
-import type { Feed, Settings } from "./feed";
+import type { Feed, Settings, ShownWidget } from "./feed";
 import { modelName, modelRef } from "./names";
 import { usePrimaryId } from "./primary";
+import { PluginBoundary } from "./plugin-boundary";
+import { pluginContext, widgetRenderer } from "./plugins";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
 import { browserCommand } from "./suggest";
 import { useSuggestions } from "./suggestions";
@@ -31,12 +34,14 @@ const sendNowKeys = /Mac|iPhone|iPad/.test(navigator.userAgent)
 
 export function Composer({
   sessionId,
+  session,
   feed,
   models,
   hidden,
   report,
 }: {
   readonly sessionId: string;
+  readonly session: MountedSession;
   readonly feed: Feed;
   readonly models: readonly ModelRef[];
   readonly hidden: boolean;
@@ -224,7 +229,7 @@ export function Composer({
 
       <TerminalColumns onColumns={setColumns} />
 
-      {feed.widgetsAbove !== "" && <Widget text={feed.widgetsAbove} />}
+      <Widgets widgets={feed.widgetsAbove} session={session} />
 
       {!hidden && (
         <form
@@ -396,7 +401,7 @@ export function Composer({
         </form>
       )}
 
-      {feed.widgetsBelow !== "" && <Widget text={feed.widgetsBelow} />}
+      <Widgets widgets={feed.widgetsBelow} session={session} />
 
       {feed.footer === undefined ? (
         feed.statuses.length > 0 && (
@@ -441,8 +446,59 @@ async function attached(file: File): Promise<Attached> {
   };
 }
 
-function Widget({ text }: { readonly text: string }): ReactElement {
-  return <TerminalText text={text} className="rounded-md bg-code py-2" />;
+// Extensions' widgets as Pi's TUI draws them, one box for each run of
+// widgets no plugin claims (ADR 0030).
+function Widgets({
+  widgets,
+  session,
+}: {
+  readonly widgets: readonly ShownWidget[];
+  readonly session: MountedSession;
+}): ReactElement[] {
+  const shown: ReactElement[] = [];
+  let lines: string[] = [];
+
+  const box = (): void => {
+    if (lines.length > 0) {
+      shown.push(
+        <TerminalText
+          key={`text-${String(shown.length)}`}
+          text={lines.join("\n")}
+          className="rounded-md bg-code py-2"
+        />,
+      );
+
+      lines = [];
+    }
+  };
+
+  for (const widget of widgets) {
+    const renderer = widgetRenderer(widget.key);
+
+    if (!renderer) {
+      lines.push(...widget.lines);
+
+      continue;
+    }
+
+    box();
+
+    const { plugin, Component } = renderer;
+
+    shown.push(
+      <PluginBoundary key={widget.key} name={plugin}>
+        <Component
+          context={pluginContext(plugin)}
+          session={session}
+          lines={widget.lines}
+        />
+      </PluginBoundary>,
+    );
+  }
+
+  box();
+
+  return shown;
 }
 
 const picker =

@@ -258,7 +258,12 @@ export function SessionView({
           hidden={shown !== "chat"}
           className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
-          <ChatView feed={feed} place={place} hidden={shown !== "chat"} />
+          <ChatView
+            feed={feed}
+            place={place}
+            hidden={shown !== "chat"}
+            session={channel.session}
+          />
           {!archived && (
             <PiViewNotice
               piView={feed.piView}
@@ -269,6 +274,7 @@ export function SessionView({
           )}
           <Composer
             sessionId={sessionId}
+            session={channel.session}
             feed={feed}
             models={
               environments.find(({ id }) => id === session?.environmentId)

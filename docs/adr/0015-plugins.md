@@ -87,7 +87,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 
 ### Web UI
 
-- A plugin's web part claims named slots: `nav` (an entry, a page, and optional items listed under the entry, such as each Project; the page gets the rest of the address after `#plugin/<name>/`), `session.panel`, `session.header`, and the chat slots `tool.<name>`, `notice.<kind>` and `link.<scheme>` ([ADR 0028](0028-projects-around-the-coordinator.md)). The `message.<type>` renderer named here first was never built; `notice.<kind>` replaces it.
+- A plugin's web part claims named slots: `nav` (an entry, a page, and optional items listed under the entry, such as each Project; the page gets the rest of the address after `#plugin/<name>/`), `session.panel`, `session.header`, the chat slots `tool.<name>`, `notice.<kind>` and `link.<scheme>` ([ADR 0028](0028-projects-around-the-coordinator.md)), and `widget.<key>`, which draws an extension widget in its place ([ADR 0030](0030-subagents.md)). The `message.<type>` renderer named here first was never built; `notice.<kind>` replaces it.
 - Each slot is a React component. The web bundle imports plugins statically, so they share the app's React, its data hooks and the `packages/ui` components and tokens ([ADR 0020](0020-web-stack.md)). A plugin styles itself with the same Tailwind token classes and never brings its own colours or fonts.
 - A session slot gets the Session's events and `send(text)`, which posts a message as the user, so a button can run the plugin's own Pi command ([ADR 0021](0021-pull-requests.md)).
 - Its props give it what `ctx` gave it before: requests to its own routes, live events for a Session, opening a Session and navigation.

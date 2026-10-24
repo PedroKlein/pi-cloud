@@ -54,6 +54,28 @@ export interface SessionPartProps {
   readonly session: MountedSession;
 }
 
+// A tool call a plugin draws in the chat, from the transcript (ADR 0030).
+export interface ToolCall {
+  readonly id: string;
+  readonly name: string;
+  readonly args: unknown;
+  readonly status: "running" | "done" | "failed";
+  readonly result?: {
+    readonly text: string;
+    readonly details: unknown;
+    readonly failed: boolean;
+  };
+}
+
+export interface ToolCallProps extends SessionPartProps {
+  readonly call: ToolCall;
+}
+
+export interface WidgetProps extends SessionPartProps {
+  // The widget's lines as Pi's TUI renders them, with SGR escape codes.
+  readonly lines: readonly string[];
+}
+
 // Each slot is a React component rendered by the web app (ADR 0015).
 export interface WebPlugin {
   readonly name: string;
@@ -71,6 +93,10 @@ export interface WebPlugin {
   readonly sessionPath?: (session: Session) => string;
   readonly SessionPanel?: ComponentType<SessionPartProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
+  // Tools whose calls the plugin draws instead of a work step, by name.
+  readonly tools?: Readonly<Record<string, ComponentType<ToolCallProps>>>;
+  // Extension widgets the plugin draws in their place, by widget key.
+  readonly widgets?: Readonly<Record<string, ComponentType<WidgetProps>>>;
 }
 
 // Rejects with the server's error message when the response isn't ok.

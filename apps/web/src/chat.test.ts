@@ -53,6 +53,7 @@ test("keeps the images a user sent and drops unknown image types", () => {
       user: "look",
       images: [{ mimeType: "image/png", data: "AAAA" }],
       work: [],
+      cards: [],
       answer: [],
     },
   ]);
@@ -250,9 +251,10 @@ test("groups a turn into its work and its answer", () => {
           },
         },
       ],
+      cards: [],
       answer: ["Fixed."],
     },
-    { key: 7, user: "thanks", work: [], answer: [] },
+    { key: 7, user: "thanks", work: [], cards: [], answer: [] },
   ]);
 });
 
@@ -388,4 +390,68 @@ test("says how long ago an answer came", () => {
   expect(ago("2026-10-22T11:59:30Z", now)).toBe("just now");
   expect(ago("2026-10-22T11:58:00Z", now)).toBe("2 min ago");
   expect(ago("2026-10-22T09:00:00Z", now)).toBe("3 h ago");
+});
+
+test("takes the tool calls a plugin draws out of the work, with their result details", () => {
+  const keyed = [
+    { role: "user", text: "delegate" },
+    { role: "tool", id: "a", name: "read", args: { path: "x.ts" } },
+    { role: "result", id: "a", name: "read", text: "code", failed: false },
+    { role: "tool", id: "s", name: "subagent", args: { agent: "scout" } },
+    {
+      role: "result",
+      id: "s",
+      name: "subagent",
+      text: "Async: scout",
+      failed: false,
+      details: { asyncId: "r1" },
+    },
+    { role: "tool", id: "t", name: "subagent", args: { agent: "worker" } },
+  ].map(
+    (item, key) => ({ ...item, key }) as Parameters<typeof turns>[0][number],
+  );
+
+  const [turn] = turns(keyed, (tool) => tool === "subagent");
+
+  expect(turn?.work.map((item) => item.kind)).toEqual(["step"]);
+
+  expect(turn?.cards).toEqual([
+    {
+      id: "s",
+      name: "subagent",
+      args: { agent: "scout" },
+      result: {
+        text: "Async: scout",
+        failed: false,
+        details: { asyncId: "r1" },
+      },
+    },
+    { id: "t", name: "subagent", args: { agent: "worker" } },
+  ]);
+});
+
+test("keeps a tool result's details", () => {
+  expect(
+    chatItems(
+      JSON.stringify({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "s",
+          toolName: "subagent",
+          content: [{ type: "text", text: "Async: scout" }],
+          details: { asyncId: "r1" },
+        },
+      }),
+    ),
+  ).toEqual([
+    {
+      role: "result",
+      id: "s",
+      name: "subagent",
+      text: "Async: scout",
+      failed: false,
+      details: { asyncId: "r1" },
+    },
+  ]);
 });
