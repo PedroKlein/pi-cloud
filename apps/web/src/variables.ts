@@ -10,7 +10,7 @@ export function variablesText(
 export function variablesOf(text: string): Record<string, string> {
   const variables: Record<string, string> = {};
 
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     if (line.trim() === "") {
       continue;
     }
@@ -20,7 +20,12 @@ export function variablesOf(text: string): Record<string, string> {
       throw new Error(`"${line.trim()}" isn't NAME=value.`);
     }
 
-    variables[line.slice(0, equals).trim()] = line.slice(equals + 1);
+    const name = line.slice(0, equals).trim();
+    if (name in variables) {
+      throw new Error(`${name} is set twice.`);
+    }
+
+    variables[name] = line.slice(equals + 1);
   }
 
   return variables;

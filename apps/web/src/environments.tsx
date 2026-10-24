@@ -8,7 +8,7 @@ import {
   PageTitle,
   Section,
 } from "@pi-cloud/ui";
-import { type ReactElement, type SubmitEvent, useState } from "react";
+import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { send } from "./api";
 import { variablesOf, variablesText } from "./variables";
 
@@ -72,13 +72,18 @@ function Editor({
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
 
-  const update = (body: unknown): void => {
+  // What the form's fields started from. Only fields edited since are sent,
+  // so a save keeps changes made elsewhere meanwhile.
+  const shown = useRef<Readonly<Record<string, string>>>(fieldsOf(environment));
+
+  const update = (body: unknown, then?: () => void): void => {
     setSaved(false);
 
     send(`/api/environments/${environment.id}`, "PATCH", body).then(
       () => {
         setError(undefined);
         setSaved(true);
+        then?.();
         onChange();
       },
       (reason: unknown) => {
@@ -89,7 +94,8 @@ function Editor({
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     const text = (name: string): string => {
       const value = form.get(name);
@@ -97,17 +103,36 @@ function Editor({
       return typeof value === "string" ? value : "";
     };
 
+    const fields = Object.fromEntries(
+      Object.keys(shown.current).map((name) => [name, text(name)]),
+    );
+
+    const edited = (name: string): boolean =>
+      fields[name] !== shown.current[name];
+
     try {
       const image = text("image").trim();
 
-      update({
-        name: text("name"),
-        isolation: text("isolation"),
-        image: image === "" ? null : image,
-        setupScript: text("setupScript"),
-        variables: variablesOf(text("variables")),
-        secrets: variablesOf(text("secrets")),
-      });
+      update(
+        {
+          ...(edited("name") && { name: text("name") }),
+          ...(edited("isolation") && { isolation: text("isolation") }),
+          ...(edited("image") && { image: image === "" ? null : image }),
+          ...(edited("setupScript") && { setupScript: text("setupScript") }),
+          ...(edited("variables") && {
+            variables: variablesOf(text("variables")),
+          }),
+          secrets: variablesOf(text("secrets")),
+        },
+        () => {
+          shown.current = fields;
+
+          const secrets = formElement.elements.namedItem("secrets");
+          if (secrets instanceof HTMLTextAreaElement) {
+            secrets.value = "";
+          }
+        },
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -232,4 +257,14 @@ function Editor({
       </Section>
     </>
   );
+}
+
+function fieldsOf(environment: Environment): Record<string, string> {
+  return {
+    name: environment.name,
+    isolation: environment.isolation,
+    image: environment.image ?? "",
+    setupScript: environment.setupScript,
+    variables: variablesText(environment.variables),
+  };
 }

@@ -6,5 +6,7 @@ test("reads and writes variables as NAME=value lines", () => {
 
   expect(variables).toEqual({ A: "1", B: " x=y", EMPTY: "" });
   expect(variablesText({ A: "1", B: "two" })).toBe("A=1\nB=two");
+  expect(variablesOf("A=1\r\nB=2")).toEqual({ A: "1", B: "2" });
   expect(() => variablesOf("NOEQUALS")).toThrow("isn't NAME=value");
+  expect(() => variablesOf("A=1\nA=2")).toThrow("A is set twice.");
 });
