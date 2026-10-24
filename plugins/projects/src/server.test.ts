@@ -129,12 +129,47 @@ function fakeKernel(): {
         return session;
       },
       get: (id) => sessions.get(id),
-      owned: (key) =>
-        [...sessions.values()].filter((session) => session.owner?.key === key),
+      owned: (key, { archived = false } = {}) =>
+        [...sessions.values()].filter(
+          (session) =>
+            session.owner?.key === key &&
+            (archived || session.archivedAt === null),
+        ),
       adopt: (id, key) => {
         const session = sessions.get(id);
         if (session?.owner === null) {
           sessions.set(id, { ...session, owner: { plugin: "projects", key } });
+        }
+      },
+      archive: (id) => {
+        const session = sessions.get(id);
+        if (session?.archivedAt === null) {
+          const archived: Session = {
+            ...session,
+            status: "stopped",
+            archivedAt: new Date().toISOString(),
+          };
+
+          sessions.set(id, archived);
+          events.publish({ type: "SessionArchived", session: archived });
+        }
+      },
+      unarchive: (id) => {
+        const session = sessions.get(id);
+        if (session && session.archivedAt !== null) {
+          const back: Session = {
+            ...session,
+            status: "idle",
+            archivedAt: null,
+          };
+
+          sessions.set(id, back);
+
+          events.publish({
+            type: "SessionUnarchived",
+            session: back,
+            archivedAt: session.archivedAt,
+          });
         }
       },
       send: (id, text, _actor, notice) => {
@@ -930,6 +965,34 @@ test("lists each Project with its repositories, coordinator state and the thread
       needsYou: 2,
     },
   ]);
+});
+
+test("archives a Project's Sessions with its coordinator and brings back those it archived", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+
+  const started = await kernel
+    .tool("start_thread")
+    .run(
+      { title: "Old", message: "old work" },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  const oldId = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+  kernel.context.sessions.archive(oldId);
+  await Bun.sleep(5);
+
+  kernel.context.sessions.archive(coordinatorId);
+
+  expect(kernel.session(threadId).archivedAt).not.toBeNull();
+  expect((await projectView(kernel)).coordinatorState).toBe("archived");
+
+  kernel.context.sessions.unarchive(coordinatorId);
+
+  expect(kernel.session(threadId).archivedAt).toBeNull();
+  expect(kernel.session(oldId).archivedAt).not.toBeNull();
+  expect((await projectView(kernel)).coordinatorState).toBe("idle");
 });
 
 test("shows one thread's state and Project for a link to it", async () => {

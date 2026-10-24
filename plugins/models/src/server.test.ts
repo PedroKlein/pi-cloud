@@ -69,6 +69,8 @@ function registered(signal: AbortSignal): PluginRoute {
       get: unused,
       owned: unused,
       adopt: unused,
+      archive: unused,
+      unarchive: unused,
       send: unused,
       notify: unused,
       transcript: unused,

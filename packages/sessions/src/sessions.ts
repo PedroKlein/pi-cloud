@@ -257,6 +257,12 @@ export class Sessions {
     this.#update(unarchived);
     this.#polls.wake(session.provider);
 
+    this.#events({
+      type: "SessionUnarchived",
+      session: this.#view(unarchived),
+      archivedAt: session.archivedAt,
+    });
+
     return { ok: true, value: this.#view(unarchived) };
   }
 

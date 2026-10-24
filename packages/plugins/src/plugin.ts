@@ -35,6 +35,12 @@ export type KernelEvent =
     }
   | { readonly type: "SessionArchived"; readonly session: Session }
   | {
+      readonly type: "SessionUnarchived";
+      readonly session: Session;
+      // When the Session was archived.
+      readonly archivedAt: string;
+    }
+  | {
       readonly type: "ToolCalled";
       readonly session: Session;
       readonly tool: string;
@@ -117,6 +123,10 @@ export interface ServerPluginContext {
     ) => readonly Session[];
     // Takes ownership of a Session started before owners existed.
     readonly adopt: (id: string, ownerKey: string) => void;
+    // Archive or bring back a Session this plugin owns, such as every
+    // Session of one owner key at once (ADR 0028).
+    readonly archive: (id: string) => void;
+    readonly unarchive: (id: string) => void;
     // Starts a turn, or queues as a follow-up when the Session is busy.
     // With a notice, the web draws it with this plugin's renderer for the
     // notice's kind (ADR 0028).

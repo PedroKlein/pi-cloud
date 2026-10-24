@@ -94,6 +94,31 @@ export const projects: ServerPlugin = {
       }
     });
 
+    // A Project goes and comes back with its coordinator, and takes every
+    // Session it owns along (ADR 0028).
+    context.events.subscribe("SessionArchived", ({ session }) => {
+      const project = coordinated(store, session.id);
+      if (project) {
+        for (const owned of context.sessions.owned(project.id)) {
+          context.sessions.archive(owned.id);
+        }
+      }
+    });
+
+    // Threads archived before the Project stay archived.
+    context.events.subscribe("SessionUnarchived", ({ session, archivedAt }) => {
+      const project = coordinated(store, session.id);
+      if (project) {
+        for (const owned of context.sessions.owned(project.id, {
+          archived: true,
+        })) {
+          if (owned.archivedAt !== null && owned.archivedAt >= archivedAt) {
+            context.sessions.unarchive(owned.id);
+          }
+        }
+      }
+    });
+
     // Notices and messages wait here until their Session can take them, so
     // none are lost while a provider is offline, and they arrive in order.
     const timer = setInterval(() => {
@@ -109,6 +134,17 @@ export const projects: ServerPlugin = {
     );
   },
 };
+
+function coordinated(
+  store: ProjectStore,
+  sessionId: string,
+): Project | undefined {
+  const member = store.member(sessionId);
+
+  return member?.role === "coordinator"
+    ? store.get(member.projectId)
+    : undefined;
+}
 
 // The store can refuse a write, such as while another process holds its lock.
 // A delivery waits for the next tick then, and the server keeps running.
