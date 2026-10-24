@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type {
   Assignment,
   ModelRef,
@@ -118,8 +118,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     modelsPath: join(logins, "models.json"),
   };
 
-  for (const path of Object.values(credentials)) {
-    const earlier = join(options.dataDir, basename(path));
+  // Pi keeps models-store.json next to models.json.
+  for (const name of ["auth.json", "models.json", "models-store.json"]) {
+    const earlier = join(options.dataDir, name);
+    const path = join(logins, name);
     if (existsSync(earlier) && !existsSync(path)) {
       await rename(earlier, path).then(
         () => {
