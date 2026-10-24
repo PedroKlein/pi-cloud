@@ -54,7 +54,7 @@ A long-running goal with one coordinator Session, zero or more thread Sessions, 
 
 ### Thread
 
-A full Session attached to a Project to own one area of work. A Thread can run its own subagents and workflows. Its detailed transcript stays in the Thread. The coordinator gets a short notice when the Thread finishes a turn or changes state, and the Thread can message the coordinator directly. The user can also talk to a Thread directly.
+A full Session attached to a Project to own one area of work. A Thread can run its own subagents and workflows. Its detailed transcript stays in the Thread. The coordinator gets a short notice when the Thread finishes a turn or changes state, and the Thread can message the coordinator directly. The user can also talk to a Thread directly. Threads and the coordinator show only inside their Project, never in the Session list ([ADR 0028](adr/0028-projects-around-the-coordinator.md)).
 
 ### Kernel and Plugin
 
