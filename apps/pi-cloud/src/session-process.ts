@@ -17,6 +17,7 @@ import { sessionPluginsNamed } from "./plugins";
 export interface SessionSpec {
   readonly server: string;
   readonly provider: string;
+  readonly environment?: string;
   readonly assignment: Assignment;
   readonly options: Omit<SessionOptions, "models">;
 }

@@ -8,6 +8,7 @@ const session = (change: Partial<Session>): Session => ({
   ownerId: "o",
   owner: null,
   provider: "laptop",
+  runner: null,
   profileId: "profile-1",
   workspace: { kind: "folder", path: "/repo" },
   model: null,

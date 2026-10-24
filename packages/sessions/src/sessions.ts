@@ -24,13 +24,14 @@ import {
   type Work,
   type WorkPoll,
 } from "@pi-cloud/protocol";
-import { ProviderPolls } from "./provider-polls";
+import { placesOn, uniqueModels } from "./placement";
+import { RunnerPolls } from "./runner-polls";
 
 export type StoredSession = Omit<Session, "online" | "waiting">;
 
 export type StoredEnvironment = Omit<
   Environment,
-  "online" | "folders" | "models"
+  "online" | "runners" | "folders" | "models"
 >;
 
 // v1 has one user, who owns every record (ADR 0015).
@@ -59,11 +60,20 @@ export interface SessionStore {
     readonly owner?: SessionOwner;
   }) => readonly StoredSession[];
   setOwner: (id: string, owner: SessionOwner) => void;
-  byProvider: (
+  byEnvironment: (
     provider: string,
     statuses: readonly SessionStatus[],
   ) => readonly StoredSession[];
-  pendingRemovals: (provider: string) => readonly StoredSession[];
+  byRunner: (
+    runner: string,
+    statuses: readonly SessionStatus[],
+  ) => readonly StoredSession[];
+  // Removals for the runner's workspaces, and for Sessions in its
+  // Environment that never reached a runner.
+  pendingRemovals: (
+    provider: string,
+    runner: string,
+  ) => readonly StoredSession[];
   transcriptLength: (id: string) => number;
   appendTranscript: (
     id: string,
@@ -104,12 +114,12 @@ type Listener<T> = (value: T) => void;
 
 // Enough to catch a browser retrying a send; ids only need to outlive retries.
 const maxRequestIds = 100;
-const claimable: readonly SessionStatus[] = ["queued", "interrupted"];
+const claimableStatuses: readonly SessionStatus[] = ["queued", "interrupted"];
 const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
 
 export class Sessions {
   readonly #store: SessionStore;
-  readonly #polls: ProviderPolls;
+  readonly #polls: RunnerPolls;
   readonly #events: (event: KernelEvent) => void;
   readonly #sessionPlugins: readonly string[];
   readonly #offeredModels: ModelOffer;
@@ -127,11 +137,11 @@ export class Sessions {
   constructor(store: SessionStore, options: SessionsOptions = {}) {
     this.#store = store;
 
-    this.#polls = new ProviderPolls({
+    this.#polls = new RunnerPolls({
       pollWaitMs: options.pollWaitMs ?? 10_000,
       offlineAfterMs: options.offlineAfterMs ?? 30_000,
-      onlineChanged: (provider) => {
-        this.#onlineChanged(provider);
+      onlineChanged: (runner) => {
+        this.#onlineChanged(runner);
       },
     });
 
@@ -166,6 +176,7 @@ export class Sessions {
       ownerId: owner,
       owner: ownedBy ?? null,
       provider: environment.provider,
+      runner: null,
       profileId,
       workspace:
         request.workspace.kind === "folder"
@@ -349,42 +360,61 @@ export class Sessions {
 
   environments(): readonly Environment[] {
     return this.#store.environments().map((environment) => {
-      const { folders, models } = this.#polls.inventory(environment.provider);
+      const runners = this.#polls.runners(environment.provider);
       const offered = this.#offeredModels(environment.id).models;
 
       return {
         ...environment,
-        online: this.#polls.online(environment.provider),
-        folders,
-        models: [...offered, ...models],
+        online: runners.some(({ online }) => online),
+        runners: runners.map(({ name, online, capacity }) => ({
+          name,
+          online,
+          capacity,
+          running: this.#store.byRunner(name, attempting).length,
+        })),
+        folders: [
+          ...new Set(runners.flatMap(({ inventory }) => inventory.folders)),
+        ],
+        models: uniqueModels([
+          ...offered,
+          ...runners.flatMap(({ inventory }) => inventory.models),
+        ]),
       };
     });
   }
 
+  // A runner polls for the Environment whose pool it joins (ADR 0032).
   async claim(
-    provider: string,
-    { running, folders, models }: WorkPoll,
+    runner: { readonly name: string; readonly environment: string },
+    { running, folders, models, capacity }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
-    this.#store.ensureEnvironment(provider);
-    const endPoll = this.#polls.begin(provider, { folders, models });
+    this.#store.ensureEnvironment(runner.environment);
+
+    const endPoll = this.#polls.begin(runner.name, {
+      environment: runner.environment,
+      capacity: capacity ?? null,
+      inventory: { folders, models },
+    });
+
+    const work = (): Work => ({
+      start: signal.aborted
+        ? []
+        : this.#claimNext(runner, capacity, running.length),
+      unload: this.#stale(running),
+      remove: this.#removals(runner),
+    });
+
     try {
-      const interrupted = this.#interruptMissing(provider, running);
-      const start = this.#claimNext(provider);
-      const unload = this.#stale(running);
-      if (start.length > 0 || unload.length > 0 || signal.aborted) {
-        return { start, unload, remove: this.#removals(provider), interrupted };
+      const interrupted = this.#interruptMissing(runner.name, running);
+      const first = work();
+      if (first.start.length > 0 || first.unload.length > 0 || signal.aborted) {
+        return { ...first, interrupted };
       }
 
-      await this.#polls.waitForWork(provider, signal);
+      await this.#polls.waitForWork(runner.name, signal);
 
-      return {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the wait above is pending
-        start: signal.aborted ? [] : this.#claimNext(provider),
-        unload: this.#stale(running),
-        remove: this.#removals(provider),
-        interrupted,
-      };
+      return { ...work(), interrupted };
     } finally {
       endPoll();
     }
@@ -576,7 +606,7 @@ export class Sessions {
     }
 
     const host = this.#hosts.get(id);
-    if (!host || !this.#polls.online(session.provider)) {
+    if (!host || !this.#online(session)) {
       return { ok: false, reason: "offline" };
     }
 
@@ -651,12 +681,12 @@ export class Sessions {
   }
 
   #interruptMissing(
-    provider: string,
+    runner: string,
     running: readonly Attempt[],
   ): readonly Attempt[] {
     const now = new Date().toISOString();
     const interrupted: Attempt[] = [];
-    for (const session of this.#store.byProvider(provider, attempting)) {
+    for (const session of this.#store.byRunner(runner, attempting)) {
       const alive = running.some(
         (attempt) =>
           attempt.sessionId === session.id &&
@@ -683,9 +713,12 @@ export class Sessions {
     );
   }
 
-  #removals(provider: string): readonly Removal[] {
+  #removals(runner: {
+    readonly name: string;
+    readonly environment: string;
+  }): readonly Removal[] {
     return this.#store
-      .pendingRemovals(provider)
+      .pendingRemovals(runner.environment, runner.name)
       .map(({ id, generation, workspace, workspaceRemoval }) => ({
         sessionId: id,
         generation,
@@ -695,8 +728,20 @@ export class Sessions {
   }
 
   // A Session loads what its Profile holds at each start (ADR 0031).
-  #claimNext(provider: string): Assignment[] {
-    return this.#store.byProvider(provider, claimable).flatMap((next) => {
+  #claimNext(
+    runner: { readonly name: string; readonly environment: string },
+    capacity: number | undefined,
+    running: number,
+  ): Assignment[] {
+    const free = capacity === undefined ? Infinity : capacity - running;
+    const pool = this.#polls.runners(runner.environment);
+
+    const claimable = this.#store
+      .byEnvironment(runner.environment, claimableStatuses)
+      .filter((session) => placesOn(session, runner.name, pool))
+      .slice(0, Math.max(free, 0));
+
+    return claimable.flatMap((next) => {
       const profile = this.#store.profile(next.profileId);
       if (!profile) {
         this.#update({
@@ -710,6 +755,7 @@ export class Sessions {
 
       const session: StoredSession = {
         ...next,
+        runner: runner.name,
         status: "starting",
         generation: next.generation + 1,
         error: null,
@@ -741,13 +787,20 @@ export class Sessions {
   }
 
   // A command stream whose tunnel died can stay open for minutes, so an
-  // offline provider's streams are ended and the agent opens new ones.
-  #onlineChanged(provider: string): void {
-    const online = this.#polls.online(provider);
+  // offline runner's streams are ended and the agent opens new ones.
+  #onlineChanged(runner: string): void {
+    const online = this.#polls.online(runner);
 
     const sessions = this.#store
       .list({ includeArchived: true })
-      .filter((session) => session.provider === provider);
+      .filter(
+        (session) =>
+          session.runner === runner ||
+          (session.runner === null &&
+            this.#polls
+              .runners(session.provider)
+              .some(({ name }) => name === runner)),
+      );
 
     for (const session of sessions) {
       if (!online) {
@@ -815,10 +868,21 @@ export class Sessions {
     }
   }
 
+  // A Session no runner claimed yet is online while its Environment is, and
+  // one that ran is online while its runner is still in that Environment.
+  #online(session: StoredSession): boolean {
+    return this.#polls
+      .runners(session.provider)
+      .some(
+        ({ name, online }) =>
+          online && (session.runner === null || session.runner === name),
+      );
+  }
+
   #view(session: StoredSession): Session {
     return {
       ...session,
-      online: this.#polls.online(session.provider),
+      online: this.#online(session),
       waiting: this.#waiting(session),
     };
   }

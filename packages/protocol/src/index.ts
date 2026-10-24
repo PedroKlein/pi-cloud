@@ -1,6 +1,9 @@
 export const protocolVersion = 1;
 export const versionHeader = "pi-cloud-protocol";
+// A runner names itself, and the Environment whose pool it joins (ADR 0032).
+// A runner that names no Environment joins the one named after it.
 export const providerHeader = "pi-cloud-provider";
+export const environmentHeader = "pi-cloud-environment";
 
 export interface RepositoryCheckout {
   readonly repository: string;
@@ -165,6 +168,8 @@ export interface WorkPoll {
   readonly running: readonly Attempt[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
+  // How many Sessions the runner takes at once. Absent means no limit.
+  readonly capacity?: number;
 }
 
 export interface Removal {
@@ -607,6 +612,8 @@ export interface Session {
   readonly ownerId: string;
   readonly owner: SessionOwner | null;
   readonly provider: string;
+  // The runner that claimed the Session last, null until one does.
+  readonly runner: string | null;
   // Fixed when the Session is created (ADR 0031).
   readonly profileId: string;
   readonly workspace: Workspace;
@@ -631,6 +638,14 @@ export interface Session {
   readonly waiting: boolean;
 }
 
+export interface Runner {
+  readonly name: string;
+  readonly online: boolean;
+  readonly capacity: number | null;
+  readonly running: number;
+}
+
+// Runners join an Environment's pool by its provider name (ADR 0032).
 export interface Environment {
   readonly id: string;
   readonly name: string;
@@ -638,6 +653,7 @@ export interface Environment {
   readonly ownerId: string;
   readonly createdAt: string;
   readonly online: boolean;
+  readonly runners: readonly Runner[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
 }

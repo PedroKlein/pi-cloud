@@ -21,6 +21,7 @@ import {
   thinkingLevels,
   type ToolCall,
   protocolVersion,
+  environmentHeader,
   providerHeader,
   type TranscriptBatch,
   type TrustAnswer,
@@ -76,15 +77,22 @@ export function createHandler(
         );
       }
 
-      const provider = request.headers.get(providerHeader);
-      if (provider === null || provider === "") {
+      const runner = runnerOf(request);
+      if (runner === undefined) {
         return Response.json({ error: "missing provider" }, { status: 400 });
       }
 
       const sessionId = params[0];
+
+      const session =
+        sessionId === undefined ? undefined : sessions.get(sessionId);
+
+      // A Session that never reached a runner can still have a workspace
+      // removal for any runner of its Environment.
       if (
         sessionId !== undefined &&
-        sessions.get(sessionId)?.provider !== provider
+        session?.runner !== runner.name &&
+        !(session?.runner === null && session.provider === runner.environment)
       ) {
         return notFound();
       }
@@ -301,25 +309,30 @@ export function createHandler(
       "POST",
       /^\/agent\/work$/,
       async (request) => {
-        const provider = request.headers.get(providerHeader) ?? "";
+        const runner = runnerOf(request) ?? { name: "", environment: "" };
         const poll = workPoll(await readJson(request));
 
         const { start, unload, remove, interrupted } = await sessions.claim(
-          provider,
+          runner,
           poll,
           request.signal,
         );
 
+        const fields = {
+          provider: runner.name,
+          environment: runner.environment,
+        };
+
         for (const attempt of interrupted) {
-          log("session interrupted", { provider, ...attempt });
+          log("session interrupted", { ...fields, ...attempt });
         }
 
         for (const assignment of start) {
-          log("session assigned", { provider, ...assignment });
+          log("session assigned", { ...fields, ...assignment });
         }
 
         for (const attempt of unload) {
-          log("session unloading", { provider, ...attempt });
+          log("session unloading", { ...fields, ...attempt });
         }
 
         return Response.json({ start, unload, remove });
@@ -959,8 +972,25 @@ function toolCall(body: unknown): ToolCall {
   };
 }
 
+function runnerOf(
+  request: Request,
+): { readonly name: string; readonly environment: string } | undefined {
+  const name = request.headers.get(providerHeader);
+  if (name === null || name === "") {
+    return undefined;
+  }
+
+  const environment = request.headers.get(environmentHeader);
+
+  return {
+    name,
+    environment:
+      environment === null || environment === "" ? name : environment,
+  };
+}
+
 function workPoll(body: unknown): WorkPoll {
-  const { running, folders, models } = fieldsOf(body);
+  const { running, folders, models, capacity } = fieldsOf(body);
 
   return {
     running: listOf("running", running, attemptOf),
@@ -968,7 +998,17 @@ function workPoll(body: unknown): WorkPoll {
       textOf("each folder", folder),
     ),
     models: listOf("models", models, modelOf),
+    ...(capacity !== undefined && { capacity: capacityOf(capacity) }),
   };
+}
+
+function capacityOf(value: unknown): number {
+  const capacity = integerOf("capacity", value);
+  if (capacity < 1) {
+    throw new BadRequest("capacity must be at least 1");
+  }
+
+  return capacity;
 }
 
 function attemptOf(attempt: unknown): Attempt {

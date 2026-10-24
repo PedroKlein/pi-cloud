@@ -24,6 +24,7 @@ export interface ProviderOptions {
   readonly remove: (removal: Removal) => void;
   readonly running: () => readonly Attempt[];
   readonly folders: readonly string[];
+  readonly capacity?: number;
   readonly models: () => readonly ModelRef[];
   readonly log: Log;
   readonly signal: AbortSignal;
@@ -55,7 +56,14 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
   while (!signal.aborted) {
     try {
       const work = await controlPlane.work(
-        { running: running(), folders, models: models() },
+        {
+          running: running(),
+          folders,
+          models: models(),
+          ...(options.capacity !== undefined && {
+            capacity: options.capacity,
+          }),
+        },
         signal,
       );
 

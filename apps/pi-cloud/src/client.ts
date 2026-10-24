@@ -10,6 +10,7 @@ import {
   type ToolSpec,
   protocolVersion,
   type TerminalControl,
+  environmentHeader,
   providerHeader,
   type TranscriptAck,
   type TranscriptBatch,
@@ -46,6 +47,17 @@ class HttpError extends Error {
 interface Agent {
   readonly server: string;
   readonly provider: string;
+  readonly environment?: string;
+}
+
+function agentHeaders(agent: Agent): Record<string, string> {
+  return {
+    [versionHeader]: String(protocolVersion),
+    [providerHeader]: agent.provider,
+    ...(agent.environment !== undefined && {
+      [environmentHeader]: agent.environment,
+    }),
+  };
 }
 
 async function call(
@@ -56,8 +68,7 @@ async function call(
   const response = await fetch(new URL(path, agent.server), {
     method: init.method ?? "GET",
     headers: {
-      [versionHeader]: String(protocolVersion),
-      [providerHeader]: agent.provider,
+      ...agentHeaders(agent),
       ...(init.body !== undefined && { "content-type": "application/json" }),
     },
     ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
@@ -192,8 +203,9 @@ export function httpSessionStream(
       url.searchParams.set("generation", String(generation));
 
       const headers = new Headers(init.headers);
-      headers.set(versionHeader, String(protocolVersion));
-      headers.set(providerHeader, agent.provider);
+      for (const [name, value] of Object.entries(agentHeaders(agent))) {
+        headers.set(name, value);
+      }
 
       return fetch(url, { ...init, headers });
     },
@@ -217,10 +229,7 @@ function openTerminalSocket(
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
   const socket = new WebSocket(url, {
-    headers: {
-      [versionHeader]: String(protocolVersion),
-      [providerHeader]: agent.provider,
-    },
+    headers: agentHeaders(agent),
   });
 
   socket.binaryType = "arraybuffer";
