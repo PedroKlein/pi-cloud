@@ -16,10 +16,12 @@ import {
   type InlineExtension,
   type ModelRuntime,
   SessionManager,
+  SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
 import chalk from "chalk";
+import { pluginPackages } from "./packages";
 import type { Surfaces } from "./surfaces";
 import type { RemoteUI } from "./ui";
 import "./codemode";
@@ -46,6 +48,8 @@ export interface SessionHost {
   readonly ui: RemoteUI & Surfaces;
   readonly tools: readonly ToolDefinition[];
   readonly extensions: readonly InlineExtension[];
+  // Pi package sources plugins load in every Session.
+  readonly packages: readonly string[];
   readonly onError: (error: ExtensionError) => void;
 }
 
@@ -76,6 +80,7 @@ export async function startSession(
   const services = await loadServices(cwd, options, {
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
     extensionFactories: [...builtInExtensions, ...(host?.extensions ?? [])],
+    ...(host && { packages: host.packages, onError: host.onError }),
   });
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
@@ -128,17 +133,34 @@ export async function modelLister(
 async function loadServices(
   cwd: string,
   options: ModelOptions,
-  resources: {
+  {
+    packages = [],
+    onError = () => undefined,
+    ...resources
+  }: {
     readonly appendSystemPrompt?: string[];
     readonly extensionFactories?: InlineExtension[];
+    readonly packages?: readonly string[];
+    readonly onError?: (error: ExtensionError) => void;
   } = {},
 ): Promise<AgentSessionServices> {
+  const { agentDir } = options;
+  const settingsManager = SettingsManager.create(cwd, agentDir);
+
+  const plugins = await pluginPackages(
+    packages,
+    { cwd, agentDir, settingsManager },
+    onError,
+  );
+
   const services = await createAgentSessionServices({
     cwd,
-    agentDir: options.agentDir,
+    agentDir,
+    settingsManager,
     resourceLoaderOptions: {
       ...resources,
-      additionalExtensionPaths: [...options.extensionPaths],
+      additionalExtensionPaths: [...plugins.sources, ...options.extensionPaths],
+      extensionsOverride: plugins.override,
     },
     ...(options.models && { modelRuntime: options.models.runtime }),
   });

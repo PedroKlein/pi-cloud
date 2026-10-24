@@ -35,6 +35,7 @@
         "@pi-cloud/providers": "workspace:*",
         "@pi-cloud/sessionhost": "workspace:*",
         "@pi-cloud/sessions": "workspace:*",
+        "@pi-cloud/subagents": "workspace:*",
         "@pi-cloud/web": "workspace:*",
         "@pi-cloud/workspaces": "workspace:*",
       },
@@ -52,6 +53,7 @@
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/projects": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
+        "@pi-cloud/subagents": "workspace:*",
         "@pi-cloud/ui": "workspace:*",
         "@pi-cloud/usage": "workspace:*",
         "@xterm/addon-fit": "0.11.0",
@@ -173,6 +175,18 @@
     },
     "plugins/projects": {
       "name": "@pi-cloud/projects",
+      "dependencies": {
+        "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/protocol": "workspace:*",
+        "@pi-cloud/ui": "workspace:*",
+        "react": "19.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/subagents": {
+      "name": "@pi-cloud/subagents",
       "dependencies": {
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
@@ -377,6 +391,8 @@
     "@pi-cloud/sessionhost": ["@pi-cloud/sessionhost@workspace:packages/sessionhost"],
 
     "@pi-cloud/sessions": ["@pi-cloud/sessions@workspace:packages/sessions"],
+
+    "@pi-cloud/subagents": ["@pi-cloud/subagents@workspace:plugins/subagents"],
 
     "@pi-cloud/ui": ["@pi-cloud/ui@workspace:packages/ui"],
 
