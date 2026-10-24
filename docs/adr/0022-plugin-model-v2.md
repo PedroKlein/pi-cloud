@@ -1,13 +1,13 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use)
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server)
 - Date: 2026-10-22
 
 ## Context
 
 [ADR 0015](0015-plugins.md) gives v1 an internal plugin interface with server, Session and web parts, and the default plugins prove it. v2 publishes that interface for third parties ([vision.md](../vision.md#scope)). Before freezing anything, two questions need an answer: what a third party is missing today, and what a customizable host does that ours doesn't.
 
-The test case is an integrated browser like the one in [Claude Code Desktop](https://code.claude.com/docs/en/desktop). It is a tabbed browser pane in the session. Claude starts the dev server from a `launch.json`, then takes screenshots, inspects the DOM, clicks and types to check its own changes. The user can browse in the same pane, pick an element to point Claude at, keep cookies, and approve external sites one by one. It is the kind of feature Pi Cloud users should be able to build as a plugin, without changing the kernel.
+The first test case was an integrated browser like the one in [Claude Code Desktop](https://code.claude.com/docs/en/desktop). It is a tabbed browser pane in the session. Claude starts the dev server from a `launch.json`, then takes screenshots, inspects the DOM, clicks and types to check its own changes. The user can browse in the same pane, pick an element to point Claude at, keep cookies, and approve external sites one by one.
 
 Built on today's seams, that plugin runs into five gaps:
 
@@ -17,55 +17,56 @@ Built on today's seams, that plugin runs into five gaps:
 - A web part can add a page, a side panel or a header item, but not a tab next to Chat and Terminal.
 - Plugins have no commands, keybindings or settings.
 
-[Obsidian](https://docs.obsidian.md/Reference/TypeScript+API/Plugin) is the comparison for customizability. A plugin is a manifest and one class. Everything it registers (views, commands, settings tabs, events, intervals, markdown code block processors, editor suggestions) is removed when the plugin turns off, with no restart. Built-in features are "core plugins" on the same API. Community plugins install from GitHub releases and are not sandboxed: Obsidian ships them off by default (Restricted mode) and scans every version ([plugin security](https://obsidian.md/help/plugin-security)). VS Code, Claude Code mods, JupyterLab and Figma were compared too, and the decisions below borrow from them.
+[Obsidian](https://docs.obsidian.md/Reference/TypeScript+API/Plugin) is the comparison for customizability. A plugin is a manifest and one class. Everything it registers (views, commands, settings tabs, events, intervals, markdown code block processors, editor suggestions) is removed when the plugin turns off, with no restart. Built-in features are "core plugins" on the same API. Community plugins install from GitHub releases and are not sandboxed: Obsidian ships them off by default (Restricted mode) and scans every version ([plugin security](https://obsidian.md/help/plugin-security)). Obsidian's plugins live in each vault and run on each user's device, so every user picks their own. VS Code, Claude Code mods, JupyterLab and Figma were compared too, and the decisions below borrow from them.
 
 ## Decision
 
 v1 code doesn't change because of this ADR. Each part below is built when v2 needs it, through its own change, and may be amended then.
 
-### The browser runs next to the Workspace
+### No browser plugin yet
 
-- A browser plugin runs headless Chromium in the Session's Environment. Its Session part starts Chromium and drives it over the Chrome DevTools Protocol, using Bun's own WebSocket or a pipe. It doesn't need Playwright.
-- The agent's browser tools (open, screenshot, click, type, read the page, console, network) call CDP directly.
-- The user sees the same browser as a live screencast in a Session tab, and their clicks and keys go back as CDP input events.
-- The agent can check its work while nobody has the page open, and the user can watch from a phone. A dev server is plain `localhost` for Chromium, because they share a machine.
-- The cost is that Chromium must be installed in the Environment, and the user sees frames instead of a real DOM.
+- The first version of this ADR ran headless Chromium in the Environment and showed it to the user as a CDP screencast. A screencast is a stream of JPEG frames, not a real page: text is soft, input lags, and there is no text selection or devtools. That isn't good enough, so it is dropped.
+- A web page can't embed most sites or drive a cross-origin iframe, which is why Claude Code's browser lives in a desktop app. The web-only way found so far shows a [preview](#previews) in a real iframe and lets the agent drive it through a script the preview proxy injects. It covers only apps served through a preview, and the agent can only drive the page while a viewer has it open.
+- Neither is built in v2. The browser comes back as its own decision if it is still wanted, and none of the kernel pieces below depend on it.
 
-The kernel pieces it needs follow. Each one is generic, and none of them knows about browsers.
+### Plugins are per installation
+
+- A plugin is installed and turned on for the whole installation. When there are several users, whoever runs the server decides which plugins everyone has.
+- This differs from Obsidian on purpose. A server part, or a Session part in a Session several people share, changes what everyone sees, so it can't be a personal choice. Per-user or per-Project plugins can come later if a web-only plugin needs them.
+- Each user's own Pi packages, extensions, skills and themes stay personal, through their Profile ([extensibility.md](../extensibility.md#profile-model)).
 
 ### Views the agent can use
 
-The browser is one case of a wider rule: a plugin can give the agent the same view it gives the user, so the agent can work in it and show things there. Not every plugin needs this, and a view that only displays data does without it.
+A plugin can give the agent the same view it gives the user, so the agent can work in it and show things there. Not every plugin needs this, and a view that only displays data does without it.
 
-- The view's state lives in the plugin's Session part, or its server part, never only in the page. The agent changes it through the plugin's tools and the user through the web part. The web part draws what the Session part publishes or streams, so both always see the same thing.
+- The view's state lives in the plugin's Session part, or its server part, never only in the page. The agent changes it through the plugin's tools and the user through the web part. The web part draws what the Session part publishes, so both always see the same thing.
 - A Session part can ask the UI to show one of its views with `cloud.reveal(view)`. Every browser watching the Session gets it as a live event the shell understands, and it isn't replayed later. A wide screen opens or focuses the tab next to the chat. A phone shows a notice with a button instead, so it doesn't pull the user away from the chat.
-- What the user does in a view can reach the agent. The web part sends it to the Session as a message that starts a turn, or as context for the next turn. For example, the browser's element picker tells the agent which element the user meant. Context uses the same path as a server part's `sessions.notify`.
+- What the user does in a view can reach the agent. The web part sends it to the Session as a message that starts a turn, or as context for the next turn. Context uses the same path as a server part's `sessions.notify`.
 
-### Plugin channels
+### Plugin channels, later
 
-- A plugin can open a channel for a Session: `cloud.channel()` in its Session part, `session.channel()` in its web part. A channel carries JSON or binary frames in both directions. It is not stored or replayed.
-- Each channel is its own WebSocket, paired through the server the way terminals are ([ADR 0006](0006-provider-protocol.md)), and reuses that code. If the number of sockets becomes a problem, channels can share one socket per Session later.
-- A slow viewer loses frames instead of buffering them without limit, as terminals already cap buffered bytes.
-- The server part can open a channel to a Session part too. That closes the gap where the server can't call a Session part.
-- `publish` stays for state that a viewer who opens the Session later must see.
+- A channel would be a live two-way connection between two parts of one plugin: Session and web, or server and Session. It would carry JSON or binary frames, not be stored or replayed, and be paired through the server the way terminals are ([ADR 0006](0006-provider-protocol.md)).
+- Only the browser needed one, so channels are not built in v2. They are added when a plugin needs a live stream, or needs its server part to call its Session part.
+- Until then, `publish` carries state from the Session part, and plugin routes carry requests from the web and Session parts to the server part.
 
 ### Previews
+
+Previews are a kernel feature, not a plugin seam. They let the user open the app the agent is building.
 
 - A Session can expose a port. Its Session part, a tool or the user can do it. The server proxies HTTP and WebSocket traffic to that port through the provider, the way terminals reach the Session host.
 - A preview is served from its own origin, `<port>--<session>.<host>`. A previewed app's scripts must never run on Pi Cloud's origin, where they could call `/api`.
 - Browsers resolve every `*.localhost` name to the loopback address, so on a localhost bind or an SSH tunnel previews need no DNS. Other binds need a wildcard DNS name, which comes with v2's authentication. Which browsers resolve `*.localhost` must be checked when this is built.
 - The server checks `Origin` on `/api` requests, so a preview can't post to it either.
-- The browser plugin doesn't need previews, but any plugin and the user can use them, for example to open the app in a real tab or on a phone.
+- The user can open a preview in a real tab or on a phone, and any plugin can link to one.
 
 ### More web slots, added in order
 
 The web part gets these slots, in this order:
 
-1. `sessionViews`: tabs next to Chat and Terminal in the Session view. The browser's tab is one.
-2. `commands`: `{ id, title, keys?, when?, run }`. Commands appear in a command palette and can have keybindings the user can change. `when` hides a command where it doesn't apply, like Obsidian's `checkCallback`. These are UI commands; Pi's own slash commands stay where they are.
-3. `codeBlocks`: renderers for a fenced code block's language in chat markdown, like Obsidian's code block processors, so a plugin can draw a ` ```mermaid ` block.
+1. `sessionViews`: tabs next to Chat and Terminal in the Session view. A view the agent can use is one.
+2. `codeBlocks`: renderers for a fenced code block's language in chat markdown, like Obsidian's code block processors, so a plugin can draw a ` ```mermaid ` block. It is the cheapest way for the agent to show the user something.
 
-Later, as plugins need them: `statusItems`, `composerSuggest` (more trigger characters for the composer menu, like `@` and `/`), and deep links into a plugin page. `message.<type>` renderers from ADR 0015 are still planned.
+Later, as plugins need them: `commands` (`{ id, title, keys?, when?, run }` in a command palette, with keybindings the user can change), `statusItems`, `composerSuggest` (more trigger characters for the composer menu, like `@` and `/`), and deep links into a plugin page. `message.<type>` renderers from ADR 0015 are still planned.
 
 Slots stay fixed and named, as in Claude Code, instead of Obsidian's free layout of splits and tabs. A fixed layout also works on a phone.
 
@@ -77,23 +78,22 @@ A plugin's `package.json` gets a `piCloud` field:
 - `engine`: the plugin API versions it supports, like Obsidian's `minAppVersion`.
 - `parts`: the paths of its server, Session and web parts.
 - `capabilities`: what it needs from the kernel, such as `sessions.start` or `projects.read` ([extensibility.md](../extensibility.md#trust-model)).
-- `requires`: what its Session part needs on the provider, such as `chromium`. A Session part whose requirements the Environment can't meet isn't loaded, and the user is told why.
+- `requires`: what its Session part needs on the provider, such as `git` or `chromium`. A Session part whose requirements the Environment can't meet isn't loaded, and the user is told why.
 
 Contributions (tools, routes, slots, commands) stay in code. Declaring them in the manifest too, as VS Code does, would mean keeping two lists in step so that code loads lazily, which this scale doesn't need.
 
-### Every registration can be undone
+### Changing plugins restarts the server
 
-- The host tracks each registration a server part makes through `ctx`: tools, routes, event subscriptions and model offers. Turning a plugin off removes all of them without a restart, like an Obsidian `Component` unloading.
+- Turning a plugin on or off takes effect when the server restarts, and the Settings page offers the restart. The host doesn't track and undo registrations one by one.
 - A plugin may export `onEnable`, which runs once when the user turns it on, for first-time setup.
-- A tool call or route request already running when the plugin turns off finishes. New ones fail with an error that names the plugin.
-- Running Sessions keep the Session part they started with. Sessions started later get the new set.
-- Web parts unmount when the list of enabled plugins changes.
+- Sessions on a separate agent, like the laptop's, keep running through the restart with the Session part they started with. Sessions on the server's built-in provider are interrupted and reload idle from their transcript ([ADR 0012](0012-built-in-provider.md)), so the restart waits for the user to confirm while any of them is mid-turn. Sessions started or reloaded later get the new set.
+- Live enable and disable, like Obsidian's, can be added later without changing the plugin interface.
 
 ### Settings with a schema
 
 - A plugin declares its settings as a small schema: string, number, boolean, one of a list, or a list of strings.
 - The kernel draws the form with the same components as the questions form, on one Settings page with a section per plugin. A plugin may also give its own settings component.
-- Values are stored per scope. v2 starts with the installation scope. Project, Environment and Profile scopes follow with Profiles and use the same precedence as the rest of the configuration ([extensibility.md](../extensibility.md#profile-model)).
+- Values are stored for the installation, like the plugins themselves.
 - The server part reads its values through `ctx.settings`. The Session part gets its values when the Session starts, and the web part gets them as props.
 
 ### Installing third-party plugins
@@ -107,9 +107,10 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 
 ### Trust
 
-- A Session part is a Pi extension and has everything the Session's process has, as Pi extensions do. Nothing sandboxes it. The prompt that enables a plugin says so.
+- Turning a plugin on is the trust decision, as in Obsidian. The prompt that enables a third-party plugin says what it can do.
+- A Session part is a Pi extension and has everything the Session's process has, as Pi extensions do. Nothing sandboxes it.
 - A server part only gets the `ctx` members its declared capabilities allow. This guards against mistakes, not against hostile code, because it runs in the server process. Hostile or fragile code belongs in the external service form from [extensibility.md](../extensibility.md#trust-model).
-- Web parts from first-party and other trusted plugins are React components in the page, as in ADR 0015. A web part the user hasn't marked trusted runs in a sandboxed iframe that gets the same props over `postMessage`, as ADR 0015 already planned. It can use any web stack, and it renders with the shell's tokens passed in as CSS variables.
+- Every web part, first-party or not, is a React component in the page, as in ADR 0015. There is no sandboxed iframe: it would only protect against plugins that have nothing but a web part, since the same plugin's server and Session parts are unsandboxed, and it would mean a second way to write plugin UI. It can come back for web-only plugins from a directory.
 - A portable element tree, like Claude Code mods, is not adopted now. It comes back with a terminal view of Sessions ([v2-ideas.md](../v2-ideas.md#extension-ui)), the one case where it pays off.
 
 ### Not adopted
@@ -119,11 +120,11 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 
 ## Consequences
 
-- Any plugin can make a view the agent works in and shows the user things in, as the browser does. Plugins that don't need it pay nothing.
-- An integrated browser can be built as a plugin from the generic pieces here, with no browser code in the kernel and no browser library dependency.
-- The provider protocol grows by channels and previews. Both reuse the terminal pairing.
+- Any plugin can make a view the agent works in and shows the user things in. Plugins that don't need it pay nothing.
+- v2 has no integrated browser. Users open the agent's dev server through previews.
+- The provider protocol grows by previews, which reuse the terminal pairing. The server still can't call a Session part until channels are added.
 - Previews add a second origin per exposed port and an `Origin` check on the API. That adds a constraint on how v2 authentication handles cookies and hosts.
 - Each new slot is API that third parties will depend on, so slots are added only when a plugin needs them.
-- Plugins can be turned on and off without a restart. Running Sessions keep their Session parts until they restart.
-- Third-party Session parts and server parts can still do anything the process can. The guard is that they start turned off and the user decides.
-- An Environment that runs the browser plugin needs Chromium. `requires` makes the gap visible instead of failing inside a tool call.
+- Changing plugins means a server restart, which interrupts the built-in provider's Sessions. Sessions on other agents keep their Session parts until they restart.
+- Everyone on an installation has the same plugins. Personal choice stays in Pi's own configuration.
+- Third-party plugins can do anything the server process, the Session process or the page can. The guard is that they start turned off and the user decides.

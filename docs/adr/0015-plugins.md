@@ -100,7 +100,7 @@ The interfaces live in `packages/plugins/`. The server, the session host and the
 - v1 plugins live in this repository. The binary and the web bundle import them statically, so the compiled binary needs no dynamic loading.
 - A config list turns plugins off. A plugin that is off registers nothing, and its tables stay untouched.
 - Plugins are trusted and run in the server process, the Session process and the page, like Pi extensions do.
-- The plugin interfaces are internal in v1 and may change. The public SDK and third-party plugins come in v2. Untrusted web parts can then run in a sandboxed iframe that gets the same context over `postMessage`. That iframe has its own document, so a third-party part renders on its own there, and trusted parts stay React components.
+- The plugin interfaces are internal in v1 and may change. The public SDK and third-party plugins come in v2. Third-party web parts are React components in the page too, and turning a plugin on is the trust decision ([ADR 0022](0022-plugin-model-v2.md#trust)).
 
 ### Actors and owners
 
