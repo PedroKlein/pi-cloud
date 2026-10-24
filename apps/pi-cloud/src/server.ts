@@ -645,6 +645,20 @@ function browserCommand(body: unknown): Command {
       };
     }
 
+    case "ui_columns": {
+      const { columns } = fields;
+      if (
+        typeof columns !== "number" ||
+        !Number.isInteger(columns) ||
+        columns < 1 ||
+        columns > 1000
+      ) {
+        throw new BadRequest("columns must be a whole number from 1 to 1000");
+      }
+
+      return { actor: user, type: "ui_columns", columns };
+    }
+
     case "answer":
       return {
         actor: user,
@@ -670,7 +684,7 @@ function browserCommand(body: unknown): Command {
 
     default:
       throw new BadRequest(
-        "type must be message, abort, set_model, set_thinking, unqueue, answer or explain",
+        "type must be message, abort, set_model, set_thinking, ui_columns, unqueue, answer or explain",
       );
   }
 }

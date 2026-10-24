@@ -49,7 +49,7 @@ Pi Cloud reaches into a few of `InteractiveMode`'s private members, all in one m
 
 - Extensions that only work in a terminal work in a hosted Session, and the user keeps Pi's own keys and editor.
 - The first opening of the Pi view runs `session_start` once more for the Session's extensions. An extension that posts a message or starts something there does it twice.
-- What an extension draws in one UI, such as a widget, stays there. The other UI shows it the next time the extension updates it.
+- What an extension draws in one UI, such as a widget, stays there. The other UI shows it the next time the extension updates it. [ADR 0028](0028-extension-ui-on-the-web.md) sends widgets, footers, headers and statuses to both.
 - Pi Cloud depends on `InteractiveMode` internals. A Pi upgrade can break the view, and the tests say where.
 - A Session that opens the Pi view keeps its TUI in memory until it stops, and the TUI's first start can download `fd` and `rg` as Pi's CLI does.
 - Settings changed in the TUI, such as the model, reach the web with the next settings event, not at once.

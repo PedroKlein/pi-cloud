@@ -19,6 +19,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
+import chalk from "chalk";
+import type { Surfaces } from "./surfaces";
 import type { RemoteUI } from "./ui";
 import "./codemode";
 
@@ -41,7 +43,7 @@ export interface SessionOptions extends ModelOptions {
 }
 
 export interface SessionHost {
-  readonly ui: RemoteUI;
+  readonly ui: RemoteUI & Surfaces;
   readonly tools: readonly ToolDefinition[];
   readonly extensions: readonly InlineExtension[];
   readonly onError: (error: ExtensionError) => void;
@@ -64,6 +66,10 @@ export async function startSession(
   // Pi's CLI sets the theme before any mode runs, and extensions style their
   // status text with it even when no terminal renders it.
   initTheme();
+
+  // Pi styles bold and italic text with chalk, which leaves styles out without
+  // a terminal. What extensions draw goes to the web and the Pi view.
+  chalk.level = 3;
 
   const systemPrompt = options.systemPrompt ?? null;
 

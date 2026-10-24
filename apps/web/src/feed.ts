@@ -11,10 +11,6 @@ import {
 import { chatItems, type ChatItem } from "./chat";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;
-
-// Lines an extension writes for hosts to read, such as pi-subagents'
-// PI_SUBAGENT_ASYNC_JSON status snapshots, not for people.
-const hostPayload = /^PI_[A-Z_]+_JSON:/;
 export type Settings = Extract<LiveEvent, { type: "settings" }>;
 export type Explanation = Extract<LiveEvent, { type: "explanation" }>;
 
@@ -38,6 +34,9 @@ export interface Feed {
   readonly statuses: readonly string[];
   readonly widgetsAbove: string;
   readonly widgetsBelow: string;
+  // An extension's footer, which replaces the statuses, and header (ADR 0028).
+  readonly footer: string | undefined;
+  readonly header: string | undefined;
   readonly queue: {
     readonly steering: readonly string[];
     readonly followUp: readonly string[];
@@ -64,6 +63,8 @@ export const emptyFeed: Feed = {
   statuses: [],
   widgetsAbove: "",
   widgetsBelow: "",
+  footer: undefined,
+  header: undefined,
   queue: { steering: [], followUp: [] },
   editorText: undefined,
   commands: [],
@@ -104,6 +105,7 @@ export function feedReader({
   let echo = "";
   const statuses = new Map<string, string>();
   const widgets = new Map<string, Widget>();
+  const drawn = new Map<"footer" | "header", string>();
 
   // After a reconnect the prompts already shown stay, with their
   // explanations, until the replay has re-announced the ones still open.
@@ -132,13 +134,14 @@ export function feedReader({
       [...widgets.values()]
         .filter((widget) => widget.placement === placement)
         .flatMap((widget) => widget.lines ?? [])
-        .filter((line) => !hostPayload.test(line))
         .join("\n");
 
     return {
       statuses: [...statuses.values()],
       widgetsAbove: widgetText("aboveEditor"),
       widgetsBelow: widgetText("belowEditor"),
+      footer: drawn.get("footer"),
+      header: drawn.get("header"),
     };
   };
 
@@ -242,6 +245,17 @@ export function feedReader({
         update(surfaces());
 
         return;
+      case "footer":
+      case "header":
+        if (event.lines === null) {
+          drawn.delete(event.type);
+        } else {
+          drawn.set(event.type, event.lines.join("\n"));
+        }
+
+        update(surfaces());
+
+        return;
       case "title":
         update({ title: event.title });
 
@@ -301,6 +315,7 @@ export function feedReader({
   const clearLive = (): Partial<Feed> => {
     statuses.clear();
     widgets.clear();
+    drawn.clear();
     echo = "";
 
     return {

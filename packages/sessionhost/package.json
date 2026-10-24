@@ -12,6 +12,7 @@
     "@earendil-works/pi-tui": "1.3.0",
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",
+    "chalk": "6.0.0",
     "quickjs-wasi": "3.6.2"
   },
   "devDependencies": {

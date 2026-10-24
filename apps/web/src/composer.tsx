@@ -19,6 +19,7 @@ import { modelName, modelRef } from "./names";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
 import { browserCommand } from "./suggest";
 import { useSuggestions } from "./suggestions";
+import { Styled, TerminalColumns, TerminalText } from "./terminal-text";
 
 // Pi reads a message sent now after its current step, and a queued one when
 // it finishes.
@@ -46,6 +47,26 @@ export function Composer({
   const suggestions = useSuggestions(feed);
   const running = feed.session?.status === "running";
   const { steering, followUp } = feed.queue;
+  const [columns, setColumns] = useState<number>();
+  const generation = feed.session?.generation;
+  const hosted = feed.session?.status === "idle" || running;
+
+  useEffect(() => {
+    if (columns === undefined || !hosted) {
+      return;
+    }
+
+    const later = setTimeout(() => {
+      // Only a running Session can hear it, and each start is told again.
+      command(sessionId, { type: "ui_columns", columns }).catch(
+        () => undefined,
+      );
+    }, 200);
+
+    return () => {
+      clearTimeout(later);
+    };
+  }, [sessionId, columns, generation, hosted]);
 
   useEffect(() => {
     if (feed.editorText && text.current) {
@@ -195,6 +216,8 @@ export function Composer({
           </button>
         </p>
       ))}
+
+      <TerminalColumns onColumns={setColumns} />
 
       {feed.widgetsAbove !== "" && <Widget text={feed.widgetsAbove} />}
 
@@ -370,9 +393,15 @@ export function Composer({
 
       {feed.widgetsBelow !== "" && <Widget text={feed.widgetsBelow} />}
 
-      {feed.statuses.length > 0 && (
-        <footer className="px-2 text-caption text-fg-dim">
-          {feed.statuses.join(" · ")}
+      {feed.footer === undefined ? (
+        feed.statuses.length > 0 && (
+          <footer className="px-2 text-caption text-fg-dim">
+            <Styled text={feed.statuses.join(" · ")} />
+          </footer>
+        )
+      ) : (
+        <footer>
+          <TerminalText text={feed.footer} className="text-fg-dim" />
         </footer>
       )}
     </div>
@@ -408,11 +437,7 @@ async function attached(file: File): Promise<Attached> {
 }
 
 function Widget({ text }: { readonly text: string }): ReactElement {
-  return (
-    <pre className="rounded-md bg-code px-3 py-2 font-mono text-mono-sm whitespace-pre-wrap text-fg-dim">
-      {text}
-    </pre>
-  );
+  return <TerminalText text={text} className="rounded-md bg-code py-2" />;
 }
 
 const picker =

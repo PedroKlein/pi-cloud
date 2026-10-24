@@ -23,6 +23,7 @@ import {
 } from "./chat";
 import type { Feed } from "./feed";
 import { renderMarkdown } from "./markdown";
+import { TerminalText } from "./terminal-text";
 
 export function ChatView({
   feed,
@@ -53,6 +54,26 @@ export function ChatView({
     }
   }, [feed.items, feed.streaming, feed.tools, feed.prompts, hidden]);
 
+  // Widgets drawn around the composer shrink the chat after it has scrolled.
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box || hidden) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (atBottom.current) {
+        box.scrollTop = box.scrollHeight;
+      }
+    });
+
+    observer.observe(box);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hidden]);
+
   return (
     <div
       ref={scroller}
@@ -66,6 +87,11 @@ export function ChatView({
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >
+      {feed.header !== undefined && (
+        <header className="mx-auto max-w-chat px-4 pt-8">
+          <TerminalText text={feed.header} />
+        </header>
+      )}
       {shown.length === 0 && !live && feed.session && (
         <Greeting place={place} />
       )}
