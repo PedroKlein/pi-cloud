@@ -1238,4 +1238,23 @@ test("draws an extension's widget and footer as Pi's TUI does, at the composer's
   expect(await settled()).toBeLessThan(wide);
   expect(await filled()).toBeGreaterThan(0.85);
   expect(await filled()).toBeLessThanOrEqual(1);
+
+  // The widgets mount after the chat scrolls to its end, and still leave the
+  // last reply in view.
+  faux.setResponses([
+    fauxAssistantMessage([fauxText(Array(40).fill("line").join("\n\n"))]),
+  ]);
+
+  await page.locator("#prompt-text").fill("talk a lot");
+  await page.locator("#prompt-text").press("Enter");
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+  await page.reload();
+  await page.locator("footer", { hasText: "status: planning" }).waitFor();
+  await Bun.sleep(500);
+
+  expect(
+    await page.evaluate(
+      "(() => { const box = document.querySelector('#chat').parentElement; return box.scrollHeight - box.scrollTop - box.clientHeight; })()",
+    ),
+  ).toBeLessThan(2);
 }, 30_000);

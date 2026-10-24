@@ -54,6 +54,26 @@ export function ChatView({
     }
   }, [feed.items, feed.streaming, feed.tools, feed.prompts, hidden]);
 
+  // Widgets drawn around the composer shrink the chat after it has scrolled.
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box || hidden) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (atBottom.current) {
+        box.scrollTop = box.scrollHeight;
+      }
+    });
+
+    observer.observe(box);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hidden]);
+
   return (
     <div
       ref={scroller}

@@ -82,7 +82,10 @@ export function TerminalColumns({
 
   return (
     <div ref={box} aria-hidden className="h-0 overflow-hidden px-3">
-      <span ref={probe} className="font-mono text-mono-sm whitespace-pre">
+      <span
+        ref={probe}
+        className="invisible font-mono text-mono-sm whitespace-pre"
+      >
         {probeText}
       </span>
     </div>
