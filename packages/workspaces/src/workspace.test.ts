@@ -324,15 +324,12 @@ test("reaches the remote with the environment it is given", async () => {
   expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
 });
 
-test("answers git's credential requests for GitHub with a GH_TOKEN", async () => {
-  const child = spawn("git", ["credential", "fill"], {
-    cwd: root,
-    env: {
-      ...process.env,
-      GIT_TERMINAL_PROMPT: "0",
-      ...gitCredentials({ GH_TOKEN: "t0ken" }),
-    },
-  });
+async function credential(
+  action: "fill" | "approve",
+  input: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<string> {
+  const child = spawn("git", ["credential", action], { cwd: root, env });
 
   let stdout = "";
 
@@ -340,12 +337,51 @@ test("answers git's credential requests for GitHub with a GH_TOKEN", async () =>
     stdout += chunk.toString();
   });
 
-  child.stdin.end("protocol=https\nhost=github.com\n\n");
+  child.stdin.end(input);
   await once(child, "close");
 
-  expect(stdout).toContain("username=x-access-token");
-  expect(stdout).toContain("password=t0ken");
-  expect(gitCredentials({})).toEqual({});
+  return stdout;
+}
+
+test("answers git's credential requests for GitHub with a GH_TOKEN, ahead of the machine's own helpers", async () => {
+  const home = join(root, "home");
+  await mkdir(home);
+  await writeFile(join(home, ".gitconfig"), "[credential]\n\thelper = store\n");
+
+  await writeFile(
+    join(home, ".git-credentials"),
+    "https://olduser:stale@github.com\n",
+  );
+
+  const base = {
+    ...process.env,
+    HOME: home,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "user.name",
+    GIT_CONFIG_VALUE_0: "kept",
+  };
+
+  const env = { ...base, ...gitCredentials({ GH_TOKEN: "t0ken" }, base) };
+  const request = "protocol=https\nhost=github.com\n\n";
+
+  const filled = await credential("fill", request, env);
+  await credential("approve", filled, env);
+
+  const { stdout: name } = await run("git", ["config", "user.name"], {
+    cwd: root,
+    env,
+  });
+
+  expect(filled).toContain("username=x-access-token");
+  expect(filled).toContain("password=t0ken");
+
+  expect(await readFile(join(home, ".git-credentials"), "utf8")).not.toContain(
+    "t0ken",
+  );
+
+  expect(name.trim()).toBe("kept");
+  expect(gitCredentials({}, base)).toEqual({});
 });
 
 test("keeps an existing clone and its changes on a later attempt", async () => {

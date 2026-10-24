@@ -222,9 +222,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     try {
       const agentDir = await syncProfileOf(assignment, sessionLog);
-      const image = await setUp(assignment.environment);
-      const git = gitCredentials(assignment.environment.variables);
-      const variables = { ...assignment.environment.variables, ...git };
+      const environment = assignment.environment.variables;
+
+      const variables = {
+        ...environment,
+        ...gitCredentials(environment, { ...process.env, ...environment }),
+      };
+
+      const image = await setUp({ ...assignment.environment, variables });
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
@@ -232,7 +237,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           dir: workspaceDir(sessionId),
           folders: options.folders,
           mirrors: join(options.dataDir, "mirrors"),
-          remoteEnv: git,
+          remoteEnv: gitCredentials(environment, process.env),
         },
         sessionLog,
       );
