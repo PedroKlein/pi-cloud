@@ -1,7 +1,14 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type {
   Assignment,
   ModelRef,
@@ -100,11 +107,24 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     options.signal,
   );
 
-  // The machine's logins, which every Profile uses (ADR 0031).
+  // The machine's logins, which every Profile uses (ADR 0031). They have a
+  // folder of their own, which container Sessions mount to take Pi's lock
+  // files next to them.
+  const logins = join(options.dataDir, "logins");
+  await mkdir(logins, { recursive: true });
+
   const credentials = {
-    authPath: join(options.dataDir, "auth.json"),
-    modelsPath: join(options.dataDir, "models.json"),
+    authPath: join(logins, "auth.json"),
+    modelsPath: join(logins, "models.json"),
   };
+
+  for (const path of Object.values(credentials)) {
+    const earlier = join(options.dataDir, basename(path));
+    if (existsSync(earlier) && !existsSync(path)) {
+      await rename(earlier, path);
+      log("login file moved", { from: earlier, to: path });
+    }
+  }
 
   // The machine's models, and those of providers its Profiles' packages add.
   const listers = new Map<

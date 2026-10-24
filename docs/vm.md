@@ -7,7 +7,7 @@ This sets up `pi-cloud server` on a Linux VM with a built-in provider named `vm`
 Sessions use the VM's own tools, so set these up first as the user that will run the server:
 
 - git, with credentials for the repositories you'll clone (an SSH key or a credential helper). Pi Cloud never prompts for them.
-- Nothing from your own Pi setup. Sessions take their packages, instructions and settings from their Profile, which you edit on the Profiles page, and never read `~/.pi/agent` ([ADR 0031](adr/0031-profiles.md)). Log the VM in to a model provider from any Session with `/login`. The login is kept in the server's data directory (`~/.pi-cloud/server/auth.json` by default) and serves every Profile on the VM. Custom model providers go in `models.json` in the same directory, in Pi's own format. Settings a Session changes from inside Pi, such as with `/settings` or `/mcp`, last until its next start: the Profile on the server is what every start uses.
+- Nothing from your own Pi setup. Sessions take their packages, instructions and settings from their Profile, which you edit on the Profiles page, and never read `~/.pi/agent` ([ADR 0031](adr/0031-profiles.md)). Log the VM in to a model provider from any Session with `/login`. The login is kept in the server's data directory (`~/.pi-cloud/server/logins/auth.json` by default) and serves every Profile on the VM. Custom model providers go in `models.json` in the same folder, in Pi's own format. Settings a Session changes from inside Pi, such as with `/settings` or `/mcp`, last until its next start: the Profile on the server is what every start uses.
 
 - Whatever your projects need to build and test.
 

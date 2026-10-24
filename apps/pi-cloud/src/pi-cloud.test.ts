@@ -2160,6 +2160,14 @@ test("rejects requests from other sites", async () => {
   expect(statuses).toEqual([403, 403, 403, 200]);
 });
 
+test("accepts a container Session reaching the server through Docker's host name", async () => {
+  const response = await fetch(new URL("/api/sessions", server.url), {
+    headers: { host: `host.docker.internal:${server.url.port}` },
+  });
+
+  expect(response.status).toBe(200);
+});
+
 test("does not open a terminal for a request that is not a WebSocket", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
