@@ -1,6 +1,6 @@
 import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { SessionOptions } from "@pi-cloud/sessionhost";
 
 // Where a container Session finds the runner's Linux pi-cloud binary.
@@ -19,7 +19,8 @@ export interface ContainerSession {
 // A container Session runs the runner's own binary, mounted into any image
 // with glibc, bash and git, as the runner's user. It sees only what it needs:
 // its workspace, the listed folders its worktrees belong to, its Profile
-// folder, its own Session folder, the machine's logins and local extensions.
+// folder, its own Session folder, the machine's logins folder and local
+// extensions.
 // Paths are mounted at the same place, so the Session's spec needs no
 // rewriting (ADR 0032).
 export async function containerSession(options: {
@@ -45,8 +46,8 @@ export async function containerSession(options: {
     session.sessionDir,
     ...(await existing([
       ...options.folders.map(expanded),
-      session.authPath,
-      session.modelsPath,
+      dirname(session.authPath),
+      dirname(session.modelsPath),
     ])),
   ];
 
