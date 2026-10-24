@@ -20,7 +20,7 @@ Pi already supports:
 - user and project settings;
 - context and system-prompt files.
 
-Hosted Sessions should use these resources through a versioned Profile. Pi Cloud should not invent cloud-only replacements for them.
+Hosted Sessions use these resources through a Profile ([ADR 0031](adr/0031-profiles.md)). Pi Cloud should not invent cloud-only replacements for them.
 
 ### Pi Cloud capabilities
 
@@ -40,13 +40,13 @@ A Profile describes which Pi the user expects to run. It may include:
 - preferences and defaults;
 - references to credentials without embedding credential values.
 
-A Session records the exact Profile revision it used. Updating a Profile creates a new revision rather than silently changing the historical explanation of an existing Session.
+A Session records which Profile it uses, fixed when it starts. Profiles have no revisions: like Pi's agent directory, a Session's process loads the Profile's current content when it starts or restarts ([ADR 0031](adr/0031-profiles.md)).
 
 The working configuration precedence is:
 
 1. mandatory Pi Cloud Session bridge;
 2. installation policy;
-3. selected Profile revision;
+3. selected Profile;
 4. selected Environment overlay;
 5. trusted project configuration;
 6. explicit Session overrides.
@@ -78,7 +78,7 @@ The core should remain small enough that optional products can evolve outside it
 Likely kernel resources are:
 
 - actors and ownership;
-- Profiles and revisions;
+- Profiles;
 - Environments and revisions;
 - Runtime Provider registration and capability discovery;
 - Workspaces;
@@ -165,7 +165,7 @@ actor:
 target:
   type: new-session | existing-session
 
-profile: profile-name-or-revision
+profile: profile-name
 environment: environment-name-or-revision
 project: optional-project
 workspacePolicy: existing | worktree | fresh | ephemeral

@@ -14,7 +14,7 @@ Deterministic infrastructure software that stores desired state, assigns work, e
 
 ### Profile
 
-A versioned description of Pi personalization: packages, extensions, skills, prompts, instructions, MCP servers, model configuration, and preferences. Required installation policy, Environment overlays, trusted project configuration, and temporary session overrides may layer over a Profile.
+A description of Pi personalization kept on the server: Pi packages, instructions and system prompt, MCP servers, model configuration, and preferences. It works like Pi's agent directory without credentials and has no revisions: a Session's Pi process loads its current content each time it starts. Trusted project configuration and the Session's own picks layer over it ([ADR 0031](adr/0031-profiles.md)).
 
 ### Runtime Provider
 
@@ -40,7 +40,7 @@ The durable filesystem and repository state owned by a session. A Workspace may 
 
 ### Session
 
-One full Pi conversation with its own transcript, context, model state, Profile revision, Environment revision, Workspace, active attempt, and lifecycle. A Session may be independent or related to a Project.
+One full Pi conversation with its own transcript, context, model state, Profile, Environment revision, Workspace, active attempt, and lifecycle. A Session may be independent or related to a Project.
 
 The Session is where the other concepts meet. Project, Repository, Environment and Profile are peers that a Session points at; none contains another ([ADR 0014](adr/0014-concept-map-and-environments.md)).
 
@@ -113,7 +113,7 @@ flowchart LR
     K8S --> KS[Kubernetes Pi Sessions]
 ```
 
-The control plane owns identity, Project and Session records, Environment and Profile revisions, assignments, leases, shared Project state, and browser event routing. Providers own execution, Pi processes, Workspace realization, and provider-local credentials. See [Working architecture](architecture.md) for the detailed responsibility and lifecycle model.
+The control plane owns identity, Project and Session records, Environment revisions, Profiles, assignments, leases, shared Project state, and browser event routing. Providers own execution, Pi processes, Workspace realization, and provider-local credentials. See [Working architecture](architecture.md) for the detailed responsibility and lifecycle model.
 
 ## Session configuration
 
@@ -121,7 +121,7 @@ The current working precedence is:
 
 1. mandatory Pi Cloud session bridge;
 2. installation policy;
-3. selected Profile revision;
+3. selected Profile;
 4. selected Environment overlay;
 5. trusted project configuration;
 6. explicit Session overrides.

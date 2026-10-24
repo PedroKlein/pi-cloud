@@ -1,6 +1,6 @@
 # 0014: Concept map and Environments
 
-- Status: accepted
+- Status: accepted, Profiles amended by [ADR 0031](0031-profiles.md)
 - Date: 2026-10-21
 
 ## Context
@@ -22,14 +22,14 @@ The Session is where the other concepts meet. Each one answers a single question
 | Project     | Which goal is this part of?              | at most one, with a role          |
 | Repository  | Which code?                              | zero or more                      |
 | Environment | Where does it run, and under what rules? | exactly one, fixed when it starts |
-| Profile     | Which Pi: packages, extensions, skills?  | one revision (v2)                 |
+| Profile     | Which Pi: packages, extensions, skills?  | exactly one, fixed when it starts |
 
 - Project, Repository, Environment and Profile are peers. None of them contains another.
 - A Project has a default Environment but doesn't own it. One Environment serves many Projects, and one Project's Sessions can run in different Environments.
 - A Project never owns infrastructure, which is what [vision.md](../vision.md#projects-are-logical-not-infrastructure-boundaries) already says.
 - Under an Environment is infrastructure the user doesn't pick: a Runtime Provider supplies a Runtime, and the Runtime realizes the Session's Workspace.
 - A Repository is identified by its clone URL. v1 stores URLs where they are used and has no repositories table. A table can come when something hangs off a repository, such as credentials or a mirror setting.
-- Profiles stay in v2. A v1 Session uses its provider's own Pi setup ([ADR 0005](0005-v1-access-and-model-credentials.md)).
+- Profiles stay in v2. A v1 Session uses its provider's own Pi setup ([ADR 0005](0005-v1-access-and-model-credentials.md)). v2 Profiles are in [ADR 0031](0031-profiles.md).
 
 ### Environments in v1
 
