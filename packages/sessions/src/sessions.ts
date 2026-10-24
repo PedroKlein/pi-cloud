@@ -5,6 +5,7 @@ import {
   type Attempt,
   type Command,
   type Environment,
+  type EnvironmentUpdate,
   leaseMs,
   type LiveEvent,
   type LivePost,
@@ -14,6 +15,7 @@ import {
   type Removal,
   type RemovalPost,
   type Session,
+  type SessionEnvironment,
   type SessionEvent,
   type SessionOwner,
   type SessionStatus,
@@ -32,8 +34,8 @@ export type StoredSession = Omit<Session, "online" | "waiting">;
 
 export type StoredEnvironment = Omit<
   Environment,
-  "online" | "runners" | "folders" | "models"
->;
+  "online" | "runners" | "folders" | "models" | "secrets"
+> & { readonly secrets: Readonly<Record<string, string>> };
 
 // v1 has one user, who owns every record (ADR 0015).
 export const owner = "local";
@@ -53,6 +55,7 @@ export interface SessionStore {
   ) => void;
   ensureEnvironment: (provider: string) => void;
   environments: () => readonly StoredEnvironment[];
+  updateEnvironment: (environment: StoredEnvironment) => void;
   insert: (session: StoredSession) => void;
   update: (session: StoredSession) => void;
   get: (id: string) => StoredSession | undefined;
@@ -361,6 +364,39 @@ export class Sessions {
     return session && this.#view(session);
   }
 
+  updateEnvironment(
+    id: string,
+    update: EnvironmentUpdate,
+  ): Result<Environment, "unknown_environment"> {
+    const environment = this.#store
+      .environments()
+      .find((each) => each.id === id);
+
+    if (!environment) {
+      return { ok: false, reason: "unknown_environment" };
+    }
+
+    const secrets = Object.fromEntries(
+      Object.entries({ ...environment.secrets, ...update.secrets }).filter(
+        (entry): entry is [string, string] => entry[1] !== null,
+      ),
+    );
+
+    this.#store.updateEnvironment({
+      ...environment,
+      name: update.name ?? environment.name,
+      setupScript: update.setupScript ?? environment.setupScript,
+      variables: update.variables ?? environment.variables,
+      secrets,
+    });
+
+    const updated = this.environments().find((each) => each.id === id);
+
+    return updated
+      ? { ok: true, value: updated }
+      : { ok: false, reason: "unknown_environment" };
+  }
+
   environments(): readonly Environment[] {
     return this.#store.environments().map((environment) => {
       const runners = this.#polls.runners(environment.provider);
@@ -368,6 +404,7 @@ export class Sessions {
 
       return {
         ...environment,
+        secrets: Object.keys(environment.secrets),
         online: runners.some(({ online }) => online),
         runners: runners.map(({ name, online, capacity }) => ({
           name,
@@ -799,8 +836,20 @@ export class Sessions {
           systemPrompt: session.systemPrompt,
           firstMessage: session.firstMessage,
           plugins: this.#sessionPlugins,
+          environment: this.#sessionEnvironment(session.environmentId),
         };
       });
+  }
+
+  #sessionEnvironment(id: string): SessionEnvironment {
+    const environment = this.#store
+      .environments()
+      .find((each) => each.id === id);
+
+    return {
+      setupScript: environment?.setupScript ?? "",
+      variables: { ...environment?.variables, ...environment?.secrets },
+    };
   }
 
   // A turn running on a runner whose lease lapsed is reported as interrupted,

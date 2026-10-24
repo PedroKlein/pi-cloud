@@ -107,11 +107,12 @@ interface Kept {
   channel: TerminalChannel | undefined;
 }
 
-// Opens session terminals in cwd. A shell outlives its socket until it exits,
+// Opens session terminals in cwd, with the Environment's variables. A shell outlives its socket until it exits,
 // its tab is closed or the Session stops, and a later socket for the same
 // terminal picks it up again (ADR 0026).
 export function hostTerminals(
   cwd: string,
+  variables: Readonly<Record<string, string>>,
   stream: Pick<SessionStream, "terminal" | "publish">,
   log: Log,
 ): Terminals {
@@ -157,7 +158,7 @@ export function hostTerminals(
     const output: Uint8Array[] = [];
     let size = 0;
 
-    const shell = openTerminal({ cwd, cols, rows }, (data) => {
+    const shell = openTerminal({ cwd, variables, cols, rows }, (data) => {
       output.push(data);
       size += data.byteLength;
 

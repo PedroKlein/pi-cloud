@@ -89,12 +89,13 @@ test("closes a terminal socket whose output the server stops reading", async () 
       systemPrompt: null,
       firstMessage: null,
       plugins: [],
+      environment: { setupScript: "", variables: {} },
     },
     log,
     () => undefined,
   );
 
-  const terminals = hostTerminals(tmpdir(), stream, log);
+  const terminals = hostTerminals(tmpdir(), {}, stream, log);
 
   try {
     terminals.open({
@@ -136,6 +137,7 @@ test("stops an attempt the server fenced without failing its live events", async
       systemPrompt: null,
       firstMessage: null,
       plugins: [],
+      environment: { setupScript: "", variables: {} },
     },
     () => undefined,
     () => {

@@ -1,5 +1,6 @@
 export interface TerminalOptions {
   readonly cwd: string;
+  readonly variables?: Readonly<Record<string, string>>;
   readonly cols: number;
   readonly rows: number;
   readonly shell?: string;
@@ -21,7 +22,7 @@ export function openTerminal(
 
   const proc = Bun.spawn([shell, "-i"], {
     cwd: options.cwd,
-    env: { ...process.env, TERM: "xterm-256color" },
+    env: { ...process.env, ...options.variables, TERM: "xterm-256color" },
     terminal: {
       cols: options.cols,
       rows: options.rows,

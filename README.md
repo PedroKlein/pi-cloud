@@ -53,6 +53,8 @@ pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
                [--extension <path>]...
 ```
 
+An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only.
+
 Several agents can join one Environment's pool with `--environment <name>` ([ADR 0032](docs/adr/0032-environments-and-runners.md)); without it an agent joins the Environment named after it. `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
 
 ## Roadmap

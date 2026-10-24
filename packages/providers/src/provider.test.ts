@@ -21,6 +21,7 @@ const assignment: Assignment = {
   systemPrompt: null,
   firstMessage: null,
   plugins: [],
+  environment: { setupScript: "", variables: {} },
 };
 
 const none: Work = { start: [], unload: [], remove: [] };

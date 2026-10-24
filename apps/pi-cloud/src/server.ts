@@ -22,6 +22,7 @@ import {
   type ToolCall,
   protocolVersion,
   environmentHeader,
+  type EnvironmentUpdate,
   providerHeader,
   type TranscriptBatch,
   type TrustAnswer,
@@ -144,6 +145,24 @@ export function createHandler(
       "GET",
       /^\/api\/environments$/,
       () => Response.json(sessions.environments()),
+    ],
+    [
+      "PATCH",
+      /^\/api\/environments\/([^/]+)$/,
+      async (request, [id = ""]) => {
+        const updated = sessions.updateEnvironment(
+          id,
+          environmentUpdate(await readJson(request)),
+        );
+
+        if (!updated.ok) {
+          return notFound();
+        }
+
+        log("environment updated", { environmentId: id });
+
+        return Response.json(updated.value);
+      },
     ],
     ...profileRoutes(profiles, log),
     [
@@ -666,6 +685,59 @@ function createSession(body: unknown): CreateSession {
   }
 
   return { ...request, model: { provider: modelProvider, id } };
+}
+
+const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function environmentUpdate(body: unknown): EnvironmentUpdate {
+  const { name, setupScript, variables, secrets } = (body ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
+    throw new BadRequest("name must be a non-empty string");
+  }
+
+  if (setupScript !== undefined && typeof setupScript !== "string") {
+    throw new BadRequest("setupScript must be a string");
+  }
+
+  return {
+    ...(name !== undefined && { name: name.trim() }),
+    ...(setupScript !== undefined && { setupScript }),
+    ...(variables !== undefined && {
+      variables: namedValues("variables", variables, false),
+    }),
+    ...(secrets !== undefined && {
+      secrets: namedValues("secrets", secrets, true),
+    }),
+  };
+}
+
+function namedValues<Nullable extends boolean>(
+  field: string,
+  value: unknown,
+  nullable: Nullable,
+): Record<string, Nullable extends true ? string | null : string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BadRequest(`${field} must be an object`);
+  }
+
+  for (const [key, each] of Object.entries(value)) {
+    if (!variableName.test(key)) {
+      throw new BadRequest(`${field} has an invalid name: ${key}`);
+    }
+
+    if (typeof each !== "string" && !(nullable && each === null)) {
+      throw new BadRequest(`${field}.${key} must be a string`);
+    }
+  }
+
+  return value as Record<
+    string,
+    Nullable extends true ? string | null : string
+  >;
 }
 
 function optionalText<K extends string>(

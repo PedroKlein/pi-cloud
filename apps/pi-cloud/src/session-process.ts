@@ -43,7 +43,9 @@ export async function spawnSession(
 ): Promise<HostedSession & { readonly exited: Promise<number | null> }> {
   const [executable = process.execPath, ...args] = sessionCommand;
 
+  // Pi's tools inherit the Environment's variables from the process.
   const child = spawn(executable, args, {
+    env: { ...process.env, ...spec.assignment.environment.variables },
     stdio: ["pipe", "pipe", "inherit"],
   });
 
