@@ -634,6 +634,36 @@ test("creates a Project and shares a file through its library", async () => {
   await page.getByRole("menuitem", { name: "Archive" }).click();
   await page.locator("#status", { hasText: "archived" }).waitFor();
   await nav.waitFor({ state: "detached" });
+
+  await rail
+    .getByRole("listitem", { name: "Docs" })
+    .getByText(/^Archived · /)
+    .waitFor();
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  await page
+    .locator("section", {
+      has: page.getByRole("heading", { name: "Archived" }),
+    })
+    .getByRole("button", { name: /^Site docs/ })
+    .click();
+
+  await page.getByRole("button", { name: "Project settings" }).click();
+  await settings.getByRole("button", { name: "Unarchive Project" }).click();
+  await nav.waitFor();
+
+  await rail
+    .getByRole("listitem", { name: "Docs" })
+    .getByText(/^Archived · /)
+    .waitFor({ state: "detached" });
+
+  page.once("dialog", async (dialog) => dialog.accept());
+  await settings.getByRole("button", { name: "Archive Project" }).click();
+  await nav.waitFor({ state: "detached" });
 }, 30_000);
 
 test("shows a plugin page's failure without taking the app down", async () => {

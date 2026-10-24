@@ -181,6 +181,24 @@ function pluginSessions(
   sessions: Sessions,
   plugin: string,
 ): ServerPluginContext["sessions"] {
+  const ownedHere = (id: string): string => {
+    if (sessions.get(id)?.owner?.plugin !== plugin) {
+      throw new Error(`session ${id} isn't owned by ${plugin}`);
+    }
+
+    return id;
+  };
+
+  const settle = (
+    outcome:
+      { readonly ok: true } | { readonly ok: false; readonly reason: string },
+    done: string,
+  ): void => {
+    if (!outcome.ok) {
+      throw new Error(`session not ${done}: ${outcome.reason}`);
+    }
+  };
+
   return {
     start: (request, ownerKey) => {
       const started = sessions.start(
@@ -199,6 +217,12 @@ function pluginSessions(
       sessions.list({ archived, owner: { plugin, key } }),
     adopt: (id, key) => {
       sessions.adopt(id, { plugin, key });
+    },
+    archive: (id) => {
+      settle(sessions.archive(ownedHere(id)), "archived");
+    },
+    unarchive: (id) => {
+      settle(sessions.unarchive(ownedHere(id)), "unarchived");
     },
     send: (id, text, actor, notice) =>
       sessions.send(

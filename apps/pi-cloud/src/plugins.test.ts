@@ -290,6 +290,46 @@ test("publishes kernel events and starts sessions for plugins", async () => {
   ]);
 });
 
+test("lets a plugin archive and bring back only the Sessions it owns", async () => {
+  let context: ServerPluginContext | undefined;
+  const seen: string[] = [];
+
+  await start([
+    {
+      name: "owner",
+      register: (registered) => {
+        context = registered;
+
+        registered.events.subscribe("SessionUnarchived", ({ archivedAt }) => {
+          seen.push(archivedAt);
+        });
+      },
+    },
+  ]);
+
+  await environmentReady();
+
+  const request = {
+    actor: "plugin:owner",
+    workspace: { kind: "folder", path: root },
+  } as const;
+
+  const owned = context?.sessions.start(request, "board");
+  const other = context?.sessions.start(request);
+
+  context?.sessions.archive(owned?.id ?? "");
+  const archivedAt = context?.sessions.get(owned?.id ?? "")?.archivedAt;
+  context?.sessions.unarchive(owned?.id ?? "");
+
+  expect(archivedAt).toBeString();
+  expect(seen).toEqual([archivedAt ?? ""]);
+  expect(context?.sessions.get(owned?.id ?? "")?.archivedAt).toBeNull();
+
+  expect(() => context?.sessions.archive(other?.id ?? "")).toThrow(
+    "isn't owned by owner",
+  );
+});
+
 test("tells a plugin why a message did not reach a session", async () => {
   let sessions: ServerPluginContext["sessions"] | undefined;
 

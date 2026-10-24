@@ -19,7 +19,7 @@ The kernel has no Project code ([ADR 0015](0015-plugins.md)). Hiding a Project's
 - The Session list, the sidebar and the default `GET /api/sessions` leave out owned Sessions. The API takes an `owner` filter, and the plugin context gets `sessions.list({ owner })`.
 - The owning plugin's web part says where each of its Sessions opens. Search results, browser notices and `/sessions/<id>` links for an owned Session go there, so a thread opens inside its Project.
 - If the owning plugin is turned off, its Sessions come back in the Session list with a tag naming the plugin, so nothing is lost. This replaces ADR 0016's "their Sessions stay ordinary Sessions".
-- `sessions.archive({ owner })` and `sessions.unarchive({ owner })` archive or bring back every Session one owner holds.
+- `sessions.archive(id)` and `sessions.unarchive(id)` archive or bring back a Session the plugin owns, and the kernel publishes `SessionUnarchived` next to `SessionArchived`, so a plugin can take every Session of an owner along. Projects does this when its coordinator is archived or comes back, and brings back only the threads archived with it.
 
 ### A Session view plugins can embed
 

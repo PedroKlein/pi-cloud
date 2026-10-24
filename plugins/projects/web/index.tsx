@@ -268,30 +268,26 @@ function ProjectList({
     "projects",
   ).value;
 
+  const active = list?.filter(
+    ({ coordinatorState }) => coordinatorState !== "archived",
+  );
+
+  const archived = list?.filter(
+    ({ coordinatorState }) => coordinatorState === "archived",
+  );
+
   return (
     <>
       <PageTitle description="A Project is a coordinator session that starts threads across one or more repositories.">
         Projects
       </PageTitle>
-      {list?.length === 0 && <p className="text-fg-dim">No Projects yet.</p>}
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {list?.map((project) => (
-          <li key={project.id}>
-            <button
-              type="button"
-              onClick={() => {
-                onOpen(project.id);
-              }}
-              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-left hover:border-line-strong hover:bg-hover"
-            >
-              <span className="font-medium text-fg-strong">{project.name}</span>
-              <span className="text-caption text-fg-dim">
-                {project.threads} {project.threads === 1 ? "thread" : "threads"}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {active?.length === 0 && <p className="text-fg-dim">No Projects yet.</p>}
+      <ProjectCards projects={active ?? []} onOpen={onOpen} />
+      {archived !== undefined && archived.length > 0 && (
+        <Section title="Archived">
+          <ProjectCards projects={archived} onOpen={onOpen} />
+        </Section>
+      )}
       <Section title="New Project">
         <CreateForm
           context={context}
@@ -300,6 +296,35 @@ function ProjectList({
         />
       </Section>
     </>
+  );
+}
+
+function ProjectCards({
+  projects: shown,
+  onOpen,
+}: {
+  readonly projects: readonly ProjectSummary[];
+  readonly onOpen: (id: string) => void;
+}): ReactElement {
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {shown.map((project) => (
+        <li key={project.id}>
+          <button
+            type="button"
+            onClick={() => {
+              onOpen(project.id);
+            }}
+            className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-left hover:border-line-strong hover:bg-hover"
+          >
+            <span className="font-medium text-fg-strong">{project.name}</span>
+            <span className="text-caption text-fg-dim">
+              {project.threads} {project.threads === 1 ? "thread" : "threads"}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -712,6 +737,7 @@ function ProjectPage({
               <h3 className="text-label font-medium text-fg-dim">Memory</h3>
               <Memory context={context} path={path} project={project} />
             </section>
+            <ArchiveProject project={project} onDone={reload} />
           </div>
         </aside>
       )}
@@ -1185,6 +1211,58 @@ function Settings({
         </p>
       )}
     </form>
+  );
+}
+
+function ArchiveProject({
+  project,
+  onDone,
+}: {
+  readonly project: ProjectView;
+  readonly onDone: () => void;
+}): ReactElement {
+  const archived = project.coordinatorState === "archived";
+  const [error, setError] = useState("");
+
+  return (
+    <section aria-label="Archive" className="flex flex-col items-start gap-2">
+      <p className="text-caption text-fg-dim">
+        {archived
+          ? "Unarchiving brings back the coordinator and the threads archived with it."
+          : "Archiving stops the coordinator and every thread, and removes their clean checkouts. Memory and settings stay."}
+      </p>
+      <Button
+        onClick={() => {
+          if (
+            !archived &&
+            !confirm(`Archive ${project.name} and all its threads?`)
+          ) {
+            return;
+          }
+
+          setError("");
+
+          ok(
+            fetch(
+              `/api/sessions/${encodeURIComponent(project.coordinatorId)}/${archived ? "unarchive" : "archive"}`,
+              { method: "POST" },
+            ),
+          ).then(onDone, (failure: unknown) => {
+            setError(
+              failure instanceof Error ? failure.message : String(failure),
+            );
+          });
+        }}
+      >
+        <Icon name="archive" />
+        {archived ? "Unarchive Project" : "Archive Project"}
+      </Button>
+      {error !== "" && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 
