@@ -490,7 +490,10 @@ test("creates a Project and shares a file through its library", async () => {
   await settings.getByLabel("Name").fill("Site docs");
   await settings.getByLabel("Thread model").fill("faux/faux-1");
   await settings.getByRole("button", { name: "Save settings" }).click();
-  await page.getByRole("heading", { level: 1, name: "Site docs" }).waitFor();
+
+  await page
+    .getByRole("heading", { level: 1, name: "Site docs" })
+    .waitFor({ timeout: 1000 });
 
   expect(await settings.getByLabel("Thread model").inputValue()).toBe(
     "faux/faux-1",
