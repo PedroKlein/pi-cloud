@@ -124,7 +124,7 @@ export function terminalBroker(
       pair === undefined ||
       pair.host !== undefined ||
       request.headers.get(versionHeader) !== String(protocolVersion) ||
-      sessions.get(sessionId)?.provider !== provider ||
+      sessions.get(sessionId)?.runner !== provider ||
       !sessions.isCurrent(sessionId, generation)
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });
