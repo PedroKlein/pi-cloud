@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import {
   appendFile,
   mkdir,
@@ -17,7 +18,12 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Workspace } from "@pi-cloud/protocol";
-import { findCheckouts, prepareWorkspace, removeWorkspace } from "./workspace";
+import {
+  findCheckouts,
+  gitCredentials,
+  prepareWorkspace,
+  removeWorkspace,
+} from "./workspace";
 
 const run = promisify(execFile);
 
@@ -294,6 +300,52 @@ test("clones the repository onto the session's own branch", async () => {
   expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
   expect(await git(dir, "branch", "--show-current")).toBe("pi-cloud/s1");
   expect(await git(dir, "remote", "get-url", "origin")).toBe(repository);
+});
+
+test("reaches the remote with the environment it is given", async () => {
+  const dir = join(root, "workspaces", "s1");
+  const remote = "https://git.invalid/origin.git";
+
+  await prepareWorkspace(
+    { kind: "clone", repository: remote, branch: "pi-cloud/s1" },
+    {
+      dir,
+      folders: [],
+      mirrors: join(root, "mirrors"),
+      remoteEnv: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: `url.${repository}.insteadOf`,
+        GIT_CONFIG_VALUE_0: remote,
+      },
+    },
+    noLog,
+  );
+
+  expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
+});
+
+test("answers git's credential requests for GitHub with a GH_TOKEN", async () => {
+  const child = spawn("git", ["credential", "fill"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      ...gitCredentials({ GH_TOKEN: "t0ken" }),
+    },
+  });
+
+  let stdout = "";
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+
+  child.stdin.end("protocol=https\nhost=github.com\n\n");
+  await once(child, "close");
+
+  expect(stdout).toContain("username=x-access-token");
+  expect(stdout).toContain("password=t0ken");
+  expect(gitCredentials({})).toEqual({});
 });
 
 test("keeps an existing clone and its changes on a later attempt", async () => {

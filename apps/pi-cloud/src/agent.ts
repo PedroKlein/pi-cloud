@@ -19,6 +19,7 @@ import {
 } from "@pi-cloud/sessionhost";
 import {
   findCheckouts,
+  gitCredentials,
   prepareWorkspace,
   removeWorkspace,
 } from "@pi-cloud/workspaces";
@@ -222,6 +223,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     try {
       const agentDir = await syncProfileOf(assignment, sessionLog);
       const image = await setUp(assignment.environment);
+      const git = gitCredentials(assignment.environment.variables);
+      const variables = { ...assignment.environment.variables, ...git };
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
@@ -229,6 +232,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           dir: workspaceDir(sessionId),
           folders: options.folders,
           mirrors: join(options.dataDir, "mirrors"),
+          remoteEnv: git,
         },
         sessionLog,
       );
@@ -252,7 +256,6 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         ...(assignment.thinking && { thinking: assignment.thinking }),
       };
 
-      const { variables } = assignment.environment;
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
 
       const container =
@@ -300,7 +303,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       }
 
       const child = await spawnSession(
-        { ...agent, assignment, options: sessionOptions },
+        {
+          ...agent,
+          assignment: {
+            ...assignment,
+            environment: { ...assignment.environment, variables },
+          },
+          options: sessionOptions,
+        },
         sessionLog,
         terminals.open,
         container,

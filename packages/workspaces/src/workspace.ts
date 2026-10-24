@@ -44,6 +44,9 @@ export interface WorkspaceOptions {
   readonly dir: string;
   readonly folders: readonly string[];
   readonly mirrors?: string;
+  // Added to the environment of git commands that reach a remote, such as
+  // credentials (ADR 0034).
+  readonly remoteEnv?: Readonly<Record<string, string>>;
 }
 
 export async function prepareWorkspace(
@@ -164,7 +167,7 @@ async function addWorktree(
 
 async function cloneCheckout(
   workspace: Extract<Workspace, { kind: "clone" }>,
-  { dir, mirrors }: WorkspaceOptions,
+  { dir, mirrors, remoteEnv = {} }: WorkspaceOptions,
   log: Log,
 ): Promise<Checkout> {
   const { repository, branch } = workspace;
@@ -181,12 +184,15 @@ async function cloneCheckout(
   await mkdir(dirname(dir), { recursive: true });
   await rm(partial, { recursive: true, force: true });
 
-  const base = await cloneInto(partial, workspace, mirrors, log).catch(
-    async (error: unknown) => {
-      await rm(partial, { recursive: true, force: true });
-      throw error;
-    },
-  );
+  const base = await cloneInto(
+    partial,
+    workspace,
+    { mirrors, env: remoteEnv },
+    log,
+  ).catch(async (error: unknown) => {
+    await rm(partial, { recursive: true, force: true });
+    throw error;
+  });
 
   await rename(partial, dir);
   log("workspace cloned", { dir, ms: Date.now() - started });
@@ -197,11 +203,11 @@ async function cloneCheckout(
 async function cloneInto(
   dir: string,
   workspace: Extract<Workspace, { kind: "clone" }>,
-  mirrors: string | undefined,
+  remote: Remote,
   log: Log,
 ): Promise<string | null> {
   const { repository, branch } = workspace;
-  await cloneWithMirror(repository, dir, mirrors, log);
+  await cloneWithMirror(repository, dir, remote, log);
 
   const { startPoint, config } = await branchStart(dir, workspace, log);
 
@@ -743,14 +749,27 @@ async function restorePoint(
   return refs.find((name) => name.endsWith(`/${branch}`)) ?? tip;
 }
 
+interface Remote {
+  readonly mirrors: string | undefined;
+  readonly env: Readonly<Record<string, string>>;
+}
+
 async function cloneWithMirror(
   repository: string,
   dir: string,
-  mirrors: string | undefined,
+  { mirrors, env }: Remote,
   log: Log,
 ): Promise<void> {
   if (mirrors === undefined) {
-    await remoteGit(repository, dirname(dir), "clone", "--", repository, dir);
+    await remoteGit(
+      env,
+      repository,
+      dirname(dir),
+      "clone",
+      "--",
+      repository,
+      dir,
+    );
 
     return;
   }
@@ -761,7 +780,7 @@ async function cloneWithMirror(
   );
 
   await inTurn(mirror, async () => {
-    const reference = await updateMirror(repository, mirror).then(
+    const reference = await updateMirror(env, repository, mirror).then(
       () => ["--reference", mirror, "--dissociate"],
       (error: unknown) => {
         log("mirror failed, cloning without it", {
@@ -775,6 +794,7 @@ async function cloneWithMirror(
     );
 
     await remoteGit(
+      env,
       repository,
       dirname(dir),
       "clone",
@@ -786,9 +806,13 @@ async function cloneWithMirror(
   });
 }
 
-async function updateMirror(repository: string, mirror: string): Promise<void> {
+async function updateMirror(
+  env: Readonly<Record<string, string>>,
+  repository: string,
+  mirror: string,
+): Promise<void> {
   if (await exists(mirror)) {
-    await remoteGit(repository, mirror, "fetch", "--prune", "origin");
+    await remoteGit(env, repository, mirror, "fetch", "--prune", "origin");
 
     return;
   }
@@ -796,6 +820,7 @@ async function updateMirror(repository: string, mirror: string): Promise<void> {
   await mkdir(dirname(mirror), { recursive: true });
   try {
     await remoteGit(
+      env,
       repository,
       dirname(mirror),
       "clone",
@@ -974,6 +999,7 @@ async function piCloudConfig(
 // quiet the same five minutes, unless the provider set up its own ssh command.
 // A hasconfig include can set one for this repository alone.
 async function remoteGit(
+  env: Readonly<Record<string, string>>,
   repository: string,
   cwd: string,
   ...args: string[]
@@ -996,7 +1022,7 @@ async function remoteGit(
   const ssh =
     "ssh -o ConnectTimeout=300 -o ServerAliveInterval=15 -o ServerAliveCountMax=20";
 
-  return gitWith(ownSsh ? {} : { GIT_SSH_COMMAND: ssh }, cwd, args);
+  return gitWith(ownSsh ? {} : { GIT_SSH_COMMAND: ssh }, cwd, args, env);
 }
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -1007,6 +1033,7 @@ async function gitWith(
   defaults: Readonly<Record<string, string>>,
   cwd: string,
   args: readonly string[],
+  overrides: Readonly<Record<string, string>> = {},
 ): Promise<string> {
   try {
     const { stdout } = await run("git", args, {
@@ -1022,6 +1049,7 @@ async function gitWith(
         GIT_HTTP_LOW_SPEED_TIME: "300",
         ...defaults,
         ...process.env,
+        ...overrides,
         GIT_TERMINAL_PROMPT: "0",
       },
     });
@@ -1099,4 +1127,23 @@ async function exists(path: string): Promise<boolean> {
     () => true,
     () => false,
   );
+}
+
+// A GH_TOKEN variable lets git authenticate to GitHub over https, for the
+// workspace's clone and for the Session's own pushes (ADR 0034).
+export function gitCredentials(
+  variables: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  const token = variables["GH_TOKEN"];
+  if (token === undefined || token === "") {
+    return {};
+  }
+
+  return {
+    GH_TOKEN: token,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "credential.https://github.com.helper",
+    GIT_CONFIG_VALUE_0:
+      '!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f',
+  };
 }
