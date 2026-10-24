@@ -44,12 +44,14 @@ function startAgent(
   provider: string,
   extensionPaths: readonly string[] = [],
   serverUrl: URL = server.url,
+  environment?: string,
 ): () => Promise<void> {
   const controller = new AbortController();
 
   const done = runAgent({
     server: serverUrl.href,
     provider,
+    ...(environment !== undefined && { environment }),
     dataDir: join(root, provider),
     extensionPaths,
     folders: [root, join(root, "origin")],
@@ -1469,6 +1471,26 @@ test("runs a shell in the session's directory over a terminal socket", async () 
   const output = await terminal.output("sum=42");
 
   expect(output).toContain(`dir=${root}`);
+});
+
+test("opens a terminal on a runner named apart from its Environment", async () => {
+  startAgent("mac-1", [], server.url, "pool");
+
+  while (
+    !((await (await api("/api/environments")).json()) as Environment[]).some(
+      (environment) => environment.provider === "pool" && environment.online,
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  const session = await createSession("pool");
+  await follow(session.id, status("idle"));
+  const terminal = await openTerminal(session.id);
+
+  terminal.socket.send(encoder.encode("echo sum=$((40+2))\n"));
+
+  expect(await terminal.output("sum=42")).toContain("sum=42");
 });
 
 async function updateEnvironment(
