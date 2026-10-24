@@ -14,7 +14,7 @@ browser ──HTTP/SSE──▶ pi-cloud server ◀──long-poll + HTTPS/SSE�
 ```
 
 - `pi-cloud server` serves the web UI, stores sessions and a copy of each transcript in SQLite, and relays commands.
-- `pi-cloud agent` connects out to the server, so the laptop needs no open port. It runs each Pi session in its own process, in a working directory you choose, using your own Pi setup: models, logins and extensions. A session that crashes reloads from its transcript without touching the others.
+- `pi-cloud agent` connects out to the server, so the laptop needs no open port. It runs each Pi session in its own process, in a working directory you choose, with the Pi setup of the Profile it picked: packages, instructions and settings. Each machine keeps its own model logins in its data directory, so log it in once with `/login` from any session. A session that crashes reloads from its transcript without touching the others.
 - `pi-cloud server --provider <name>` also runs an agent inside the server. On a VM, its sessions each clone a repository and work on their own branch. See [docs/vm.md](docs/vm.md).
 - If the laptop sleeps or goes offline, its sessions keep running and catch up when it reconnects.
 

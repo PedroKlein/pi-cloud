@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, sep } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
@@ -14,8 +14,10 @@ import {
   type ExtensionError,
   initTheme,
   type InlineExtension,
-  type ModelRuntime,
+  ModelRuntime,
   SessionManager,
+  type ResourceDiagnostic,
+  type Skill,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
@@ -27,7 +29,11 @@ import type { RemoteUI } from "./ui";
 import "./codemode";
 
 export interface ModelOptions {
+  // The Pi agent folder: a Session's is its Profile's (ADR 0031).
   readonly agentDir: string;
+  // The machine's own logins and custom models, shared by all its Profiles.
+  readonly authPath: string;
+  readonly modelsPath: string;
   readonly extensionPaths: readonly string[];
   readonly models?: {
     readonly runtime: ModelRuntime;
@@ -161,8 +167,15 @@ async function loadServices(
       ...resources,
       additionalExtensionPaths: [...plugins.sources, ...options.extensionPaths],
       extensionsOverride: plugins.override,
+      skillsOverride: withoutHomeSkills,
+      agentsFilesOverride: withoutHomeContext,
     },
-    ...(options.models && { modelRuntime: options.models.runtime }),
+    modelRuntime:
+      options.models?.runtime ??
+      (await ModelRuntime.create({
+        authPath: options.authPath,
+        modelsPath: options.modelsPath,
+      })),
   });
 
   const { errors } = services.resourceLoader.getExtensions();
@@ -172,6 +185,35 @@ async function loadServices(
   }
 
   return services;
+}
+
+// Pi always loads ~/.agents/skills as the user's own. Sessions take the
+// user's setup from their Profile instead, so they behave the same on every
+// machine (ADR 0031).
+function withoutHomeSkills(base: {
+  skills: Skill[];
+  diagnostics: ResourceDiagnostic[];
+}): { skills: Skill[]; diagnostics: ResourceDiagnostic[] } {
+  const home = join(process.env["HOME"] ?? homedir(), ".agents", "skills");
+
+  return {
+    ...base,
+    skills: base.skills.filter(
+      ({ filePath }) => !filePath.startsWith(`${home}${sep}`),
+    ),
+  };
+}
+
+// Pi reads AGENTS.md and CLAUDE.md in every folder above the working
+// directory, the home folder too when the workspace is under it.
+function withoutHomeContext(base: {
+  agentsFiles: { path: string; content: string }[];
+}): { agentsFiles: { path: string; content: string }[] } {
+  const home = process.env["HOME"] ?? homedir();
+
+  return {
+    agentsFiles: base.agentsFiles.filter(({ path }) => dirname(path) !== home),
+  };
 }
 
 async function firstModel(

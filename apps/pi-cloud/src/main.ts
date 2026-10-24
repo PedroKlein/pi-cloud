@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { runAgent } from "./agent";
 import { stderrLog } from "./log";
 import { serve } from "./serve";
@@ -70,7 +69,6 @@ switch (command) {
         agent: {
           provider: values.provider,
           dataDir: absolutePath(values["data-dir"]),
-          agentDir: getAgentDir(),
           extensionPaths: values.extension.map(extensionSource),
           folders: values.folder,
         },
@@ -108,7 +106,6 @@ switch (command) {
       server: values.server,
       provider: values.name,
       dataDir: absolutePath(values["data-dir"]),
-      agentDir: getAgentDir(),
       extensionPaths: values.extension.map(extensionSource),
       folders: values.folder,
       log: stderrLog("agent"),

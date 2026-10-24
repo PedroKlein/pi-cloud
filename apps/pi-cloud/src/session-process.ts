@@ -99,6 +99,9 @@ export async function runSessionProcess(): Promise<void> {
 
   const spec = JSON.parse(first.value) as SessionSpec;
   const { sessionId } = spec.assignment;
+
+  // Parts of Pi, such as its MCP extension, find the agent folder only here.
+  process.env["PI_CODING_AGENT_DIR"] = spec.options.agentDir;
   const base = stderrLog("session");
 
   const log: Log = (message, fields) => {

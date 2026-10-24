@@ -8,3 +8,4 @@ export {
   type TerminalPeer,
 } from "./host";
 export { modelLister, type SessionOptions } from "./session";
+export { syncProfile } from "./profile";
