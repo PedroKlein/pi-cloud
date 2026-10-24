@@ -40,7 +40,6 @@ beforeAll(async () => {
     agent: {
       provider: "e2e",
       dataDir: join(root, "e2e"),
-      agentDir: join(root, "pi"),
       extensionPaths: [],
       folders: [root],
       models: { runtime, model: faux.getModel() },

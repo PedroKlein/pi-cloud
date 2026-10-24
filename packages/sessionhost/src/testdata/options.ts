@@ -8,6 +8,8 @@ export function sessionOptions(
   return {
     cwd: root,
     agentDir: join(root, "agent"),
+    authPath: join(root, "auth.json"),
+    modelsPath: join(root, "models.json"),
     sessionDir: join(root, "sessions"),
     extensionPaths: [],
     ...overrides,

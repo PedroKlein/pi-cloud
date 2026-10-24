@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
   Assignment,
@@ -12,6 +15,7 @@ import {
   hostTerminals,
   modelLister,
   type SessionOptions,
+  syncProfile,
 } from "@pi-cloud/sessionhost";
 import {
   findCheckouts,
@@ -31,7 +35,6 @@ export interface AgentOptions {
   readonly server: string;
   readonly provider: string;
   readonly dataDir: string;
-  readonly agentDir: string;
   readonly extensionPaths: readonly string[];
   readonly folders: readonly string[];
   // Models built in this process can't reach a child, so with them Sessions
@@ -66,6 +69,73 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
+
+  // The machine's logins, which every Profile uses (ADR 0031).
+  const credentials = {
+    authPath: join(options.dataDir, "auth.json"),
+    modelsPath: join(options.dataDir, "models.json"),
+  };
+
+  // The machine's models, and those of providers its Profiles' packages add.
+  const listers = new Map<
+    string,
+    Promise<() => Promise<readonly ModelRef[]>>
+  >();
+
+  const addLister = (agentDir: string): boolean => {
+    if (listers.has(agentDir)) {
+      return false;
+    }
+
+    listers.set(
+      agentDir,
+      modelLister({
+        agentDir,
+        ...credentials,
+        extensionPaths: options.extensionPaths,
+        ...(options.models && { models: options.models }),
+      }).catch((error: unknown) => {
+        log("models not listed", { agentDir, error: String(error) });
+
+        return async (): Promise<readonly ModelRef[]> => Promise.resolve([]);
+      }),
+    );
+
+    return true;
+  };
+
+  if (
+    existsSync(join(homedir(), ".pi", "agent", "auth.json")) &&
+    !existsSync(credentials.authPath)
+  ) {
+    log("this machine's model logins now live in the data directory", {
+      authPath: credentials.authPath,
+      hint: "log in again with /login from any session",
+    });
+  }
+
+  // Sessions on one Profile share its folder, so its syncs run one at a time.
+  const profileSyncs = new Map<string, Promise<unknown>>();
+
+  const syncProfileOf = async (
+    { profile }: Assignment,
+    sessionLog: Log,
+  ): Promise<string> => {
+    const dir = join(options.dataDir, "profiles", profile.id);
+
+    const synced = (profileSyncs.get(profile.id) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => syncProfile(dir, profile, sessionLog));
+
+    profileSyncs.set(profile.id, synced);
+    await synced;
+
+    if (addLister(dir)) {
+      void relist();
+    }
+
+    return dir;
+  };
 
   const retire = async (sessionId: string, entry: Hosted): Promise<void> => {
     const stopped = (stopping.get(sessionId) ?? Promise.resolve())
@@ -126,6 +196,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       report?.outcome === "removed" ? report.restore : assignment.workspace;
 
     try {
+      const agentDir = await syncProfileOf(assignment, sessionLog);
+
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
         {
@@ -139,7 +211,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       const sessionOptions = {
         cwd,
         checkouts,
-        agentDir: options.agentDir,
+        agentDir,
+        ...credentials,
         sessionDir: join(options.dataDir, "sessions", sessionId),
         extensionPaths: options.extensionPaths,
         systemPrompt: assignment.systemPrompt,
@@ -252,24 +325,24 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       log(message, { sessionId, ...fields });
     };
 
-  const listModels = await modelLister({
-    agentDir: options.agentDir,
-    extensionPaths: options.extensionPaths,
-    ...(options.models && { models: options.models }),
-  }).catch((error: unknown) => {
-    log("models not listed", { error: String(error) });
-
-    return async (): Promise<readonly ModelRef[]> => Promise.resolve([]);
-  });
-
   let models: readonly ModelRef[] = [];
 
   const relist = async (): Promise<void> => {
-    const listed = await listModels().catch((error: unknown) => {
-      log("models not listed", { error: String(error) });
+    const lists = await Promise.all(
+      [...listers.values()].map(async (lister) =>
+        (await lister)().catch((error: unknown) => {
+          log("models not listed", { error: String(error) });
 
-      return models;
-    });
+          return [];
+        }),
+      ),
+    );
+
+    const listed = [
+      ...new Map(
+        lists.flat().map((model) => [`${model.provider}/${model.id}`, model]),
+      ).values(),
+    ];
 
     if (listed.length !== models.length) {
       log("models listed", { count: listed.length });
@@ -277,6 +350,17 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     models = listed;
   };
+
+  const profileDirs = await readdir(join(options.dataDir, "profiles")).catch(
+    () => [],
+  );
+
+  for (const dir of [
+    join(options.dataDir, "models"),
+    ...profileDirs.map((id) => join(options.dataDir, "profiles", id)),
+  ]) {
+    addLister(dir);
+  }
 
   await relist();
 

@@ -52,7 +52,6 @@ async function start(
     agent: {
       provider: "local",
       dataDir: join(root, "local"),
-      agentDir: join(root, "pi"),
       extensionPaths: [],
       folders: [root],
       models: { runtime, model: faux.getModel() },

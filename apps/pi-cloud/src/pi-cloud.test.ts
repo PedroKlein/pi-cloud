@@ -51,7 +51,6 @@ function startAgent(
     server: serverUrl.href,
     provider,
     dataDir: join(root, provider),
-    agentDir: join(root, "pi"),
     extensionPaths,
     folders: [root, join(root, "origin")],
     models: { runtime, model: faux.getModel() },
@@ -80,7 +79,6 @@ function startServer(builtInProvider?: string): ReturnType<typeof serve> {
       agent: {
         provider: builtInProvider,
         dataDir: join(root, builtInProvider),
-        agentDir: join(root, "pi"),
         extensionPaths: [],
         folders: [],
         models: { runtime, model: faux.getModel() },
@@ -1578,7 +1576,9 @@ test("runs a laptop session in its own worktree of a listed checkout", async () 
 });
 
 test("marks a session failed when its folder is not listed", async () => {
-  const unlisted = join(root, "laptop");
+  const unlisted = await realpath(
+    await mkdtemp(join(tmpdir(), "pi-cloud-unlisted-")),
+  );
 
   const session = await createSession("laptop", {
     kind: "folder",
@@ -1592,6 +1592,7 @@ test("marks a session failed when its folder is not listed", async () => {
   ).json()) as Session;
 
   expect(stored.error).toContain(`folder not allowed: ${unlisted}`);
+  await rm(unlisted, { recursive: true });
 });
 
 test("marks a session failed when its repository cannot be cloned", async () => {
@@ -2851,11 +2852,11 @@ async function startProcessAgent(
   model: ReturnType<typeof Bun.serve>,
   extensionPaths: readonly string[] = [],
 ): Promise<void> {
-  const agentDir = join(root, "pi-process");
-  await mkdir(agentDir, { recursive: true });
+  const dataDir = join(root, "process");
+  await mkdir(dataDir, { recursive: true });
 
   await writeFile(
-    join(agentDir, "models.json"),
+    join(dataDir, "models.json"),
     JSON.stringify({
       providers: {
         fake: {
@@ -2873,8 +2874,7 @@ async function startProcessAgent(
   const done = runAgent({
     server: server.url.href,
     provider: "process",
-    dataDir: join(root, "process"),
-    agentDir,
+    dataDir,
     extensionPaths,
     folders: [root],
     log: (message, fields) => {

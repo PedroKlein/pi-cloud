@@ -76,13 +76,13 @@ test("a compiled server reports the version of Pi it bundles", async () => {
 // derives its API host from the token, so the request reaching that host shows
 // the flow ran. A proxy records the host and refuses the connection.
 test("a compiled server sends requests with a Copilot OAuth login", async () => {
-  const agentDir = join(root, "pi");
+  const dataDir = join(root, "data");
   const folder = join(root, "work");
-  await mkdir(agentDir, { recursive: true });
+  await mkdir(dataDir, { recursive: true });
   await mkdir(folder, { recursive: true });
 
   await writeFile(
-    join(agentDir, "auth.json"),
+    join(dataDir, "auth.json"),
     JSON.stringify({
       "github-copilot": {
         type: "oauth",
@@ -105,9 +105,8 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
   const proxyUrl = `http://127.0.0.1:${String((proxy.address() as AddressInfo).port)}`;
 
   const { url, server } = await startServer(
-    ["--provider", "local", "--folder", folder],
+    ["--provider", "local", "--data-dir", dataDir, "--folder", folder],
     {
-      PI_CODING_AGENT_DIR: agentDir,
       HTTPS_PROXY: proxyUrl,
       https_proxy: proxyUrl,
       NO_PROXY: "",

@@ -325,6 +325,8 @@ test("lists the models Pi can use, with the ones extensions register and later l
 
   const list = await modelLister({
     agentDir,
+    authPath: join(root, "auth.json"),
+    modelsPath: join(root, "models.json"),
     extensionPaths: [await proxyExtension()],
   });
 
@@ -334,7 +336,7 @@ test("lists the models Pi can use, with the ones extensions register and later l
   expect(before.some(({ provider }) => provider === "openai")).toBe(false);
 
   await writeFile(
-    join(agentDir, "auth.json"),
+    join(root, "auth.json"),
     JSON.stringify({ openai: { type: "api_key", key: "sk-test" } }),
   );
 
@@ -441,4 +443,52 @@ test("runs a codemode script, as Pi's CLI does", async () => {
 
   expect(toolOutputs.join()).toContain("Script completed");
   expect(toolOutputs.join()).toContain("42");
+});
+
+test("leaves out the machine's own ~/.agents skills and ~/AGENTS.md", async () => {
+  const home = join(root, "home");
+
+  const skill = async (dir: string, name: string) =>
+    writeFile(
+      join(dir, "SKILL.md"),
+      `---\nname: ${name}\ndescription: A ${name} skill\n---\nUse it.\n`,
+    );
+
+  await mkdir(join(home, ".agents", "skills", "local-only"), {
+    recursive: true,
+  });
+
+  await skill(join(home, ".agents", "skills", "local-only"), "local-only");
+  await writeFile(join(home, "AGENTS.md"), "Home rules.");
+  await mkdir(join(home, "work"));
+
+  const agentDir = join(root, "agent");
+  await mkdir(join(agentDir, "skills", "profile-skill"), { recursive: true });
+  await skill(join(agentDir, "skills", "profile-skill"), "profile-skill");
+
+  const { models } = await fauxModels(root);
+  const previous = process.env["HOME"];
+  process.env["HOME"] = home;
+
+  try {
+    const session = await startSession(
+      sessionOptions(root, { agentDir, models, cwd: join(home, "work") }),
+    );
+
+    const names = session.resourceLoader
+      .getSkills()
+      .skills.map(({ name }) => name);
+
+    const context = session.resourceLoader
+      .getAgentsFiles()
+      .agentsFiles.map(({ content }) => content);
+
+    await stopSession(session);
+
+    expect(names).toContain("profile-skill");
+    expect(names).not.toContain("local-only");
+    expect(context).not.toContain("Home rules.");
+  } finally {
+    process.env["HOME"] = previous;
+  }
 });

@@ -7,15 +7,7 @@ This sets up `pi-cloud server` on a Linux VM with a built-in provider named `vm`
 Sessions use the VM's own tools, so set these up first as the user that will run the server:
 
 - git, with credentials for the repositories you'll clone (an SSH key or a credential helper). Pi Cloud never prompts for them.
-- A Pi login for at least one model, in `~/.pi/agent`. The binary bundles Pi, so the `pi` command isn't needed to run sessions, only to log in. Either install it and use `/login`, or copy `auth.json` from a machine that is already logged in. The `pi` launcher expects Node, so on a VM with only Bun run it through Bun:
-
-  ```sh
-  curl -fsSL https://bun.sh/install | bash
-  ~/.bun/bin/bun add -g @earendil-works/pi-coding-agent
-  ~/.bun/bin/bun --bun ~/.bun/bin/pi
-  ```
-
-  In Pi, use `/login`, then `/model` to save the default model that sessions will use. The server creates an empty `~/.pi/agent/auth.json` when it first starts, so that file existing doesn't mean Pi is logged in. If an extension adds your model provider, copy the extension and `settings.json` too.
+- Nothing from your own Pi setup. Sessions take their packages, instructions and settings from their Profile, which you edit on the Profiles page, and never read `~/.pi/agent` ([ADR 0031](adr/0031-profiles.md)). Log the VM in to a model provider from any Session with `/login`. The login is kept in the server's data directory (`~/.pi-cloud/server/auth.json` by default) and serves every Profile on the VM. Custom model providers go in `models.json` in the same directory, in Pi's own format. Settings a Session changes from inside Pi, such as with `/settings` or `/mcp`, last until its next start: the Profile on the server is what every start uses.
 
 - Whatever your projects need to build and test.
 
