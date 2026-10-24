@@ -97,6 +97,9 @@ export function projectTools(
             environment: text(
               "Environment id to run in. Default: the Project's",
             ),
+            profile: text(
+              "Profile id to run with. Default: the Project's, else the user's default",
+            ),
             model: text("Model as provider/id. Default: the coordinator's"),
           },
           ["title", "message"],
@@ -129,6 +132,9 @@ export function projectTools(
         const environment =
           optional(input, "environment") ?? project.environmentId ?? undefined;
 
+        const profile =
+          optional(input, "profile") ?? project.profileId ?? undefined;
+
         const model =
           modelRef(optional(input, "model")) ??
           modelRef(project.threadModel ?? undefined) ??
@@ -139,6 +145,7 @@ export function projectTools(
           {
             actor,
             ...(environment !== undefined && { environment }),
+            ...(profile !== undefined && { profile }),
             workspace: {
               kind: "repositories",
               repositories: repositories.map((repository) => {

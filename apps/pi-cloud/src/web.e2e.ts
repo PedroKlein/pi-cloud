@@ -201,6 +201,48 @@ test("starts a session with the task from the New session form", async () => {
     .waitFor();
 }, 30_000);
 
+test("makes a Profile and starts a session that follows its instructions", async () => {
+  let request = "";
+
+  faux.setResponses([
+    (context) => {
+      request = JSON.stringify(context);
+
+      return fauxAssistantMessage([fauxText("arr")]);
+    },
+  ]);
+
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Profiles" }).click();
+  await page.getByRole("link", { name: "New Profile" }).click();
+
+  const editor = page.locator("#profiles-page form");
+
+  await editor.getByLabel("Name").fill("Pirate");
+  await editor.getByLabel("AGENTS.md").fill("Answer like a pirate.");
+  await editor.getByRole("button", { name: "Create Profile" }).click();
+  await page.getByRole("link", { name: "Pirate" }).waitFor();
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByLabel("Profile").selectOption({ label: "Pirate" });
+
+  const task = form.getByLabel("What should Pi do?");
+
+  await task.fill("Say hello");
+  await task.press("Control+Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "arr" })
+    .waitFor();
+
+  expect(request).toContain("Answer like a pirate.");
+}, 30_000);
+
 test("archives a session, shows it only with archived sessions and unarchives it", async () => {
   await page.goto(server.url.href);
 

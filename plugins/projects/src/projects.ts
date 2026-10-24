@@ -9,6 +9,8 @@ export interface Project {
   readonly instructions: string;
   readonly repositories: readonly string[];
   readonly environmentId: string | null;
+  // The Profile new threads run with when start_thread names none (ADR 0031).
+  readonly profileId: string | null;
   // provider/id for threads that start_thread gives no model.
   readonly threadModel: string | null;
   readonly coordinatorId: string;
@@ -48,6 +50,7 @@ interface ProjectRow {
   instructions: string;
   repositories: string;
   environment_id: string | null;
+  profile_id: string | null;
   thread_model: string | null;
   coordinator_id: string;
   created_at: string;
@@ -70,7 +73,10 @@ export interface ProjectStore {
   readonly get: (id: string) => Project | undefined;
   readonly update: (
     id: string,
-    settings: Pick<Project, "name" | "instructions" | "threadModel">,
+    settings: Pick<
+      Project,
+      "name" | "instructions" | "threadModel" | "profileId"
+    >,
   ) => void;
   readonly addMember: (member: Member) => void;
   readonly member: (sessionId: string) => Member | undefined;
@@ -113,8 +119,10 @@ export function projectStore(
     name: string;
   }[];
 
-  if (!columns.some(({ name }) => name === "thread_model")) {
-    store.exec("alter table projects_projects add column thread_model text");
+  for (const column of ["thread_model", "profile_id"]) {
+    if (!columns.some(({ name }) => name === column)) {
+      store.exec(`alter table projects_projects add column ${column} text`);
+    }
   }
 
   store.exec(`create table if not exists projects_members (
@@ -157,6 +165,7 @@ export function projectStore(
     instructions: row.instructions,
     repositories: JSON.parse(row.repositories) as string[],
     environmentId: row.environment_id,
+    profileId: row.profile_id,
     threadModel: row.thread_model,
     coordinatorId: row.coordinator_id,
     createdAt: row.created_at,
@@ -187,14 +196,15 @@ export function projectStore(
     create: (project) => {
       store.run(
         `insert into projects_projects
-          (id, owner_id, name, instructions, repositories, environment_id, thread_model, coordinator_id, created_at)
-          values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, owner_id, name, instructions, repositories, environment_id, profile_id, thread_model, coordinator_id, created_at)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         project.id,
         project.ownerId,
         project.name,
         project.instructions,
         JSON.stringify(project.repositories),
         project.environmentId,
+        project.profileId,
         project.threadModel,
         project.coordinatorId,
         project.createdAt,
@@ -214,13 +224,14 @@ export function projectStore(
 
       return row && toProject(row);
     },
-    update: (id, { name, instructions, threadModel }) => {
+    update: (id, { name, instructions, threadModel, profileId }) => {
       store.run(
         `update projects_projects
-          set name = ?, instructions = ?, thread_model = ? where id = ?`,
+          set name = ?, instructions = ?, thread_model = ?, profile_id = ? where id = ?`,
         name,
         instructions,
         threadModel,
+        profileId,
         id,
       );
     },

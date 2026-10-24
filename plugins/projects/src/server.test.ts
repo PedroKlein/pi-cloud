@@ -105,7 +105,7 @@ function fakeKernel(): {
               ? null
               : { plugin: "projects", key: ownerKey },
           provider: "local",
-          profileId: "profile-1",
+          profileId: request.profile ?? "profile-1",
           workspace: { kind: "folder", path: "/work" },
           model: request.model ?? null,
           thinking: request.thinking ?? null,
@@ -921,6 +921,51 @@ test("renames a Project and changes the model new threads start on", async () =>
   expect((await editProject(kernel, { name: " " })).status).toBe(400);
   expect((await editProject(kernel, { threadModel: "gpt" })).status).toBe(400);
   expect((await projectView(kernel)).name).toBe("Ship");
+});
+
+test("starts the coordinator and new threads with the Project's Profile", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+
+  const response = await kernel.route()(
+    new Request("http://pi-cloud/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Release",
+        repositories: ["https://example.com/app.git"],
+        profile: "work",
+      }),
+    }),
+    "projects",
+    undefined,
+  );
+
+  const { coordinatorId, profileId } = (await response.json()) as ProjectView;
+
+  expect(profileId).toBe("work");
+  expect(kernel.session(coordinatorId).profileId).toBe("work");
+
+  const thread = async (input: Record<string, string>): Promise<string> => {
+    const started = await kernel
+      .tool("start_thread")
+      .run(
+        { title: "Docs", message: "write docs", ...input },
+        { session: kernel.session(coordinatorId), actor: user },
+      );
+
+    const id = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+
+    return kernel.session(id).profileId;
+  };
+
+  expect(await thread({})).toBe("work");
+  expect(await thread({ profile: "review" })).toBe("review");
+
+  await editProject(kernel, { profile: "" });
+
+  expect((await projectView(kernel)).profileId).toBeNull();
+  expect(await thread({})).toBe("profile-1");
+  expect((await editProject(kernel, { profile: 3 })).status).toBe(400);
 });
 
 test("lists each Project with its repositories, coordinator state and the threads that need you", async () => {
