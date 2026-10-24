@@ -34,7 +34,7 @@ export interface Feed {
   readonly statuses: readonly string[];
   readonly widgetsAbove: string;
   readonly widgetsBelow: string;
-  // An extension's footer, which replaces the statuses, and header (ADR 0028).
+  // An extension's footer, which replaces the statuses, and header (ADR 0029).
   readonly footer: string | undefined;
   readonly header: string | undefined;
   readonly queue: {

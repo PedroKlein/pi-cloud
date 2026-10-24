@@ -278,7 +278,7 @@ export type LiveEvent =
       readonly placement: "aboveEditor" | "belowEditor";
     }
   // An extension's footer, which replaces the statuses row, and header, as
-  // rendered lines with their SGR escape codes (ADR 0028).
+  // rendered lines with their SGR escape codes (ADR 0029).
   | { readonly type: "footer"; readonly lines: readonly string[] | null }
   | { readonly type: "header"; readonly lines: readonly string[] | null }
   | { readonly type: "title"; readonly title: string }
@@ -432,7 +432,7 @@ export type Command = { readonly actor: Actor } & (
   | { readonly type: "set_model"; readonly model: ModelRef }
   | { readonly type: "set_thinking"; readonly level: ThinkingLevel }
   // How many columns the web has for extensions' widgets, footer and header
-  // (ADR 0028).
+  // (ADR 0029).
   | { readonly type: "ui_columns"; readonly columns: number }
   // Takes a queued message back before Pi reads it; the text returns to the
   // composer as editor_text. With sendNow it moves to the steering queue

@@ -9,7 +9,7 @@ import {
 import { ansiRuns, type TextStyle } from "./ansi";
 
 // Lines an extension rendered for Pi's TUI, drawn as the terminal shows them
-// (ADR 0028).
+// (ADR 0029).
 export function TerminalText({
   text,
   className,
