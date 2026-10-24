@@ -22,6 +22,7 @@ import {
   type ToolCall,
   protocolVersion,
   environmentHeader,
+  type EnvironmentUpdate,
   providerHeader,
   type TranscriptBatch,
   type TrustAnswer,
@@ -144,6 +145,24 @@ export function createHandler(
       "GET",
       /^\/api\/environments$/,
       () => Response.json(sessions.environments()),
+    ],
+    [
+      "PATCH",
+      /^\/api\/environments\/([^/]+)$/,
+      async (request, [id = ""]) => {
+        const updated = sessions.updateEnvironment(
+          id,
+          environmentUpdate(await readJson(request)),
+        );
+
+        if (!updated.ok) {
+          return notFound();
+        }
+
+        log("environment updated", { environmentId: id });
+
+        return Response.json(updated.value);
+      },
     ],
     ...profileRoutes(profiles, log),
     [
@@ -327,7 +346,8 @@ export function createHandler(
           log("session interrupted", { ...fields, ...attempt });
         }
 
-        for (const assignment of start) {
+        // The environment holds secret values.
+        for (const { environment: _secret, ...assignment } of start) {
           log("session assigned", { ...fields, ...assignment });
         }
 
@@ -666,6 +686,80 @@ function createSession(body: unknown): CreateSession {
   }
 
   return { ...request, model: { provider: modelProvider, id } };
+}
+
+const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const maxVariables = 200;
+
+// Well under Linux's limit on one environment string, so spawns don't fail.
+const maxVariableBytes = 32 * 1024;
+
+function environmentUpdate(body: unknown): EnvironmentUpdate {
+  const { name, setupScript, variables, secrets } = (body ?? {}) as Record<
+    string,
+    unknown
+  >;
+
+  if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
+    throw new BadRequest("name must be a non-empty string");
+  }
+
+  if (setupScript !== undefined && typeof setupScript !== "string") {
+    throw new BadRequest("setupScript must be a string");
+  }
+
+  return {
+    ...(name !== undefined && { name: name.trim() }),
+    ...(setupScript !== undefined && { setupScript }),
+    ...(variables !== undefined && {
+      variables: namedValues("variables", variables, false),
+    }),
+    ...(secrets !== undefined && {
+      secrets: namedValues("secrets", secrets, true),
+    }),
+  };
+}
+
+function namedValues<Nullable extends boolean>(
+  field: string,
+  value: unknown,
+  nullable: Nullable,
+): Record<string, Nullable extends true ? string | null : string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BadRequest(`${field} must be an object`);
+  }
+
+  const entries = Object.entries(value);
+  if (entries.length > maxVariables) {
+    throw new BadRequest(
+      `${field} can hold at most ${String(maxVariables)} entries`,
+    );
+  }
+
+  for (const [key, each] of entries) {
+    if (!variableName.test(key)) {
+      throw new BadRequest(`${field} has an invalid name: ${key}`);
+    }
+
+    if (nullable && each === null) {
+      continue;
+    }
+
+    if (
+      typeof each !== "string" ||
+      each.includes("\0") ||
+      Buffer.byteLength(each) > maxVariableBytes
+    ) {
+      throw new BadRequest(
+        `${field}.${key} must be a string of at most ${String(maxVariableBytes)} bytes without NUL`,
+      );
+    }
+  }
+
+  return value as Record<
+    string,
+    Nullable extends true ? string | null : string
+  >;
 }
 
 function optionalText<K extends string>(

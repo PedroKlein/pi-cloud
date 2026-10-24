@@ -29,6 +29,7 @@ import {
   reportStartFailure,
 } from "./client";
 import { sessionPluginsNamed } from "./plugins";
+import { machineSetup } from "./setup";
 import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
@@ -82,6 +83,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
+
+  const setUp = machineSetup(
+    join(options.dataDir, "setup"),
+    log,
+    options.signal,
+  );
 
   // The machine's logins, which every Profile uses (ADR 0031).
   const credentials = {
@@ -210,6 +217,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     try {
       const agentDir = await syncProfileOf(assignment, sessionLog);
+      await setUp(assignment.environment);
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
@@ -241,7 +249,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       };
 
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
-      const terminals = hostTerminals(cwd, stream, sessionLog);
+
+      const terminals = hostTerminals(
+        cwd,
+        assignment.environment.variables,
+        stream,
+        sessionLog,
+      );
+
       if (options.models) {
         const session = await hostSession(
           {

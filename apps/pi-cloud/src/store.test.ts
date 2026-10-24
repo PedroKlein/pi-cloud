@@ -310,7 +310,7 @@ test("lists a provider's stopped sessions whose workspace is waiting to be remov
   store.close();
 });
 
-test("gives Sessions from before Profiles the default Profile, and from before pools their runner", () => {
+test("gives Sessions from before Profiles the default Profile, from before pools their runner, and old Environments no settings", () => {
   const path = join(root, "server.db");
   const old = new DatabaseSync(path);
 
@@ -355,7 +355,14 @@ test("gives Sessions from before Profiles the default Profile, and from before p
   const store = openStore(path);
   const [ran, queued] = [store.get("s1"), store.get("s2")];
   const defaultProfileId = store.defaultProfileId("local");
+  const [environment] = store.environments();
   store.close();
+
+  expect(environment).toMatchObject({
+    setupScript: "",
+    variables: {},
+    secrets: {},
+  });
 
   expect(ran?.profileId).toBe(defaultProfileId);
   expect(ran?.runner).toBe("vm");

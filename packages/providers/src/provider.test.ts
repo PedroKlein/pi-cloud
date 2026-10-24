@@ -21,6 +21,7 @@ const assignment: Assignment = {
   systemPrompt: null,
   firstMessage: null,
   plugins: [],
+  environment: { setupScript: "", variables: { TOKEN: "s3cret" } },
 };
 
 const none: Work = { start: [], unload: [], remove: [] };
@@ -53,6 +54,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
   const unloaded: Attempt[] = [];
   const removed: Removal[] = [];
   const logs: string[] = [];
+  const fields: unknown[] = [];
 
   await runProvider({
     controlPlane: {
@@ -80,7 +82,10 @@ test("starts, unloads and removes what the server asks and retries failed polls"
     running: () => [],
     folders: [],
     models: () => [],
-    log: (message) => logs.push(message),
+    log: (message, logged) => {
+      logs.push(message);
+      fields.push(logged);
+    },
     signal: controller.signal,
     retry: { initialMs: 1, maxMs: 1 },
   });
@@ -90,6 +95,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
   expect(removed).toEqual([removal]);
   expect(logs).toContain("work poll failed");
   expect(logs.at(-1)).toBe("provider stopped");
+  expect(JSON.stringify(fields)).not.toContain("s3cret");
 });
 
 test("stops while waiting to retry", async () => {

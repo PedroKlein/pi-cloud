@@ -17,13 +17,18 @@ import { serve } from "./serve";
 const leaseMs = 200;
 
 let server: ReturnType<typeof serve>;
+let logged: string[];
 
 beforeEach(() => {
+  logged = [];
+
   server = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 0, leaseMs },
-    log: () => undefined,
+    log: (message, fields) => {
+      logged.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
 });
 
@@ -233,4 +238,28 @@ test("moves a clone Session off a runner that joined another Environment", async
   expect(await claimed("mac-2")).toMatchObject([
     { sessionId: clone, generation: 2 },
   ]);
+});
+
+test("gives a runner an Environment's secrets without logging them", async () => {
+  await claimed("mac-1");
+
+  const [environment] = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url)),
+  );
+
+  await fetch(
+    new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ secrets: { TOKEN: "s3cret" } }),
+    },
+  );
+
+  await startSession("/srv/a");
+  const [assignment] = await claimed("mac-1");
+
+  expect(assignment?.environment.variables).toEqual({ TOKEN: "s3cret" });
+  expect(logged.some((line) => line.includes("session assigned"))).toBe(true);
+  expect(logged.join("\n")).not.toContain("s3cret");
 });

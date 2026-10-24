@@ -60,6 +60,9 @@ interface EnvironmentRow {
   provider: string;
   owner_id: string;
   created_at: string;
+  setup_script: string;
+  variables: string;
+  secrets: string;
 }
 
 const environmentsTable = `
@@ -68,7 +71,10 @@ create table if not exists environments (
   name text not null,
   provider text not null unique,
   owner_id text not null,
-  created_at text not null
+  created_at text not null,
+  setup_script text not null default '',
+  variables text not null default '{}',
+  secrets text not null default '{}'
 );
 `;
 
@@ -129,6 +135,22 @@ create table if not exists transcript (
 function migrate(db: DatabaseSync): void {
   db.exec(environmentsTable);
   db.exec(profileTables);
+
+  const environmentColumns = db
+    .prepare("select name from pragma_table_info('environments')")
+    .all() as { name: string }[];
+
+  for (const [column, empty] of [
+    ["setup_script", "''"],
+    ["variables", "'{}'"],
+    ["secrets", "'{}'"],
+  ] as const) {
+    if (!environmentColumns.some(({ name }) => name === column)) {
+      db.exec(
+        `alter table environments add column ${column} text not null default ${empty}`,
+      );
+    }
+  }
 
   const columns = db
     .prepare("select name from pragma_table_info('sessions')")
@@ -356,7 +378,14 @@ export function openStore(path: string): SessionStore &
     provider: row.provider,
     ownerId: row.owner_id,
     createdAt: row.created_at,
+    setupScript: row.setup_script,
+    variables: JSON.parse(row.variables) as Record<string, string>,
+    secrets: JSON.parse(row.secrets) as Record<string, string>,
   });
+
+  const updateEnvironment = db.prepare(
+    "update environments set name = ?, setup_script = ?, variables = ?, secrets = ? where id = ?",
+  );
 
   const selectEnvironments = db.prepare(
     "select * from environments order by created_at, name",
@@ -523,6 +552,15 @@ export function openStore(path: string): SessionStore &
       (selectEnvironments.all() as unknown as EnvironmentRow[]).map(
         toEnvironment,
       ),
+    updateEnvironment: (environment) => {
+      updateEnvironment.run(
+        environment.name,
+        environment.setupScript,
+        JSON.stringify(environment.variables),
+        JSON.stringify(environment.secrets),
+        environment.id,
+      );
+    },
     transcriptLength: (id) => (countTranscript.get(id) as { n: number }).n,
     appendTranscript: (id, start, lines) => {
       transaction(db, () => {

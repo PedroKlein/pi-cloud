@@ -1393,6 +1393,86 @@ test("runs a shell in the session's directory over a terminal socket", async () 
   expect(output).toContain(`dir=${root}`);
 });
 
+async function updateEnvironment(
+  provider: string,
+  update: Record<string, unknown>,
+): Promise<Response> {
+  return fetch(
+    new URL(`/api/environments/${await environmentOf(provider)}`, server.url),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(update),
+    },
+  );
+}
+
+test("runs the Environment's setup script once and gives its Sessions its variables and secrets", async () => {
+  const setupLog = join(root, "setup.log");
+
+  const updated = await updateEnvironment("laptop", {
+    setupScript: 'echo "ran with $TOKEN" >> "$SETUP_LOG"',
+    variables: { SETUP_LOG: setupLog },
+    secrets: { TOKEN: "s3cret" },
+  });
+
+  const first = await createSession("laptop");
+  await follow(first.id, status("idle"));
+  const second = await createSession("laptop");
+  await follow(second.id, status("idle"));
+
+  const terminal = await openTerminal(second.id);
+  terminal.socket.send(encoder.encode("echo token=$TOKEN.\n"));
+  const output = await terminal.output("token=s3cret.");
+
+  const [environment] = (await (
+    await api("/api/environments")
+  ).json()) as Environment[];
+
+  expect(updated.status).toBe(200);
+  expect(output).toContain("token=s3cret.");
+  expect(await readFile(setupLog, "utf8")).toBe("ran with s3cret\n");
+
+  expect(environment).toMatchObject({
+    setupScript: 'echo "ran with $TOKEN" >> "$SETUP_LOG"',
+    variables: { SETUP_LOG: setupLog },
+    secrets: ["TOKEN"],
+  });
+
+  expect(JSON.stringify(environment)).not.toContain("s3cret");
+});
+
+test("marks a session failed with the output of its failed setup script", async () => {
+  await updateEnvironment("laptop", {
+    setupScript: 'echo "cannot install tools with $TOKEN"; exit 3',
+    secrets: { TOKEN: "s3cret" },
+  });
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("failed"));
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored.error).toContain("exited with code 3");
+  expect(stored.error).toContain("cannot install tools with ***");
+  expect(stored.error).not.toContain("s3cret");
+});
+
+test("rejects an Environment update with a malformed or huge variable", async () => {
+  const badName = await updateEnvironment("laptop", {
+    variables: { "NOT-A-NAME": "x" },
+  });
+
+  const tooLarge = await updateEnvironment("laptop", {
+    secrets: { BIG: "x".repeat(64 * 1024) },
+  });
+
+  expect(badName.status).toBe(400);
+  expect(tooLarge.status).toBe(400);
+});
+
 async function gitRepository(): Promise<string> {
   const repository = join(root, "origin");
   const git = promisify(execFile);

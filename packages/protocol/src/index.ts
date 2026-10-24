@@ -149,6 +149,14 @@ export interface Assignment {
   readonly systemPrompt: string | null;
   readonly firstMessage: string | null;
   readonly plugins: readonly string[];
+  readonly environment: SessionEnvironment;
+}
+
+// What a Session's Environment sets up on its machine (ADR 0032). The
+// variables hold the Environment's secrets too.
+export interface SessionEnvironment {
+  readonly setupScript: string;
+  readonly variables: Readonly<Record<string, string>>;
 }
 
 export interface ToolSpec {
@@ -666,6 +674,20 @@ export interface Environment {
   readonly runners: readonly Runner[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
+  // Runs once on each machine, or in each image, before its first Session
+  // (ADR 0032).
+  readonly setupScript: string;
+  readonly variables: Readonly<Record<string, string>>;
+  // Secret values never leave the server except in a Session's assignment.
+  readonly secrets: readonly string[];
+}
+
+// A null secret removes it.
+export interface EnvironmentUpdate {
+  readonly name?: string;
+  readonly setupScript?: string;
+  readonly variables?: Readonly<Record<string, string>>;
+  readonly secrets?: Readonly<Record<string, string | null>>;
 }
 
 export interface CreateSession {

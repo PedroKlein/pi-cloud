@@ -745,7 +745,7 @@ test("uploads a long transcript in several requests, each from the last acknowle
 test("opens a terminal in the session directory on command", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
-  const terminals = hostTerminals(root, fake.stream, () => undefined);
+  const terminals = hostTerminals(root, {}, fake.stream, () => undefined);
 
   const hosted = await hostSession(
     sessionOptions(root, { models }),
@@ -917,7 +917,7 @@ test("closes a terminal that cannot start and keeps taking commands", async () =
     logs.push(message);
   };
 
-  const terminals = hostTerminals(cwd, fake.stream, log);
+  const terminals = hostTerminals(cwd, {}, fake.stream, log);
 
   const hosted = await hostSession(
     sessionOptions(root, { cwd, models }),
