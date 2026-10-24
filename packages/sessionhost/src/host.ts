@@ -33,7 +33,7 @@ import {
   startSession,
   stopSession,
 } from "./session";
-import { openTerminal, type Terminal } from "./terminal";
+import { openTerminal, type Terminal, type TerminalOptions } from "./terminal";
 import { serverTools } from "./tools";
 import { piView } from "./tui";
 
@@ -111,8 +111,7 @@ interface Kept {
 // its tab is closed or the Session stops, and a later socket for the same
 // terminal picks it up again (ADR 0026).
 export function hostTerminals(
-  cwd: string,
-  variables: Readonly<Record<string, string>>,
+  options: Omit<TerminalOptions, "cols" | "rows">,
   stream: Pick<SessionStream, "terminal" | "publish">,
   log: Log,
 ): Terminals {
@@ -158,7 +157,7 @@ export function hostTerminals(
     const output: Uint8Array[] = [];
     let size = 0;
 
-    const shell = openTerminal({ cwd, variables, cols, rows }, (data) => {
+    const shell = openTerminal({ ...options, cols, rows }, (data) => {
       output.push(data);
       size += data.byteLength;
 

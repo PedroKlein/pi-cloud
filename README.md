@@ -49,11 +49,13 @@ pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
                 [--folder <path>]... [--extension <path>]...]
 pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
                [--server http://127.0.0.1:7420] [--data-dir ~/.pi-cloud/agent]
-               [--folder <path>]...
+               [--session-binary <path>] [--folder <path>]...
                [--extension <path>]...
 ```
 
 An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only.
+
+With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pi-cloud binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.
 
 Several agents can join one Environment's pool with `--environment <name>` ([ADR 0032](docs/adr/0032-environments-and-runners.md)); without it an agent joins the Environment named after it. `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
 

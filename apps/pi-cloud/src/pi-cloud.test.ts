@@ -1460,6 +1460,19 @@ test("marks a session failed with the output of its failed setup script", async 
   expect(stored.error).not.toContain("s3cret");
 });
 
+test("fails a container Session on an agent with no Linux binary to run in it", async () => {
+  await updateEnvironment("laptop", { isolation: "container" });
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("failed"));
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored.error).toContain("--session-binary");
+});
+
 test("rejects an Environment update with a malformed or huge variable", async () => {
   const badName = await updateEnvironment("laptop", {
     variables: { "NOT-A-NAME": "x" },
@@ -1469,7 +1482,12 @@ test("rejects an Environment update with a malformed or huge variable", async ()
     secrets: { BIG: "x".repeat(64 * 1024) },
   });
 
+  const badIsolation = await updateEnvironment("laptop", { isolation: "vm" });
+  const badImage = await updateEnvironment("laptop", { image: "--privileged" });
+
   expect(badName.status).toBe(400);
+  expect(badIsolation.status).toBe(400);
+  expect(badImage.status).toBe(400);
   expect(tooLarge.status).toBe(400);
 });
 

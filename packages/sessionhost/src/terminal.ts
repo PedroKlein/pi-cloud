@@ -4,6 +4,8 @@ export interface TerminalOptions {
   readonly cols: number;
   readonly rows: number;
   readonly shell?: string;
+  // Runs in place of the shell, such as a shell inside a container.
+  readonly command?: readonly string[];
 }
 
 export interface Terminal {
@@ -20,7 +22,7 @@ export function openTerminal(
 ): Terminal {
   const shell = options.shell ?? process.env["SHELL"] ?? "/bin/sh";
 
-  const proc = Bun.spawn([shell, "-i"], {
+  const proc = Bun.spawn([...(options.command ?? [shell, "-i"])], {
     cwd: options.cwd,
     env: { ...process.env, ...options.variables, TERM: "xterm-256color" },
     terminal: {

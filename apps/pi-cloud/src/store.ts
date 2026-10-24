@@ -60,6 +60,8 @@ interface EnvironmentRow {
   provider: string;
   owner_id: string;
   created_at: string;
+  isolation: string;
+  image: string | null;
   setup_script: string;
   variables: string;
   secrets: string;
@@ -72,6 +74,8 @@ create table if not exists environments (
   provider text not null unique,
   owner_id text not null,
   created_at text not null,
+  isolation text not null default 'process',
+  image text,
   setup_script text not null default '',
   variables text not null default '{}',
   secrets text not null default '{}'
@@ -140,15 +144,15 @@ function migrate(db: DatabaseSync): void {
     .prepare("select name from pragma_table_info('environments')")
     .all() as { name: string }[];
 
-  for (const [column, empty] of [
-    ["setup_script", "''"],
-    ["variables", "'{}'"],
-    ["secrets", "'{}'"],
+  for (const [column, definition] of [
+    ["isolation", "text not null default 'process'"],
+    ["image", "text"],
+    ["setup_script", "text not null default ''"],
+    ["variables", "text not null default '{}'"],
+    ["secrets", "text not null default '{}'"],
   ] as const) {
     if (!environmentColumns.some(({ name }) => name === column)) {
-      db.exec(
-        `alter table environments add column ${column} text not null default ${empty}`,
-      );
+      db.exec(`alter table environments add column ${column} ${definition}`);
     }
   }
 
@@ -378,13 +382,15 @@ export function openStore(path: string): SessionStore &
     provider: row.provider,
     ownerId: row.owner_id,
     createdAt: row.created_at,
+    isolation: row.isolation === "container" ? "container" : "process",
+    image: row.image,
     setupScript: row.setup_script,
     variables: JSON.parse(row.variables) as Record<string, string>,
     secrets: JSON.parse(row.secrets) as Record<string, string>,
   });
 
   const updateEnvironment = db.prepare(
-    "update environments set name = ?, setup_script = ?, variables = ?, secrets = ? where id = ?",
+    "update environments set name = ?, isolation = ?, image = ?, setup_script = ?, variables = ?, secrets = ? where id = ?",
   );
 
   const selectEnvironments = db.prepare(
@@ -555,6 +561,8 @@ export function openStore(path: string): SessionStore &
     updateEnvironment: (environment) => {
       updateEnvironment.run(
         environment.name,
+        environment.isolation,
+        environment.image,
         environment.setupScript,
         JSON.stringify(environment.variables),
         JSON.stringify(environment.secrets),

@@ -23,6 +23,7 @@ import {
   protocolVersion,
   environmentHeader,
   type EnvironmentUpdate,
+  isolations,
   providerHeader,
   type TranscriptBatch,
   type TrustAnswer,
@@ -689,19 +690,35 @@ function createSession(body: unknown): CreateSession {
 }
 
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// A docker reference: no leading dash, so docker never reads it as a flag.
+const imageName = /^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/;
 const maxVariables = 200;
 
 // Well under Linux's limit on one environment string, so spawns don't fail.
 const maxVariableBytes = 32 * 1024;
 
 function environmentUpdate(body: unknown): EnvironmentUpdate {
-  const { name, setupScript, variables, secrets } = (body ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const { name, isolation, image, setupScript, variables, secrets } = (body ??
+    {}) as Record<string, unknown>;
 
   if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
     throw new BadRequest("name must be a non-empty string");
+  }
+
+  const isolationLevel = isolations.find((known) => known === isolation);
+  if (isolation !== undefined && isolationLevel === undefined) {
+    throw new BadRequest(`isolation must be one of ${isolations.join(", ")}`);
+  }
+
+  if (
+    image !== undefined &&
+    image !== null &&
+    (typeof image !== "string" || !imageName.test(image))
+  ) {
+    throw new BadRequest(
+      "image must be an image name, such as debian:12, or null",
+    );
   }
 
   if (setupScript !== undefined && typeof setupScript !== "string") {
@@ -710,6 +727,8 @@ function environmentUpdate(body: unknown): EnvironmentUpdate {
 
   return {
     ...(name !== undefined && { name: name.trim() }),
+    ...(isolationLevel !== undefined && { isolation: isolationLevel }),
+    ...(image !== undefined && { image }),
     ...(setupScript !== undefined && { setupScript }),
     ...(variables !== undefined && {
       variables: namedValues("variables", variables, false),

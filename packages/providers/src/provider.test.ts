@@ -21,7 +21,12 @@ const assignment: Assignment = {
   systemPrompt: null,
   firstMessage: null,
   plugins: [],
-  environment: { setupScript: "", variables: { TOKEN: "s3cret" } },
+  environment: {
+    isolation: "process",
+    image: null,
+    setupScript: "",
+    variables: { TOKEN: "s3cret" },
+  },
 };
 
 const none: Work = { start: [], unload: [], remove: [] };
