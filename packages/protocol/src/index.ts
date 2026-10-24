@@ -152,9 +152,16 @@ export interface Assignment {
   readonly environment: SessionEnvironment;
 }
 
+// A Session runs as a process on its runner's machine, or as a process in a
+// container from the Environment's image (ADR 0032).
+export const isolations = ["process", "container"] as const;
+export type Isolation = (typeof isolations)[number];
+
 // What a Session's Environment sets up on its machine (ADR 0032). The
 // variables hold the Environment's secrets too.
 export interface SessionEnvironment {
+  readonly isolation: Isolation;
+  readonly image: string | null;
   readonly setupScript: string;
   readonly variables: Readonly<Record<string, string>>;
 }
@@ -674,6 +681,9 @@ export interface Environment {
   readonly runners: readonly Runner[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];
+  readonly isolation: Isolation;
+  // Null runs containers from the default image.
+  readonly image: string | null;
   // Runs once on each machine, or in each image, before its first Session
   // (ADR 0032).
   readonly setupScript: string;
@@ -685,6 +695,8 @@ export interface Environment {
 // A null secret removes it.
 export interface EnvironmentUpdate {
   readonly name?: string;
+  readonly isolation?: Isolation;
+  readonly image?: string | null;
   readonly setupScript?: string;
   readonly variables?: Readonly<Record<string, string>>;
   readonly secrets?: Readonly<Record<string, string | null>>;

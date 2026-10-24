@@ -11,6 +11,7 @@ import {
   type TerminalCommand,
 } from "@pi-cloud/sessionhost";
 import { httpSessionStream } from "./client";
+import { type ContainerSession, serverInContainer } from "./container";
 import { stderrLog } from "./log";
 import { sessionPluginsNamed } from "./plugins";
 
@@ -40,10 +41,13 @@ export async function spawnSession(
   spec: SessionSpec,
   log: Log,
   openTerminal: (command: TerminalCommand) => void,
+  container?: ContainerSession,
 ): Promise<HostedSession & { readonly exited: Promise<number | null> }> {
-  const [executable = process.execPath, ...args] = sessionCommand;
+  const [executable = process.execPath, ...args] =
+    container?.run ?? sessionCommand;
 
-  // Pi's tools inherit the Environment's variables from the process.
+  // Pi's tools inherit the Environment's variables from the process, and a
+  // container gets them from the docker client's.
   const child = spawn(executable, args, {
     env: { ...process.env, ...spec.assignment.environment.variables },
     stdio: ["pipe", "pipe", "inherit"],
@@ -54,12 +58,29 @@ export async function spawnSession(
   });
 
   await once(child, "spawn");
-  child.stdin.write(`${JSON.stringify(spec)}\n`);
-  log("session process started", { pid: child.pid });
+
+  const sent = container
+    ? { ...spec, server: serverInContainer(spec.server) }
+    : spec;
+
+  child.stdin.write(`${JSON.stringify(sent)}\n`);
+
+  log("session process started", {
+    pid: child.pid,
+    ...(container && { container: container.name }),
+  });
+
+  const kill = (): void => {
+    child.kill("SIGKILL");
+    if (container) {
+      const [docker = "docker", ...killArgs] = container.kill;
+      spawn(docker, killArgs, { stdio: "ignore" }).on("error", () => undefined);
+    }
+  };
 
   const stop = async (): Promise<void> => {
     child.stdin.end();
-    const timer = setTimeout(() => child.kill("SIGKILL"), stopTimeoutMs);
+    const timer = setTimeout(kill, stopTimeoutMs);
     await exited;
     clearTimeout(timer);
   };

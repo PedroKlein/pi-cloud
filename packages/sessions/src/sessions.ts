@@ -385,6 +385,8 @@ export class Sessions {
     this.#store.updateEnvironment({
       ...environment,
       name: update.name ?? environment.name,
+      isolation: update.isolation ?? environment.isolation,
+      image: update.image === undefined ? environment.image : update.image,
       setupScript: update.setupScript ?? environment.setupScript,
       variables: update.variables ?? environment.variables,
       secrets,
@@ -847,6 +849,8 @@ export class Sessions {
       .find((each) => each.id === id);
 
     return {
+      isolation: environment?.isolation ?? "process",
+      image: environment?.image ?? null,
       setupScript: environment?.setupScript ?? "",
       variables: { ...environment?.variables, ...environment?.secrets },
     };

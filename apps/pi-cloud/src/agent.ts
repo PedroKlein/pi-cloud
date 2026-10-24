@@ -29,7 +29,8 @@ import {
   reportStartFailure,
 } from "./client";
 import { sessionPluginsNamed } from "./plugins";
-import { machineSetup } from "./setup";
+import { containerSession } from "./container";
+import { environmentSetup } from "./setup";
 import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
@@ -43,6 +44,9 @@ export interface AgentOptions {
   readonly dataDir: string;
   readonly extensionPaths: readonly string[];
   readonly folders: readonly string[];
+  // The Linux pi-cloud binary that container Sessions run. A Linux runner
+  // built as a binary uses itself.
+  readonly sessionBinary?: string;
   // Models built in this process can't reach a child, so with them Sessions
   // run in the agent's own process. Tests use this with Pi's faux provider.
   readonly models?: SessionOptions["models"];
@@ -84,7 +88,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
 
-  const setUp = machineSetup(
+  const setUp = environmentSetup(
     join(options.dataDir, "setup"),
     log,
     options.signal,
@@ -217,7 +221,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     try {
       const agentDir = await syncProfileOf(assignment, sessionLog);
-      await setUp(assignment.environment);
+      const image = await setUp(assignment.environment);
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
@@ -248,16 +252,34 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         ...(assignment.thinking && { thinking: assignment.thinking }),
       };
 
+      const { variables } = assignment.environment;
       const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
 
+      const container =
+        image === undefined
+          ? undefined
+          : await containerSession({
+              sessionId,
+              generation,
+              image,
+              binary: sessionBinary(options.sessionBinary),
+              dataDir: options.dataDir,
+              folders: options.folders,
+              cwd,
+              variables,
+            });
+
       const terminals = hostTerminals(
-        cwd,
-        assignment.environment.variables,
+        {
+          cwd,
+          variables,
+          ...(container && { command: container.shell }),
+        },
         stream,
         sessionLog,
       );
 
-      if (options.models) {
+      if (options.models && !container) {
         const session = await hostSession(
           {
             ...sessionOptions,
@@ -282,6 +304,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         { ...agent, assignment, options: sessionOptions },
         sessionLog,
         terminals.open,
+        container,
       );
 
       void child.exited.then((code) => {
@@ -468,4 +491,21 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   );
 
   await Promise.all([...stopping.values(), ...removing.values()]);
+}
+
+function sessionBinary(configured: string | undefined): string {
+  if (configured !== undefined) {
+    return configured;
+  }
+
+  if (
+    process.platform === "linux" &&
+    import.meta.dirname.startsWith("/$bunfs")
+  ) {
+    return process.execPath;
+  }
+
+  throw new Error(
+    "container Sessions need a Linux pi-cloud binary: start the agent with --session-binary",
+  );
 }

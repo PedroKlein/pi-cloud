@@ -23,6 +23,7 @@ import {
   protocolVersion,
   environmentHeader,
   type EnvironmentUpdate,
+  isolations,
   providerHeader,
   type TranscriptBatch,
   type TrustAnswer,
@@ -695,13 +696,24 @@ const maxVariables = 200;
 const maxVariableBytes = 32 * 1024;
 
 function environmentUpdate(body: unknown): EnvironmentUpdate {
-  const { name, setupScript, variables, secrets } = (body ?? {}) as Record<
-    string,
-    unknown
-  >;
+  const { name, isolation, image, setupScript, variables, secrets } = (body ??
+    {}) as Record<string, unknown>;
 
   if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
     throw new BadRequest("name must be a non-empty string");
+  }
+
+  const isolationLevel = isolations.find((known) => known === isolation);
+  if (isolation !== undefined && isolationLevel === undefined) {
+    throw new BadRequest(`isolation must be one of ${isolations.join(", ")}`);
+  }
+
+  if (
+    image !== undefined &&
+    image !== null &&
+    (typeof image !== "string" || image.trim() === "")
+  ) {
+    throw new BadRequest("image must be a non-empty string or null");
   }
 
   if (setupScript !== undefined && typeof setupScript !== "string") {
@@ -710,6 +722,8 @@ function environmentUpdate(body: unknown): EnvironmentUpdate {
 
   return {
     ...(name !== undefined && { name: name.trim() }),
+    ...(isolationLevel !== undefined && { isolation: isolationLevel }),
+    ...(image !== undefined && { image: image?.trim() ?? null }),
     ...(setupScript !== undefined && { setupScript }),
     ...(variables !== undefined && {
       variables: namedValues("variables", variables, false),

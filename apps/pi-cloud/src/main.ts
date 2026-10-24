@@ -14,7 +14,7 @@ const usage = `usage:
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
   pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
-                 [--server http://127.0.0.1:7420]
+                 [--server http://127.0.0.1:7420] [--session-binary <path>]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
                  [--extension <path>]...`;
 
@@ -91,6 +91,7 @@ switch (command) {
         name: { type: "string" },
         environment: { type: "string" },
         capacity: { type: "string" },
+        "session-binary": { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
         "data-dir": { type: "string", default: join(dataRoot, "agent") },
         folder: { type: "string", multiple: true, default: [] },
@@ -119,6 +120,9 @@ switch (command) {
         environment: values.environment,
       }),
       ...(capacity !== undefined && { capacity }),
+      ...(values["session-binary"] !== undefined && {
+        sessionBinary: absolutePath(values["session-binary"]),
+      }),
       dataDir: absolutePath(values["data-dir"]),
       extensionPaths: values.extension.map(extensionSource),
       folders: values.folder,
