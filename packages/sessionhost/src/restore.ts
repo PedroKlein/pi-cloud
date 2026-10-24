@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // A runner that never ran the Session starts it from the server's copy of
@@ -26,10 +26,11 @@ export async function restoreTranscript(
 
   await mkdir(sessionDir, { recursive: true });
 
-  await writeFile(
-    join(sessionDir, `restored_${parsed.id ?? "session"}.jsonl`),
-    `${[moved, ...rest].join("\n")}\n`,
-  );
+  // Written whole or not at all, since a partial file would stop the next
+  // start from restoring it.
+  const file = join(sessionDir, `restored_${parsed.id ?? "session"}.jsonl`);
+  await writeFile(`${file}.partial`, `${[moved, ...rest].join("\n")}\n`);
+  await rename(`${file}.partial`, file);
 
   return rest.length + 1;
 }
