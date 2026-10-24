@@ -188,6 +188,9 @@ export interface SessionCloud {
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
   readonly checkouts: readonly Checkout[];
+  // An executable that runs the Pi this Session runs, for extensions that
+  // start Pi themselves.
+  readonly piCommand?: string;
   // Sends a request to the plugin's own server routes as this Session.
   readonly request: (path: string, init?: RequestInit) => Promise<Response>;
   readonly log: (
@@ -199,8 +202,8 @@ export interface SessionCloud {
 export interface SessionPlugin {
   readonly name: string;
   readonly extension?: (cloud: SessionCloud) => ExtensionFactory;
-  // Pi packages, such as npm:<name>@<version>, loaded in every Session. Pi
-  // installs each on first use. A user's own extension that registers the same
+  // Pi packages, such as npm:<name>@<version>, loaded in every Session and
+  // installed on first use. A user's own extension that registers the same
   // tool or command replaces it.
   readonly packages?: readonly string[];
   // Tools that replace any extension tool of the same name, asked for once

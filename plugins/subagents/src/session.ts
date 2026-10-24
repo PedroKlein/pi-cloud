@@ -5,4 +5,13 @@ import type { SessionPlugin } from "@pi-cloud/plugins";
 export const subagents: SessionPlugin = {
   name: "subagents",
   packages: ["npm:pi-subagents@0.79.1"],
+  // pi-subagents starts Pi for each run, and finds none in a compiled Pi
+  // Cloud: it would run Pi Cloud's own binary with Pi's arguments.
+  extension:
+    ({ piCommand }) =>
+    () => {
+      if (piCommand !== undefined) {
+        process.env["PI_SUBAGENT_PI_BINARY"] ??= piCommand;
+      }
+    },
 };

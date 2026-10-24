@@ -552,6 +552,39 @@ test("lets a user's own extension replace a plugin's package of the same tool", 
   expect(commandNames(fake.events)).not.toContain("subagents-inspect-rpc");
 });
 
+test("installs a plugin's npm package without npm on the PATH", async () => {
+  const { models } = await fauxModels(root);
+  const fake = fakeStream();
+  const logs: string[] = [];
+  const path = process.env["PATH"];
+
+  const fromNpm: SessionPlugin = {
+    name: "subagents",
+    packages: [`npm:pi-subagents@file:${subagentsPath}`],
+  };
+
+  delete process.env["PI_OFFLINE"];
+  process.env["PATH"] = join(root, "no-tools");
+
+  try {
+    const hosted = await hostSession(
+      sessionOptions(root, { models, plugins: [fromNpm] }),
+      fake.stream,
+      (message) => logs.push(message),
+      noTerminal,
+    );
+
+    await fake.waitFor(() => commandNames(fake.events).length > 0);
+    await hosted.stop();
+  } finally {
+    process.env["PATH"] = path;
+    process.env["PI_OFFLINE"] = "1";
+  }
+
+  expect(logs).not.toContain("extension error");
+  expect(commandNames(fake.events)).toContain("subagents-inspect-rpc");
+}, 30_000);
+
 test("starts without a plugin package that cannot be installed", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();

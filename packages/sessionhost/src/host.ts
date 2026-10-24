@@ -57,6 +57,7 @@ export interface HostOptions extends SessionOptions {
   readonly plugins?: readonly SessionPlugin[];
   readonly firstMessage?: string | null;
   readonly serverToolTimeoutMs?: number;
+  readonly piCommand?: string;
 }
 
 export interface TerminalPeer {
@@ -264,6 +265,7 @@ export async function hostSession(
       },
       askQuestions: prompts.questions,
       checkouts: options.checkouts ?? [],
+      ...(options.piCommand !== undefined && { piCommand: options.piCommand }),
       request: async (path: string, init?: RequestInit) =>
         stream.pluginRequest(plugin.name, path, init),
       log: (message: string, fields?: Readonly<Record<string, unknown>>) => {
