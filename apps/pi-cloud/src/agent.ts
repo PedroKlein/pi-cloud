@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -61,6 +61,7 @@ const relistMs = 60_000;
 
 interface Hosted {
   readonly generation: number;
+  readonly profileId: string;
   readonly session: Promise<HostedSession | undefined>;
 }
 
@@ -87,6 +88,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   // A second run of a removal finds its workspace gone and can't tell what it
   // held, so a report the server hasn't accepted is kept to send again.
   const unreported = new Map<string, Unreported>();
+
+  const profilesDir = join(options.dataDir, "profiles");
 
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
@@ -148,7 +151,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     { profile }: Assignment,
     sessionLog: Log,
   ): Promise<string> => {
-    const dir = join(options.dataDir, "profiles", profile.id);
+    const dir = join(profilesDir, profile.id);
 
     const synced = (profileSyncs.get(profile.id) ?? Promise.resolve())
       .catch(() => undefined)
@@ -435,13 +438,11 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     models = listed;
   };
 
-  const profileDirs = await readdir(join(options.dataDir, "profiles")).catch(
-    () => [],
-  );
+  const profileDirs = await readdir(profilesDir).catch(() => []);
 
   for (const dir of [
     join(options.dataDir, "models"),
-    ...profileDirs.map((id) => join(options.dataDir, "profiles", id)),
+    ...profileDirs.map((id) => join(profilesDir, id)),
   ]) {
     addLister(dir);
   }
@@ -460,6 +461,35 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   // The roots and the checkouts found under them, for the UI to suggest.
   const checkouts = await findCheckouts(options.folders);
   log("checkouts found", { count: checkouts.length });
+
+  let pruning = Promise.resolve();
+
+  // A Profile deleted on the server leaves its folder here until no Session
+  // uses it. A stopping Session may still, so pruning waits for it.
+  const pruneProfiles = async (kept: readonly string[]): Promise<void> => {
+    if (stopping.size > 0) {
+      return;
+    }
+
+    const used = new Set(
+      [...hosted.values()].map(({ profileId }) => profileId),
+    );
+
+    const gone = (await readdir(profilesDir).catch(() => [])).filter(
+      (id) => !kept.includes(id) && !used.has(id),
+    );
+
+    for (const id of gone) {
+      const dir = join(profilesDir, id);
+      listers.delete(dir);
+      await rm(dir, { recursive: true, force: true });
+      log("deleted profile folder removed", { profileId: id });
+    }
+
+    if (gone.length > 0) {
+      await relist();
+    }
+  };
 
   await runProvider({
     controlPlane: httpControlPlane(agent),
@@ -484,6 +514,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       hosted.set(sessionId, {
         generation: assignment.generation,
+        profileId: assignment.profile.id,
         session: hostAssignment(assignment, sessionLog),
       });
     },
@@ -508,6 +539,13 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       removing.set(sessionId, removed);
     },
+    profiles: (kept) => {
+      pruning = pruning
+        .then(async () => pruneProfiles(kept))
+        .catch((error: unknown) => {
+          log("profile folders not pruned", { error: String(error) });
+        });
+    },
   });
 
   log("stopping sessions", { count: hosted.size });
@@ -516,7 +554,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     [...hosted].map(async ([sessionId, entry]) => retire(sessionId, entry)),
   );
 
-  await Promise.all([...stopping.values(), ...removing.values()]);
+  await Promise.all([...stopping.values(), ...removing.values(), pruning]);
 }
 
 function sessionBinary(configured: string | undefined): string {

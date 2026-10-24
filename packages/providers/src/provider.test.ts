@@ -29,7 +29,7 @@ const assignment: Assignment = {
   },
 };
 
-const none: Work = { start: [], unload: [], remove: [] };
+const none: Work = { start: [], unload: [], remove: [], profiles: [] };
 
 const removal: Removal = {
   sessionId: "s2",
@@ -38,7 +38,11 @@ const removal: Removal = {
   force: false,
 };
 
-const ignore = { unload: () => undefined, remove: () => undefined };
+const ignore = {
+  unload: () => undefined,
+  remove: () => undefined,
+  profiles: () => undefined,
+};
 
 test("starts, unloads and removes what the server asks and retries failed polls", async () => {
   const controller = new AbortController();
@@ -52,6 +56,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
       start: [assignment],
       unload: [{ sessionId: "s3", generation: 4 }],
       remove: [removal],
+      profiles: [],
     }),
   ];
 
@@ -84,6 +89,7 @@ test("starts, unloads and removes what the server asks and retries failed polls"
     remove: (r) => {
       removed.push(r);
     },
+    profiles: () => undefined,
     running: () => [],
     folders: [],
     models: () => [],
@@ -204,6 +210,7 @@ test("stops Sessions whose Workspace can move once polls fail for half a lease",
       running.delete(a.sessionId);
     },
     remove: () => undefined,
+    profiles: () => undefined,
     running: () => [...running.values()],
     folders: [],
     models: () => [],
