@@ -200,15 +200,32 @@ function pluginSessions(
     adopt: (id, key) => {
       sessions.adopt(id, { plugin, key });
     },
-    send: (id, text, actor) =>
-      sessions.send(id, {
-        actor,
-        type: "message",
-        text,
-        delivery: "followUp",
-      }),
-    notify: (id, text, actor) =>
-      sessions.send(id, { actor, type: "context", text }),
+    send: (id, text, actor, notice) =>
+      sessions.send(
+        id,
+        notice
+          ? {
+              actor,
+              type: "notice",
+              text,
+              notice: { plugin, ...notice },
+              turn: true,
+            }
+          : { actor, type: "message", text, delivery: "followUp" },
+      ),
+    notify: (id, text, actor, notice) =>
+      sessions.send(
+        id,
+        notice
+          ? {
+              actor,
+              type: "notice",
+              text,
+              notice: { plugin, ...notice },
+              turn: false,
+            }
+          : { actor, type: "context", text },
+      ),
     transcript: (id) => sessions.transcript(id),
     transcriptLength: (id) => sessions.transcriptLength(id),
   };

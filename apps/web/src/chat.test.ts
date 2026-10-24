@@ -455,3 +455,36 @@ test("keeps a tool result's details", () => {
     },
   ]);
 });
+
+test("opens a turn with a plugin's notice, and keeps an untagged one a note", () => {
+  const notice = (details: unknown): string =>
+    JSON.stringify({
+      type: "custom_message",
+      customType: "pi-cloud-notice",
+      content: "Docs finished a turn",
+      display: true,
+      details,
+    });
+
+  const tag = { plugin: "projects", kind: "thread", data: { threadId: "t1" } };
+
+  const items = [
+    ...chatItems(notice(tag)),
+    ...chatItems(line({ role: "assistant", content: "noted" })),
+  ];
+
+  expect(turns(items.map((item, key) => ({ ...item, key })))).toEqual([
+    {
+      key: 0,
+      user: undefined,
+      notice: { text: "Docs finished a turn", tag },
+      work: [],
+      cards: [],
+      answer: ["noted"],
+    },
+  ]);
+
+  expect(chatItems(notice({ kind: "thread" }))).toEqual([
+    { role: "note", text: "Docs finished a turn" },
+  ]);
+});

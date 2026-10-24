@@ -584,6 +584,19 @@ test("creates a Project and shares a file through its library", async () => {
   }
 
   await page
+    .locator('#chat li[data-role="notice"]')
+    .getByRole("link", { name: "Docs" })
+    .first()
+    .waitFor();
+
+  expect(
+    await page
+      .locator('#chat li[data-role="user"]')
+      .filter({ hasText: "[Project notice]" })
+      .count(),
+  ).toBe(0);
+
+  await page
     .locator("#plugin-nav")
     .getByRole("link", { name: "Library" })
     .click();

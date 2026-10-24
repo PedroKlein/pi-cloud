@@ -92,6 +92,11 @@ export type SendOutcome =
       readonly reason: "not_found" | "archived" | "offline";
     };
 
+export interface PluginNotice {
+  readonly kind: string;
+  readonly data?: unknown;
+}
+
 export interface ServerPluginContext {
   // The user this installation belongs to. v1 has exactly one.
   readonly owner: string;
@@ -113,9 +118,21 @@ export interface ServerPluginContext {
     // Takes ownership of a Session started before owners existed.
     readonly adopt: (id: string, ownerKey: string) => void;
     // Starts a turn, or queues as a follow-up when the Session is busy.
-    readonly send: (id: string, text: string, actor: Actor) => SendOutcome;
+    // With a notice, the web draws it with this plugin's renderer for the
+    // notice's kind (ADR 0028).
+    readonly send: (
+      id: string,
+      text: string,
+      actor: Actor,
+      notice?: PluginNotice,
+    ) => SendOutcome;
     // Adds context the Session reads on its next turn, without starting one.
-    readonly notify: (id: string, text: string, actor: Actor) => SendOutcome;
+    readonly notify: (
+      id: string,
+      text: string,
+      actor: Actor,
+      notice?: PluginNotice,
+    ) => SendOutcome;
     readonly transcript: (id: string) => readonly string[];
     readonly transcriptLength: (id: string) => number;
   };

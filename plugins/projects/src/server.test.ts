@@ -3,6 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   eventBus,
   type EventBus,
+  type PluginNotice,
   type PluginRoute,
   type SendOutcome,
   type ServerPluginContext,
@@ -40,6 +41,7 @@ function fakeKernel(): {
   readonly context: ServerPluginContext;
   readonly events: EventBus;
   readonly delivered: Delivered[];
+  readonly notices: (PluginNotice | undefined)[];
   readonly transcripts: Map<string, string[]>;
   readonly route: () => PluginRoute;
   readonly tool: (name: string) => ServerTool;
@@ -55,6 +57,7 @@ function fakeKernel(): {
   const transcripts = new Map<string, string[]>();
   const tools = new Map<string, ServerTool>();
   const delivered: Delivered[] = [];
+  const notices: (PluginNotice | undefined)[] = [];
   const offline = new Set<string>();
   const refused: string[] = [];
   const unreadable = new Set<string>();
@@ -134,8 +137,16 @@ function fakeKernel(): {
           sessions.set(id, { ...session, owner: { plugin: "projects", key } });
         }
       },
-      send: (id, text) => deliver("send", id, text),
-      notify: (id, text) => deliver("notify", id, text),
+      send: (id, text, _actor, notice) => {
+        notices.push(notice);
+
+        return deliver("send", id, text);
+      },
+      notify: (id, text, _actor, notice) => {
+        notices.push(notice);
+
+        return deliver("notify", id, text);
+      },
       transcript: (id) => {
         if (unreadable.has(id)) {
           throw new Error(`transcript of ${id} is unreadable`);
@@ -171,6 +182,7 @@ function fakeKernel(): {
     context,
     events,
     delivered,
+    notices,
     transcripts,
     route: () => {
       if (route === undefined) {
@@ -358,6 +370,60 @@ test("owns its coordinator and threads, and those started before owners existed"
   expect(kernel.session(coordinatorId).owner).toEqual(owner);
   expect(kernel.session(threadId).owner).toEqual(owner);
 });
+
+test("tags each notice and message with what the chat draws for it", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+  const thread = { session: kernel.session(threadId), actor: user };
+
+  turn(kernel, threadId, [userLine("bump it"), replyLine("bumped to 2.0")]);
+  await until(() => kernel.notices.length > 0);
+
+  await kernel
+    .tool("set_status")
+    .run({ state: "review_ready", note: "ready" }, thread);
+
+  await kernel.tool("message_coordinator").run({ text: "which tag?" }, thread);
+
+  await kernel
+    .tool("message_thread")
+    .run(
+      { thread: threadId, text: "use v2.0.0" },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  await until(() => kernel.notices.length > 3);
+
+  expect(kernel.notices).toEqual([
+    {
+      kind: "thread",
+      data: {
+        threadId,
+        title: "Bump version",
+        event: "finished a turn",
+        runState: "idle",
+        workState: "in_progress",
+        reply: "bumped to 2.0",
+      },
+    },
+    {
+      kind: "thread",
+      data: {
+        threadId,
+        title: "Bump version",
+        event: "set its work state to review_ready: ready",
+        runState: "idle",
+        workState: "review_ready",
+      },
+    },
+    {
+      kind: "thread_message",
+      data: { threadId, title: "Bump version", text: "which tag?" },
+    },
+    { kind: "coordinator_message", data: { text: "use v2.0.0" } },
+  ]);
+}, 10_000);
 
 test("delivers each thread turn held for an offline coordinator with its own reply", async () => {
   const kernel = fakeKernel();

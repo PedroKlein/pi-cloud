@@ -455,6 +455,15 @@ export type Command = { readonly actor: Actor } & (
     }
   // Context for the model's next turn that doesn't start one.
   | { readonly type: "context"; readonly text: string }
+  // A plugin's notice to the model, which the web draws with the plugin's
+  // own renderer (ADR 0028). With turn it starts a turn, or waits as a
+  // follow-up while one runs.
+  | {
+      readonly type: "notice";
+      readonly text: string;
+      readonly notice: NoticeTag;
+      readonly turn: boolean;
+    }
   | { readonly type: "answer"; readonly id: string; readonly value: Answer }
   | {
       readonly type: "tool_result";
@@ -475,6 +484,15 @@ export type Command = { readonly actor: Actor } & (
       readonly rows: number;
     }
 );
+
+// The custom message type that carries a NoticeTag in its details.
+export const noticeType = "pi-cloud-notice";
+
+export interface NoticeTag {
+  readonly plugin: string;
+  readonly kind: string;
+  readonly data?: unknown;
+}
 
 // The terminal id that opens Pi's own TUI instead of a shell (ADR 0027).
 export const piTerminal = "pi";
