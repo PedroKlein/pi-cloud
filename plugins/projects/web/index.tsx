@@ -294,7 +294,7 @@ function ProjectPage({
 }): ReactElement {
   const path = `projects/${encodeURIComponent(id)}`;
 
-  const project = useLoaded(
+  const { value: project, reload } = useLoaded(
     async () => {
       const response = context.request(path);
 
@@ -306,7 +306,7 @@ function ProjectPage({
     },
     path,
     refreshMs,
-  ).value;
+  );
 
   const back = (
     <Button variant="ghost" onClick={onBack} className="-ml-3 mb-2 self-start">
@@ -356,6 +356,7 @@ function ProjectPage({
           context={context}
           path={path}
           project={project}
+          onSaved={reload}
           models={modelNames(
             environments.filter(
               (environment) =>
@@ -646,11 +647,13 @@ function Settings({
   context,
   path,
   project,
+  onSaved,
   models,
 }: {
   readonly context: WebContext;
   readonly path: string;
   readonly project: ProjectView;
+  readonly onSaved: () => void;
   readonly models: readonly string[];
 }): ReactElement {
   const saved = {
@@ -661,6 +664,7 @@ function Settings({
 
   const [draft, setDraft] = useState(saved);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const changed = (Object.keys(saved) as (keyof typeof saved)[]).some(
     (key) => draft[key] !== saved[key],
@@ -677,14 +681,17 @@ function Settings({
       onSubmit={(event) => {
         event.preventDefault();
         setError("");
+        setSaving(true);
 
-        ok(context.request(`${path}/settings`, draft)).catch(
-          (failure: unknown) => {
+        ok(context.request(`${path}/settings`, draft))
+          .then(onSaved, (failure: unknown) => {
             setError(
               failure instanceof Error ? failure.message : String(failure),
             );
-          },
-        );
+          })
+          .finally(() => {
+            setSaving(false);
+          });
       }}
       className="grid max-w-xl gap-3"
     >
@@ -722,7 +729,11 @@ function Settings({
         New threads use these. The coordinator&apos;s model is in its own model
         menu.
       </p>
-      <Button type="submit" disabled={!changed} className="justify-self-start">
+      <Button
+        type="submit"
+        disabled={!changed || saving}
+        className="justify-self-start"
+      >
         Save settings
       </Button>
       {error !== "" && (
