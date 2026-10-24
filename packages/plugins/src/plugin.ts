@@ -199,8 +199,8 @@ export interface SessionCloud {
 export interface SessionPlugin {
   readonly name: string;
   readonly extension?: (cloud: SessionCloud) => ExtensionFactory;
-  // Pi packages, such as npm:<name>@<version>, loaded in every Session. Pi
-  // installs each on first use. A user's own extension that registers the same
+  // Pi packages, such as npm:<name>@<version>, loaded in every Session and
+  // installed on first use. A user's own extension that registers the same
   // tool or command replaces it.
   readonly packages?: readonly string[];
   // Tools that replace any extension tool of the same name, asked for once
