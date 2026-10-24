@@ -1066,8 +1066,10 @@ function titleAfter(
     }
   }
 
-  return named === null
-    ? null
+  // Only new names are cut, so a longer title given elsewhere, like a fork's,
+  // stays whole.
+  return named === null || named === title
+    ? named
     : Array.from(named.trim()).slice(0, titleLength).join("");
 }
 
