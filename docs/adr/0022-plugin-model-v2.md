@@ -66,7 +66,7 @@ The web part gets these slots, in this order:
 1. `sessionViews`: tabs next to Chat and Terminal in the Session view. A view the agent can use is one.
 2. `codeBlocks`: renderers for a fenced code block's language in chat markdown, like Obsidian's code block processors, so a plugin can draw a ` ```mermaid ` block. It is the cheapest way for the agent to show the user something.
 
-Later, as plugins need them: `commands` (`{ id, title, keys?, when?, run }` in a command palette, with keybindings the user can change), `statusItems`, `composerSuggest` (more trigger characters for the composer menu, like `@` and `/`), and deep links into a plugin page. `message.<type>` renderers from ADR 0015 are still planned.
+Later, as plugins need them: `commands` (`{ id, title, keys?, when?, run }` in a command palette, with keybindings the user can change), `statusItems`, `composerSuggest` (more trigger characters for the composer menu, like `@` and `/`), and deep links into a plugin page. `message.<type>` renderers from ADR 0015 became `notice.<kind>`, next to `tool.<name>` and `link.<scheme>` ([ADR 0028](0028-projects-around-the-coordinator.md#new-web-slots)).
 
 Slots stay fixed and named, as in Claude Code, instead of Obsidian's free layout of splits and tabs. A fixed layout also works on a phone.
 
