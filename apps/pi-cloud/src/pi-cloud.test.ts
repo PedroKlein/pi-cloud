@@ -1444,7 +1444,8 @@ test("runs the Environment's setup script once and gives its Sessions its variab
 
 test("marks a session failed with the output of its failed setup script", async () => {
   await updateEnvironment("laptop", {
-    setupScript: "echo cannot install tools; exit 3",
+    setupScript: 'echo "cannot install tools with $TOKEN"; exit 3',
+    secrets: { TOKEN: "s3cret" },
   });
 
   const session = await createSession("laptop");
@@ -1455,15 +1456,21 @@ test("marks a session failed with the output of its failed setup script", async 
   ).json()) as Session;
 
   expect(stored.error).toContain("exited with code 3");
-  expect(stored.error).toContain("cannot install tools");
+  expect(stored.error).toContain("cannot install tools with ***");
+  expect(stored.error).not.toContain("s3cret");
 });
 
-test("rejects an Environment update with a malformed variable", async () => {
-  const response = await updateEnvironment("laptop", {
+test("rejects an Environment update with a malformed or huge variable", async () => {
+  const badName = await updateEnvironment("laptop", {
     variables: { "NOT-A-NAME": "x" },
   });
 
-  expect(response.status).toBe(400);
+  const tooLarge = await updateEnvironment("laptop", {
+    secrets: { BIG: "x".repeat(64 * 1024) },
+  });
+
+  expect(badName.status).toBe(400);
+  expect(tooLarge.status).toBe(400);
 });
 
 async function gitRepository(): Promise<string> {

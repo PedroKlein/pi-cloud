@@ -84,7 +84,11 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const workspaceDir = (sessionId: string): string =>
     join(options.dataDir, "workspaces", sessionId);
 
-  const setUp = machineSetup(join(options.dataDir, "setup"), log);
+  const setUp = machineSetup(
+    join(options.dataDir, "setup"),
+    log,
+    options.signal,
+  );
 
   // The machine's logins, which every Profile uses (ADR 0031).
   const credentials = {

@@ -346,7 +346,8 @@ export function createHandler(
           log("session interrupted", { ...fields, ...attempt });
         }
 
-        for (const assignment of start) {
+        // The environment holds secret values.
+        for (const { environment: _secret, ...assignment } of start) {
           log("session assigned", { ...fields, ...assignment });
         }
 
@@ -688,6 +689,10 @@ function createSession(body: unknown): CreateSession {
 }
 
 const variableName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const maxVariables = 200;
+
+// Well under Linux's limit on one environment string, so spawns don't fail.
+const maxVariableBytes = 32 * 1024;
 
 function environmentUpdate(body: unknown): EnvironmentUpdate {
   const { name, setupScript, variables, secrets } = (body ?? {}) as Record<
@@ -724,13 +729,30 @@ function namedValues<Nullable extends boolean>(
     throw new BadRequest(`${field} must be an object`);
   }
 
-  for (const [key, each] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  if (entries.length > maxVariables) {
+    throw new BadRequest(
+      `${field} can hold at most ${String(maxVariables)} entries`,
+    );
+  }
+
+  for (const [key, each] of entries) {
     if (!variableName.test(key)) {
       throw new BadRequest(`${field} has an invalid name: ${key}`);
     }
 
-    if (typeof each !== "string" && !(nullable && each === null)) {
-      throw new BadRequest(`${field}.${key} must be a string`);
+    if (nullable && each === null) {
+      continue;
+    }
+
+    if (
+      typeof each !== "string" ||
+      each.includes("\0") ||
+      Buffer.byteLength(each) > maxVariableBytes
+    ) {
+      throw new BadRequest(
+        `${field}.${key} must be a string of at most ${String(maxVariableBytes)} bytes without NUL`,
+      );
     }
   }
 
