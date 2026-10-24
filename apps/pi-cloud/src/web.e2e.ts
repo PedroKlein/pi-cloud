@@ -480,11 +480,13 @@ test("creates a Project and shares a file through its library", async () => {
   await form.getByLabel("Repository URLs, one per line").fill(repository);
   await form.getByRole("button", { name: "New Project" }).click();
   await page.getByRole("heading", { level: 1, name: "Site" }).waitFor();
-  await page.getByRole("heading", { level: 2, name: "Threads" }).waitFor();
-  await page.getByText("No threads yet.").waitFor();
+  const rail = page.getByRole("navigation", { name: "Threads" });
+  await rail.getByText("No threads yet.").waitFor();
 
-  const settings = page.locator("section", {
-    has: page.getByRole("heading", { level: 2, name: "Settings" }),
+  await page.getByRole("button", { name: "Project settings" }).click();
+
+  const settings = page.getByRole("complementary", {
+    name: "Project settings",
   });
 
   await settings.getByLabel("Name").fill("Site docs");
@@ -498,6 +500,8 @@ test("creates a Project and shares a file through its library", async () => {
   expect(await settings.getByLabel("Thread model").inputValue()).toBe(
     "faux/faux-1",
   );
+
+  await settings.getByRole("button", { name: "Close settings" }).click();
 
   await page
     .locator("#project-nav")
@@ -517,50 +521,63 @@ test("creates a Project and shares a file through its library", async () => {
     fauxAssistantMessage([fauxText("noted")]),
   ]);
 
-  const coordinator = page.getByRole("region", { name: "Coordinator" });
-  await coordinator.getByText("No reply yet.").waitFor();
+  await page.locator("#prompt-text").fill("start a docs thread");
+  await page.locator("#prompt-text").press("Enter");
 
-  await coordinator
-    .getByLabel("Message the coordinator")
-    .fill("start a docs thread");
+  await page
+    .locator('#chat li[data-role="assistant"]')
+    .getByText(/^(ok|noted)$/)
+    .first()
+    .waitFor();
 
-  await coordinator.getByLabel("Message the coordinator").press("Enter");
+  const row = rail.getByRole("listitem", { name: "Docs" });
+  await row.getByText(/^e2e · /).waitFor();
+  await row.getByRole("button", { name: "Actions for Docs" }).click();
 
-  await coordinator.getByText(/^(ok|noted)$/).waitFor();
+  await page.getByRole("menuitemradio", { name: "Ready for review" }).click();
 
-  const card = page
-    .getByRole("region", { name: "Working" })
-    .getByRole("article", { name: "Docs" });
-
-  await card.getByText(/^e2e · /).waitFor();
-  await card.getByLabel("Work state of Docs").selectOption("review_ready");
-
-  const review = page
+  const review = rail
     .getByRole("region", { name: "Review" })
-    .getByRole("article", { name: "Docs" });
+    .getByRole("listitem", { name: "Docs" });
 
   await review.waitFor();
-
-  expect(
-    await page
-      .getByRole("region", { name: "Needs you" })
-      .getByRole("article")
-      .count(),
-  ).toBe(0);
+  expect(await rail.getByRole("region", { name: "Needs you" }).count()).toBe(0);
 
   // The thread's reply wakes the coordinator, and both take scripted replies
   // that later tests would otherwise lose to them.
-  await review.getByRole("button", { name: "Docs" }).click();
+  await review.getByRole("link").click();
 
-  await page
-    .locator('#chat li[data-role="assistant"]', { hasText: "ok" })
-    .waitFor();
+  const side = page.getByRole("complementary", { name: "Docs" });
+  await side.locator('li[data-role="assistant"]').getByText(/^ok$/).waitFor();
 
-  const threadId = new URL(page.url()).hash.slice(1);
+  const threadId = new URL(page.url()).hash.split("/").at(-1) ?? "";
 
   expect(
     await page.locator(`#sessions li[data-id="${threadId}"]`).count(),
   ).toBe(0);
+
+  await page.goto(server.url.href);
+  await page.goto(`${server.url.href}#${threadId}`);
+  await side.waitFor();
+  expect(new URL(page.url()).hash).toEndWith(`/${threadId}`);
+
+  await side.getByRole("button", { name: "Open fullscreen" }).click();
+  await page.getByRole("heading", { level: 1, name: /Docs$/ }).waitFor();
+  await side.waitFor({ state: "detached" });
+
+  await page
+    .getByRole("button", { name: "Show beside the coordinator" })
+    .click();
+
+  await side.getByRole("button", { name: "Back to threads" }).click();
+  await side.waitFor({ state: "detached" });
+  await rail.getByRole("listitem", { name: "Docs" }).waitFor();
+  await page.setViewportSize({ width: 390, height: 780 });
+  await rail.getByRole("listitem", { name: "Docs" }).getByRole("link").click();
+  await side.waitFor();
+  await side.getByRole("button", { name: "Back to threads" }).click();
+  await rail.getByRole("button", { name: "Hide threads" }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   while (faux.state.callCount < calls + 4) {
     await Bun.sleep(20);
@@ -584,7 +601,6 @@ test("creates a Project and shares a file through its library", async () => {
 
   const nav = page.locator("#project-nav").getByRole("link", { name: /^Site/ });
   await nav.click();
-  await page.getByRole("button", { name: "Open coordinator" }).click();
   await page.getByRole("button", { name: "Session actions" }).click();
   await page.getByRole("menuitem", { name: "Archive" }).click();
   await page.locator("#status", { hasText: "archived" }).waitFor();

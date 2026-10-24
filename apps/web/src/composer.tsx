@@ -9,6 +9,7 @@ import {
   type ReactElement,
   type RefObject,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -16,6 +17,7 @@ import { command } from "./api";
 import { admit, dataUrl } from "./attachments";
 import type { Feed, Settings } from "./feed";
 import { modelName, modelRef } from "./names";
+import { usePrimaryId } from "./primary";
 import { PromptCard, type PromptHandlers } from "./prompt-card";
 import { browserCommand } from "./suggest";
 import { useSuggestions } from "./suggestions";
@@ -41,6 +43,9 @@ export function Composer({
   readonly report: (error: unknown) => void;
 }): ReactElement {
   const text = useRef<HTMLTextAreaElement>(null);
+  const promptId = usePrimaryId("prompt");
+  const generatedId = useId();
+  const textId = usePrimaryId("prompt-text") ?? generatedId;
   const modelMenu = useRef<HTMLSelectElement>(null);
   const reasoningMenu = useRef<HTMLSelectElement>(null);
   const [images, setImages] = useState<readonly Attached[]>([]);
@@ -223,7 +228,7 @@ export function Composer({
 
       {!hidden && (
         <form
-          id="prompt"
+          id={promptId}
           onSubmit={(event) => {
             event.preventDefault();
             send("followUp");
@@ -242,7 +247,7 @@ export function Composer({
           className="relative flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
         >
           {suggestions.menu}
-          <label htmlFor="prompt-text" className="sr-only">
+          <label htmlFor={textId} className="sr-only">
             Message Pi
           </label>
           {images.length > 0 && (
@@ -275,7 +280,7 @@ export function Composer({
           )}
           <textarea
             ref={text}
-            id="prompt-text"
+            id={textId}
             name="text"
             rows={2}
             placeholder="Message Pi"

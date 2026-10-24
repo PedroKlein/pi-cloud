@@ -5,6 +5,7 @@ import {
   type TerminalTab,
   terminalTakenOver,
 } from "@pi-cloud/protocol";
+import type { EmbeddedSessionProps } from "@pi-cloud/plugins/web";
 import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -22,6 +23,7 @@ import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, feedReader, followEvents } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
+import { PrimaryView, usePrimaryId } from "./primary";
 import { enabledPlugins, pluginContext } from "./plugins";
 import { sessionChannel } from "./session-channel";
 import { keyBar, type Modifier, modified } from "./keys";
@@ -34,17 +36,26 @@ export function SessionView({
   environments,
   onSessionChange,
   onMenu,
+  layout = "full",
+  title: shownTitle,
+  crumb,
+  actions,
 }: {
   readonly sessionId: string;
   readonly environments: readonly Environment[];
-  readonly onSessionChange: () => void;
-  readonly onMenu: () => void;
-}): ReactElement {
+  readonly onSessionChange?: () => void;
+  readonly onMenu?: () => void;
+} & Omit<EmbeddedSessionProps, "sessionId" | "layout"> &
+  Partial<Pick<EmbeddedSessionProps, "layout">>): ReactElement {
+  const primary = layout === "full";
   const [feed, setFeed] = useState<Feed>(emptyFeed);
   const [view, setView] = useState<View>("chat");
   const report = useRef<(error: unknown) => void>(() => undefined);
   const [channel] = useState(() => sessionChannel(sessionId));
-  const sessionChanged = useEffectEvent(onSessionChange);
+
+  const sessionChanged = useEffectEvent(() => {
+    onSessionChange?.();
+  });
 
   const reportError = useCallback((error: unknown) => {
     report.current(error);
@@ -68,18 +79,25 @@ export function SessionView({
 
   const place = session ? shortName(session.workspace) : "";
   const named = feed.title ?? session?.title ?? undefined;
-  const title = named ?? place;
+  const title = shownTitle ?? named ?? place;
 
   const archived = session !== undefined && session.archivedAt !== null;
   const shown = archived ? "chat" : view;
 
+  const pageTitle = shownTitle ?? named;
+
   useEffect(() => {
-    document.title = named === undefined ? "Pi Cloud" : `${named} · Pi Cloud`;
+    if (!primary) {
+      return undefined;
+    }
+
+    document.title =
+      pageTitle === undefined ? "Pi Cloud" : `${pageTitle} · Pi Cloud`;
 
     return () => {
       document.title = "Pi Cloud";
     };
-  }, [named]);
+  }, [pageTitle, primary]);
 
   // Kept across renders so plugin parts re-render on their own events, not on
   // every token.
@@ -124,133 +142,144 @@ export function SessionView({
   };
 
   return (
-    <section
-      id="session"
-      aria-label={title}
-      className="flex min-h-0 min-w-0 flex-1 flex-col"
-    >
-      <header
-        className={cn(
-          "flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2",
-          shown !== "chat" && "bg-term-bg",
-        )}
-      >
-        <Button
-          variant="ghost"
-          iconOnly
-          aria-label="Open sessions"
-          onClick={onMenu}
-          className="md:hidden"
-        >
-          <Icon name="menu" />
-        </Button>
-        <div className="flex min-w-0 flex-[1_1_240px] flex-col">
-          <h1 className="truncate text-title font-semibold text-fg-strong">
-            {title}
-          </h1>
-          <p className="flex min-w-0 items-center gap-2 text-caption text-fg-dim">
-            <span className="truncate font-mono">
-              {session ? sessionCrumb(session, environments) : ""}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span id="status" className="shrink-0">
-              {statusText(feed)}
-            </span>
-          </p>
-        </div>
-        {session && <StateBadge session={session} />}
-        <span
-          id="plugin-header"
-          className="flex items-center gap-2 text-caption text-fg-dim"
-        >
-          {pluginHeaders}
-        </span>
-        {!archived && <ViewSwitch view={view} onChange={setView} />}
-        {session && (
-          <SessionMenu
-            items={[
-              archived
-                ? {
-                    label: "Unarchive",
-                    icon: "archive",
-                    run: () => {
-                      action("unarchive");
-                    },
-                  }
-                : {
-                    label: "Archive",
-                    icon: "archive",
-                    run: () => {
-                      action("archive");
-                    },
-                  },
-              ...(session.workspaceRemoval === "kept"
-                ? [
-                    {
-                      label: "Delete workspace",
-                      icon: "trash",
-                      danger: true,
-                      run: () => {
-                        if (
-                          confirm(
-                            `The workspace was kept: ${session.workspaceKeptReason ?? "unpushed work"}. Delete it for good?`,
-                          )
-                        ) {
-                          action("remove-workspace");
-                        }
-                      },
-                    } as const,
-                  ]
-                : []),
-            ]}
-          />
-        )}
-      </header>
-
-      <div
-        id="plugin-panels"
-        className="flex flex-col gap-2 border-b border-line px-4 py-2 text-label not-has-[>:not(:empty)]:hidden"
-      >
-        {pluginPanels}
-      </div>
-
-      {shown === "terminal" && (
-        <TerminalView sessionId={sessionId} terminals={feed.terminals} />
-      )}
-      {shown === "pi" && (
-        <TerminalScreen
-          sessionId={sessionId}
-          terminalId={piTerminal}
-          onClosed={() => {
-            setView("chat");
-          }}
-        />
-      )}
-      <div
-        hidden={shown !== "chat"}
+    <PrimaryView value={primary}>
+      <section
+        id={primary ? "session" : undefined}
+        aria-label={title}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        <ChatView feed={feed} place={place} hidden={shown !== "chat"} />
-        {!archived && (
-          <PiViewNotice
-            piView={feed.piView}
-            onOpen={() => {
-              setView("pi");
+        <header
+          className={cn(
+            "flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2",
+            shown !== "chat" && "bg-term-bg",
+          )}
+        >
+          {onMenu && (
+            <Button
+              variant="ghost"
+              iconOnly
+              aria-label="Open sessions"
+              onClick={onMenu}
+              className="md:hidden"
+            >
+              <Icon name="menu" />
+            </Button>
+          )}
+          <div
+            className={cn(
+              "flex min-w-0 flex-col",
+              primary ? "flex-[1_1_240px]" : "flex-[1_1_160px]",
+            )}
+          >
+            <h1 className="flex min-w-0 items-center gap-1.5 text-title font-semibold text-fg-strong">
+              {crumb}
+              <span className="truncate">{title}</span>
+            </h1>
+            <p className="flex min-w-0 items-center gap-2 text-caption text-fg-dim">
+              <span className="truncate font-mono">
+                {session ? sessionCrumb(session, environments) : ""}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span id={primary ? "status" : undefined} className="shrink-0">
+                {statusText(feed)}
+              </span>
+            </p>
+          </div>
+          {session && <StateBadge session={session} />}
+          <span
+            id={primary ? "plugin-header" : undefined}
+            className="flex items-center gap-2 text-caption text-fg-dim"
+          >
+            {pluginHeaders}
+          </span>
+          {!archived && <ViewSwitch view={view} onChange={setView} />}
+          {actions}
+          {session && (
+            <SessionMenu
+              items={[
+                archived
+                  ? {
+                      label: "Unarchive",
+                      icon: "archive",
+                      run: () => {
+                        action("unarchive");
+                      },
+                    }
+                  : {
+                      label: "Archive",
+                      icon: "archive",
+                      run: () => {
+                        action("archive");
+                      },
+                    },
+                ...(session.workspaceRemoval === "kept"
+                  ? [
+                      {
+                        label: "Delete workspace",
+                        icon: "trash",
+                        danger: true,
+                        run: () => {
+                          if (
+                            confirm(
+                              `The workspace was kept: ${session.workspaceKeptReason ?? "unpushed work"}. Delete it for good?`,
+                            )
+                          ) {
+                            action("remove-workspace");
+                          }
+                        },
+                      } as const,
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+        </header>
+
+        <div
+          id={primary ? "plugin-panels" : undefined}
+          className="flex flex-col gap-2 border-b border-line px-4 py-2 text-label not-has-[>:not(:empty)]:hidden"
+        >
+          {pluginPanels}
+        </div>
+
+        {shown === "terminal" && (
+          <TerminalView sessionId={sessionId} terminals={feed.terminals} />
+        )}
+        {shown === "pi" && (
+          <TerminalScreen
+            sessionId={sessionId}
+            terminalId={piTerminal}
+            onClosed={() => {
+              setView("chat");
             }}
           />
         )}
-        <Composer
-          sessionId={sessionId}
-          feed={feed}
-          models={
-            environments.find(({ id }) => id === session?.environmentId)
-              ?.models ?? []
-          }
-          hidden={archived}
-          report={reportError}
-        />
-      </div>
-    </section>
+        <div
+          hidden={shown !== "chat"}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
+          <ChatView feed={feed} place={place} hidden={shown !== "chat"} />
+          {!archived && (
+            <PiViewNotice
+              piView={feed.piView}
+              onOpen={() => {
+                setView("pi");
+              }}
+            />
+          )}
+          <Composer
+            sessionId={sessionId}
+            feed={feed}
+            models={
+              environments.find(({ id }) => id === session?.environmentId)
+                ?.models ?? []
+            }
+            hidden={archived}
+            report={reportError}
+          />
+        </div>
+      </section>
+    </PrimaryView>
   );
 }
 
@@ -571,6 +600,7 @@ function TerminalScreen({
   readonly onClosed?: (reason: string, opened: boolean) => void;
 }): ReactElement {
   const box = useRef<HTMLDivElement>(null);
+  const elementId = usePrimaryId("terminal");
   const send = useRef<(data: string) => void>(() => undefined);
   const [modifier, setModifier] = useState<Modifier>();
 
@@ -622,7 +652,7 @@ function TerminalScreen({
   return (
     <>
       <div className="min-h-0 flex-1 bg-term-bg px-3 py-2">
-        <div id="terminal" ref={box} className="h-full" />
+        <div id={elementId} ref={box} className="h-full" />
       </div>
       <div
         role="toolbar"

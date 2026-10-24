@@ -2,7 +2,7 @@ import { ThemeSwitch } from "./theme";
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
-import { useNow } from "./hooks";
+import { useNow } from "@pi-cloud/plugins/web";
 import { matches } from "./notices";
 import {
   ago,
@@ -17,6 +17,7 @@ import {
   type NavEntry,
   pluginContext,
   pluginRoute,
+  sessionHref,
 } from "./plugins";
 
 export interface SidebarProps {
@@ -213,7 +214,7 @@ function SessionRow({
   return (
     <li data-id={session.id}>
       <a
-        href={`#${session.id}`}
+        href={sessionHref(session)}
         aria-current={current ? "page" : undefined}
         className="relative grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-3 py-2 text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:before:absolute aria-[current=page]:before:inset-y-2 aria-[current=page]:before:left-0 aria-[current=page]:before:w-0.5 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-accent"
       >

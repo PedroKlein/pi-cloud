@@ -4,6 +4,7 @@ import {
   ok,
   type PageProps,
   useLoaded,
+  useNow,
   type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
@@ -16,11 +17,16 @@ import {
   Field,
   fieldClass,
   Icon,
-  isComposing,
   PageTitle,
   Section,
 } from "@pi-cloud/ui";
-import { type ReactElement, type SubmitEvent, useState } from "react";
+import {
+  type ReactElement,
+  type SubmitEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type ProjectSummary,
   type ProjectView,
@@ -35,7 +41,8 @@ const refreshMs = 3000;
 
 export const projects: WebPlugin = {
   name: "projects",
-  nav: { label: "Projects", Page, Items },
+  nav: { label: "Projects", Page, Items, fills: (path) => path !== "" },
+  sessionPath: (session) => `${session.owner?.key ?? ""}/${session.id}`,
 };
 
 function Items({ context, path }: NavItemsProps): ReactElement {
@@ -80,7 +87,7 @@ function counted(count: number, one: string, many: string): string {
 }
 
 function Page({ context, path }: PageProps): ReactElement {
-  const open = path === "" ? undefined : path;
+  const [open = "", ...rest] = path.split("/");
 
   const go = (to: string): void => {
     location.hash = context.href(to);
@@ -92,17 +99,15 @@ function Page({ context, path }: PageProps): ReactElement {
       "environments",
     ).value ?? [];
 
-  return open === undefined ? (
+  return open === "" ? (
     <ProjectList context={context} environments={environments} onOpen={go} />
   ) : (
     <ProjectPage
       key={open}
       context={context}
       id={open}
+      rest={rest.join("/")}
       environments={environments}
-      onBack={() => {
-        go("");
-      }}
     />
   );
 }
@@ -281,18 +286,71 @@ function CreateForm({
   );
 }
 
+type Panel =
+  | { readonly kind: "none" }
+  | { readonly kind: "settings" }
+  | { readonly kind: "thread"; readonly id: string; readonly full: boolean };
+
+// "" is the coordinator alone, "settings" its settings beside it, and a
+// thread's id opens it beside the coordinator, or fullscreen with "/full".
+function panelOf(rest: string, project: ProjectView): Panel {
+  const [first = "", second] = rest.split("/");
+
+  if (first === "settings") {
+    return { kind: "settings" };
+  }
+
+  if (first === "" || first === project.coordinatorId) {
+    return { kind: "none" };
+  }
+
+  return { kind: "thread", id: first, full: second === "full" };
+}
+
+const railKey = "pi-cloud.projects.rail";
+
+function useRail(): readonly [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return (
+        matchMedia("(width >= 48rem)").matches &&
+        localStorage.getItem(railKey) !== "closed"
+      );
+    } catch {
+      return true;
+    }
+  });
+
+  return [
+    open,
+    (next) => {
+      setOpen(next);
+
+      try {
+        if (matchMedia("(width >= 48rem)").matches) {
+          localStorage.setItem(railKey, next ? "open" : "closed");
+        }
+      } catch {
+        // The choice only lasts this visit.
+      }
+    },
+  ];
+}
+
 function ProjectPage({
   context,
   id,
+  rest,
   environments,
-  onBack,
 }: {
   readonly context: WebContext;
   readonly id: string;
+  readonly rest: string;
   readonly environments: readonly Environment[];
-  readonly onBack: () => void;
 }): ReactElement {
   const path = `projects/${encodeURIComponent(id)}`;
+  const [railOpen, setRailOpen] = useRail();
+  const { SessionView } = context;
 
   const { value: project, reload } = useLoaded(
     async () => {
@@ -308,176 +366,572 @@ function ProjectPage({
     refreshMs,
   );
 
-  const back = (
-    <Button variant="ghost" onClick={onBack} className="-ml-3 mb-2 self-start">
-      <Icon name="chevron-right" className="rotate-180" />
-      All Projects
-    </Button>
-  );
-
   if (project === undefined) {
-    return back;
+    return <div className="flex-1" />;
   }
 
   if (project === null) {
     return (
-      <>
-        {back}
+      <div className="m-auto flex flex-col items-center gap-3 p-8">
         <p className="text-fg-dim">Project not found.</p>
-      </>
+        <a href={context.href("")} className="text-accent hover:underline">
+          All Projects
+        </a>
+      </div>
     );
   }
 
+  const panel = panelOf(rest, project);
+
+  const to = (where: string): string =>
+    context.href(where === "" ? id : `${id}/${where}`);
+
+  const go = (where: string): void => {
+    location.hash = to(where);
+  };
+
+  const thread =
+    panel.kind === "thread"
+      ? project.threads.find(({ sessionId }) => sessionId === panel.id)
+      : undefined;
+
+  const beside = besideOf(panel, railOpen);
+
+  const railToggle = (
+    <Button
+      variant="ghost"
+      iconOnly
+      aria-label={beside === undefined ? "Show threads" : "Hide threads"}
+      aria-pressed={beside !== undefined}
+      onClick={() => {
+        setRailOpen(beside === undefined);
+
+        if (beside === "settings" || beside === "thread") {
+          go("");
+        }
+      }}
+      className="relative"
+    >
+      <Icon name="panel-right" />
+      {needsYou(project.threads) > 0 && (
+        <span className="absolute top-1 right-1 size-2 rounded-full bg-waiting" />
+      )}
+    </Button>
+  );
+
+  const column =
+    "flex min-h-0 shrink-0 flex-col border-l border-line max-md:fixed max-md:inset-0 max-md:z-20 max-md:w-full";
+
   return (
-    <>
-      {back}
-      <PageTitle description={project.repositories.join(" · ")}>
-        {project.name}
-      </PageTitle>
-
-      <Coordinator context={context} path={path} project={project} />
-
-      <Section title="Threads">
-        {project.threads.length === 0 ? (
-          <p className="text-fg-dim">
-            No threads yet. Ask the coordinator to start some.
-          </p>
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {panel.kind === "thread" && panel.full ? (
+          <SessionView
+            sessionId={panel.id}
+            layout="full"
+            {...(thread && { title: thread.title })}
+            crumb={
+              <>
+                <a
+                  href={to("")}
+                  className="shrink-0 font-normal text-fg-dim hover:text-fg hover:underline"
+                >
+                  {project.name}
+                </a>
+                <Icon
+                  name="chevron-right"
+                  className="size-3.5 shrink-0 text-fg-dim"
+                />
+              </>
+            }
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  aria-label="Show beside the coordinator"
+                  onClick={() => {
+                    go(panel.id);
+                  }}
+                  className="max-md:hidden"
+                >
+                  <Icon name="minimize" />
+                </Button>
+                {railToggle}
+              </>
+            }
+          />
         ) : (
-          <ThreadBoard
-            context={context}
-            threads={project.threads}
-            environments={environments}
+          <SessionView
+            sessionId={project.coordinatorId}
+            layout="full"
+            title={project.name}
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  aria-label="Project settings"
+                  aria-pressed={panel.kind === "settings"}
+                  onClick={() => {
+                    go(panel.kind === "settings" ? "" : "settings");
+                  }}
+                >
+                  <Icon name="settings" />
+                </Button>
+                {railToggle}
+              </>
+            }
           />
         )}
-      </Section>
+      </div>
 
-      <Section title="Settings">
-        <Settings
+      {beside === "thread" && panel.kind === "thread" && (
+        <aside
+          aria-label={thread?.title ?? "Thread"}
+          className={cn(column, "w-[min(36rem,50%)] bg-bg")}
+        >
+          <SessionView
+            sessionId={panel.id}
+            layout="side"
+            {...(thread && { title: thread.title })}
+            crumb={
+              <Button
+                variant="ghost"
+                iconOnly
+                aria-label="Back to threads"
+                onClick={() => {
+                  setRailOpen(true);
+                  go("");
+                }}
+                className="-ml-2"
+              >
+                <Icon name="chevron-right" className="rotate-180" />
+              </Button>
+            }
+            actions={
+              <Button
+                variant="ghost"
+                iconOnly
+                aria-label="Open fullscreen"
+                onClick={() => {
+                  go(`${panel.id}/full`);
+                }}
+              >
+                <Icon name="maximize" />
+              </Button>
+            }
+          />
+        </aside>
+      )}
+
+      {beside === "settings" && (
+        <aside
+          aria-label="Project settings"
+          className={cn(column, "w-[min(30rem,45%)] bg-bg")}
+        >
+          <header className="flex min-h-14 items-center gap-2 border-b border-line px-4">
+            <h2 className="flex-1 text-title font-semibold text-fg-strong">
+              Settings
+            </h2>
+            <Button
+              variant="ghost"
+              iconOnly
+              aria-label="Close settings"
+              onClick={() => {
+                go("");
+              }}
+            >
+              <Icon name="x" />
+            </Button>
+          </header>
+          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
+            <ul className="flex flex-col gap-1 font-mono text-mono-sm text-fg-dim">
+              {project.repositories.map((repository) => (
+                <li key={repository} className="truncate">
+                  {repository}
+                </li>
+              ))}
+            </ul>
+            <Settings
+              context={context}
+              path={path}
+              project={project}
+              onSaved={reload}
+              models={modelNames(
+                environments.filter(
+                  (environment) =>
+                    project.environmentId === null ||
+                    environment.id === project.environmentId,
+                ),
+              )}
+            />
+            <section aria-label="Memory" className="flex flex-col gap-2">
+              <h3 className="text-label font-medium text-fg-dim">Memory</h3>
+              <Memory context={context} path={path} project={project} />
+            </section>
+          </div>
+        </aside>
+      )}
+
+      {beside === "list" && (
+        <Rail
           context={context}
-          path={path}
           project={project}
-          onSaved={reload}
-          models={modelNames(
-            environments.filter(
-              (environment) =>
-                project.environmentId === null ||
-                environment.id === project.environmentId,
-            ),
-          )}
+          environments={environments}
+          current={panel.kind === "thread" ? panel.id : undefined}
+          href={to}
+          className={cn(column, "w-64 bg-panel")}
+          onClose={() => {
+            setRailOpen(false);
+          }}
         />
-      </Section>
-
-      <Section title="Memory">
-        <Memory context={context} path={path} project={project} />
-      </Section>
-    </>
+      )}
+    </div>
   );
 }
 
-function Coordinator({
+// The column beside the chat shows the open thread or the settings, or else
+// the list of threads while it is open.
+function besideOf(
+  panel: Panel,
+  railOpen: boolean,
+): "thread" | "settings" | "list" | undefined {
+  if (panel.kind === "settings" || (panel.kind === "thread" && !panel.full)) {
+    return panel.kind;
+  }
+
+  return railOpen ? "list" : undefined;
+}
+
+function needsYou(threads: readonly ThreadView[]): number {
+  return threads.filter((thread) => groupOf(thread) === "Needs you").length;
+}
+
+type Group = "Needs you" | "Working" | "Review" | "Idle" | "Finished";
+
+const groups: readonly Exclude<Group, "Finished">[] = [
+  "Needs you",
+  "Working",
+  "Review",
+  "Idle",
+];
+
+function groupOf({ workState, runState }: ThreadView): Group {
+  if (workState === "blocked" || runState === "waiting") {
+    return "Needs you";
+  }
+
+  if (workState === "done" || workState === "failed") {
+    return "Finished";
+  }
+
+  if (runState === "working") {
+    return "Working";
+  }
+
+  return workState === "review_ready" ? "Review" : "Idle";
+}
+
+const dots: Readonly<Record<Group, string>> = {
+  "Needs you": "bg-waiting",
+  Working: "bg-working",
+  Review: "bg-accent",
+  Idle: "border border-fg-dim",
+  Finished: "bg-done",
+};
+
+function Rail({
   context,
-  path,
   project,
+  environments,
+  current,
+  href,
+  className,
+  onClose,
 }: {
   readonly context: WebContext;
-  readonly path: string;
   readonly project: ProjectView;
+  readonly environments: readonly Environment[];
+  readonly current: string | undefined;
+  readonly href: (where: string) => string;
+  readonly className: string;
+  readonly onClose: () => void;
 }): ReactElement {
-  const [error, setError] = useState("");
+  const now = useNow();
 
-  const send = (form: HTMLFormElement): void => {
-    const box = form.elements.namedItem("text");
-    if (!(box instanceof HTMLTextAreaElement) || box.value.trim() === "") {
-      return;
+  const finished = project.threads.filter(
+    (thread) => groupOf(thread) === "Finished",
+  );
+
+  const rows = (threads: readonly ThreadView[]): ReactElement => (
+    <ul className="flex flex-col gap-0.5">
+      {threads.map((thread) => (
+        <ThreadRow
+          key={thread.sessionId}
+          context={context}
+          thread={thread}
+          current={thread.sessionId === current}
+          href={href(thread.sessionId)}
+          meta={[
+            environments.find(({ id }) => id === thread.environmentId)?.name ??
+              thread.environmentId,
+            since(thread.lastActivity, now),
+          ].join(" · ")}
+        />
+      ))}
+    </ul>
+  );
+
+  return (
+    <nav aria-label="Threads" className={className}>
+      <header className="flex min-h-14 items-center gap-2 border-b border-line pr-2 pl-4">
+        <h2 className="flex-1 text-label font-semibold text-fg-strong">
+          Threads
+        </h2>
+        <Button
+          variant="ghost"
+          iconOnly
+          aria-label="Hide threads"
+          onClick={onClose}
+          className="md:hidden"
+        >
+          <Icon name="x" />
+        </Button>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-2">
+        {project.threads.length === 0 && (
+          <p className="px-2 py-1 text-caption text-fg-dim">
+            No threads yet. Ask the coordinator to start some.
+          </p>
+        )}
+        {groups.map((group) => {
+          const shown = project.threads.filter(
+            (thread) => groupOf(thread) === group,
+          );
+
+          return shown.length === 0 ? null : (
+            <section key={group} aria-label={group}>
+              <h3 className="flex items-center gap-2 px-2 pb-1 text-caption font-semibold tracking-wide text-fg-dim uppercase">
+                {group} · {shown.length}
+              </h3>
+              {rows(shown)}
+            </section>
+          );
+        })}
+        {finished.length > 0 && (
+          <details aria-label="Finished">
+            <summary className="cursor-pointer px-2 pb-1 text-caption font-semibold tracking-wide text-fg-dim uppercase">
+              Finished ({finished.length})
+            </summary>
+            {rows(finished)}
+          </details>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+function since(time: string, now: number): string {
+  const minutes = Math.floor((now - Date.parse(time)) / 60_000);
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${String(minutes)}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  return hours < 24
+    ? `${String(hours)}h ago`
+    : `${String(Math.floor(hours / 24))}d ago`;
+}
+
+function ThreadRow({
+  context,
+  thread,
+  current,
+  href,
+  meta,
+}: {
+  readonly context: WebContext;
+  readonly thread: ThreadView;
+  readonly current: boolean;
+  readonly href: string;
+  readonly meta: string;
+}): ReactElement {
+  const group = groupOf(thread);
+
+  return (
+    <li
+      aria-label={thread.title}
+      className="group relative flex items-start rounded-md hover:bg-hover has-aria-[current=page]:bg-hover"
+    >
+      <a
+        href={href}
+        aria-current={current ? "page" : undefined}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5 pr-1 pl-2"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              thread.workState === "failed" ? "bg-failed" : dots[group],
+            )}
+          />
+          <span
+            className={cn(
+              "truncate text-label font-medium",
+              current ? "text-fg-strong" : "text-fg",
+            )}
+          >
+            {thread.title}
+          </span>
+        </span>
+        <span className="truncate pl-4 text-caption text-fg-dim">
+          {thread.runState === "working" || thread.runState === "idle"
+            ? meta
+            : `${runBadges[thread.runState]?.label ?? thread.runState} · ${meta}`}
+        </span>
+      </a>
+      <ThreadMenu context={context} thread={thread} />
+    </li>
+  );
+}
+
+function ThreadMenu({
+  context,
+  thread,
+}: {
+  readonly context: WebContext;
+  readonly thread: ThreadView;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
     }
 
-    const text = box.value;
-    box.value = "";
+    const close = (event: Event): void => {
+      if (
+        event instanceof KeyboardEvent
+          ? event.key === "Escape"
+          : box.current?.contains(event.target as Node) !== true
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const run = (request: Promise<Response>): void => {
+    setOpen(false);
     setError("");
 
-    context.request(`${path}/message`, { text }).then(
-      async (response) => {
-        if (!response.ok) {
-          box.value = text;
-
-          const { error: reason } = (await response.json()) as {
-            error: string;
-          };
-
-          setError(reason);
-        }
-      },
-      (failure: unknown) => {
-        box.value = text;
-        setError(String(failure));
-      },
-    );
+    ok(request).catch((failure: unknown) => {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    });
   };
 
   return (
-    <section
-      aria-label="Coordinator"
-      className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-4"
-    >
-      <header className="flex items-center gap-3">
-        <h2 className="flex-1 text-label font-medium text-fg-dim">
-          Coordinator
-        </h2>
-        <RunBadge state={project.coordinatorState} />
-        <Button
-          variant="ghost"
-          onClick={() => {
-            context.openSession(project.coordinatorId);
-          }}
-        >
-          Open coordinator
-        </Button>
-      </header>
-      <p className="text-prose whitespace-pre-wrap text-fg">
-        {project.coordinatorSays ?? "No reply yet."}
-      </p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          send(event.currentTarget);
+    <div ref={box} className="relative">
+      <Button
+        variant="ghost"
+        iconOnly
+        aria-label={`Actions for ${thread.title}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open);
         }}
-        className="flex items-end gap-2 rounded-lg border border-line bg-bg py-2 pr-2 pl-3 focus-within:border-accent"
+        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-100"
       >
-        <textarea
-          name="text"
-          rows={2}
-          aria-label="Message the coordinator"
-          placeholder="Ask the coordinator or start new work"
-          onKeyDown={(event) => {
-            if (
-              event.key === "Enter" &&
-              !event.shiftKey &&
-              !isComposing(event)
-            ) {
-              event.preventDefault();
-              event.currentTarget.form?.requestSubmit();
-            }
-          }}
-          className="flex-1 resize-none bg-transparent text-ui text-fg placeholder:text-fg-dim focus:outline-none"
-        />
-        <Button
-          variant="primary"
-          iconOnly
-          type="submit"
-          aria-label="Send to the coordinator"
-          className="rounded-full"
-        >
-          <Icon name="arrow-up" />
-        </Button>
-      </form>
+        <Icon name="more" />
+      </Button>
       {error !== "" && (
-        <p role="alert" className="text-caption text-failed">
+        <p
+          role="alert"
+          className="absolute top-full right-0 z-30 w-48 rounded-md border border-line bg-elevated p-2 text-caption text-failed shadow-pop"
+        >
           {error}
         </p>
       )}
-    </section>
+      {open && (
+        <div
+          role="menu"
+          aria-label={`Actions for ${thread.title}`}
+          className="absolute top-full right-0 z-30 mt-1 flex min-w-44 flex-col rounded-lg border border-line bg-elevated p-1 shadow-pop"
+        >
+          {workStates.map((state) => (
+            <button
+              key={state}
+              type="button"
+              role="menuitemradio"
+              aria-checked={thread.workState === state}
+              onClick={() => {
+                run(
+                  context.request(
+                    `threads/${encodeURIComponent(thread.sessionId)}/state`,
+                    { state },
+                  ),
+                );
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui text-fg hover:bg-hover"
+            >
+              <Icon
+                name="check"
+                className={cn(
+                  "size-4",
+                  thread.workState !== state && "invisible",
+                )}
+              />
+              {workStateNames[state]}
+            </button>
+          ))}
+          <hr className="my-1 border-line" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              run(
+                fetch(
+                  `/api/sessions/${encodeURIComponent(thread.sessionId)}/archive`,
+                  { method: "POST" },
+                ),
+              );
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui text-fg hover:bg-hover"
+          >
+            <Icon name="archive" className="size-4" />
+            Archive
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
+
+const workStateNames: Readonly<Record<WorkState, string>> = {
+  in_progress: "In progress",
+  blocked: "Blocked",
+  review_ready: "Ready for review",
+  done: "Done",
+  failed: "Failed",
+};
 
 const runBadges: Readonly<
   Record<RunState, { state: BadgeState; label: string } | undefined>
@@ -489,159 +943,6 @@ const runBadges: Readonly<
   interrupted: { state: "offline", label: "Interrupted" },
   archived: { state: "offline", label: "Archived" },
 };
-
-function RunBadge({ state }: { readonly state: RunState }): ReactElement {
-  const badge = runBadges[state];
-
-  return badge ? (
-    <Badge state={badge.state}>{badge.label}</Badge>
-  ) : (
-    <span className="text-label text-fg-dim">{state}</span>
-  );
-}
-
-const columns: readonly {
-  readonly label: string;
-  readonly states: readonly WorkState[];
-  readonly dot: string;
-}[] = [
-  { label: "Needs you", states: ["blocked"], dot: "bg-waiting" },
-  { label: "Review", states: ["review_ready"], dot: "bg-accent" },
-  { label: "Working", states: ["in_progress"], dot: "bg-working" },
-  { label: "Failed", states: ["failed"], dot: "bg-failed" },
-  { label: "Done", states: ["done"], dot: "bg-done" },
-];
-
-function ThreadBoard({
-  context,
-  threads,
-  environments,
-}: {
-  readonly context: WebContext;
-  readonly threads: readonly ThreadView[];
-  readonly environments: readonly Environment[];
-}): ReactElement {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-      {columns.map(({ label, states, dot }, index) => {
-        const shown = threads.filter((thread) =>
-          index === 0
-            ? states.includes(thread.workState) || thread.runState === "waiting"
-            : states.includes(thread.workState) &&
-              thread.runState !== "waiting",
-        );
-
-        return (
-          <section
-            key={label}
-            aria-label={label}
-            className="flex min-w-0 flex-col gap-2"
-          >
-            <h3 className="flex items-center gap-2 text-label text-fg-dim">
-              <span className={cn("size-2 rounded-full", dot)} />
-              {label} · {shown.length}
-            </h3>
-            {shown.map((thread) => (
-              <ThreadCard
-                key={thread.sessionId}
-                context={context}
-                thread={thread}
-                needsYou={index === 0}
-                environment={
-                  environments.find(({ id }) => id === thread.environmentId)
-                    ?.name ?? thread.environmentId
-                }
-              />
-            ))}
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
-function ThreadCard({
-  context,
-  thread,
-  needsYou,
-  environment,
-}: {
-  readonly context: WebContext;
-  readonly thread: ThreadView;
-  readonly needsYou: boolean;
-  readonly environment: string;
-}): ReactElement {
-  const [error, setError] = useState("");
-  const [failures, setFailures] = useState(0);
-
-  return (
-    <article
-      aria-label={thread.title}
-      className={cn(
-        "flex flex-col gap-2 rounded-lg border bg-panel p-3",
-        needsYou ? "border-waiting" : "border-line",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            context.openSession(thread.sessionId);
-          }}
-          className="cursor-pointer text-left font-medium text-fg-strong hover:underline"
-        >
-          {thread.title}
-        </button>
-        {thread.runState !== "idle" && <RunBadge state={thread.runState} />}
-      </div>
-      <p className="truncate text-caption text-fg-dim">
-        {[
-          environment,
-          thread.branch,
-          new Date(thread.lastActivity).toLocaleString(undefined, {
-            dateStyle: "short",
-            timeStyle: "short",
-          }),
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-      <select
-        key={`${thread.workState} ${String(failures)}`}
-        aria-label={`Work state of ${thread.title}`}
-        defaultValue={thread.workState}
-        onChange={(event) => {
-          setError("");
-
-          ok(
-            context.request(
-              `threads/${encodeURIComponent(thread.sessionId)}/state`,
-              { state: event.target.value },
-            ),
-          ).catch((failure: unknown) => {
-            setError(
-              failure instanceof Error ? failure.message : String(failure),
-            );
-
-            setFailures((count) => count + 1);
-          });
-        }}
-        className={cn(fieldClass, "self-start py-0.5 text-label")}
-      >
-        {workStates.map((value) => (
-          <option key={value} value={value}>
-            {value.replace("_", " ")}
-          </option>
-        ))}
-      </select>
-      {error !== "" && (
-        <p role="alert" className="text-caption text-failed">
-          {error}
-        </p>
-      )}
-    </article>
-  );
-}
 
 function Settings({
   context,

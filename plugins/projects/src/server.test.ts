@@ -649,7 +649,12 @@ test("keeps delivering, and sends nothing twice, while the store can't delete a 
 
   await until(() => kernel.delivered.length > 0);
 
-  expect((await messageProject(kernel, "carry on")).status).toBe(202);
+  await kernel
+    .tool("message_coordinator")
+    .run(
+      { text: "carry on" },
+      { session: kernel.session(threadId), actor: `session:${threadId}` },
+    );
 
   locked = false;
   await until(() => kernel.delivered.length > 1);
@@ -659,7 +664,10 @@ test("keeps delivering, and sends nothing twice, while the store can't delete a 
       kind: "send",
       text: `[Thread "Bump version" (${threadId})] need a decision`,
     },
-    { kind: "send", text: "carry on" },
+    {
+      kind: "send",
+      text: `[Thread "Bump version" (${threadId})] carry on`,
+    },
   ]);
 
   expect(
@@ -753,22 +761,6 @@ async function projectView(kernel: FakeKernel): Promise<ProjectView> {
   return (await response.json()) as ProjectView;
 }
 
-async function messageProject(
-  kernel: FakeKernel,
-  text: unknown,
-): Promise<Response> {
-  const { id } = await projectView(kernel);
-
-  return kernel.route()(
-    new Request(`http://pi-cloud/projects/${id}/message`, {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    }),
-    `projects/${id}/message`,
-    undefined,
-  );
-}
-
 async function editProject(
   kernel: FakeKernel,
   changes: unknown,
@@ -829,26 +821,6 @@ test("renames a Project and changes the model new threads start on", async () =>
   expect((await projectView(kernel)).name).toBe("Ship");
 });
 
-test("shows the coordinator's last reply on the Project", async () => {
-  const kernel = fakeKernel();
-  projects.register(kernel.context);
-  const { coordinatorId } = await startProject(kernel);
-
-  expect((await projectView(kernel)).coordinatorSays).toBeNull();
-
-  kernel.transcripts
-    .get(coordinatorId)
-    ?.push(userLine("how is it going?"), replyLine("One thread needs you."));
-
-  expect((await projectView(kernel)).coordinatorSays).toBe(
-    "One thread needs you.",
-  );
-
-  kernel.unreadable.add(coordinatorId);
-
-  expect((await projectView(kernel)).coordinatorSays).toBeNull();
-});
-
 test("lists each Project with its repositories, coordinator state and the threads that need you", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);
@@ -894,74 +866,12 @@ test("lists each Project with its repositories, coordinator state and the thread
   ]);
 });
 
-test("sends a message from the Project page to its coordinator, and holds it for one that is still starting", async () => {
-  const kernel = fakeKernel();
-  projects.register(kernel.context);
-  const { coordinatorId } = await startProject(kernel);
-
-  expect((await messageProject(kernel, "start a docs thread")).status).toBe(
-    202,
-  );
-
-  expect(kernel.delivered).toEqual([
-    { kind: "send", text: "start a docs thread" },
-  ]);
-
-  expect((await messageProject(kernel, "  ")).status).toBe(400);
-
-  kernel.update(coordinatorId, { status: "starting" });
-  kernel.offline.add(coordinatorId);
-  expect((await messageProject(kernel, "again")).status).toBe(202);
-  expect(kernel.delivered).toHaveLength(1);
-
-  kernel.offline.delete(coordinatorId);
-  await until(() => kernel.delivered.length > 1);
-
-  expect(kernel.delivered[1]).toEqual({ kind: "send", text: "again" });
-}, 10_000);
-
 const restored: Partial<Session> = {
   status: "idle",
   error: null,
   archivedAt: null,
   online: true,
 };
-
-test("refuses a message from the Project page that its coordinator can't get", async () => {
-  const kernel = fakeKernel();
-  projects.register(kernel.context);
-  const { coordinatorId } = await startProject(kernel);
-
-  const refuses = async (
-    changes: Partial<Session>,
-    error: string,
-  ): Promise<void> => {
-    kernel.update(coordinatorId, changes);
-    const response = await messageProject(kernel, "stop every thread");
-    kernel.update(coordinatorId, restored);
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error });
-  };
-
-  await refuses(
-    { online: false },
-    "the coordinator is on a machine that is offline",
-  );
-
-  await refuses(
-    { status: "failed", error: "clone failed" },
-    "the coordinator failed to start: clone failed",
-  );
-
-  await refuses(
-    { status: "stopped", archivedAt: new Date().toISOString() },
-    "the coordinator is archived",
-  );
-
-  expect((await messageProject(kernel, "carry on")).status).toBe(202);
-  expect(kernel.delivered).toEqual([{ kind: "send", text: "carry on" }]);
-}, 10_000);
 
 test("tells the coordinator when a thread can't get its message", async () => {
   const kernel = fakeKernel();

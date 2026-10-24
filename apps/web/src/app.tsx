@@ -6,13 +6,16 @@ import {
   useSessions,
   useSettledNotices,
 } from "./hooks";
+import { ShellMenu } from "./embedded-session";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
 import {
   enabledPlugins,
   type NavEntry,
+  pageFills,
   pluginContext,
   pluginRoute,
+  sessionHref,
 } from "./plugins";
 import { SessionView } from "./session-view";
 import { Sidebar } from "./sidebar";
@@ -74,6 +77,15 @@ export function App({
   }, [drawer]);
 
   const page = pluginRoute(route);
+  const listed = sessions.value.find(({ id }) => id === route);
+  const moved = listed ? sessionHref(listed) : undefined;
+
+  // Old links and notices name a Session its plugin now shows (ADR 0028).
+  useEffect(() => {
+    if (moved !== undefined && moved !== `#${route}`) {
+      location.replace(moved);
+    }
+  }, [moved, route]);
 
   const openDrawer = (): void => {
     setDrawer(true);
@@ -89,6 +101,10 @@ export function App({
           onMenu={openDrawer}
         />
       );
+    }
+
+    if (moved !== undefined && moved !== `#${route}`) {
+      return <div className="flex-1" />;
     }
 
     if (route === "") {
@@ -223,6 +239,28 @@ function PluginPage({
   const Page = enabledPlugins().find((plugin) => plugin.name === name)?.nav
     ?.Page;
 
+  const body = Page ? (
+    <PluginBoundary key={name} name={name}>
+      <Page context={pluginContext(name)} path={path} />
+    </PluginBoundary>
+  ) : (
+    <p className="text-fg-dim">This page isn&apos;t available.</p>
+  );
+
+  if (pageFills(name, path)) {
+    return (
+      <ShellMenu value={onMenu}>
+        <div
+          id="plugin-page"
+          data-plugin={name}
+          className="flex min-h-0 min-w-0 flex-1"
+        >
+          {body}
+        </div>
+      </ShellMenu>
+    );
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="p-2 md:hidden">
@@ -233,13 +271,7 @@ function PluginPage({
         data-plugin={name}
         className="mx-auto flex max-w-5xl flex-col px-4 py-8 md:px-10"
       >
-        {Page ? (
-          <PluginBoundary key={name} name={name}>
-            <Page context={pluginContext(name)} path={path} />
-          </PluginBoundary>
-        ) : (
-          <p className="text-fg-dim">This page isn&apos;t available.</p>
-        )}
+        {body}
       </div>
     </div>
   );
