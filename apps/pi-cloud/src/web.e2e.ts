@@ -277,6 +277,29 @@ test("archives a session, shows it only with archived sessions and unarchives it
   expect(await page.locator("#prompt").isVisible()).toBe(true);
 }, 30_000);
 
+test("forks a session into a new one and opens it", async () => {
+  await page.goto(server.url.href);
+
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await form.getByRole("radio", { name: /^e2e/ }).check();
+
+  await form.locator("[name=kind]").selectOption("folder");
+  await form.locator("[name=location]").fill(root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+  const id = new URL(page.url()).hash.slice(1);
+
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await page.getByRole("menuitem", { name: "Fork" }).click();
+  await page.waitForURL((url) => url.hash !== "" && url.hash !== `#${id}`);
+  const fork = new URL(page.url()).hash.slice(1);
+
+  await page.locator(`#sessions li[data-id="${fork}"]`).waitFor();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+}, 30_000);
+
 test("finds sessions by search and notifies when one finishes", async () => {
   await page.context().grantPermissions(["notifications"]);
 

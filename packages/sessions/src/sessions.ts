@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { KernelEvent, ModelOffer, StartRequest } from "@pi-cloud/plugins";
 import {
+  type Actor,
   type Assignment,
   type Attempt,
   type Command,
@@ -26,6 +27,8 @@ import {
   type TrustAnswer,
   type Work,
   type WorkPoll,
+  type Workspace,
+  type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import { placesOn, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
@@ -215,6 +218,41 @@ export class Sessions {
     });
 
     return { ok: true, value: view };
+  }
+
+  // A fork is a new Session that starts from another's transcript, on its
+  // own branch from the one that Session works on, in any Environment
+  // (ADR 0034). Only what the Session pushed reaches another machine.
+  fork(
+    id: string,
+    request: { readonly environment?: string; readonly actor: Actor },
+  ): Result<Session> {
+    const source = this.#store.get(id);
+    if (!source) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    const forked = this.start({
+      environment: request.environment ?? source.environmentId,
+      profile: source.profileId,
+      workspace: forkedWorkspace(source.workspace),
+      ...(source.model && { model: source.model }),
+      ...(source.thinking && { thinking: source.thinking }),
+      ...(source.systemPrompt !== null && {
+        systemPrompt: source.systemPrompt,
+      }),
+      actor: request.actor,
+    });
+
+    if (forked.ok) {
+      this.#store.appendTranscript(
+        forked.value.id,
+        0,
+        this.#store.transcript(id, 0),
+      );
+    }
+
+    return forked;
   }
 
   list({
@@ -1081,4 +1119,31 @@ function userText(message: unknown): string | null {
     : undefined;
 
   return typeof text === "string" && text.trim() !== "" ? text : null;
+}
+
+function forkedWorkspace(workspace: Workspace): WorkspaceRequest {
+  switch (workspace.kind) {
+    case "folder":
+      return workspace;
+    case "worktree":
+      return {
+        kind: "worktree",
+        path: workspace.path,
+        startPoint: workspace.branch,
+      };
+    case "clone":
+      return {
+        kind: "clone",
+        repository: workspace.repository,
+        startPoint: workspace.branch,
+      };
+    case "repositories":
+      return {
+        kind: "repositories",
+        repositories: workspace.repositories.map(({ repository }) => ({
+          repository,
+          startPoint: workspace.branch,
+        })),
+      };
+  }
 }

@@ -191,6 +191,28 @@ export function createHandler(
     ],
     [
       "POST",
+      /^\/api\/sessions\/([^/]+)\/fork$/,
+      async (request, [id = ""]) => {
+        const { environment } = createFork(await readJson(request));
+
+        const forked = sessions.fork(id, {
+          ...(environment !== undefined && { environment }),
+          actor: user,
+        });
+
+        if (forked.ok) {
+          log("session forked", {
+            sessionId: forked.value.id,
+            from: id,
+            environmentId: forked.value.environmentId,
+          });
+        }
+
+        return reply(forked, 201);
+      },
+    ],
+    [
+      "POST",
       /^\/api\/sessions$/,
       async (request) => {
         const created = sessions.start({
@@ -639,6 +661,19 @@ function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
   }
 
   return level;
+}
+
+function createFork(body: unknown): { readonly environment?: string } {
+  const { environment } = (body ?? {}) as Record<string, unknown>;
+  if (environment === undefined || environment === null) {
+    return {};
+  }
+
+  if (typeof environment !== "string" || environment === "") {
+    throw new BadRequest("environment must be a non-empty string");
+  }
+
+  return { environment };
 }
 
 function createSession(body: unknown): CreateSession {
