@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md))
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md))
 - Date: 2026-10-22
 
 ## Context
