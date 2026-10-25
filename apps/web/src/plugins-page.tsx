@@ -82,7 +82,7 @@ export function PluginsPage(): ReactElement {
 function waitsForRestart(plugin: PluginInfo): boolean {
   return (
     plugin.source === "installed" &&
-    (plugin.updated === true ||
+    ((plugin.updated === true && plugin.turnedOn) ||
       (plugin.state !== "failed" &&
         plugin.turnedOn !== (plugin.state === "on")))
   );

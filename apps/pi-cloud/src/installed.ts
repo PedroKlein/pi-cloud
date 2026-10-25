@@ -58,6 +58,15 @@ export async function installedPlugins(
     throw error;
   });
 
+  // What an install or update that didn't finish left behind.
+  await Promise.all(
+    folders
+      .filter((name) => /^\.(install|old)-/.test(name))
+      .map(async (name) =>
+        rm(join(root, name), { recursive: true, force: true }),
+      ),
+  );
+
   const named = folders.filter((name) => {
     if (name.startsWith(".")) {
       return false;
@@ -179,6 +188,8 @@ export async function install(
         throw new Error(`a plugin with the id ${manifest.id} is already here`);
       }
 
+      // A switch left from a plugin of this id removed by hand.
+      await turnOn(root, manifest.id, false);
       await writeSource(staging, source);
       await rename(staging, join(root, manifest.id));
 
@@ -190,7 +201,8 @@ export async function install(
 }
 
 // Fetches the newest version from where the plugin was installed from, to
-// run when the server restarts. Undefined when it already has it.
+// run when the server restarts. Undefined when it already has it. A version
+// that asks for more than the one turned on is turned off first.
 export async function update(
   root: string,
   id: string,
@@ -221,14 +233,33 @@ export async function update(
         throw new Error(`its newest version has the id ${manifest.id}`);
       }
 
+      const trusted = await stagedManifest(folder).catch(() => undefined);
+
+      if (trusted === undefined || asksForMore(trusted, manifest)) {
+        await turnOn(root, id, false);
+      }
+
       await writeSource(staging, source);
+
+      for (const kept of [".build", "node_modules"]) {
+        await rm(join(staging, kept), { recursive: true, force: true });
+      }
+
+      const old = join(root, `.old-${randomUUID()}`);
+
+      await rename(folder, old);
+
+      try {
+        await rename(staging, folder);
+      } catch (error) {
+        await rename(old, folder);
+        throw error;
+      }
 
       // The running version's bundles are served until the restart rebuilds
       // them, and its dependencies make the next install quicker.
       for (const kept of [".build", "node_modules"]) {
-        await rm(join(staging, kept), { recursive: true, force: true });
-
-        await rename(join(folder, kept), join(staging, kept)).catch(
+        await rename(join(old, kept), join(folder, kept)).catch(
           (error: unknown) => {
             if (!isMissing(error)) {
               throw error;
@@ -237,10 +268,6 @@ export async function update(
         );
       }
 
-      const old = join(root, `.old-${randomUUID()}`);
-
-      await rename(folder, old);
-      await rename(staging, folder);
       await rm(old, { recursive: true, force: true });
 
       return { manifest, on: (await turnedOn(root)).includes(id), source };
@@ -250,11 +277,24 @@ export async function update(
   });
 }
 
+// Turning a plugin on trusted what it asked for and where its parts ran then.
+function asksForMore(trusted: PluginManifest, next: PluginManifest): boolean {
+  const had = trusted.capabilities ?? [];
+
+  return (
+    (next.capabilities ?? []).some((each) => !had.includes(each)) ||
+    (next.parts?.web !== undefined && trusted.parts?.web === undefined) ||
+    (next.parts?.session !== undefined &&
+      (trusted.parts?.session === undefined ||
+        (trusted.ownSessionsOnly === true && next.ownSessionsOnly !== true)))
+  );
+}
+
 // A folder that links to a plugin elsewhere loses only the link.
 export async function remove(root: string, id: string): Promise<void> {
   return oneAtATime(async () => {
-    await rm(join(root, id), { recursive: true, force: true });
     await turnOn(root, id, false);
+    await rm(join(root, id), { recursive: true, force: true });
   });
 }
 

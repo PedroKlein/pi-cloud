@@ -795,3 +795,128 @@ test("removes only the link to a plugin developed elsewhere", async () => {
   expect(await exists(join(plugins, "linked"))).toBe(false);
   expect(await exists(join(root, "linked", "package.json"))).toBe(true);
 });
+
+test("refuses a plugin holding a link, which could aim the server's writes anywhere", async () => {
+  const victim = join(root, "victim.txt");
+  await writeFile(victim, "untouched");
+
+  const url = await gitPlugin("linky");
+  const folder = join(root, "sources", "linky");
+  await symlink(victim, join(folder, ".source.json"));
+  await commit(folder);
+  await start();
+
+  const refused = await install(url);
+
+  expect(refused.status).toBe(400);
+
+  expect(((await refused.json()) as { error: string }).error).toContain(
+    "holds a link, .source.json",
+  );
+
+  expect(await readFile(victim, "utf8")).toBe("untouched");
+  expect(await readdir(plugins)).toEqual([]);
+});
+
+test("refuses a URL holding credentials, since every user sees where a plugin came from", async () => {
+  await start();
+
+  const refused = await install("https://me:token@example.com/plugin.git");
+
+  expect(((await refused.json()) as { error: string }).error).toContain(
+    "credentials",
+  );
+});
+
+test("keeps the running version's settings until the server restarts", async () => {
+  const url = await gitPlugin(
+    "hello",
+    {
+      settings: {
+        greeting: { type: "string", title: "Greeting", default: "hi" },
+      },
+    },
+    `context.routes.handle(async () => Response.json(context.settings.get()));`,
+  );
+
+  const folder = join(root, "sources", "hello");
+
+  await start();
+  await install(url);
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+  await start();
+
+  const manifest = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8"),
+  ) as { piCloud: Record<string, unknown> };
+
+  manifest.piCloud["settings"] = {
+    salute: { type: "string", title: "Salute", default: "yo" },
+  };
+
+  await writeFile(join(folder, "package.json"), JSON.stringify(manifest));
+  await commit(folder);
+  await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await (await api("GET", "/api/plugins/hello/")).json()).toEqual({
+    greeting: "hi",
+  });
+
+  expect((await listed("hello"))?.settings).toHaveProperty("salute");
+
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/hello/")).json()).toEqual({
+    salute: "yo",
+  });
+});
+
+test("turns off an update that adds a part running somewhere new", async () => {
+  const url = await gitPlugin("hello");
+  const folder = join(root, "sources", "hello");
+
+  await start();
+  await install(url);
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+
+  const manifest = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8"),
+  ) as { piCloud: { parts: Record<string, string> } };
+
+  manifest.piCloud.parts["session"] = "session.ts";
+  await writeFile(join(folder, "package.json"), JSON.stringify(manifest));
+
+  await writeFile(
+    join(folder, "session.ts"),
+    `export default { name: "hello" };\n`,
+  );
+
+  await commit(folder);
+
+  const updated = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await updated.json()).toMatchObject({ turnedOn: false });
+});
+
+test("installs turned off even when a plugin of its id was turned on and removed by hand", async () => {
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["hello"]));
+
+  const url = await gitPlugin("hello");
+
+  await start();
+  await install(url);
+  await start();
+
+  expect(await listed("hello")).toMatchObject({
+    state: "off",
+    turnedOn: false,
+  });
+});
+
+test("clears what an install that didn't finish left in the folder", async () => {
+  await mkdir(join(plugins, ".install-left"));
+  await mkdir(join(plugins, ".old-left"));
+  await start();
+
+  expect(await readdir(plugins)).toEqual([]);
+});

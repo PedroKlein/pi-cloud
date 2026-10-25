@@ -1,5 +1,5 @@
 import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 // Where an installed plugin came from, and the exact version fetched: a git
 // commit, or a tarball's SHA-256 (ADR 0022).
@@ -9,10 +9,11 @@ export interface PluginSource {
 }
 
 const timeoutMs = 2 * 60_000;
+const maxTarballBytes = 100 * 1024 * 1024;
 const protocols = new Set(["https:", "file:", "ssh:"]);
 
-// Fills the empty folder `into` with the plugin's files from a git
-// repository, at the ref after # or its default branch, or from a .tgz.
+// Fills the folder `into` with the plugin's files from a git repository, at
+// the ref after # or its default branch, or from a .tgz.
 export async function fetchSource(url: string, into: string): Promise<string> {
   let parsed: URL;
   try {
@@ -25,9 +26,40 @@ export async function fetchSource(url: string, into: string): Promise<string> {
     throw new Error("a plugin installs from an https, ssh or file URL");
   }
 
-  return /\.(tgz|tar\.gz)$/.test(parsed.pathname)
-    ? fromTarball(parsed, into)
-    : fromGit(parsed, into);
+  // Every user sees where a plugin came from.
+  if (
+    parsed.password !== "" ||
+    (parsed.username !== "" && parsed.protocol !== "ssh:")
+  ) {
+    throw new Error(
+      "a plugin's URL can't hold credentials; use an ssh URL with a key for a private repository",
+    );
+  }
+
+  const pinned = /\.(tgz|tar\.gz)$/.test(parsed.pathname)
+    ? await fromTarball(parsed, into)
+    : await fromGit(parsed, into);
+
+  await refuseLinks(into);
+
+  return pinned;
+}
+
+// A link could point the server's own writes and reads, such as the record
+// of where the plugin came from, at any file it can reach.
+async function refuseLinks(folder: string): Promise<void> {
+  const entries = await readdir(folder, {
+    recursive: true,
+    withFileTypes: true,
+  });
+
+  const link = entries.find((entry) => entry.isSymbolicLink());
+
+  if (link !== undefined) {
+    throw new Error(
+      `it holds a link, ${relative(folder, join(link.parentPath, link.name))}, which a plugin fetched from a URL can't`,
+    );
+  }
 }
 
 async function fromGit(url: URL, into: string): Promise<string> {
@@ -60,7 +92,7 @@ async function fromTarball(url: URL, into: string): Promise<string> {
     throw new Error(`fetching ${url.href} answered ${String(response.status)}`);
   }
 
-  const bytes = await response.bytes();
+  const bytes = await capped(response);
   const archive = `${into}.tgz`;
   const unpacked = `${into}.unpacked`;
 
@@ -71,7 +103,15 @@ async function fromTarball(url: URL, into: string): Promise<string> {
     // GNU and BSD tar both refuse members that climb out with .. or through
     // a link the archive made.
     await run(
-      ["tar", "-xzf", archive, "--no-same-owner", "-C", unpacked],
+      [
+        "tar",
+        "-xzf",
+        archive,
+        "--no-same-owner",
+        "--no-same-permissions",
+        "-C",
+        unpacked,
+      ],
       unpacked,
     );
 
@@ -89,6 +129,42 @@ async function fromTarball(url: URL, into: string): Promise<string> {
   }
 
   return `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`;
+}
+
+async function capped(response: Response): Promise<Uint8Array> {
+  const tooBig = new Error(
+    `a plugin's tarball can be at most ${String(maxTarballBytes / 1024 / 1024)} MB`,
+  );
+
+  if (Number(response.headers.get("content-length")) > maxTarballBytes) {
+    throw tooBig;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+
+  const reader = response.body?.getReader();
+
+  for (;;) {
+    const read = await reader?.read();
+
+    if (read === undefined || read.done) {
+      break;
+    }
+
+    const chunk = read.value as Uint8Array;
+
+    size += chunk.byteLength;
+
+    if (size > maxTarballBytes) {
+      await reader?.cancel();
+      throw tooBig;
+    }
+
+    chunks.push(chunk);
+  }
+
+  return Buffer.concat(chunks);
 }
 
 async function run(command: readonly string[], cwd: string): Promise<string> {
@@ -122,7 +198,12 @@ function spawned(
   try {
     return Bun.spawn([...command], {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      // Nobody is there to answer a password or host key prompt.
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_SSH_COMMAND: "ssh -o BatchMode=yes",
+      },
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",

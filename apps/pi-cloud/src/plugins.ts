@@ -296,8 +296,14 @@ export function startPlugins(
   const profiles = new Map<string, PluginProfile>();
   const loaded = new Map<string, readonly string[]>();
 
-  const manifest = (name: string): PluginManifest | undefined =>
+  const listed = (name: string): PluginManifest | undefined =>
     manifests.find(({ id }) => id === name);
+
+  // The version running, whose settings and parts an update changes only
+  // when the server restarts.
+  const manifest = (name: string): PluginManifest | undefined =>
+    listed(name) &&
+    (deps.manifests.find(({ id }) => id === name) ?? listed(name));
 
   const values = (name: string): PluginSettings =>
     settingValues(manifest(name)?.settings, deps.settings.get(name));
@@ -493,8 +499,9 @@ export function startPlugins(
     const installed = installedIds.has(found.id);
     const source = sources.get(found.id);
 
+    // What is in its folder now, which may wait for a restart to run.
     const base = {
-      ...found,
+      ...(listed(found.id) ?? found),
       source: installed ? "installed" : "built-in",
       turnedOn: installed
         ? switchedOn.has(found.id)
@@ -619,20 +626,14 @@ export function startPlugins(
 
         updated.add(name);
 
-        // Turning a plugin on trusted what it declared then, not more.
-        const more = (fetched.manifest.capabilities ?? []).filter(
-          (each) => !(found.capabilities ?? []).includes(each),
-        );
-
-        if (switchedOn.has(name) && more.length > 0) {
-          await deps.installed.turnOn(name, false);
+        if (!fetched.on) {
           switchedOn.delete(name);
         }
 
         deps.log("plugin updated", {
           plugin: name,
           ...fetched.source,
-          ...(more.length > 0 && { asksFor: more.join(",") }),
+          on: fetched.on,
         });
 
         return info(fetched.manifest);
