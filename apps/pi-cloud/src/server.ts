@@ -224,6 +224,23 @@ export function createHandler(
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
     [
       "GET",
+      /^\/api\/plugin-parts\/([^/]+)\/([^/]+)$/,
+      (_request, [name = "", file = ""]) => {
+        const path = plugins.webPart(name, file);
+
+        // Named by content hash, so a browser can keep it.
+        return path === undefined
+          ? notFound()
+          : new Response(Bun.file(path), {
+              headers: {
+                "content-type": "text/javascript; charset=utf-8",
+                "cache-control": "private, max-age=31536000, immutable",
+              },
+            });
+      },
+    ],
+    [
+      "GET",
       /^\/api\/mcp-tokens$/,
       (_request, _params, actor) =>
         Response.json(auth.mcpTokens(userIdOf(actor)).map(mcpTokenView)),

@@ -51,6 +51,63 @@ beforeAll(async () => {
     }),
   );
 
+  await mkdir(join(plugins, "greeter"));
+
+  await writeFile(
+    join(plugins, "greeter", "package.json"),
+    JSON.stringify({
+      piCloud: {
+        id: "greeter",
+        title: "Greeter",
+        description: "Counts hellos.",
+        engine: 1,
+        parts: { web: "web.tsx" },
+      },
+    }),
+  );
+
+  // Hooks only work when the part shares the page's React.
+  await writeFile(
+    join(plugins, "greeter", "web.tsx"),
+    `import { Button } from "@pi-cloud/ui";
+import { useState } from "react";
+
+function Page() {
+  const [count, setCount] = useState(0);
+
+  return <Button onClick={() => setCount(count + 1)}>Hellos: {count}</Button>;
+}
+
+export default { name: "greeter", nav: { label: "Greeter", Page } };
+`,
+  );
+
+  await mkdir(join(plugins, "faulty"));
+
+  await writeFile(
+    join(plugins, "faulty", "package.json"),
+    JSON.stringify({
+      piCloud: {
+        id: "faulty",
+        title: "Faulty",
+        description: "Throws when it loads.",
+        engine: 1,
+        parts: { web: "web.ts" },
+      },
+    }),
+  );
+
+  await writeFile(
+    join(plugins, "faulty", "web.ts"),
+    `throw new Error("faulty on purpose");
+`,
+  );
+
+  await writeFile(
+    join(plugins, "enabled.json"),
+    JSON.stringify(["faulty", "greeter"]),
+  );
+
   const logs: string[] = [];
 
   server = serve({
@@ -409,6 +466,25 @@ test("turns an installed plugin on for the next start", async () => {
   await hello.getByRole("button", { name: "Turn on" }).waitFor();
 
   expect(await hello.getByText(/when the server restarts/).count()).toBe(0);
+});
+
+test("shows an installed plugin's page with the app's React and components", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Greeter" }).click();
+
+  const button = page.getByRole("button", { name: "Hellos: 0" });
+  await button.click();
+  await page.getByRole("button", { name: "Hellos: 1" }).waitFor();
+});
+
+test("says why an installed plugin's web part didn't load, and draws the rest", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  await page
+    .getByRole("listitem", { name: "Faulty" })
+    .getByText("Its web part didn't load: faulty on purpose")
+    .waitFor();
 });
 
 test("makes an MCP token that works once shown, and revokes it", async () => {

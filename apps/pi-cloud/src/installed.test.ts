@@ -365,3 +365,60 @@ test("shows why a plugin doesn't build", async () => {
   expect(broken?.error).toContain("server.ts doesn't build");
   expect(broken?.error).toMatch(/broken\/server\.ts:1:\d+: /);
 });
+
+test("serves a running plugin's web part, built against the page's modules", async () => {
+  await writePlugin("pages", { parts: { web: "web.tsx" } });
+
+  await writeFile(
+    join(plugins, "pages", "web.tsx"),
+    `import { useState } from "react";
+
+export default { name: "pages", hook: useState };
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["pages"]));
+  await start();
+
+  const webPart = (await listed("pages"))?.webPart ?? "";
+  const served = await api("GET", webPart);
+
+  expect(webPart).toMatch(/^\/api\/plugin-parts\/pages\/web-\w+\.js$/);
+  expect(served.headers.get("content-type")).toContain("javascript");
+  expect(await served.text()).toContain('globalThis.piCloudShared["react"]');
+
+  expect((await api("GET", "/api/plugin-parts/pages/server.ts")).status).toBe(
+    404,
+  );
+});
+
+test("names a web part's bundle so its URL needs no escaping", async () => {
+  await writePlugin("spaced", { parts: { web: "my page.tsx" } });
+
+  await writeFile(
+    join(plugins, "spaced", "my page.tsx"),
+    `export default { name: "spaced" };\n`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["spaced"]));
+  await start();
+
+  const webPart = (await listed("spaced"))?.webPart ?? "";
+
+  expect((await api("GET", webPart)).status).toBe(200);
+});
+
+test("fails a web part that imports CSS the page would never load", async () => {
+  await writePlugin("styled", { parts: { web: "web.tsx" } });
+  await writeFile(join(plugins, "styled", "look.css"), "p { color: red; }\n");
+
+  await writeFile(
+    join(plugins, "styled", "web.tsx"),
+    `import "./look.css";\n\nexport default { name: "styled" };\n`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["styled"]));
+  await start();
+
+  expect((await listed("styled"))?.error).toContain("imports CSS");
+});

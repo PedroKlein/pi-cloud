@@ -16,7 +16,7 @@ import {
   pluginEngine,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { bundleServerPart } from "./bundle";
+import { bundleParts } from "./bundle";
 import { builtInPlugins } from "./plugins";
 
 // A plugin installed into the plugins folder, one folder each, named by its
@@ -26,6 +26,8 @@ export interface InstalledPlugin {
   readonly manifest: PluginManifest;
   readonly on: boolean;
   readonly server?: ServerPlugin;
+  // The web part's bundle.
+  readonly web?: string;
   // Why its manifest or, when it is on, its code couldn't load.
   readonly error?: string;
 }
@@ -143,34 +145,52 @@ async function load(
     return { manifest: fallback, on, error: messageOf(error) };
   }
 
-  if (!on || manifest.parts?.server === undefined) {
+  const { server, web } = manifest.parts ?? {};
+
+  if (!on || (server === undefined && web === undefined)) {
     return { manifest, on };
   }
 
   try {
-    const entry = await realpath(resolve(folder, manifest.parts.server));
-    const path = relative(await realpath(folder), entry);
+    const bundles = await bundleParts(folder, {
+      ...(server !== undefined && { server: await inside(folder, server) }),
+      ...(web !== undefined && { web: await inside(folder, web) }),
+    });
 
-    if (isAbsolute(path) || path.split(sep)[0] === "..") {
-      throw new Error(`parts.server is outside the plugin's folder`);
-    }
+    const part =
+      bundles.server === undefined
+        ? undefined
+        : ((await import(bundles.server)) as { default?: ServerPlugin })
+            .default;
 
-    const { default: server } = (await import(
-      await bundleServerPart(folder, entry)
-    )) as {
-      default?: ServerPlugin;
-    };
-
-    if (server?.name !== manifest.id) {
+    if (server !== undefined && part?.name !== manifest.id) {
       throw new Error(
-        `${manifest.parts.server} must export as default a server part named ${manifest.id}`,
+        `${server} must export as default a server part named ${manifest.id}`,
       );
     }
 
-    return { manifest, on, server };
+    return {
+      manifest,
+      on,
+      ...(part && { server: part }),
+      ...(bundles.web !== undefined && { web: bundles.web }),
+    };
   } catch (error) {
     return { manifest, on, error: messageOf(error) };
   }
+}
+
+// The real path of a part, which must stay inside the plugin's folder even
+// through links.
+async function inside(folder: string, part: string): Promise<string> {
+  const entry = await realpath(resolve(folder, part));
+  const path = relative(await realpath(folder), entry);
+
+  if (isAbsolute(path) || path.split(sep)[0] === "..") {
+    throw new Error(`${part} is outside the plugin's folder`);
+  }
+
+  return entry;
 }
 
 function manifestOf(packageJson: unknown, folder: string): PluginManifest {
@@ -191,7 +211,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     );
   }
 
-  const server = fields(parts)["server"];
+  const { server, web } = fields(parts);
   const declared = field["capabilities"] ?? [];
 
   if (
@@ -214,7 +234,10 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     engine,
     capabilities: declared,
     ...(typeof version === "string" && { version }),
-    ...(typeof server === "string" && { parts: { server } }),
+    parts: {
+      ...(typeof server === "string" && { server }),
+      ...(typeof web === "string" && { web }),
+    },
     ...(settings !== undefined && { settings }),
   };
 }

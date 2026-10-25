@@ -226,7 +226,7 @@ export interface PluginManifest {
   readonly version?: string;
   readonly engine?: number;
   // Paths inside the plugin's folder.
-  readonly parts?: { readonly server?: string };
+  readonly parts?: { readonly server?: string; readonly web?: string };
   readonly capabilities?: readonly Capability[];
 }
 
@@ -239,6 +239,8 @@ export interface PluginInfo extends PluginManifest {
   readonly turnedOn: boolean;
   readonly error?: string;
   readonly values: PluginSettings;
+  // Where the shell loads an installed plugin's web part from.
+  readonly webPart?: string;
 }
 
 export interface PluginUpdate {

@@ -1,27 +1,65 @@
 import { readFile, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-// Installs an installed plugin's dependencies and bundles its server part, so
-// the part's bare imports resolve from the plugin's own node_modules (ADR
-// 0022). Throws with what went wrong.
-export async function bundleServerPart(
+export interface PluginParts {
+  readonly server?: string;
+  readonly web?: string;
+}
+
+// The modules a web part shares with the shell, so there is one React and one
+// design system on the page (ADR 0022). The shell puts them on
+// globalThis.piCloudShared.
+const sharedWebModules = [
+  "react",
+  "react/jsx-runtime",
+  "react-dom",
+  "react-dom/client",
+  "@pi-cloud/ui",
+  "@pi-cloud/plugins/web",
+];
+
+// Installs an installed plugin's dependencies and bundles its parts into
+// .build in its folder, so their bare imports resolve from the plugin's own
+// node_modules (ADR 0022). Returns the bundles' paths, and throws with what
+// went wrong.
+export async function bundleParts(
   folder: string,
-  entry: string,
-): Promise<string> {
+  entries: PluginParts,
+): Promise<PluginParts> {
   await installDependencies(folder);
 
   const outdir = join(folder, ".build");
   await rm(outdir, { recursive: true, force: true });
 
+  return {
+    ...(entries.server !== undefined && {
+      server: await bundle(entries.server, outdir, "server"),
+    }),
+    ...(entries.web !== undefined && {
+      web: await bundle(entries.web, outdir, "web"),
+    }),
+  };
+}
+
+// Each bundle is named after its part, so its URL needs no escaping.
+async function bundle(
+  entry: string,
+  outdir: string,
+  part: "server" | "web",
+): Promise<string> {
   const result = await Bun.build({
     entrypoints: [entry],
     outdir,
-    target: "bun",
-    naming: "[name]-[hash].[ext]",
+    target: part === "web" ? "browser" : "bun",
+    naming: `${part}-[hash].[ext]`,
     throw: false,
+    ...(part === "web" && {
+      plugins: [sharedWithShell],
+      jsx: { development: false },
+    }),
   });
 
-  const [output] = result.outputs.filter(({ kind }) => kind === "entry-point");
+  const [output, ...others] = result.outputs;
 
   if (!result.success || output === undefined) {
     throw new Error(
@@ -29,8 +67,35 @@ export async function bundleServerPart(
     );
   }
 
+  // Only the bundle itself is served, so a stylesheet or file it imports
+  // would be missing on the page.
+  if (part === "web" && others.length > 0) {
+    throw new Error(
+      `${basename(entry)} imports CSS or other files, which a web part can't have yet; style it with @pi-cloud/ui`,
+    );
+  }
+
   return output.path;
 }
+
+const sharedWithShell: Bun.BunPlugin = {
+  name: "shared-with-shell",
+  setup: (build) => {
+    build.onResolve({ filter: /^[@a-z]/ }, ({ path }) =>
+      sharedWebModules.includes(path)
+        ? { path, namespace: "pi-cloud-shared" }
+        : undefined,
+    );
+
+    build.onLoad(
+      { filter: /.*/, namespace: "pi-cloud-shared" },
+      ({ path }) => ({
+        contents: `module.exports = globalThis.piCloudShared[${JSON.stringify(path)}];`,
+        loader: "js",
+      }),
+    );
+  },
+};
 
 function described(log: BuildMessage | ResolveMessage): string {
   const { position, message } = log;

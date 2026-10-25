@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import askPackage from "@pi-cloud/ask/package.json";
 import { ask } from "@pi-cloud/ask/session";
 import changesPackage from "@pi-cloud/changes/package.json";
@@ -146,6 +147,8 @@ export interface PluginHost {
     name: string,
     on: boolean,
   ) => Promise<PluginInfo | string | undefined>;
+  // The file of a running installed plugin's web part, by its name.
+  readonly webPart: (name: string, file: string) => string | undefined;
   readonly sessionPlugins: () => SessionPlugins;
   readonly profile: (id: string) => PluginProfile | undefined;
   readonly profileIds: () => readonly string[];
@@ -234,6 +237,12 @@ export function startPlugins(
 
   const installedIds = new Set(
     deps.installed?.plugins.map(({ manifest: { id } }) => id),
+  );
+
+  const webParts = new Map(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, web }) =>
+      web === undefined ? [] : [[id, web] as const],
+    ),
   );
 
   const switchedOn = new Set(
@@ -454,7 +463,17 @@ export function startPlugins(
       return { ...base, state: "failed", error };
     }
 
-    return { ...base, state: running.includes(found.id) ? "on" : "off" };
+    const web = webParts.get(found.id);
+
+    return running.includes(found.id)
+      ? {
+          ...base,
+          state: "on",
+          ...(web !== undefined && {
+            webPart: `/api/plugin-parts/${found.id}/${basename(web)}`,
+          }),
+        }
+      : { ...base, state: "off" };
   };
 
   return {
@@ -502,6 +521,15 @@ export function startPlugins(
       deps.log("plugin turned on or off", { plugin: name, on });
 
       return info(found);
+    },
+    webPart: (name, file) => {
+      const web = webParts.get(name);
+
+      return running.includes(name) &&
+        web !== undefined &&
+        basename(web) === file
+        ? web
+        : undefined;
     },
     sessionPlugins: () => {
       return {
@@ -895,6 +923,7 @@ export interface InstalledPlugins {
   readonly plugins: readonly {
     readonly manifest: PluginManifest;
     readonly on: boolean;
+    readonly web?: string;
     readonly error?: string;
   }[];
   readonly turnOn: (id: string, on: boolean) => Promise<void>;
