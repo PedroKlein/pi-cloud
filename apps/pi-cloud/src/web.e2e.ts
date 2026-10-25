@@ -378,6 +378,10 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   await section.getByRole("button", { name: "Save" }).click();
   await section.getByRole("alert").getByText("isn't valid JSON").waitFor();
 
+  await section.getByLabel(/^Pod patch/).fill("{}");
+  await section.getByRole("button", { name: "Save" }).click();
+  await section.getByRole("alert").waitFor({ state: "detached" });
+
   await section.getByRole("button", { name: "Stop runner pods" }).click();
   await section.getByRole("button", { name: "Start runner pods" }).waitFor();
 
