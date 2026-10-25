@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
 import { readSse } from "./sse";
+import { firstUserCookie, setupTokenOf } from "./testdata/sign-in";
 
 const run = promisify(execFile);
 let root: string;
@@ -32,22 +33,37 @@ afterAll(async () => {
 async function startServer(
   args: readonly string[],
   env: Record<string, string> = {},
-): Promise<{ readonly url: string; readonly server: ChildProcess }> {
+): Promise<{
+  readonly url: string;
+  readonly server: ChildProcess;
+  readonly cookie: string;
+}> {
   const server = spawn(
     binary,
     ["server", "--port", "0", "--database", ":memory:", ...args],
     { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, ...env } },
   );
 
-  const url = await new Promise<string>((resolve) => {
+  const lines: string[] = [];
+
+  // The setup link follows the listening line.
+  await new Promise((resolve) => {
     createInterface({ input: server.stderr }).on("line", (line) => {
-      if (line.includes("server listening")) {
-        resolve((JSON.parse(line) as { url: string }).url);
+      lines.push(line);
+      if (line.includes("#setup/")) {
+        resolve(undefined);
       }
     });
   });
 
-  return { url, server };
+  const listening = lines.find((line) => line.includes("server listening"));
+  const { url } = JSON.parse(listening ?? "{}") as { url: string };
+
+  return {
+    url,
+    server,
+    cookie: await firstUserCookie(fetch, url, setupTokenOf(lines)),
+  };
 }
 
 // A compiled binary has no Pi package.json beside it, where Pi reads its version.
@@ -104,7 +120,7 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
   await once(proxy, "listening");
   const proxyUrl = `http://127.0.0.1:${String((proxy.address() as AddressInfo).port)}`;
 
-  const { url, server } = await startServer(
+  const { url, server, cookie } = await startServer(
     ["--provider", "local", "--data-dir", dataDir, "--folder", folder],
     {
       HTTPS_PROXY: proxyUrl,
@@ -118,7 +134,7 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
     let environment: Environment | undefined;
     while (environment === undefined) {
       const environments = (await (
-        await fetch(new URL("/api/environments", url))
+        await fetch(new URL("/api/environments", url), { headers: { cookie } })
       ).json()) as Environment[];
 
       environment = environments.find((e) => e.provider === "local");
@@ -127,7 +143,7 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
     const session = (await (
       await fetch(new URL("/api/sessions", url), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({
           environment: environment.id,
           workspace: { kind: "folder", path: folder },
@@ -141,7 +157,7 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
 
     const response = await fetch(
       new URL(`/api/sessions/${session.id}/events`, url),
-      { signal: events.signal },
+      { signal: events.signal, headers: { cookie } },
     );
 
     let reply: { errorMessage?: string } | undefined;

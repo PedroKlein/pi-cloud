@@ -30,6 +30,7 @@ import type {
 import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { readSse } from "./sse";
+import { firstUserCookie, setupTokenOf } from "./testdata/sign-in";
 
 let root: string;
 let server: ReturnType<typeof serve>;
@@ -39,6 +40,7 @@ let agents: (() => Promise<void>)[];
 let laptop: () => Promise<void>;
 let agentLogs: string[];
 let serverLogs: string[];
+let cookie: Promise<string> | undefined;
 
 function startAgent(
   provider: string,
@@ -73,7 +75,7 @@ function startAgent(
 }
 
 function startServer(builtInProvider?: string): ReturnType<typeof serve> {
-  return serve({
+  const started = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
@@ -90,6 +92,17 @@ function startServer(builtInProvider?: string): ReturnType<typeof serve> {
       serverLogs.push(`${message} ${JSON.stringify(fields)}`);
     },
   });
+
+  cookie = undefined;
+
+  return started;
+}
+
+// The Cookie header of the current server's first user.
+async function signedIn(): Promise<string> {
+  cookie ??= firstUserCookie(fetch, server.url, setupTokenOf(serverLogs));
+
+  return cookie;
 }
 
 beforeEach(async () => {
@@ -134,10 +147,11 @@ async function untilOffline(provider: string): Promise<void> {
 async function api(path: string, body?: unknown): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 }
 
@@ -191,7 +205,10 @@ async function watch(
 
   const response = await fetch(
     new URL(`/api/sessions/${sessionId}/events`, server.url),
-    { signal: controller.signal, headers },
+    {
+      signal: controller.signal,
+      headers: { cookie: await signedIn(), ...headers },
+    },
   );
 
   return async (until) => {
@@ -971,6 +988,7 @@ test("rejects malformed requests with 400", async () => {
 
   const malformed = await fetch(new URL("/api/sessions", server.url), {
     method: "POST",
+    headers: { cookie: await signedIn() },
     body: "{not json",
   });
 
@@ -1382,7 +1400,7 @@ async function openTerminal(
   }
 
   url.protocol = "ws:";
-  const socket = new WebSocket(url);
+  const socket = new WebSocket(url, { headers: { cookie: await signedIn() } });
   socket.binaryType = "arraybuffer";
   const decoder = new TextDecoder();
   let text = "";
@@ -1437,6 +1455,7 @@ async function stalledTerminal(
     [
       `GET /api/sessions/${sessionId}/terminal?cols=80&rows=24 HTTP/1.1`,
       `Host: ${server.url.host}`,
+      `Cookie: ${await signedIn()}`,
       ...Object.entries(webSocketUpgrade).map(([k, v]) => `${k}: ${v}`),
       "",
       "",
@@ -1501,7 +1520,7 @@ async function updateEnvironment(
     new URL(`/api/environments/${await environmentOf(provider)}`, server.url),
     {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: await signedIn() },
       body: JSON.stringify(update),
     },
   );
@@ -1983,7 +2002,7 @@ test("refuses a terminal for a session whose agent is gone", async () => {
 
   const response = await fetch(
     new URL(`/api/sessions/${session.id}/terminal`, server.url),
-    { headers: webSocketUpgrade },
+    { headers: { ...webSocketUpgrade, cookie: await signedIn() } },
   );
 
   expect(response.status).toBe(409);
@@ -2141,7 +2160,7 @@ test("rejects requests from other sites", async () => {
     (
       await fetch(new URL(path, server.url), {
         method: path.endsWith("/commands") ? "POST" : "GET",
-        headers,
+        headers: { cookie: await signedIn(), ...headers },
         ...(path.endsWith("/commands") && {
           body: JSON.stringify({ type: "message", text: "hi" }),
         }),
@@ -3089,7 +3108,11 @@ test("creates a session in the first Environment unless the request names one", 
   expect(await unknown.json()).toEqual({ error: "unknown_environment" });
 });
 
-test("sends browser commands to the session as the owner, whatever the browser claims", async () => {
+test("sends browser commands to the session as the signed-in user, whatever the browser claims", async () => {
+  const { user } = (await (await api("/api/auth")).json()) as {
+    user: { id: string };
+  };
+
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));
 
@@ -3105,7 +3128,7 @@ test("sends browser commands to the session as the owner, whatever the browser c
   expect(
     agentLogs.filter((line) => line.startsWith("command received")),
   ).toEqual([
-    `command received ${JSON.stringify({ sessionId: session.id, command: "abort", actor: "user:local" })}`,
+    `command received ${JSON.stringify({ sessionId: session.id, command: "abort", actor: `user:${user.id}` })}`,
   ]);
 });
 

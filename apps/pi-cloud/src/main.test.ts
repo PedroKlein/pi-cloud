@@ -5,10 +5,37 @@ import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
 import { readSse } from "./sse";
+import { firstUserCookie, setupTokenOf } from "./testdata/sign-in";
+
+// Waits for a spawned server's setup link, which follows its listening line,
+// and signs its first user in.
+async function signedIn(server: {
+  readonly stderr: Readable;
+}): Promise<{ readonly url: string; readonly cookie: string }> {
+  const lines: string[] = [];
+
+  await new Promise((resolve) => {
+    createInterface({ input: server.stderr }).on("line", (line) => {
+      lines.push(line);
+      if (line.includes("#setup/")) {
+        resolve(undefined);
+      }
+    });
+  });
+
+  const listening = lines.find((line) => line.includes("server listening"));
+  const { url } = JSON.parse(listening ?? "{}") as { url: string };
+
+  return {
+    url,
+    cookie: await firstUserCookie(fetch, url, setupTokenOf(lines)),
+  };
+}
 
 test("shuts down cleanly on SIGTERM when another library also handles it", async () => {
   const server = spawn(
@@ -111,17 +138,13 @@ test("marks a session failed and keeps running when its process cannot be spawne
   const controller = new AbortController();
 
   try {
-    const url = await new Promise<string>((resolve) => {
-      createInterface({ input: server.stderr }).on("line", (line) => {
-        if (line.includes("server listening")) {
-          resolve((JSON.parse(line) as { url: string }).url);
-        }
-      });
-    });
+    const { url, cookie } = await signedIn(server);
 
     let environment: Environment | undefined;
     while (environment === undefined) {
-      const response = await fetch(new URL("/api/environments", url));
+      const response = await fetch(new URL("/api/environments", url), {
+        headers: { cookie },
+      });
 
       environment = ((await response.json()) as Environment[]).find(
         (each) => each.provider === "laptop",
@@ -132,7 +155,7 @@ test("marks a session failed and keeps running when its process cannot be spawne
 
     const created = await fetch(new URL("/api/sessions", url), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         environment: environment.id,
         workspace: { kind: "folder", path: folder },
@@ -143,6 +166,7 @@ test("marks a session failed and keeps running when its process cannot be spawne
 
     const stream = await fetch(new URL(`/api/sessions/${id}/events`, url), {
       signal: controller.signal,
+      headers: { cookie },
     });
 
     let failed: Session | undefined;
@@ -211,13 +235,7 @@ test.each(["server", "agent"] as const)(
     const controller = new AbortController();
 
     try {
-      const url = await new Promise<string>((resolve) => {
-        createInterface({ input: server.stderr }).on("line", (line) => {
-          if (line.includes("server listening")) {
-            resolve((JSON.parse(line) as { url: string }).url);
-          }
-        });
-      });
+      const { url, cookie } = await signedIn(server);
 
       if (command === "agent") {
         const agent = spawn(
@@ -239,7 +257,9 @@ test.each(["server", "agent"] as const)(
 
       let environment: Environment | undefined;
       while (environment === undefined) {
-        const response = await fetch(new URL("/api/environments", url));
+        const response = await fetch(new URL("/api/environments", url), {
+          headers: { cookie },
+        });
 
         environment = ((await response.json()) as Environment[]).find(
           (each) => each.provider === "laptop",
@@ -255,7 +275,7 @@ test.each(["server", "agent"] as const)(
 
       const created = await fetch(new URL("/api/sessions", url), {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({
           environment: environment.id,
           workspace: { kind: "worktree", path: repository },
@@ -267,6 +287,7 @@ test.each(["server", "agent"] as const)(
 
       const stream = await fetch(new URL(`/api/sessions/${id}/events`, url), {
         signal: controller.signal,
+        headers: { cookie },
       });
 
       let settled: Session | undefined;

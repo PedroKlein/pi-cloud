@@ -31,6 +31,8 @@ apps/pi-cloud/dist/pi-cloud server
 apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
 ```
 
+The first time it starts, the server logs a setup link (`open the setup link to create the first user`). Open it to create your user; the link works once. After that, the page asks for that name and password, and a browser stays signed in for 30 days. Ten wrong passwords for a name lock it for 15 minutes.
+
 Open http://127.0.0.1:7420, pick the `laptop` Environment, enter `~/code/my-project`, and start chatting. Each provider gets an Environment of the same name the first time it connects, and a session runs in the Environment it was created in ([ADR 0014](docs/adr/0014-concept-map-and-environments.md)).
 
 The agent only runs sessions in the folders you list with `--folder`, or in folders inside them. One `--folder ~/code` covers every checkout under it, and the form suggests the git checkouts it finds there. By default each session gets its own Git worktree of that folder, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Choose "Folder" instead to run in the folder itself; sessions sharing a folder this way can step on each other's changes. "Several repositories" takes clone URLs separated by spaces and checks each one out side by side in one workspace, all on the session's branch: as a worktree of a checkout under a listed folder whose remote is that repository, or as a fresh clone when none is. The Changes panel then shows each repository on its own, and archiving deletes the workspace only if none of them would lose work and no other files sit beside them.

@@ -8,7 +8,8 @@ import {
   versionHeader,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { owner, type Sessions } from "@pi-cloud/sessions";
+import type { Sessions } from "@pi-cloud/sessions";
+import type { Auth } from "./auth";
 
 interface SocketData {
   readonly role: "browser" | "host";
@@ -34,6 +35,7 @@ const hostPath = /^\/agent\/sessions\/([^/]+)\/terminals\/([^/]+)$/;
 
 export function terminalBroker(
   sessions: Sessions,
+  auth: Auth,
   log: Log,
 ): {
   readonly upgrade: (
@@ -62,6 +64,11 @@ export function terminalBroker(
     server: Server<SocketData>,
     sessionId: string,
   ): Response | "upgraded" => {
+    const user = auth.userOf(request);
+    if (user === undefined) {
+      return Response.json({ error: "signed_out" }, { status: 401 });
+    }
+
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return Response.json({ error: "expected a websocket" }, { status: 400 });
     }
@@ -73,7 +80,7 @@ export function terminalBroker(
       asked !== null && terminalIdPattern.test(asked) ? asked : randomUUID();
 
     const sent = sessions.send(sessionId, {
-      actor: `user:${owner}`,
+      actor: `user:${user.id}`,
       type: "terminal",
       terminalId,
       cols: size(url.searchParams.get("cols"), 80),

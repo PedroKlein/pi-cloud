@@ -18,7 +18,7 @@ v2's other decisions are in [ADR 0022](0022-plugin-model-v2.md) (plugins), [ADR 
 - Signing in through an OIDC provider, such as GitHub, Google or a company identity provider, is a first-party plugin.
 - A browser session is an `HttpOnly; SameSite=Strict` cookie, which also covers WebSocket upgrades. No key is kept in `localStorage` ([v2-ideas.md](../v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
 - A runner joins an Environment's pool with that Environment's key, and gets a token of its own for its polls and streams.
-- Whether a loopback bind may still skip login, as in v1, is decided when this is built.
+- A loopback bind needs a login and runner keys too, as in Claude Code. Other local users and DNS-rebinding pages can reach a loopback port, and one code path is tested everywhere (decided 2026-10-25).
 
 ### Build order
 

@@ -12,21 +12,29 @@ import type {
   Session,
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 
 const run = promisify(execFile);
 
 let root: string;
 let server: ReturnType<typeof serve>;
+let signedIn: () => Promise<string>;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "profiles-"));
+
+  const logs: string[] = [];
 
   server = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 0 },
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
+
+  signedIn = firstUser(server, logs);
 });
 
 afterEach(async () => {
@@ -40,10 +48,11 @@ async function api(
 ): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-    ...(init.body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(init.body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(init.body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
   });
 }
 

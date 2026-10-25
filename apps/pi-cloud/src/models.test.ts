@@ -7,11 +7,13 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { EnvironmentModels } from "@pi-cloud/models/model";
 import type { Environment, Session } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 
 let root: string;
 let primary: ReturnType<typeof fauxProvider>;
 let fallback: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve> | undefined;
+let signedIn: () => Promise<string>;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-models-")));
@@ -27,6 +29,8 @@ beforeEach(async () => {
   runtime.registerNativeProvider(primary.provider);
   runtime.registerNativeProvider(fallback.provider);
 
+  const logs: string[] = [];
+
   server = serve({
     port: 0,
     database: ":memory:",
@@ -38,8 +42,12 @@ beforeEach(async () => {
       folders: [root],
       models: { runtime, model: primary.getModel() },
     },
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
+
+  signedIn = firstUser(server, logs);
 });
 
 afterEach(async () => {
@@ -51,10 +59,11 @@ afterEach(async () => {
 async function api(path: string, body?: unknown): Promise<Response> {
   return fetch(new URL(path, server?.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 }
 

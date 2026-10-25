@@ -36,13 +36,14 @@ import {
 import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
 import { InvalidProfile, type Profiles } from "@pi-cloud/profiles";
 import type { Log } from "@pi-cloud/providers";
-import {
-  owner,
-  type Rejection,
-  type Result,
-  type Sessions,
-} from "@pi-cloud/sessions";
+import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
 import { version as serverVersion } from "../package.json";
+import {
+  type Auth,
+  type Credentials,
+  InvalidCredentials,
+  type User,
+} from "./auth";
 import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
 
@@ -64,7 +65,16 @@ type Route = (
 
 type RouteTable = readonly (readonly [string, RegExp, Route])[];
 
+type UserActor = `user:${string}`;
+
+type BrowserRoute = (
+  request: Request,
+  params: readonly string[],
+  actor: UserActor,
+) => Response | Promise<Response>;
+
 export function createHandler(
+  auth: Auth,
   sessions: Sessions,
   profiles: Profiles,
   plugins: PluginHost,
@@ -105,6 +115,16 @@ export function createHandler(
     };
   };
 
+  const signedIn = (route: BrowserRoute): Route => {
+    return async (request, params) => {
+      const user = auth.userOf(request);
+
+      return user === undefined
+        ? Response.json({ error: "signed_out" }, { status: 401 })
+        : await route(request, params, `user:${user.id}`);
+    };
+  };
+
   const sessionAction =
     (message: string, act: (id: string) => Result<unknown>): Route =>
     (_request, [id = ""]) => {
@@ -116,7 +136,7 @@ export function createHandler(
       return reply(result, 200);
     };
 
-  const browserRoutes: RouteTable = [
+  const publicRoutes: RouteTable = [
     [
       "GET",
       /^\/healthz$/,
@@ -137,6 +157,10 @@ export function createHandler(
         });
       },
     ],
+    ...authRoutes(auth, log),
+  ];
+
+  const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.names)],
     [
       "ANY",
@@ -194,12 +218,12 @@ export function createHandler(
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/fork$/,
-      async (request, [id = ""]) => {
+      async (request, [id = ""], actor) => {
         const { environment } = createFork(await readJson(request));
 
         const forked = sessions.fork(id, {
           ...(environment !== undefined && { environment }),
-          actor: user,
+          actor,
         });
 
         if (forked.ok) {
@@ -216,10 +240,10 @@ export function createHandler(
     [
       "POST",
       /^\/api\/sessions$/,
-      async (request) => {
+      async (request, _params, actor) => {
         const created = sessions.start({
           ...createSession(await readJson(request)),
-          actor: user,
+          actor,
         });
 
         if (created.ok) {
@@ -291,8 +315,11 @@ export function createHandler(
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/commands$/,
-      async (request, [id = ""]) =>
-        reply(sessions.send(id, browserCommand(await readJson(request))), 202),
+      async (request, [id = ""], actor) =>
+        reply(
+          sessions.send(id, browserCommand(await readJson(request), actor)),
+          202,
+        ),
     ],
   ];
 
@@ -482,7 +509,10 @@ export function createHandler(
   ];
 
   const routes: RouteTable = [
-    ...browserRoutes,
+    ...publicRoutes,
+    ...browserRoutes.map(
+      ([method, pattern, route]) => [method, pattern, signedIn(route)] as const,
+    ),
     ...agentRoutes.map(
       ([method, pattern, route]) => [method, pattern, agent(route)] as const,
     ),
@@ -496,7 +526,11 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
-          if (error instanceof BadRequest || error instanceof InvalidProfile) {
+          if (
+            error instanceof BadRequest ||
+            error instanceof InvalidProfile ||
+            error instanceof InvalidCredentials
+          ) {
             return Response.json({ error: error.message }, { status: 400 });
           }
 
@@ -512,6 +546,84 @@ export function createHandler(
     }
 
     return notFound();
+  };
+}
+
+function authRoutes(auth: Auth, log: Log): RouteTable {
+  return [
+    ["GET", /^\/api\/auth$/, (request) => Response.json(auth.status(request))],
+    [
+      "POST",
+      /^\/api\/auth\/setup$/,
+      async (request) => {
+        const fields = fieldsOf(await readJson(request));
+
+        const user = await auth.setUp(
+          textOf("token", fields["token"]),
+          credentialsOf(fields),
+        );
+
+        if (user === undefined) {
+          return Response.json({ error: "invalid_token" }, { status: 403 });
+        }
+
+        log("first user created", { userId: user.id });
+
+        return signedInAs(auth, user, request, 201);
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/auth\/login$/,
+      async (request) => {
+        const credentials = credentialsOf(fieldsOf(await readJson(request)));
+        const user = await auth.signIn(credentials);
+
+        if (user === "locked") {
+          log("sign-in locked", { name: credentials.name });
+
+          return Response.json({ error: "locked" }, { status: 429 });
+        }
+
+        if (user === "wrong") {
+          log("sign-in failed", { name: credentials.name });
+
+          return Response.json({ error: "wrong_password" }, { status: 401 });
+        }
+
+        log("signed in", { userId: user.id });
+
+        return signedInAs(auth, user, request, 200);
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/auth\/logout$/,
+      (request) =>
+        new Response(null, {
+          status: 204,
+          headers: { "set-cookie": auth.endSession(request) },
+        }),
+    ],
+  ];
+}
+
+function signedInAs(
+  auth: Auth,
+  user: User,
+  request: Request,
+  status: number,
+): Response {
+  return Response.json(user, {
+    status,
+    headers: { "set-cookie": auth.startSession(user, request) },
+  });
+}
+
+function credentialsOf(fields: Record<string, unknown>): Credentials {
+  return {
+    name: textOf("name", fields["name"]),
+    password: textOf("password", fields["password"]),
   };
 }
 
@@ -649,9 +761,6 @@ function notFound(): Response {
 }
 
 class BadRequest extends Error {}
-
-// v1 has no auth, so every browser request acts as the one owner.
-const user = `user:${owner}` as const;
 
 async function readJson(request: Request): Promise<unknown> {
   try {
@@ -898,7 +1007,7 @@ function repositoryCheckout(checkout: unknown): RepositoryCheckout {
 
 // Terminal commands come from the server's own terminal socket, never from a
 // browser's POST.
-function browserCommand(body: unknown): Command {
+function browserCommand(body: unknown, actor: UserActor): Command {
   const fields = (
     typeof body === "object" && body !== null ? body : {}
   ) as Record<string, unknown>;
@@ -931,7 +1040,7 @@ function browserCommand(body: unknown): Command {
         fields["images"] === undefined ? undefined : imagesOf(fields["images"]);
 
       return {
-        actor: user,
+        actor,
         type: "message",
         text: text("text"),
         ...(images !== undefined && { images }),
@@ -941,16 +1050,16 @@ function browserCommand(body: unknown): Command {
     }
 
     case "abort":
-      return { actor: user, type: "abort" };
+      return { actor, type: "abort" };
     case "set_model":
       return {
-        actor: user,
+        actor,
         type: "set_model",
         model: modelOf(fields["model"]),
       };
     case "set_thinking":
       return {
-        actor: user,
+        actor,
         type: "set_thinking",
         level: thinkingOf(fields["level"], "level"),
       };
@@ -966,7 +1075,7 @@ function browserCommand(body: unknown): Command {
       }
 
       return {
-        actor: user,
+        actor,
         type: "unqueue",
         delivery,
         text: text("text"),
@@ -985,12 +1094,12 @@ function browserCommand(body: unknown): Command {
         throw new BadRequest("columns must be a whole number from 1 to 1000");
       }
 
-      return { actor: user, type: "ui_columns", columns };
+      return { actor, type: "ui_columns", columns };
     }
 
     case "answer":
       return {
-        actor: user,
+        actor,
         type: "answer",
         id: text("id"),
         value: answerOf(fields["value"]),
@@ -1002,7 +1111,7 @@ function browserCommand(body: unknown): Command {
       }
 
       return {
-        actor: user,
+        actor,
         type: "explain",
         id: text("id"),
         questionId: text("questionId"),

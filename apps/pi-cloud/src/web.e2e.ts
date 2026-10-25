@@ -12,11 +12,13 @@ import {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { type Browser, chromium, type Page } from "playwright-core";
 import { serve } from "./serve";
+import { setupTokenOf } from "./testdata/sign-in";
 
 let root: string;
 let server: ReturnType<typeof serve>;
 let browser: Browser;
 let page: Page;
+let cookie: string;
 
 const faux = fauxProvider({
   models: [{ id: "faux-1" }, { id: "faux-deep", reasoning: true }],
@@ -33,6 +35,8 @@ beforeAll(async () => {
 
   runtime.registerNativeProvider(faux.provider);
 
+  const logs: string[] = [];
+
   server = serve({
     port: 0,
     database: ":memory:",
@@ -44,12 +48,24 @@ beforeAll(async () => {
       folders: [root],
       models: { runtime, model: faux.getModel() },
     },
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
 
   browser = await chromium.launch();
   page = await browser.newPage();
   page.setDefaultTimeout(10_000);
+
+  await page.goto(new URL(`/#setup/${setupTokenOf(logs)}`, server.url).href);
+  await page.getByRole("heading", { name: "Create the first user" }).waitFor();
+  await page.getByLabel("Name").fill("pedro");
+  await page.getByLabel("Password").fill("correct horse");
+  await page.getByRole("button", { name: "Create user" }).click();
+  await page.getByRole("button", { name: "New session" }).waitFor();
+
+  const [session] = await page.context().cookies();
+  cookie = `${session?.name ?? ""}=${session?.value ?? ""}`;
 });
 
 // A folder with its own .pi asks before loading it (ADR 0031).
@@ -238,14 +254,16 @@ test("edits an Environment's variables and secrets without showing secret values
 
   // A change made elsewhere while the page is open survives a save here.
   const [environment] = (await (
-    await fetch(new URL("/api/environments", server.url))
+    await fetch(new URL("/api/environments", server.url), {
+      headers: { cookie },
+    })
   ).json()) as { readonly id: string; readonly name: string }[];
 
   await fetch(
     new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
     {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ image: "elsewhere:1" }),
     },
   );
@@ -256,7 +274,11 @@ test("edits an Environment's variables and secrets without showing secret values
   const environments = async (): Promise<
     readonly { readonly name: string }[]
   > =>
-    (await (await fetch(new URL("/api/environments", server.url))).json()) as {
+    (await (
+      await fetch(new URL("/api/environments", server.url), {
+        headers: { cookie },
+      })
+    ).json()) as {
       readonly name: string;
     }[];
 
@@ -277,7 +299,7 @@ test("edits an Environment's variables and secrets without showing secret values
     new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
     {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         name: environment?.name,
         image: null,
@@ -1628,3 +1650,18 @@ export default (pi) => {
     .getByText("Done · 1m 05s")
     .waitFor();
 }, 30_000);
+
+test("signs out and back in with the password", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("heading", { name: "Sign in" }).waitFor();
+
+  await page.getByLabel("Name").fill("pedro");
+  await page.getByLabel("Password").fill("wrong password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("alert").filter({ hasText: "Wrong name" }).waitFor();
+
+  await page.getByLabel("Password").fill("correct horse");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "New session" }).waitFor();
+});
