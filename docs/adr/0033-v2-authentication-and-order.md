@@ -1,6 +1,6 @@
 # 0033: v2 Authentication and Build Order
 
-- Status: accepted, amended 2026-10-25 (meta-sessions become step 5, [ADR 0035](0035-meta-sessions.md))
+- Status: accepted, amended 2026-10-25 (meta-sessions become step 5, [ADR 0035](0035-meta-sessions.md); third-party install and in-place plugins become step 6)
 - Date: 2026-10-24
 
 ## Context
@@ -27,9 +27,10 @@ v2's other decisions are in [ADR 0022](0022-plugin-model-v2.md) (plugins), [ADR 
 3. Authentication.
 4. The `kubernetes` plugin (ADR 0032).
 5. Meta-sessions, their toolsets and the MCP endpoint ([ADR 0035](0035-meta-sessions.md)).
-6. Automation plugins: Jobs, AI workflows and software factories. They are designed in their own discussion before this step.
+6. Third-party plugin install ([ADR 0022](0022-plugin-model-v2.md#installing-third-party-plugins)) and in-place plugins written by meta-sessions ([ADR 0035](0035-meta-sessions.md#in-place-plugins)).
+7. Automation plugins: Jobs, AI workflows and software factories. They are designed in their own discussion before this step.
 
-Each step is tested on the laptop and the VM before the next, as v1 was. The plugin pieces of ADR 0022 (Session tabs, code blocks, previews, the manifest and third-party install) don't depend on these and are built between steps.
+Each step is tested on the laptop and the VM before the next, as v1 was. The plugin pieces of ADR 0022 (Session tabs, code blocks, previews and the manifest) don't depend on these and are built between steps.
 
 ## Consequences
 
