@@ -24,7 +24,10 @@ export interface Identity {
   readonly issuer: string;
   readonly subject: string;
   readonly email: string | null;
-  readonly groups: readonly string[];
+  // Whether the provider checked that the email is the person's.
+  readonly emailVerified: boolean;
+  // Every claim of the ID token, such as the person's groups.
+  readonly claims: Readonly<Record<string, unknown>>;
 }
 
 export class LoginFailed extends Error {}
@@ -143,7 +146,7 @@ function identityOf(
   client: Client,
   attempt: Attempt,
 ): Identity {
-  const { iss, sub, aud, azp, exp, nonce, email, groups } = claims;
+  const { iss, sub, aud, azp, exp, nonce, email } = claims;
   const audiences = Array.isArray(aud) ? aud : [aud];
 
   if (iss !== provider.issuer) {
@@ -173,9 +176,11 @@ function identityOf(
     issuer: provider.issuer,
     subject: sub,
     email: typeof email === "string" ? email : null,
-    groups: (Array.isArray(groups) ? groups : [groups]).filter(
-      (group): group is string => typeof group === "string",
+    // Some providers send the claim as the text "true".
+    emailVerified: [true, "true"].includes(
+      claims["email_verified"] as boolean | string,
     ),
+    claims,
   };
 }
 

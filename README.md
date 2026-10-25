@@ -103,7 +103,7 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
   --set apiRule.enabled=true --set apiRule.host=pi-cloud.<cluster domain>
 ```
 
-To sign in through an OpenID Connect provider, such as SAP IAS ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as a redirect URI with the provider and make the ID token carry a `groups` claim. Put the client secret, if the provider gives you one, in a Secret and set `oidc.existingSecret`:
+To sign in through an OpenID Connect provider, such as SAP IAS ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as a redirect URI with the provider and make the ID token carry the person's groups, or use the email lists for a provider without groups, such as Google. The plugin works with any OpenID Connect provider and needs no client secret, since it uses PKCE. If the provider insists on a client secret, put it in a Secret and set `oidc.existingSecret`:
 
 ```sh
 kubectl -n pi-cloud create secret generic pi-cloud-oidc --from-literal=clientSecret=<secret>

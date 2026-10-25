@@ -34,8 +34,14 @@ interface Settings {
   readonly issuer: string;
   readonly clientId: string;
   readonly label: string;
+  readonly groupsClaim: string;
   readonly accessGroup: string;
   readonly adminGroup: string;
+  // Lower case. Each lets people in by their verified email, for a provider
+  // that sends no groups, such as Google.
+  readonly allowedEmails: readonly string[];
+  readonly allowedDomains: readonly string[];
+  readonly adminEmails: readonly string[];
 }
 
 export const oidc: ServerPlugin = {
@@ -179,16 +185,17 @@ export const oidc: ServerPlugin = {
     ): Response => {
       const fields = { subject: identity.subject, email: identity.email };
 
-      if (!identity.groups.includes(settings.accessGroup)) {
-        context.log("sign-in refused: not in the access group", fields);
+      const { allowed, admin } = access(settings, identity);
+
+      if (!allowed) {
+        context.log("sign-in refused: not let in", fields);
 
         return page(
-          `Your account isn't in the ${settings.accessGroup} group, which this server lets in.`,
+          "This server doesn't let your account in. Ask its admin to add you.",
           403,
         );
       }
 
-      const admin = identity.groups.includes(settings.adminGroup);
       const linked = identities.find(identity);
 
       if (linkTo !== undefined) {
@@ -295,8 +302,57 @@ function settingsOf(values: PluginSettings): Settings {
     issuer: text("issuer"),
     clientId: text("clientId"),
     label: text("label") || "Sign in with single sign-on",
+    groupsClaim: text("groupsClaim") || "groups",
     accessGroup: text("accessGroup"),
     adminGroup: text("adminGroup"),
+    allowedEmails: texts(values, "allowedEmails"),
+    allowedDomains: texts(values, "allowedDomains"),
+    adminEmails: texts(values, "adminEmails"),
+  };
+}
+
+function texts(values: PluginSettings, name: string): readonly string[] {
+  const value = values[name];
+
+  return Array.isArray(value)
+    ? value.flatMap((each) =>
+        typeof each === "string" && each.trim() !== ""
+          ? [each.trim().toLowerCase()]
+          : [],
+      )
+    : [];
+}
+
+// The groups come from the claim the provider puts them in. Emails count
+// only once the provider has verified them.
+function access(
+  settings: Settings,
+  identity: Identity,
+): { readonly allowed: boolean; readonly admin: boolean } {
+  const claim = identity.claims[settings.groupsClaim];
+
+  const groups = (Array.isArray(claim) ? claim : [claim]).filter(
+    (group): group is string => typeof group === "string" && group !== "",
+  );
+
+  const email = identity.emailVerified
+    ? (identity.email?.toLowerCase() ?? "")
+    : "";
+
+  const domain = email.slice(email.lastIndexOf("@") + 1);
+
+  const admin =
+    groups.includes(settings.adminGroup) ||
+    (email !== "" && settings.adminEmails.includes(email));
+
+  return {
+    admin,
+    allowed:
+      admin ||
+      groups.includes(settings.accessGroup) ||
+      (email !== "" &&
+        (settings.allowedEmails.includes(email) ||
+          settings.allowedDomains.includes(domain))),
   };
 }
 

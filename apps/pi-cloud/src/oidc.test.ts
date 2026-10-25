@@ -8,7 +8,9 @@ const clientId = "pi-cloud-test";
 interface Account {
   readonly sub: string;
   readonly email: string;
-  groups: string[];
+  readonly email_verified?: boolean;
+  groups?: string[];
+  readonly [claim: string]: unknown;
 }
 
 let logs: string[];
@@ -58,8 +60,29 @@ async function api(
   });
 }
 
-function settings(): Record<string, string> {
-  return { issuer: provider.issuer, clientId, label: "Sign in with IAS" };
+function settings(more: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    issuer: provider.issuer,
+    clientId,
+    label: "Sign in with IAS",
+    ...more,
+  };
+}
+
+async function configure(more: Record<string, unknown>): Promise<void> {
+  const saved = await api("PATCH", "/api/plugins/oidc", await pedro(), {
+    settings: settings(more),
+  });
+
+  expect(saved.status).toBe(200);
+}
+
+async function userOf(cookie: string): Promise<unknown> {
+  const status = (await (await api("GET", "/api/auth", cookie)).json()) as {
+    user: unknown;
+  };
+
+  return status.user;
 }
 
 function cookieOf(response: Response): string {
@@ -145,8 +168,59 @@ test("refuses someone outside the access group", async () => {
   const { response, cookie } = await signIn({ ...ana, groups: ["others"] });
 
   expect(response.status).toBe(403);
-  expect(await response.text()).toContain("pi-cloud-users");
+  expect(await response.text()).toContain("Ask its admin to add you");
   expect(cookie).toBe("");
+});
+
+test("lets in verified emails and domains for a provider without groups", async () => {
+  await configure({
+    allowedEmails: ["Bea@Gmail.com"],
+    allowedDomains: ["example.org"],
+    adminEmails: ["boss@example.net"],
+  });
+
+  const google = (email: string, verified = true): Account => ({
+    sub: `google-${email}`,
+    email,
+    email_verified: verified,
+  });
+
+  const signedIn: unknown[] = [];
+
+  // One at a time, since the provider signs in whoever is next.
+  for (const account of [
+    google("bea@gmail.com"),
+    google("cid@example.org"),
+    google("boss@example.net"),
+    google("dan@example.org", false),
+    google("eve@gmail.com"),
+  ]) {
+    signedIn.push(await userOf((await signIn(account)).cookie));
+  }
+
+  expect(signedIn).toMatchObject([
+    { name: "bea@gmail.com", admin: false },
+    { name: "cid@example.org", admin: false },
+    { name: "boss@example.net", admin: true },
+    null,
+    null,
+  ]);
+});
+
+test("reads the groups from the claim the settings name", async () => {
+  await configure({ groupsClaim: "roles" });
+
+  const fromGroups = await signIn(ana);
+
+  const fromRoles = await signIn({
+    ...ana,
+    groups: [],
+    roles: ["pi-cloud-users"],
+  });
+
+  expect([fromGroups.response.status, fromRoles.response.status]).toEqual([
+    403, 200,
+  ]);
 });
 
 test("reads the admin group again on every sign-in", async () => {
