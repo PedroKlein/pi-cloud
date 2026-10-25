@@ -66,6 +66,8 @@ export function runnerPod(options: PodOptions): object {
         {
           name: "runner",
           image: options.image,
+          // A failed agent's last log lines show where it stopped.
+          terminationMessagePolicy: "FallbackToLogsOnError",
           command: [
             `${binaryDir}/pi-cloud`,
             "agent",

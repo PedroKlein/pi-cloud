@@ -8,7 +8,25 @@ export interface RunnerPod {
   readonly sessionId: string | undefined;
   readonly phase: string;
   readonly createdAt: number;
+  // Why a container of the pod failed or can't start, such as its last log
+  // lines or an image that can't be pulled.
+  readonly problem: string | undefined;
 }
+
+interface ContainerStatus {
+  readonly name: string;
+  readonly state?: {
+    readonly waiting?: { readonly reason?: string; readonly message?: string };
+    readonly terminated?: {
+      readonly exitCode: number;
+      readonly reason?: string;
+      readonly message?: string;
+    };
+  };
+}
+
+// Normal while a pod starts.
+const starting = new Set(["ContainerCreating", "PodInitializing"]);
 
 // The calls the plugin makes in the server's own namespace.
 export interface Cluster {
@@ -118,7 +136,11 @@ export function clusterAt(options: ApiAccess): Cluster {
             readonly labels?: Readonly<Record<string, string>>;
             readonly creationTimestamp?: string;
           };
-          readonly status?: { readonly phase?: string };
+          readonly status?: {
+            readonly phase?: string;
+            readonly initContainerStatuses?: readonly ContainerStatus[];
+            readonly containerStatuses?: readonly ContainerStatus[];
+          };
         }[];
       };
 
@@ -128,6 +150,12 @@ export function clusterAt(options: ApiAccess): Cluster {
         sessionId: metadata.labels?.[sessionLabel],
         phase: status?.phase ?? "Pending",
         createdAt: Date.parse(metadata.creationTimestamp ?? "") || Date.now(),
+        problem: [
+          ...(status?.initContainerStatuses ?? []),
+          ...(status?.containerStatuses ?? []),
+        ]
+          .map(problemOf)
+          .find((problem) => problem !== undefined),
       }));
     },
     createSecret: async (name, environmentId, data) => {
@@ -178,4 +206,21 @@ export function clusterAt(options: ApiAccess): Cluster {
       await call("DELETE", `persistentvolumeclaims/${name}`);
     },
   };
+}
+
+function problemOf({ name, state }: ContainerStatus): string | undefined {
+  const { waiting, terminated } = state ?? {};
+
+  if (terminated !== undefined && terminated.exitCode !== 0) {
+    const message = terminated.message?.trim().slice(-600) ?? "";
+    const detail = message === "" ? terminated.reason : message;
+
+    return `${name} exited with ${String(terminated.exitCode)}${detail === undefined ? "" : `: ${detail}`}`;
+  }
+
+  if (waiting?.reason !== undefined && !starting.has(waiting.reason)) {
+    return `${name} is waiting: ${waiting.message ?? waiting.reason}`;
+  }
+
+  return undefined;
 }

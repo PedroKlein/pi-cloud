@@ -10,6 +10,7 @@ import {
   defaultSettings,
   type KubernetesEnvironment,
   type KubernetesSettings,
+  type PodFailure,
 } from "../src/settings";
 
 export const kubernetes: WebPlugin = {
@@ -26,6 +27,7 @@ function EnvironmentSection({
   const { value, reload } = useLoaded(
     async () => json<KubernetesEnvironment>(context.request(path)),
     path,
+    10_000,
   );
 
   return (
@@ -37,18 +39,41 @@ function EnvironmentSection({
         {value === undefined ? (
           <p className="text-fg-dim">Loading…</p>
         ) : (
-          <Settings
-            key={JSON.stringify(value.settings)}
-            loaded={value}
-            processes={environment.isolation === "process"}
-            save={async (settings) => {
-              await json(context.request(path, { settings }));
-              reload();
-            }}
-          />
+          <>
+            {value.lastFailure !== null && (
+              <Failure failure={value.lastFailure} />
+            )}
+            <Settings
+              key={JSON.stringify(value.settings)}
+              loaded={value}
+              processes={environment.isolation === "process"}
+              save={async (settings) => {
+                await json(context.request(path, { settings }));
+                reload();
+              }}
+            />
+          </>
         )}
       </div>
     </Section>
+  );
+}
+
+function Failure({ failure }: { readonly failure: PodFailure }): ReactElement {
+  const time = (iso: string): string =>
+    new Date(iso).toLocaleTimeString([], { timeStyle: "short" });
+
+  return (
+    <div role="alert" className="flex flex-col gap-2 text-failed">
+      <p>
+        Runner pod {failure.pod} failed at {time(failure.at)}. The next one
+        starts after {time(failure.retryAt)}, and each failure in a row doubles
+        the wait.
+      </p>
+      <pre className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm whitespace-pre-wrap text-fg">
+        {failure.problem}
+      </pre>
+    </div>
   );
 }
 
