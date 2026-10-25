@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionPlugin } from "@pi-cloud/plugins";
@@ -24,9 +25,12 @@ export function installedSessionParts(
         throw new Error(`the ${name} plugin's Session part changed on the way`);
       }
 
+      // Two starts of one Session can fetch it at once.
+      const partial = `${path}.${randomUUID()}`;
+
       await mkdir(dir, { recursive: true });
-      await writeFile(`${path}.partial`, code);
-      await rename(`${path}.partial`, path);
+      await writeFile(partial, code);
+      await rename(partial, path);
     }
 
     const { default: plugin } = (await import(path)) as {

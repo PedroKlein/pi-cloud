@@ -568,9 +568,14 @@ export function startPlugins(
         pluginSettings: Object.fromEntries(
           running.map((name) => [name, values(name)]),
         ),
-        ownSessionsOnly: sessionPlugins
-          .filter(({ ownSessionsOnly: own }) => own === true)
-          .map(({ name }) => name),
+        ownSessionsOnly: [
+          ...sessionPlugins
+            .filter(({ ownSessionsOnly: own }) => own === true)
+            .map(({ name }) => name),
+          ...[...sessionBundles.keys()].filter(
+            (name) => manifest(name)?.ownSessionsOnly === true,
+          ),
+        ],
         loadOnly: Object.fromEntries(loaded),
         installedParts: Object.fromEntries(
           [...sessionBundles]

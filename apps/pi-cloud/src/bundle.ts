@@ -71,11 +71,13 @@ async function bundle(
     );
   }
 
-  // Only the bundle itself is served, so a stylesheet or file it imports
-  // would be missing on the page.
-  if (part === "web" && others.length > 0) {
+  // Only the bundle itself is served to the page or the runner, so a
+  // stylesheet or file it imports would be missing there.
+  if (part !== "server" && others.length > 0) {
     throw new Error(
-      `${basename(entry)} imports CSS or other files, which a web part can't have yet; style it with @pi-cloud/ui`,
+      part === "web"
+        ? `${basename(entry)} imports CSS or other files, which a web part can't have yet; style it with @pi-cloud/ui`
+        : `${basename(entry)} imports files other than code, which a Session part can't have yet`,
     );
   }
 

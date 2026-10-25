@@ -236,6 +236,9 @@ export interface PluginManifest {
     readonly session?: string;
   };
   readonly capabilities?: readonly Capability[];
+  // An installed plugin's Session part loads only in the Sessions its server
+  // part owns. A built-in says so on its Session part instead.
+  readonly ownSessionsOnly?: boolean;
 }
 
 // A plugin as the Plugins page shows it. A failed plugin's server part threw

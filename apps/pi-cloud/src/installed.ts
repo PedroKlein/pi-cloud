@@ -250,6 +250,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     engine,
     capabilities: declared,
     ...(typeof version === "string" && { version }),
+    ...(field["ownSessionsOnly"] === true && { ownSessionsOnly: true }),
     parts: {
       ...(typeof server === "string" && { server }),
       ...(typeof web === "string" && { web }),

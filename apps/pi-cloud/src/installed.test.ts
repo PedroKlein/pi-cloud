@@ -432,8 +432,11 @@ test("fails a web part that imports CSS the page would never load", async () => 
   expect((await listed("styled"))?.error).toContain("imports CSS");
 });
 
-test("runs an installed plugin's Session part in a Session, fetched by its hash", async () => {
-  await writePlugin("slash", { parts: { session: "session.ts" } });
+// A Session part that adds a slash command, so a Session shows it loaded.
+async function writeSlashPlugin(
+  manifest: Record<string, unknown> = {},
+): Promise<void> {
+  await writePlugin("slash", { parts: { session: "session.ts" }, ...manifest });
 
   await writeFile(
     join(plugins, "slash", "session.ts"),
@@ -450,7 +453,10 @@ test("runs an installed plugin's Session part in a Session, fetched by its hash"
   );
 
   await writeFile(join(plugins, "enabled.json"), JSON.stringify(["slash"]));
+}
 
+// Starts the server with its own runner on a faux model, and a Session on it.
+async function startSession(): Promise<Session> {
   const faux = fauxProvider();
 
   const runtime = await ModelRuntime.create({
@@ -477,25 +483,33 @@ test("runs an installed plugin's Session part in a Session, fetched by its hash"
     await Bun.sleep(10);
   }
 
-  const session = (await (
+  return (await (
     await api("POST", "/api/sessions", {
       workspace: { kind: "folder", path: root },
     })
   ).json()) as Session;
+}
 
+async function commandsOf(session: Session): Promise<readonly string[]> {
   const events = await api("GET", `/api/sessions/${session.id}/events`);
-  let commands: readonly { readonly name: string }[] = [];
 
   for await (const event of readSse(events)) {
     const sent = event as SessionEvent;
 
     if (sent.type === "live" && sent.event.type === "commands") {
-      commands = sent.event.commands;
-      break;
+      return sent.event.commands.map(({ name }) => name);
     }
   }
 
-  expect(commands.map(({ name }) => name)).toContain("installed-hello");
+  return [];
+}
+
+test("runs an installed plugin's Session part in a Session, fetched by its hash", async () => {
+  await writeSlashPlugin();
+
+  const session = await startSession();
+
+  expect(await commandsOf(session)).toContain("installed-hello");
 
   const cached = await readdir(
     join(root, "local", "sessions", session.id, "plugin-parts"),
@@ -503,4 +517,31 @@ test("runs an installed plugin's Session part in a Session, fetched by its hash"
 
   expect(cached).toHaveLength(1);
   expect(cached[0]).toMatch(/^slash-[0-9a-f]{64}\.js$/);
+});
+
+test("keeps a Session part meant for its own Sessions out of others", async () => {
+  await writeSlashPlugin({ ownSessionsOnly: true });
+
+  const session = await startSession();
+  const commands = await commandsOf(session);
+
+  expect(commands).toContain("pr");
+  expect(commands).not.toContain("installed-hello");
+});
+
+test("fails a Session part that imports a file the runner wouldn't get", async () => {
+  await writePlugin("prompted", { parts: { session: "session.ts" } });
+  await writeFile(join(plugins, "prompted", "prompt.png"), "not really");
+
+  await writeFile(
+    join(plugins, "prompted", "session.ts"),
+    `import prompt from "./prompt.png";\n\nexport default { name: "prompted", prompt };\n`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["prompted"]));
+  await start();
+
+  expect((await listed("prompted"))?.error).toContain(
+    "imports files other than code",
+  );
 });
