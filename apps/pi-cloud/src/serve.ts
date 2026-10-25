@@ -54,16 +54,21 @@ export function serve(options: ServeOptions): {
   });
 
   const pluginsStop = new AbortController();
+  const auth = new Auth(store.auth);
 
   const pluginHost = startPlugins(plugins, enabled, {
     sessions,
+    runners: {
+      token: (environment, runner) => auth.runnerToken(environment, runner),
+      revoke: (environment, runner) => {
+        auth.revokeRunner(environment, runner);
+      },
+    },
     events,
     store: store.plugin,
     signal: pluginsStop.signal,
     log: options.log,
   });
-
-  const auth = new Auth(store.auth);
 
   const handler = createHandler(
     auth,

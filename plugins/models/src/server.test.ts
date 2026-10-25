@@ -66,6 +66,12 @@ function registered(signal: AbortSignal): PluginRoute {
     owner: "owner",
     tools: { register: unused },
     events: eventBus(unused),
+    environments: {
+      list: unused,
+      waiting: unused,
+      runnerToken: unused,
+      revokeRunner: unused,
+    },
     sessions: {
       start: unused,
       get: unused,

@@ -73,11 +73,45 @@ export interface PluginHost {
   ) => Promise<Response | undefined>;
 }
 
+function pluginEnvironments(
+  sessions: Sessions,
+  runners: {
+    readonly token: (environment: string, runner: string) => string;
+    readonly revoke: (environment: string, runner: string) => void;
+  },
+): ServerPluginContext["environments"] {
+  const provider = (environmentId: string): string => {
+    const found = sessions
+      .environments()
+      .find(({ id }) => id === environmentId);
+
+    if (found === undefined) {
+      throw new Error(`no Environment ${environmentId}`);
+    }
+
+    return found.provider;
+  };
+
+  return {
+    list: () => sessions.environments(),
+    waiting: (environmentId) => sessions.waiting(environmentId),
+    runnerToken: (environmentId, runner) =>
+      runners.token(provider(environmentId), runner),
+    revokeRunner: (environmentId, runner) => {
+      runners.revoke(provider(environmentId), runner);
+    },
+  };
+}
+
 export function startPlugins(
   plugins: readonly ServerPlugin[],
   enabled: readonly string[],
   deps: {
     readonly sessions: Sessions;
+    readonly runners: {
+      readonly token: (environment: string, runner: string) => string;
+      readonly revoke: (environment: string, runner: string) => void;
+    };
     readonly events: EventBus;
     readonly store: (name: string) => PluginStore;
     readonly signal: AbortSignal;
@@ -105,6 +139,7 @@ export function startPlugins(
       },
       events: deps.events,
       sessions: pluginSessions(deps.sessions, plugin.name),
+      environments: pluginEnvironments(deps.sessions, deps.runners),
       routes: {
         handle: (route) => {
           routes.set(plugin.name, route);
@@ -263,6 +298,10 @@ const resultRetryMs = 1000;
 function sendResult(
   deps: {
     readonly sessions: Sessions;
+    readonly runners: {
+      readonly token: (environment: string, runner: string) => string;
+      readonly revoke: (environment: string, runner: string) => void;
+    };
     readonly signal: AbortSignal;
     readonly log: Log;
   },

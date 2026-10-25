@@ -502,6 +502,40 @@ export class Sessions {
     });
   }
 
+  // Queued Sessions that no online runner in the pool can take now, for a
+  // plugin that starts runners on demand (ADR 0032).
+  waiting(environmentId: string): readonly Session[] {
+    const environment = this.#store
+      .environments()
+      .find(({ id }) => id === environmentId);
+
+    if (environment === undefined) {
+      return [];
+    }
+
+    const runners = this.#polls.runners(environment.provider);
+
+    const pool = {
+      runners,
+      leaseLapsed: (name: string) =>
+        this.#polls.leaseLapsed(name, environment.provider),
+    };
+
+    const free = runners.filter(
+      ({ name, online, capacity }) =>
+        online &&
+        (capacity === null ||
+          this.#store.byRunner(name, attempting).length < capacity),
+    );
+
+    return this.#store
+      .byEnvironment(environment.provider, claimableStatuses)
+      .filter(
+        (session) => !free.some(({ name }) => placesOn(session, name, pool)),
+      )
+      .map((session) => this.#view(session));
+  }
+
   // A runner polls for the Environment whose pool it joins (ADR 0032).
   async claim(
     runner: { readonly name: string; readonly environment: string },

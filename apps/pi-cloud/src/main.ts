@@ -16,8 +16,8 @@ const usage = `usage:
                   [--database ~/.pi-cloud/server.db]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
-  PI_CLOUD_KEY=<Environment key> \\
-  pi-cloud agent --name <runner> [--capacity <n>]
+  PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \\
+  pi-cloud agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
                  [--server http://127.0.0.1:7420] [--session-binary <path>]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
                  [--extension <path>]...`;
@@ -103,6 +103,7 @@ switch (command) {
       options: {
         name: { type: "string" },
         capacity: { type: "string" },
+        "exit-when-idle": { type: "string" },
         "session-binary": { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
         "data-dir": { type: "string", default: join(dataRoot, "agent") },
@@ -114,15 +115,27 @@ switch (command) {
     const capacity =
       values.capacity === undefined ? undefined : Number(values.capacity);
 
+    const idleSeconds =
+      values["exit-when-idle"] === undefined
+        ? undefined
+        : Number(values["exit-when-idle"]);
+
     // Sessions inherit the environment, and the key would let one join too.
+    // A runner a plugin starts, such as a pod, gets a token instead.
     const key = process.env["PI_CLOUD_KEY"];
+    const token = process.env["PI_CLOUD_TOKEN"];
     delete process.env["PI_CLOUD_KEY"];
+    delete process.env["PI_CLOUD_TOKEN"];
+
+    const credential = credentialOf(key, token);
 
     if (
       values.name === undefined ||
-      key === undefined ||
+      credential === undefined ||
       (capacity !== undefined &&
-        !(Number.isSafeInteger(capacity) && capacity > 0))
+        !(Number.isSafeInteger(capacity) && capacity > 0)) ||
+      (idleSeconds !== undefined &&
+        !(Number.isSafeInteger(idleSeconds) && idleSeconds > 0))
     ) {
       process.stderr.write(`${usage}\n`);
       process.exit(2);
@@ -133,8 +146,9 @@ switch (command) {
     await runAgent({
       server: values.server,
       provider: values.name,
-      credential: { key },
+      credential,
       ...(capacity !== undefined && { capacity }),
+      ...(idleSeconds !== undefined && { exitWhenIdleMs: idleSeconds * 1000 }),
       ...(values["session-binary"] !== undefined && {
         sessionBinary: absolutePath(values["session-binary"]),
       }),
@@ -156,6 +170,17 @@ switch (command) {
   default:
     process.stderr.write(`${usage}\n`);
     process.exit(2);
+}
+
+function credentialOf(
+  key: string | undefined,
+  token: string | undefined,
+): { readonly key: string } | { readonly token: string } | undefined {
+  if (key !== undefined) {
+    return { key };
+  }
+
+  return token === undefined ? undefined : { token };
 }
 
 // A typo in --folder would otherwise only show up as a failed session.

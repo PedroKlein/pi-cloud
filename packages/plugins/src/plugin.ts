@@ -6,6 +6,7 @@ import type { EventBus } from "./events";
 import type {
   Actor,
   CreateSession,
+  Environment,
   ModelRef,
   Question,
   QuestionsAnswer,
@@ -145,6 +146,17 @@ export interface ServerPluginContext {
     ) => SendOutcome;
     readonly transcript: (id: string) => readonly string[];
     readonly transcriptLength: (id: string) => number;
+  };
+  // For a plugin that brings machines to a pool, such as Kubernetes pods
+  // (ADR 0032).
+  readonly environments: {
+    readonly list: () => readonly Environment[];
+    // Queued Sessions that no online runner in the pool can take now.
+    readonly waiting: (environmentId: string) => readonly Session[];
+    // The token a runner the plugin starts polls with. It lasts until revoked,
+    // and a new Environment key leaves it be.
+    readonly runnerToken: (environmentId: string, runner: string) => string;
+    readonly revokeRunner: (environmentId: string, runner: string) => void;
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly models: { readonly offer: (offer: ModelOffer) => void };

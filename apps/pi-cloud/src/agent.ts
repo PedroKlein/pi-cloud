@@ -54,6 +54,9 @@ export interface AgentOptions {
   readonly credential: { readonly key: string } | { readonly token: string };
   // How many Sessions it runs at once. Absent means no limit.
   readonly capacity?: number;
+  // Stops after running no Session for this long, as a pod started on demand
+  // does (ADR 0032). Absent means it never does.
+  readonly exitWhenIdleMs?: number;
   readonly dataDir: string;
   readonly extensionPaths: readonly string[];
   readonly folders: readonly string[];
@@ -559,6 +562,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   // A server that no longer knows the token, as after a new key, has let the
   // runner go. It stops instead of polling forever.
   const letGo = new AbortController();
+  const idle = idleExit(options.exitWhenIdleMs, () => hosted.size, log);
 
   await runProvider({
     controlPlane: httpControlPlane(agent, () => {
@@ -569,7 +573,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       letGo.abort();
     }),
     log,
-    signal: AbortSignal.any([options.signal, letGo.signal]),
+    signal: AbortSignal.any([options.signal, letGo.signal, idle.signal]),
     folders: [...new Set([...options.folders, ...checkouts])],
     ...(options.capacity !== undefined && { capacity: options.capacity }),
     models: () => models,
@@ -630,6 +634,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     },
   });
 
+  idle.stop();
   log("stopping sessions", { count: hosted.size });
 
   await Promise.all(
@@ -671,4 +676,40 @@ function sessionBinary(configured: string | undefined): string {
   throw new Error(
     "container Sessions need a Linux pi-cloud binary: start the agent with --session-binary",
   );
+}
+
+function idleExit(
+  afterMs: number | undefined,
+  hosting: () => number,
+  log: Log,
+): { readonly signal: AbortSignal; readonly stop: () => void } {
+  const controller = new AbortController();
+  if (afterMs === undefined) {
+    return { signal: controller.signal, stop: () => undefined };
+  }
+
+  let idleSince = Date.now();
+
+  const timer = setInterval(
+    () => {
+      if (hosting() > 0) {
+        idleSince = Date.now();
+
+        return;
+      }
+
+      if (Date.now() - idleSince >= afterMs) {
+        log("no sessions for a while; stopping", { idleMs: afterMs });
+        controller.abort();
+      }
+    },
+    Math.min(afterMs, 1000),
+  );
+
+  return {
+    signal: controller.signal,
+    stop: () => {
+      clearInterval(timer);
+    },
+  };
 }

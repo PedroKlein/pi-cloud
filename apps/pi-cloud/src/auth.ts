@@ -33,6 +33,8 @@ export interface AuthStore {
   readonly deleteBrowserSession: (tokenHash: string) => void;
   // Also lets go of every runner that joined with the earlier key.
   readonly setEnvironmentKey: (provider: string, keyHash: string) => void;
+  // A runner's own token and its Sessions' tokens.
+  readonly deleteRunnerTokens: (provider: string, runner: string) => void;
   readonly keyEnvironment: (keyHash: string) => string | undefined;
   // A Session holds one token, for its current attempt.
   readonly insertAgentToken: (tokenHash: string, holder: Agent) => void;
@@ -45,6 +47,9 @@ export interface Agent {
   readonly environment: string;
   readonly runner: string;
   readonly sessionId: string | null;
+  // Joined with the Environment's key, so a new key lets it go. Runners a
+  // plugin or the server starts got their token without one.
+  readonly joined: boolean;
 }
 
 export interface AuthStatus {
@@ -193,7 +198,12 @@ export class Auth {
     return environment === undefined
       ? undefined
       : {
-          token: this.#agentToken({ environment, runner, sessionId: null }),
+          token: this.#agentToken({
+            environment,
+            runner,
+            sessionId: null,
+            joined: true,
+          }),
           environment,
         };
   }
@@ -202,7 +212,24 @@ export class Auth {
   // the server, so their tokens live only in memory. A new key for its
   // Environment leaves them be.
   ownRunnerToken(environment: string, runner: string): string {
-    return this.#agentToken({ environment, runner, sessionId: null }, true);
+    return this.#agentToken(
+      { environment, runner, sessionId: null, joined: false },
+      true,
+    );
+  }
+
+  // For a runner a plugin starts, such as a Kubernetes pod (ADR 0032).
+  runnerToken(environment: string, runner: string): string {
+    return this.#agentToken({
+      environment,
+      runner,
+      sessionId: null,
+      joined: false,
+    });
+  }
+
+  revokeRunner(environment: string, runner: string): void {
+    this.#store.deleteRunnerTokens(environment, runner);
   }
 
   // The token a Session of the calling runner uses for its current attempt.
