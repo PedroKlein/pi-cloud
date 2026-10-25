@@ -72,6 +72,18 @@ export function describeUsage(totals: ReadonlyMap<string, Usage>): {
   };
 }
 
+// Pi's estimate of the context, with no tokens right after a compaction.
+export function describeContext(
+  inContext: number | null,
+  window: number,
+): string {
+  if (inContext === null) {
+    return `? / ${tokens(window)}`;
+  }
+
+  return `${tokens(inContext)} / ${tokens(window)} (${String(Math.round((inContext / window) * 100))}%)`;
+}
+
 function tokens(count: number): string {
   return count < 1000 ? String(count) : `${(count / 1000).toFixed(1)}k`;
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { addUsage, describeUsage, type Usage } from "./usage";
+import { addUsage, describeContext, describeUsage, type Usage } from "./usage";
 
 const assistant = (
   model: string,
@@ -75,4 +75,9 @@ test("ignores entries without usage", () => {
   ];
 
   expect(describeUsage(totals(lines))).toEqual({ summary: "", detail: "" });
+});
+
+test("shows how full the context is, or a question mark when Pi can't tell", () => {
+  expect(describeContext(12_000, 200_000)).toBe("12.0k / 200.0k (6%)");
+  expect(describeContext(null, 200_000)).toBe("? / 200.0k");
 });

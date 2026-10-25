@@ -315,6 +315,7 @@ export function feedReader({
         return;
       case "plugin":
       case "extension_data":
+      case "context":
         return;
       case "queue":
         update({

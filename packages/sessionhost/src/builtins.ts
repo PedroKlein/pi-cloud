@@ -156,6 +156,18 @@ export async function settings(session: AgentSession): Promise<LiveEvent> {
   };
 }
 
+export function contextUsage(session: AgentSession): LiveEvent | undefined {
+  const usage = session.getContextUsage();
+
+  return (
+    usage && {
+      type: "context",
+      tokens: usage.tokens,
+      window: usage.contextWindow,
+    }
+  );
+}
+
 function info(message: string): LiveEvent {
   return { type: "notify", level: "info", message };
 }

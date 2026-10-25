@@ -23,7 +23,13 @@ import {
   type SlashCommand,
   type ToolSpec,
 } from "@pi-cloud/protocol";
-import { builtinCommands, builtinOf, runBuiltin, settings } from "./builtins";
+import {
+  builtinCommands,
+  builtinOf,
+  contextUsage,
+  runBuiltin,
+  settings,
+} from "./builtins";
 import { workspaceFiles } from "./files";
 import { browserHelper, hostPages, type PreviewExchange } from "./pages";
 import { webSurfaces } from "./surfaces";
@@ -412,6 +418,13 @@ export async function hostSession(
   const transcript = transcriptSync(session, stream, log);
   const files = filesFeed(session.sessionManager.getCwd(), live, log);
 
+  const pushContext = (): void => {
+    const event = contextUsage(session);
+    if (event) {
+      live.push(event);
+    }
+  };
+
   // Pi appends a `!` command's result to the transcript without an event.
   const recordBashResult = session.recordBashResult.bind(session);
 
@@ -421,6 +434,11 @@ export async function hostSession(
   };
 
   const unsubscribe = session.subscribe((event) => {
+    // Before the idle status, which ends a turn for its watchers.
+    if (event.type === "agent_settled" || event.type === "compaction_end") {
+      pushContext();
+    }
+
     const liveEvent = toLiveEvent(event, session);
     if (liveEvent) {
       live.push(liveEvent);
@@ -552,6 +570,7 @@ export async function hostSession(
         async () => {
           if (command.type === "set_model" || command.type === "set_thinking") {
             live.push(await settings(session));
+            pushContext();
           }
         },
         (error: unknown) => {
@@ -572,6 +591,7 @@ export async function hostSession(
   live.push({ type: "status", status: "idle" });
   live.push({ type: "commands", commands: slashCommands(session) });
   live.push(await settings(session));
+  pushContext();
   files.refresh();
   transcript.sync();
 

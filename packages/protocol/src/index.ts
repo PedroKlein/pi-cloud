@@ -585,6 +585,13 @@ export type LiveEvent =
       readonly levels: readonly ThinkingLevel[];
       readonly models: readonly ModelRef[];
     }
+  // Pi's estimate of how much of the model's context the Session fills,
+  // with no tokens while Pi can't tell, such as after a compaction (ADR 0038).
+  | {
+      readonly type: "context";
+      readonly tokens: number | null;
+      readonly window: number;
+    }
   | {
       readonly type: "explanation";
       readonly id: string;
@@ -639,6 +646,8 @@ export function liveSurface(
       return { key: "pi_view", open: event.attached || event.dialog !== null };
     case "settings":
       return { key: "settings", open: true };
+    case "context":
+      return { key: "context", open: true };
     case "plugin":
       return { key: `plugin:${event.plugin}:${event.key}`, open: true };
     case "queue":
