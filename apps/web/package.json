@@ -11,6 +11,7 @@
     "@pi-cloud/library": "workspace:*",
     "@pi-cloud/meta": "workspace:*",
     "@pi-cloud/models": "workspace:*",
+    "@pi-cloud/oidc": "workspace:*",
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/projects": "workspace:*",
     "@pi-cloud/protocol": "workspace:*",

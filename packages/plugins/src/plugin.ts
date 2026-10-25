@@ -104,6 +104,25 @@ export type PluginRoute = (
   caller: ToolCaller | undefined,
 ) => Response | Promise<Response>;
 
+// Undefined passes the request on to the plugin's routes, which need a
+// signed-in user.
+export type PublicRoute = (
+  request: Request,
+  path: string,
+) => Response | undefined | Promise<Response | undefined>;
+
+export interface User {
+  readonly id: string;
+  readonly name: string;
+  readonly admin: boolean;
+}
+
+// A link on the sign-in page to a path in the plugin's routes.
+export interface Login {
+  readonly label: string;
+  readonly path: string;
+}
+
 type SqlValue = string | number | bigint | null | Uint8Array;
 
 // Tables a plugin creates must be named <plugin>_<table>.
@@ -211,6 +230,27 @@ export interface ServerPluginContext {
     readonly provide: (key: string, profile: PluginProfile) => string;
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
+  // For a built-in plugin that signs people in without a password, such as
+  // OIDC (ADR 0038). Installed plugins don't get it.
+  readonly auth: {
+    // Asked each time the sign-in page loads, so a plugin that isn't set up
+    // yet offers nothing.
+    readonly offer: (login: () => Login | undefined) => void;
+    // Tried before the plugin's own routes, for every browser, signed in or
+    // not, such as an identity provider redirecting back.
+    readonly handlePublic: (route: PublicRoute) => void;
+    readonly userOf: (request: Request) => User | undefined;
+    // A user who signs in only through the plugin, or undefined when the
+    // name is taken.
+    readonly createUser: (name: string, admin: boolean) => User | undefined;
+    readonly setAdmin: (userId: string, admin: boolean) => void;
+    // The Set-Cookie value of a new browser session for the user, or
+    // undefined when no user has the id.
+    readonly startSession: (
+      userId: string,
+      request: Request,
+    ) => string | undefined;
+  };
   readonly models: { readonly offer: (offer: ModelOffer) => void };
   readonly store: PluginStore;
   // The plugin's settings as they are now, a default for each it declares

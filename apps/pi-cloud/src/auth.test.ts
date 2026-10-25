@@ -66,6 +66,7 @@ test("creates the first user from the one-time setup link and signs them in", as
   expect(await (await get("/api/auth")).json()).toEqual({
     user: null,
     setup: true,
+    logins: [],
   });
 
   const created = await post("/api/auth/setup", { ...pedro, token });
@@ -78,8 +79,9 @@ test("creates the first user from the one-time setup link and signs them in", as
   );
 
   expect(await (await get("/api/auth", cookieOf(created))).json()).toEqual({
-    user: { id: expect.any(String) as string, name: "pedro" },
+    user: { id: expect.any(String) as string, name: "pedro", admin: true },
     setup: false,
+    logins: [],
   });
 
   expect(again.status).toBe(403);

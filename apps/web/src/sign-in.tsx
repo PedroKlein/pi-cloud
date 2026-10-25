@@ -9,14 +9,22 @@ const messages: Record<string, string> = {
     "This setup link is not the server's current one. Open the link from its latest log.",
 };
 
+// Another way in that a plugin offers, such as single sign-on (ADR 0038).
+export interface Login {
+  readonly label: string;
+  readonly path: string;
+}
+
 // The first user comes from the one-time link in the server's log (ADR 0034).
 export function SignInPage({
   setup,
   setupToken: linkToken,
+  logins,
 }: {
   // No user exists yet.
   readonly setup: boolean;
   readonly setupToken: string | undefined;
+  readonly logins: readonly Login[];
 }): ReactElement {
   const [error, setError] = useState<string>();
   const setupToken = setup ? linkToken : undefined;
@@ -62,6 +70,21 @@ export function SignInPage({
       <PageTitle>
         {setupToken === undefined ? "Sign in" : "Create the first user"}
       </PageTitle>
+      {setupToken === undefined && logins.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2">
+          {logins.map(({ label, path }) => (
+            <Button
+              key={path}
+              variant="primary"
+              onClick={() => {
+                location.assign(path);
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      )}
       <form
         onSubmit={submit}
         className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"

@@ -165,6 +165,14 @@ export function createHandler(
     };
   };
 
+  // Plugins run code inside the server, so only admins change them.
+  const admin =
+    (route: BrowserRoute): BrowserRoute =>
+    async (request, params, actor) =>
+      auth.userById(userIdOf(actor))?.admin === true
+        ? await route(request, params, actor)
+        : Response.json({ error: "admin_only" }, { status: 403 });
+
   const sessionAction =
     (message: string, act: (id: string) => Result<unknown>): Route =>
     (_request, [id = ""]) => {
@@ -198,7 +206,16 @@ export function createHandler(
         });
       },
     ],
-    ...authRoutes(auth, log),
+    ...authRoutes(auth, plugins, log),
+    [
+      "ANY",
+      /^\/api\/plugins\/([^/]+)\/(.*)$/,
+      async (request, [name = "", path = ""]) =>
+        (await plugins.publicRoute(request, name, path)) ??
+        signedIn(
+          async () => (await plugins.route(request, name, path)) ?? notFound(),
+        )(request, [name, path]),
+    ],
     ["ANY", /^\/api\/mcp$/, mcpHandler(auth, plugins, serverVersion, log)],
     [
       "POST",
@@ -238,7 +255,7 @@ export function createHandler(
     [
       "POST",
       /^\/api\/plugins$/,
-      async (request) => {
+      admin(async (request) => {
         const { url } = fieldsOf(await readJson(request));
         const installed = await plugins.install(textOf("url", url));
 
@@ -247,7 +264,7 @@ export function createHandler(
         }
 
         return Response.json(installed, { status: 201 });
-      },
+      }),
     ],
     [
       "GET",
@@ -288,7 +305,7 @@ export function createHandler(
     [
       "DELETE",
       /^\/api\/plugins\/([^/]+)$/,
-      async (_request, [name = ""]) => {
+      admin(async (_request, [name = ""]) => {
         const removed = await plugins.remove(name);
 
         if (typeof removed === "string") {
@@ -296,12 +313,12 @@ export function createHandler(
         }
 
         return removed ? new Response(null, { status: 204 }) : notFound();
-      },
+      }),
     ],
     [
       "POST",
       /^\/api\/restart$/,
-      async (request) => {
+      admin(async (request) => {
         if (restart === undefined) {
           throw new BadRequest(
             "nothing starts this server again when it stops, so restart it yourself",
@@ -326,7 +343,7 @@ export function createHandler(
         setTimeout(restart.now, 100);
 
         return new Response(null, { status: 202 });
-      },
+      }),
     ],
     [
       "GET",
@@ -386,7 +403,7 @@ export function createHandler(
     [
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
-      async (request, [name = ""]) => {
+      admin(async (request, [name = ""]) => {
         const { settings, enabled, update, digest } = fieldsOf(
           await readJson(request),
         );
@@ -407,13 +424,7 @@ export function createHandler(
         }
 
         return saved === undefined ? notFound() : Response.json(saved);
-      },
-    ],
-    [
-      "ANY",
-      /^\/api\/plugins\/([^/]+)\/(.*)$/,
-      async (request, [name = "", path = ""]) =>
-        (await plugins.route(request, name, path)) ?? notFound(),
+      }),
     ],
     [
       "GET",
@@ -857,9 +868,14 @@ export function createHandler(
   };
 }
 
-function authRoutes(auth: Auth, log: Log): RouteTable {
+function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
   return [
-    ["GET", /^\/api\/auth$/, (request) => Response.json(auth.status(request))],
+    [
+      "GET",
+      /^\/api\/auth$/,
+      (request) =>
+        Response.json({ ...auth.status(request), logins: plugins.logins() }),
+    ],
     [
       "POST",
       /^\/api\/auth\/setup$/,

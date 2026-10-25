@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
 import { loadPlugins, navEntries } from "./plugins";
-import { SignInPage } from "./sign-in";
+import { type Login, SignInPage } from "./sign-in";
 import { applyTheme } from "./theme";
 
 const root = document.getElementById("root");
@@ -17,6 +17,7 @@ const status = await fetch("/api/auth")
       (await response.json()) as {
         readonly user: unknown;
         readonly setup: boolean;
+        readonly logins: readonly Login[];
       },
   )
   .catch(() => undefined);
@@ -27,7 +28,11 @@ if (status === undefined) {
   root.textContent = "The server can't be reached. Reload to try again.";
 } else if (status.user === null) {
   createRoot(root).render(
-    <SignInPage setup={status.setup} setupToken={setupToken} />,
+    <SignInPage
+      setup={status.setup}
+      setupToken={setupToken}
+      logins={status.logins}
+    />,
   );
 } else {
   await loadPlugins().catch(() => undefined);

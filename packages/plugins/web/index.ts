@@ -133,6 +133,8 @@ export interface WebPlugin {
   // A section on the Environments page for the open Environment, such as the
   // plugin's settings for it (ADR 0032).
   readonly EnvironmentSection?: ComponentType<EnvironmentSectionProps>;
+  // A section on the user's Settings page, such as their linked accounts.
+  readonly SettingsSection?: ComponentType<{ readonly context: WebContext }>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
   // Tools whose calls the plugin draws instead of a work step, by name.
   readonly tools?: Readonly<Record<string, ComponentType<ToolCallProps>>>;

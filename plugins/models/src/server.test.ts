@@ -92,6 +92,14 @@ function registered(signal: AbortSignal): PluginRoute {
         routes.push(route);
       },
     },
+    auth: {
+      offer: unused,
+      handlePublic: unused,
+      userOf: unused,
+      createUser: unused,
+      setAdmin: unused,
+      startSession: unused,
+    },
     models: { offer: () => undefined },
     store: memoryStore(),
     settings: { get: () => ({}) },

@@ -89,7 +89,7 @@ function Page() {
 export default { name: "greeter", nav: { label: "Greeter", Page } };
 ```
 
-The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
+The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
 
 The part shares `react`, `react-dom`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` with the page, so hooks work and it looks like the rest of the app. It can't import CSS or other files yet. The page only has the Tailwind classes the app itself uses, so build the UI from `@pi-cloud/ui` components.
 

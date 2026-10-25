@@ -96,6 +96,14 @@ function registered(
         routes.push(route);
       },
     },
+    auth: {
+      offer: unused,
+      handlePublic: unused,
+      userOf: unused,
+      createUser: unused,
+      setAdmin: unused,
+      startSession: unused,
+    },
     models: { offer: unused },
     store: memoryStore(),
     settings: { get: settings },
