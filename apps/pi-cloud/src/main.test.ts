@@ -10,6 +10,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
 import { readSse } from "./sse";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUserCookie, setupTokenOf } from "./testdata/sign-in";
 
 // Waits for a spawned server's setup link, which follows its listening line,
@@ -92,7 +93,10 @@ test("refuses to start an agent with a folder that does not exist", async () => 
       "--folder",
       "/no/such/folder",
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: { ...process.env, PI_CLOUD_KEY: "pck_unused" },
+    },
   );
 
   let log = "";
@@ -147,7 +151,7 @@ test("marks a session failed and keeps running when its process cannot be spawne
       });
 
       environment = ((await response.json()) as Environment[]).find(
-        (each) => each.provider === "laptop",
+        (each) => each.provider === "laptop" && each.online,
       );
 
       await sleep(20);
@@ -238,6 +242,10 @@ test.each(["server", "agent"] as const)(
       const { url, cookie } = await signedIn(server);
 
       if (command === "agent") {
+        const key = await runnerCredentials({ url: new URL(url) }, async () =>
+          Promise.resolve(cookie),
+        ).key("laptop");
+
         const agent = spawn(
           process.execPath,
           [
@@ -249,7 +257,11 @@ test.each(["server", "agent"] as const)(
             url,
             ...relativePaths,
           ],
-          { ...options, stdio: "ignore" },
+          {
+            ...options,
+            env: { ...options.env, PI_CLOUD_KEY: key },
+            stdio: "ignore",
+          },
         );
 
         running.unshift(agent);
@@ -262,7 +274,7 @@ test.each(["server", "agent"] as const)(
         });
 
         environment = ((await response.json()) as Environment[]).find(
-          (each) => each.provider === "laptop",
+          (each) => each.provider === "laptop" && each.online,
         );
 
         await sleep(20);

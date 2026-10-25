@@ -8,7 +8,6 @@ import {
 import {
   type Assignment,
   protocolVersion,
-  providerHeader,
   type Session,
   versionHeader,
   type WorkPoll,
@@ -106,13 +105,15 @@ function startServer(
     auth.setupToken ?? "",
   );
 
+  const token = auth.ownRunnerToken("local", "local");
+
   const call = async (path: string, body?: unknown): Promise<Response> =>
     handler(
       new Request(`http://127.0.0.1${path}`, {
         method: body === undefined ? "GET" : "POST",
         headers: {
           [versionHeader]: String(protocolVersion),
-          [providerHeader]: "local",
+          authorization: `Bearer ${token}`,
           "content-type": "application/json",
           cookie: await cookie,
         },

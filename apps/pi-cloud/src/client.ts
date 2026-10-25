@@ -1,6 +1,8 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import {
-  type Assignment,
+  type JoinRequest,
+  type Joined,
+  type SessionStart,
   type Command,
   type LivePost,
   type RemovalPost,
@@ -10,8 +12,6 @@ import {
   type ToolSpec,
   protocolVersion,
   type TerminalControl,
-  environmentHeader,
-  providerHeader,
   type TranscriptAck,
   type TranscriptBatch,
   versionHeader,
@@ -44,20 +44,63 @@ class HttpError extends Error {
   }
 }
 
+// A runner's token, or one of its Sessions' (ADR 0033).
 interface Agent {
   readonly server: string;
-  readonly provider: string;
-  readonly environment?: string;
+  readonly token: string;
 }
 
 function agentHeaders(agent: Agent): Record<string, string> {
   return {
     [versionHeader]: String(protocolVersion),
-    [providerHeader]: agent.provider,
-    ...(agent.environment !== undefined && {
-      [environmentHeader]: agent.environment,
-    }),
+    authorization: `Bearer ${agent.token}`,
   };
+}
+
+// Joins the pool of the Environment the key belongs to, waiting for a server
+// that isn't up yet. A key the server refuses ends the wait, and so does the
+// signal, with undefined.
+export async function joinPool(
+  server: string,
+  key: string,
+  request: JoinRequest,
+  log: Log,
+  signal: AbortSignal,
+): Promise<Joined | undefined> {
+  let delayMs = reconnectMs.initial;
+
+  while (!signal.aborted) {
+    try {
+      const joined = await call({ server, token: key }, "/agent/join", {
+        method: "POST",
+        body: request,
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(requestTimeoutMs),
+        ]),
+      });
+
+      return (await joined.json()) as Joined;
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 401) {
+        throw new Error("the server refused the Environment key", {
+          cause: error,
+        });
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the call above is pending
+      if (signal.aborted) {
+        return undefined;
+      }
+
+      log("join failed", { error: String(error), retryInMs: delayMs });
+    }
+
+    await sleep(delayMs, undefined, { signal }).catch(() => undefined);
+    delayMs = Math.min(delayMs * 2, reconnectMs.max);
+  }
+
+  return undefined;
 }
 
 async function call(
@@ -140,12 +183,13 @@ export async function reportRemoval(
 }
 
 export function httpSessionStream(
-  agent: Agent,
-  assignment: Assignment,
+  server: string,
+  assignment: SessionStart,
   log: Log,
   fenced: () => void,
 ): SessionStream {
   const { sessionId, generation } = assignment;
+  const agent = { server, token: assignment.token };
   const base = `/agent/sessions/${sessionId}`;
 
   const post = async (path: string, body: unknown): Promise<Response> => {

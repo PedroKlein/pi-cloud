@@ -12,6 +12,7 @@ import type {
   Session,
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
 const run = promisify(execFile);
@@ -19,6 +20,7 @@ const run = promisify(execFile);
 let root: string;
 let server: ReturnType<typeof serve>;
 let signedIn: () => Promise<string>;
+let runners: ReturnType<typeof runnerCredentials>;
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "profiles-"));
@@ -35,6 +37,7 @@ beforeEach(async () => {
   });
 
   signedIn = firstUser(server, logs);
+  runners = runnerCredentials(server, signedIn);
 });
 
 afterEach(async () => {
@@ -65,8 +68,8 @@ async function poll(): Promise<{ readonly start: readonly Assignment[] }> {
     fetch(new URL("/agent/work", server.url), {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "1",
-        "pi-cloud-provider": "vm",
+        "pi-cloud-protocol": "2",
+        authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({ running: [], folders: [], models: [] }),
@@ -314,8 +317,8 @@ test("keeps a repository trust answer for the next Session in it", async () => {
     {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "1",
-        "pi-cloud-provider": "vm",
+        "pi-cloud-protocol": "2",
+        authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({ generation: asked?.generation, trusted: true }),

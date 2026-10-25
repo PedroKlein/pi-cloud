@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
   Assignment,
+  SessionStart,
   ModelRef,
   Removal,
   RemovalReport,
@@ -35,6 +36,7 @@ import {
   fetchTranscript,
   httpControlPlane,
   httpSessionStream,
+  joinPool,
   reportRemoval,
   reportStartFailure,
 } from "./client";
@@ -45,10 +47,11 @@ import { spawnSession } from "./session-process";
 
 export interface AgentOptions {
   readonly server: string;
-  // The runner's name. It joins the pool of the Environment named here, or
-  // of the one named after it (ADR 0032).
+  // The runner's name in its Environment's pool (ADR 0032).
   readonly provider: string;
-  readonly environment?: string;
+  // The key of the Environment it joins, or the token the server gave its
+  // own runner (ADR 0033).
+  readonly credential: { readonly key: string } | { readonly token: string };
   // How many Sessions it runs at once. Absent means no limit.
   readonly capacity?: number;
   readonly dataDir: string;
@@ -81,13 +84,26 @@ interface Unreported {
 export async function runAgent(options: AgentOptions): Promise<void> {
   const { log } = options;
 
-  const agent = {
-    server: options.server,
-    provider: options.provider,
-    ...(options.environment !== undefined && {
-      environment: options.environment,
-    }),
-  };
+  const { credential } = options;
+
+  const token =
+    "token" in credential
+      ? credential.token
+      : (
+          await joinPool(
+            options.server,
+            credential.key,
+            { name: options.provider },
+            log,
+            options.signal,
+          )
+        )?.token;
+
+  if (token === undefined) {
+    return;
+  }
+
+  const agent = { server: options.server, token };
 
   const hosted = new Map<string, Hosted>();
   const stopping = new Map<string, Promise<void>>();
@@ -226,7 +242,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   };
 
   const hostAssignment = async (
-    assignment: Assignment,
+    assignment: SessionStart,
     sessionLog: Log,
   ): Promise<HostedSession | undefined> => {
     const { sessionId, generation } = assignment;
@@ -304,7 +320,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         ...(assignment.thinking && { thinking: assignment.thinking }),
       };
 
-      const stream = httpSessionStream(agent, assignment, sessionLog, fenced);
+      const stream = httpSessionStream(
+        options.server,
+        assignment,
+        sessionLog,
+        fenced,
+      );
 
       const container =
         image === undefined
@@ -352,7 +373,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       const child = await spawnSession(
         {
-          ...agent,
+          server: options.server,
           assignment: {
             ...assignment,
             environment: { ...assignment.environment, variables },

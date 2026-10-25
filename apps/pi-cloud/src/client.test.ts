@@ -77,8 +77,9 @@ test("closes a terminal socket whose output the server stops reading", async () 
   };
 
   const stream = httpSessionStream(
-    { server: server.url, provider: "laptop" },
+    server.url,
     {
+      token: "pct_test",
       sessionId: "s1",
       generation: 1,
       profile: { id: "profile-1", ...emptyProfile },
@@ -130,8 +131,9 @@ test("stops an attempt the server fenced without failing its live events", async
   let fences = 0;
 
   const stream = httpSessionStream(
-    { server: server.url.href, provider: "laptop" },
+    server.url.href,
     {
+      token: "pct_test",
       sessionId: "s1",
       generation: 1,
       profile: { id: "profile-1", ...emptyProfile },

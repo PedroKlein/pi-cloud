@@ -99,6 +99,7 @@ export type Rejection =
   | "archived"
   | "not_kept"
   | "unknown_environment"
+  | "environment_exists"
   | "unknown_profile"
   | "not_movable";
 
@@ -116,7 +117,8 @@ export interface SessionsOptions {
 }
 
 // The server adds the Profiles, which Sessions don't hold.
-export interface Claim extends Omit<Work, "profiles"> {
+export interface Claim extends Omit<Work, "profiles" | "start"> {
+  readonly start: readonly Assignment[];
   readonly interrupted: readonly Attempt[];
 }
 
@@ -419,6 +421,26 @@ export class Sessions {
     return session && this.#view(session);
   }
 
+  createEnvironment(
+    provider: string,
+  ): Result<Environment, "environment_exists"> {
+    if (this.#store.environments().some((each) => each.provider === provider)) {
+      return { ok: false, reason: "environment_exists" };
+    }
+
+    this.#store.ensureEnvironment(provider);
+
+    const created = this.environments().find(
+      (each) => each.provider === provider,
+    );
+
+    if (!created) {
+      throw new Error(`environment ${provider} was not stored`);
+    }
+
+    return { ok: true, value: created };
+  }
+
   updateEnvironment(
     id: string,
     update: EnvironmentUpdate,
@@ -494,7 +516,7 @@ export class Sessions {
       inventory: { folders, models },
     });
 
-    const work = (): Omit<Work, "profiles"> => ({
+    const work = (): Omit<Claim, "interrupted"> => ({
       start: signal.aborted
         ? []
         : this.#claimNext(runner, capacity, running.length),

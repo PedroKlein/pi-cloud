@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   emptyProfile,
-  type Assignment,
+  type SessionStart,
   type Attempt,
   type Removal,
   type Work,
@@ -10,7 +10,8 @@ import {
 } from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
-const assignment: Assignment = {
+const assignment: SessionStart = {
+  token: "pct_test",
   sessionId: "s1",
   generation: 1,
   profile: { id: "profile-1", ...emptyProfile },
@@ -61,7 +62,7 @@ test("starts, unloads and removes what the server asks, passes on its Profiles a
       }) as unknown as Work,
   ];
 
-  const started: Assignment[] = [];
+  const started: SessionStart[] = [];
   const unloaded: Attempt[] = [];
   const removed: Removal[] = [];
   const profiles: (readonly string[])[] = [];
@@ -183,7 +184,7 @@ test("reports the running attempts, folders and current models with every poll",
 test("stops Sessions whose Workspace can move once polls fail for half a lease", async () => {
   const controller = new AbortController();
 
-  const clone: Assignment = {
+  const clone: SessionStart = {
     ...assignment,
     sessionId: "s2",
     workspace: { kind: "clone", repository: "r", branch: "b" },

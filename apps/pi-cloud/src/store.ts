@@ -66,6 +66,7 @@ interface EnvironmentRow {
   setup_script: string;
   variables: string;
   secrets: string;
+  key_hash: string | null;
 }
 
 const environmentsTable = `
@@ -79,7 +80,8 @@ create table if not exists environments (
   image text,
   setup_script text not null default '',
   variables text not null default '{}',
-  secrets text not null default '{}'
+  secrets text not null default '{}',
+  key_hash text unique
 );
 `;
 
@@ -109,6 +111,12 @@ create table if not exists users (
   name text not null unique,
   password_hash text not null,
   created_at text not null
+);
+create table if not exists agent_tokens (
+  token_hash text primary key,
+  environment text not null,
+  runner text not null,
+  session_id text
 );
 create table if not exists browser_sessions (
   token_hash text primary key,
@@ -166,6 +174,7 @@ function migrate(db: DatabaseSync): void {
     ["setup_script", "text not null default ''"],
     ["variables", "text not null default '{}'"],
     ["secrets", "text not null default '{}'"],
+    ["key_hash", "text"],
   ] as const) {
     if (!environmentColumns.some(({ name }) => name === column)) {
       db.exec(`alter table environments add column ${column} ${definition}`);
@@ -404,6 +413,7 @@ export function openStore(path: string): SessionStore &
     setupScript: row.setup_script,
     variables: JSON.parse(row.variables) as Record<string, string>,
     secrets: JSON.parse(row.secrets) as Record<string, string>,
+    hasKey: row.key_hash !== null,
   });
 
   const updateEnvironment = db.prepare(
@@ -678,6 +688,30 @@ function authStore(db: DatabaseSync): AuthStore {
     "delete from browser_sessions where expires_at <= ?",
   );
 
+  const updateKey = db.prepare(
+    "update environments set key_hash = ? where provider = ?",
+  );
+
+  const selectKeyEnvironment = db.prepare(
+    "select provider from environments where key_hash = ?",
+  );
+
+  const insertAgentToken = db.prepare(
+    "insert into agent_tokens (token_hash, environment, runner, session_id) values (?, ?, ?, ?)",
+  );
+
+  const selectAgentToken = db.prepare(
+    "select environment, runner, session_id from agent_tokens where token_hash = ?",
+  );
+
+  const deleteEnvironmentTokens = db.prepare(
+    "delete from agent_tokens where environment = ?",
+  );
+
+  const deleteSessionTokens = db.prepare(
+    "delete from agent_tokens where session_id = ?",
+  );
+
   return {
     userCount: () => (countUsers.get() as { n: number }).n,
     userByName: (name) => {
@@ -710,6 +744,42 @@ function authStore(db: DatabaseSync): AuthStore {
       selectBrowserSessionUser.get(tokenHash, now) as User | undefined,
     deleteBrowserSession: (tokenHash) => {
       deleteBrowserSession.run(tokenHash);
+    },
+    setEnvironmentKey: (provider, keyHash) => {
+      transaction(db, () => {
+        updateKey.run(keyHash, provider);
+        deleteEnvironmentTokens.run(provider);
+      });
+    },
+    keyEnvironment: (keyHash) =>
+      (selectKeyEnvironment.get(keyHash) as { provider: string } | undefined)
+        ?.provider,
+    insertAgentToken: (tokenHash, holder) => {
+      transaction(db, () => {
+        if (holder.sessionId !== null) {
+          deleteSessionTokens.run(holder.sessionId);
+        }
+
+        insertAgentToken.run(
+          tokenHash,
+          holder.environment,
+          holder.runner,
+          holder.sessionId,
+        );
+      });
+    },
+    agentToken: (tokenHash) => {
+      const row = selectAgentToken.get(tokenHash) as
+        | { environment: string; runner: string; session_id: string | null }
+        | undefined;
+
+      return (
+        row && {
+          environment: row.environment,
+          runner: row.runner,
+          sessionId: row.session_id,
+        }
+      );
     },
   };
 }

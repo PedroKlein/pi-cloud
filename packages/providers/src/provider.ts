@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import {
-  type Assignment,
+  type SessionStart,
   type Attempt,
   leaseMs,
   type ModelRef,
@@ -22,7 +22,7 @@ export type Log = (
 
 export interface ProviderOptions {
   readonly controlPlane: ControlPlane;
-  readonly start: (assignment: Assignment) => void;
+  readonly start: (assignment: SessionStart) => void;
   readonly unload: (attempt: Attempt) => void;
   readonly remove: (removal: Removal) => void;
   // Every Profile that still exists, after each poll.
