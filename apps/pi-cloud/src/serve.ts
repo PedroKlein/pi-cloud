@@ -8,9 +8,16 @@ import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
 import {
+  buildPlugin,
+  pluginFiles,
+  readPluginFile,
+  writePluginFile,
+} from "./in-place";
+import {
   type InstalledPlugin,
   install,
   remove,
+  reread,
   turnOn,
   update,
 } from "./installed";
@@ -120,6 +127,12 @@ export function serve(options: ServeOptions): {
         install: async (url, taken) => install(folder.root, url, taken),
         update: async (id) => update(folder.root, id),
         remove: async (id) => remove(folder.root, id),
+        reread: async (id) => reread(folder.root, id),
+        files: async (id) => pluginFiles(folder.root, id),
+        read: async (id, path) => readPluginFile(folder.root, id, path),
+        write: async (id, path, content) =>
+          writePluginFile(folder.root, id, path, content),
+        build: async (id) => buildPlugin(folder.root, id),
       },
     }),
     signal: pluginsStop.signal,

@@ -250,6 +250,42 @@ export function createHandler(
       },
     ],
     [
+      "GET",
+      /^\/api\/plugin-files\/([^/]+)$/,
+      async (request, [name = ""]) => {
+        const path = new URL(request.url).searchParams.get("path");
+
+        return Response.json(
+          path === null
+            ? await refused(plugins.files.list(name))
+            : { path, content: await refused(plugins.files.read(name, path)) },
+        );
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/plugin-files\/([^/]+)$/,
+      async (request, [name = ""]) => {
+        const { path, content } = fieldsOf(await readJson(request));
+
+        if (typeof content !== "string") {
+          throw new BadRequest("content must be text");
+        }
+
+        return Response.json(
+          await refused(
+            plugins.files.write(name, textOf("path", path), content),
+          ),
+        );
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/plugin-builds\/([^/]+)$/,
+      async (_request, [name = ""]) =>
+        Response.json(await refused(plugins.files.build(name))),
+    ],
+    [
       "DELETE",
       /^\/api\/plugins\/([^/]+)$/,
       async (_request, [name = ""]) => {
@@ -351,7 +387,9 @@ export function createHandler(
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
       async (request, [name = ""]) => {
-        const { settings, enabled, update } = fieldsOf(await readJson(request));
+        const { settings, enabled, update, digest } = fieldsOf(
+          await readJson(request),
+        );
 
         if (enabled !== undefined && typeof enabled !== "boolean") {
           throw new BadRequest("enabled must be true or false");
@@ -361,6 +399,7 @@ export function createHandler(
           settings,
           enabled,
           update: update === true,
+          ...(typeof digest === "string" && { digest }),
         });
 
         if (typeof saved === "string") {
@@ -1015,6 +1054,7 @@ async function pluginChange(
     readonly settings: unknown;
     readonly enabled: boolean | undefined;
     readonly update: boolean;
+    readonly digest?: string;
   },
 ): Promise<PluginInfo | string | undefined> {
   if (change.update) {
@@ -1023,7 +1063,7 @@ async function pluginChange(
 
   return change.enabled === undefined
     ? plugins.saveSettings(name, change.settings)
-    : plugins.turnOn(name, change.enabled);
+    : plugins.turnOn(name, change.enabled, change.digest);
 }
 
 function userIdOf(actor: UserActor): string {
@@ -1060,6 +1100,15 @@ function notFound(): Response {
 }
 
 class BadRequest extends Error {}
+
+// What an in-place plugin's change can't do is the caller's to fix.
+async function refused<T>(change: Promise<T>): Promise<T> {
+  return change.catch((error: unknown) => {
+    throw new BadRequest(
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+}
 
 async function readJson(request: Request): Promise<unknown> {
   try {

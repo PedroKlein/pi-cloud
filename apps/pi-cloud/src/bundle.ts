@@ -1,5 +1,5 @@
-import { readFile, rm } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { readFile, realpath, rm } from "node:fs/promises";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export interface PluginParts {
   readonly server?: string;
@@ -45,6 +45,11 @@ export async function bundleParts(
   };
 }
 
+// A macro runs while the bundle is built, so building a plugin that isn't
+// turned on would run its code. Bun.build takes this, though its types don't
+// say so.
+const noMacros = { macros: false };
+
 // Each bundle is named after its part, so its URL needs no escaping.
 async function bundle(
   entry: string,
@@ -57,6 +62,7 @@ async function bundle(
     target: part === "web" ? "browser" : "bun",
     naming: `${part}-[hash].[ext]`,
     throw: false,
+    ...noMacros,
     ...(part === "web" && {
       plugins: [sharedWithShell],
       jsx: { development: false },
@@ -113,10 +119,84 @@ function described(log: BuildMessage | ResolveMessage): string {
 
 const installTimeoutMs = 2 * 60_000;
 
+// Fields that make bun install reach outside the plugin's folder, or set up
+// what it does from inside it.
+const outsideFields = ["workspaces", "patchedDependencies"];
+
+const specFields = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "overrides",
+  "resolutions",
+];
+
+const pathSpec = /^file:(.*)$|^([./~].*)$/;
+
+const configFiles = ["bunfig.toml", ".npmrc"];
+
+// A dependency from a path, such as one vendored in the plugin, stays inside
+// its folder even through links.
+async function stays(folder: string, spec: string): Promise<boolean> {
+  // link: names a package registered with bun link on the machine.
+  if (/^(workspace|link|portal):/.test(spec)) {
+    return false;
+  }
+
+  const match = pathSpec.exec(spec);
+  const path = match?.[1] ?? match?.[2];
+
+  if (path === undefined) {
+    return true;
+  }
+
+  if (path.startsWith("~") || isAbsolute(path)) {
+    return false;
+  }
+
+  const real = await realpath(resolve(folder, path)).catch(() =>
+    resolve(folder, path),
+  );
+
+  const within = relative(await realpath(folder), real);
+
+  return !isAbsolute(within) && within.split(sep)[0] !== "..";
+}
+
 async function installDependencies(folder: string): Promise<void> {
-  const { dependencies } = JSON.parse(
+  const packageJson = JSON.parse(
     await readFile(join(folder, "package.json"), "utf8"),
-  ) as { dependencies?: Record<string, string> };
+  ) as Record<string, unknown>;
+
+  for (const field of outsideFields) {
+    if (packageJson[field] !== undefined) {
+      throw new Error(`a plugin's package.json can't have ${field}`);
+    }
+  }
+
+  const specs = specFields.flatMap((field) =>
+    Object.entries((packageJson[field] ?? {}) as Record<string, unknown>),
+  );
+
+  for (const [name, spec] of specs) {
+    if (typeof spec !== "string" || !(await stays(folder, spec))) {
+      throw new Error(
+        `${name} must come from a registry, a URL or the plugin's own folder, not from elsewhere on the server`,
+      );
+    }
+  }
+
+  for (const file of configFiles) {
+    if (await Bun.file(join(folder, file)).exists()) {
+      throw new Error(
+        `a plugin can't have ${file}, which would configure the server's install`,
+      );
+    }
+  }
+
+  const { dependencies } = packageJson as {
+    dependencies?: Record<string, string>;
+  };
 
   if (dependencies === undefined || Object.keys(dependencies).length === 0) {
     return;

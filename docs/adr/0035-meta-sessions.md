@@ -59,8 +59,11 @@ The kernel already has most of the pieces. Server tools pick their Sessions with
 ### In-place plugins
 
 - A meta-session can write a plugin straight into the installation, the way Pi loads local extensions from its agent folder. It lives in a local plugins folder in the server's data directory, with no repository or release.
-- This is a third install source next to git and tarballs ([ADR 0022](0022-plugin-model-v2.md#installing-third-party-plugins) is amended). The folder is on the server, so a meta-session that writes a plugin runs on the server's built-in provider ([ADR 0012](0012-built-in-provider.md)), with that plugin's folder as its Workspace.
-- Enabling it is a risky step the user approves, and it restarts the server, like any plugin. A meta-session may write and install a plugin but never enable one by itself.
+- This is a third install source next to git and tarballs ([ADR 0022](0022-plugin-model-v2.md#installing-third-party-plugins) is amended). It shares the plugins folder with them: an in-place plugin is a folder with no `.source.json`, where an installed one records the URL and version it came from.
+- The kernel's `plugins` toolset writes it: `plugins_write_file` writes one file, making the plugin when it is new, and `plugins_build` installs its dependencies and bundles its parts to show what is wrong. Neither runs the plugin's code: dependency scripts and Bun macros are off. `plugins_list`, `plugins_files` and `plugins_read_file` read. Writing isn't risky, since nothing written runs until the user turns it on. Building asks, since it reaches the npm registry.
+- Only a plugin that is turned off changes, so turning one on trusts the code it has then. A plugin installed from a URL changes only by updating, and one linked into the folder from elsewhere changes there.
+- (Amended 2026-10-25: this first said a meta-session that writes a plugin runs on the server's built-in provider with the plugin's folder as its Workspace. The toolset works from any runner, keeps the meta Profile without file tools, and lets the server refuse writes outside the folder, to a plugin that is on, or to one it didn't make.)
+- Enabling it is a risky step the user approves, and it restarts the server, like any plugin. A meta-session may write a plugin but never enable one by itself: the toolset has no tool that turns a plugin on, and the build opens the Plugins page for the user.
 - Anyone can still build a plugin in its own repository in an ordinary Session or Project and install it from git. In-place plugins are for quick changes to one installation. A user can move one into a repository later.
 
 ### MCP
