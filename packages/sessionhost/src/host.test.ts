@@ -2737,6 +2737,119 @@ test("runs server tools through the stream and gives the model their result", as
   expect(fake.lines.join()).toContain("the server said forty-two");
 });
 
+test("declares a deferred server tool once tool_search finds it", async () => {
+  const { faux, models } = await fauxModels(root);
+  const description = "Looks a key up on the server";
+  const declared: boolean[] = [];
+
+  faux.setResponses([
+    (context) => {
+      declared.push(JSON.stringify(context.messages).includes(description));
+
+      return fauxAssistantMessage(
+        [fauxToolCall("tool_search", { query: "look up a key" })],
+        { stopReason: "toolUse" },
+      );
+    },
+    (context) => {
+      declared.push(JSON.stringify(context.messages).includes(description));
+
+      return fauxAssistantMessage([fauxToolCall("lookup", { key: "answer" })], {
+        stopReason: "toolUse",
+      });
+    },
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  const fake = fakeStream({
+    tools: [
+      {
+        name: "lookup",
+        description,
+        parameters: { type: "object", properties: { key: { type: "string" } } },
+        exposure: "deferred",
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "look it up" });
+  await fake.waitFor(() => fake.toolCalls.length > 0);
+
+  fake.send({
+    actor: "plugin:test",
+    type: "tool_result",
+    id: fake.toolCalls[0]?.id ?? "",
+    result: { text: "forty-two", isError: false },
+  });
+
+  await fake.waitFor(() => fake.lines.join().includes('"done"'));
+  await hosted.stop();
+
+  expect(declared).toEqual([false, true]);
+  expect(fake.toolCalls.map(({ name }) => name)).toEqual(["lookup"]);
+});
+
+test("gives extensions a server tool's namespace and hints", async () => {
+  const { models } = await fauxModels(root);
+  const seen: { namespace?: unknown; annotations?: unknown }[] = [];
+
+  const inspector: SessionPlugin = {
+    name: "inspector",
+    extension: () => (pi) => {
+      pi.registerCommand("inspect", {
+        description: "Records the lookup tool",
+        handler: async () => {
+          const tool = pi.getAllTools().find(({ name }) => name === "lookup");
+
+          seen.push({
+            namespace: tool?.namespace,
+            annotations: tool?.annotations,
+          });
+
+          await Promise.resolve();
+        },
+      });
+    },
+  };
+
+  const fake = fakeStream({
+    tools: [
+      {
+        name: "lookup",
+        description: "Looks a key up on the server",
+        parameters: { type: "object", properties: {} },
+        namespace: { name: "keys", description: "Keys on the server" },
+        annotations: { readOnlyHint: true },
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models, plugins: [inspector] }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "/inspect" });
+  await fake.waitFor(() => seen.length > 0);
+  await hosted.stop();
+
+  expect(seen).toEqual([
+    {
+      namespace: { name: "keys", description: "Keys on the server" },
+      annotations: { readOnlyHint: true },
+    },
+  ]);
+});
+
 test("fails a server tool whose result never arrives, so the turn still ends", async () => {
   const { faux, models } = await fauxModels(root);
 

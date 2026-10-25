@@ -208,6 +208,46 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
   expect(await tools.json()).toEqual([]);
 });
 
+test("serves a tool's exposure, namespace and hints to its sessions", async () => {
+  const spec = {
+    name: "keys_list",
+    description: "Lists the keys on the server",
+    parameters: { type: "object", properties: {} },
+    exposure: "deferred",
+    namespace: { name: "keys", description: "Keys on the server" },
+    annotations: { readOnlyHint: true },
+  } as const;
+
+  await start([
+    {
+      name: "keys",
+      register: ({ tools }) => {
+        tools.register({
+          ...spec,
+          appliesTo: () => true,
+          run: async () => Promise.resolve({ text: "none", isError: false }),
+        });
+      },
+    },
+  ]);
+
+  const session = await createSession();
+
+  const tools = await fetch(
+    new URL(`/agent/sessions/${session.id}/tools?generation=1`, server?.url),
+    {
+      headers: {
+        "pi-cloud-protocol": "2",
+        authorization: `Bearer ${await runners.token("local")}`,
+      },
+    },
+  );
+
+  await follow(session.id, idle);
+
+  expect(await tools.json()).toEqual([spec]);
+});
+
 test("routes requests to a plugin that keeps its own tables", async () => {
   let refused = "";
 

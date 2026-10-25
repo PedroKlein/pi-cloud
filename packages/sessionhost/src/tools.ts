@@ -34,6 +34,9 @@ export function serverTools(
       label: spec.name,
       description: spec.description,
       parameters: Type.Unsafe<unknown>(spec.parameters),
+      ...(spec.exposure && { exposure: spec.exposure }),
+      ...(spec.namespace && { namespace: spec.namespace }),
+      ...(spec.annotations && { annotations: spec.annotations }),
       async execute(_toolCallId, input, signal) {
         const id = randomUUID();
 

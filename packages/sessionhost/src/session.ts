@@ -20,6 +20,7 @@ import {
   type ResourceDiagnostic,
   type Skill,
   SettingsManager,
+  type ToolExposure,
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
@@ -62,6 +63,13 @@ export interface SessionHost {
   readonly packages: readonly string[];
   readonly onError: (error: ExtensionError) => void;
 }
+
+// The tool that lets the model reach tools of each exposure it isn't
+// declared with.
+const finderOf: Partial<Record<ToolExposure, string>> = {
+  deferred: "tool_search",
+  codemode: "codemode",
+};
 
 // The extensions Pi's CLI builds in, so hosted sessions get the same tools.
 // Its llama.cpp provider isn't exported, so it's left out.
@@ -122,6 +130,19 @@ export async function startSession(
         }
       : {},
   );
+
+  // Pi turns these on by itself only for MCP servers whose tools need them.
+  const finders = new Set(
+    (host?.tools ?? []).flatMap(({ exposure }) =>
+      exposure === undefined ? [] : (finderOf[exposure] ?? []),
+    ),
+  );
+
+  if (finders.size > 0) {
+    session.setActiveToolsByName([
+      ...new Set([...session.getActiveToolNames(), ...finders]),
+    ]);
+  }
 
   return session;
 }
