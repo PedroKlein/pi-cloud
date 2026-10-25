@@ -1,30 +1,19 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxText,
-} from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
-import { runAgent } from "./agent";
 import { readSse } from "./sse";
 import { setupTokenOf } from "./testdata/sign-in";
 
 // Runs against the Helm chart installed in the current kubectl context, as
-// CI does on kind. The agent runs here, on Pi's faux model.
+// CI does on kind. The agent runs in a pod of the same image, on Pi's faux
+// model.
 const release = process.env["PI_CLOUD_RELEASE"] ?? "pi-cloud";
+const image = process.env["PI_CLOUD_IMAGE"] ?? "pi-cloud:ci";
 const server = new URL("http://127.0.0.1:17420");
-const faux = fauxProvider({ models: [{ id: "faux-1" }] });
+const agentPod = "kind-agent";
 
-let root: string;
 let forward: ChildProcess | undefined;
 let cookie = "";
-const stopAgent = new AbortController();
-let agentDone: Promise<void> | undefined;
 
 function kubectl(...args: string[]): string {
   return execFileSync("kubectl", args, { encoding: "utf8" });
@@ -94,7 +83,6 @@ async function until(
 }
 
 beforeAll(async () => {
-  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-kind-")));
   await forwardPort();
 
   const setUp = await fetch(new URL("/api/auth/setup", server), {
@@ -110,43 +98,37 @@ beforeAll(async () => {
   cookie = setUp.headers.get("set-cookie")?.split(";")[0] ?? "";
 });
 
-afterAll(async () => {
-  stopAgent.abort();
-  await agentDone?.catch(() => undefined);
+afterAll(() => {
+  kubectl("delete", "pod", agentPod, "--ignore-not-found", "--wait=false");
   forward?.kill();
-  await rm(root, { recursive: true, force: true });
 });
 
-test("runs a Session from an agent that joined with its Environment's key", async () => {
+test("runs a Session from an agent pod that joined with its Environment's key", async () => {
   const { environment, key } = (await (
     await api("/api/environments", { name: "kind" })
   ).json()) as { environment: Environment; key: string };
 
-  const runtime = await ModelRuntime.create({
-    authPath: join(root, "auth.json"),
-    modelsPath: null,
-    allowModelNetwork: false,
-  });
-
-  runtime.registerNativeProvider(faux.provider);
-  faux.setResponses([fauxAssistantMessage([fauxText("hello from kind")])]);
-
-  agentDone = runAgent({
-    server: server.href,
-    provider: "laptop",
-    credential: { key },
-    dataDir: join(root, "agent"),
-    extensionPaths: [],
-    folders: [root],
-    models: { runtime, model: faux.getModel() },
-    log: () => undefined,
-    signal: stopAgent.signal,
-  });
+  kubectl(
+    "run",
+    agentPod,
+    `--image=${image}`,
+    "--image-pull-policy=Never",
+    "--restart=Never",
+    `--env=PI_CLOUD_KEY=${key}`,
+    "--env=PI_CLOUD_FAUX_REPLY=hello from kind",
+    "--command",
+    "--",
+    "pi-cloud",
+    "agent",
+    `--name=${agentPod}`,
+    `--server=http://${release}:7420`,
+    "--folder=/data",
+  );
 
   const session = (await (
     await api("/api/sessions", {
       environment: environment.id,
-      workspace: { kind: "folder", path: root },
+      workspace: { kind: "folder", path: "/data" },
     })
   ).json()) as Session;
 

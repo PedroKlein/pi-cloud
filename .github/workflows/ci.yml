@@ -41,4 +41,6 @@ jobs:
           --set image.pullPolicy=Never
       - run: bun test ./apps/pi-cloud/src/kind.e2e.ts
       - if: failure()
-        run: kubectl describe pods && kubectl logs deploy/pi-cloud --all-containers
+        run: >-
+          kubectl describe pods && kubectl logs deploy/pi-cloud --all-containers
+          && kubectl logs kind-agent
