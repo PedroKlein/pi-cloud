@@ -68,7 +68,7 @@ function registered(signal: AbortSignal): PluginRoute {
     events: eventBus(unused),
     environments: {
       list: unused,
-      waiting: unused,
+      unplaced: unused,
       runnerToken: unused,
       revokeRunner: unused,
     },

@@ -92,7 +92,7 @@ function fakeKernel(): {
     owner: "pedro",
     environments: {
       list: notUsed,
-      waiting: notUsed,
+      unplaced: notUsed,
       runnerToken: notUsed,
       revokeRunner: notUsed,
     },

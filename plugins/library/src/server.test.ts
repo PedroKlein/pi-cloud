@@ -69,7 +69,7 @@ function registered(): PluginRoute {
     events,
     environments: {
       list: unused,
-      waiting: unused,
+      unplaced: unused,
       runnerToken: unused,
       revokeRunner: unused,
     },
