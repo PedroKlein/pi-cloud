@@ -15,6 +15,7 @@ export interface TerminalData {
 
 export interface PreviewData {
   readonly kind: "preview";
+  readonly role: "browser" | "host";
   readonly connectionId: string;
 }
 

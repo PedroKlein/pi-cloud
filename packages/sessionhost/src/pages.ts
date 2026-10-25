@@ -19,6 +19,8 @@ export interface PreviewExchange {
     readonly body: Uint8Array;
   }>;
   readonly respond: (response: Response) => Promise<void>;
+  // Carries a WebSocket's frames between the browser and the app.
+  readonly relay: (app: WebSocket) => void;
   readonly fail: (reason: string) => void;
 }
 
@@ -136,6 +138,29 @@ async function forward(
   if (referer !== null && URL.canParse(referer)) {
     const { pathname, search } = new URL(referer);
     headers.set("referer", `${origin}${pathname}${search}`);
+  }
+
+  if (head.websocket === true) {
+    const protocols =
+      headers
+        .get("sec-websocket-protocol")
+        ?.split(",")
+        .map((protocol) => protocol.trim()) ?? [];
+
+    for (const name of [...headers.keys()]) {
+      if (name.startsWith("sec-websocket-")) {
+        headers.delete(name);
+      }
+    }
+
+    exchange.relay(
+      new WebSocket(`ws://${page.hostname}:${String(port)}${head.path}`, {
+        headers: Object.fromEntries(headers),
+        protocols,
+      }),
+    );
+
+    return;
   }
 
   const response = await fetch(`${origin}${head.path}`, {

@@ -315,17 +315,25 @@ function openPreviewSocket(agent: Agent, path: string): PreviewExchange {
     socket.addEventListener("open", resolve, { once: true });
   });
 
+  // A WebSocket's frames from the browser, once the request has arrived.
+  let relayed: WebSocket | undefined;
+
   const request = new Promise<{
     readonly head: PreviewRequest;
     readonly body: Uint8Array;
   }>((resolve, reject) => {
     let head: PreviewRequest | undefined;
+    let received = false;
 
     socket.addEventListener("message", (event: MessageEvent) => {
-      if (typeof event.data === "string") {
-        head = JSON.parse(event.data) as PreviewRequest;
+      const data = event.data as string | ArrayBuffer;
+      if (received) {
+        relayed?.send(data);
+      } else if (typeof data === "string") {
+        head = JSON.parse(data) as PreviewRequest;
       } else if (head !== undefined) {
-        resolve({ head, body: new Uint8Array(event.data as ArrayBuffer) });
+        received = true;
+        resolve({ head, body: new Uint8Array(data) });
       }
     });
 
@@ -364,6 +372,32 @@ function openPreviewSocket(agent: Agent, path: string): PreviewExchange {
       }
 
       socket.close(1000);
+    },
+    relay: (app) => {
+      app.binaryType = "arraybuffer";
+
+      app.addEventListener("open", () => {
+        relayed = app;
+        const head: PreviewResponse = { status: 101, headers: [] };
+        socket.send(JSON.stringify(head));
+      });
+
+      app.addEventListener("message", (event: MessageEvent) => {
+        socket.send(event.data as string | ArrayBuffer);
+      });
+
+      app.addEventListener("close", (event) => {
+        socket.close(
+          relayed === undefined ? 1011 : 1000,
+          relayed === undefined
+            ? "the app refused the WebSocket"
+            : event.reason,
+        );
+      });
+
+      socket.addEventListener("close", () => {
+        app.close();
+      });
     },
     fail: (reason) => {
       void opened.then(() => {

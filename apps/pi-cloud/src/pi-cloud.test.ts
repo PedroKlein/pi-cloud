@@ -3738,3 +3738,76 @@ test("drops a page once nothing listens on its port", async () => {
     ),
   ).toEqual([1, 0]);
 });
+
+test("carries a preview's WebSocket frames both ways, as dev servers' live reload uses them", async () => {
+  const app = Bun.serve<{ host: string | null }>({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request, appServer) =>
+      appServer.upgrade(request, {
+        data: { host: request.headers.get("host") },
+        headers: { "sec-websocket-protocol": "vite-hmr" },
+      })
+        ? undefined
+        : new Response("expected a websocket", { status: 400 }),
+    websocket: {
+      open: (ws) => {
+        ws.send(`connected to ${ws.data.host ?? ""}`);
+      },
+      message: (ws, message) => {
+        ws.send(typeof message === "string" ? `echo ${message}` : message);
+      },
+    },
+  });
+
+  const port = app.port ?? 0;
+  const session = await openedPage(`http://localhost:${String(port)}/`);
+  const preview = await visitPreview(session.id, port, "/");
+
+  const url = new URL("/hmr", server.url);
+  url.protocol = "ws:";
+
+  const socket = new WebSocket(url, {
+    headers: { host: preview.host, cookie: preview.cookie },
+    protocols: ["vite-hmr"],
+  });
+
+  socket.binaryType = "arraybuffer";
+  const frames: unknown[] = [];
+
+  const received = async (count: number): Promise<void> =>
+    new Promise((resolve) => {
+      socket.addEventListener("message", (event: MessageEvent) => {
+        frames.push(
+          typeof event.data === "string"
+            ? event.data
+            : [...new Uint8Array(event.data as ArrayBuffer)],
+        );
+
+        if (frames.length === count) {
+          resolve();
+        }
+      });
+    });
+
+  const all = received(3);
+
+  await new Promise((resolve) => {
+    socket.addEventListener("open", resolve);
+  });
+
+  socket.send("ping");
+  socket.send(new Uint8Array([1, 2, 3]));
+  await all;
+
+  expect(socket.protocol).toBe("vite-hmr");
+
+  expect(frames).toEqual([
+    `connected to localhost:${String(port)}`,
+    "echo ping",
+    [1, 2, 3],
+  ]);
+
+  socket.close();
+  await app.stop(true);
+});
