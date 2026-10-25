@@ -41,6 +41,7 @@ import {
   reportStartFailure,
 } from "./client";
 import { sessionParts } from "./plugins";
+import { installedSessionParts } from "./session-parts";
 import { containerSession } from "./container";
 import { environmentSetup } from "./setup";
 import { pageOpener, spawnSession } from "./session-process";
@@ -361,7 +362,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
             ...sessionOptions,
             models: options.models,
             firstMessage: assignment.firstMessage,
-            ...sessionParts(assignment),
+            ...(await sessionParts(
+              assignment,
+              installedSessionParts(options.server, assignment, sessionDir),
+            )),
             opener: pageOpener,
           },
           stream,

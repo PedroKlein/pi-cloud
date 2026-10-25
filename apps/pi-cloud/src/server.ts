@@ -567,6 +567,15 @@ export function createHandler(
     ],
     [
       "GET",
+      /^\/agent\/sessions\/([^/]+)\/plugin-parts\/([^/]+)\/([^/]+)$/,
+      (_request, [, name = "", hash = ""]) => {
+        const path = plugins.sessionPart(name, hash);
+
+        return path === undefined ? notFound() : new Response(Bun.file(path));
+      },
+    ],
+    [
+      "GET",
       /^\/agent\/sessions\/([^/]+)\/tools$/,
       (request, [id = ""]) => {
         const session = sessions.get(id);

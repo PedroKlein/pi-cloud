@@ -94,18 +94,26 @@ const sessionPlugins: readonly SessionPlugin[] = [
 ];
 
 // The Session parts an assignment names, each with its settings. A server
-// from before settings sends none, so they take their defaults.
-export function sessionParts(
+// from before settings sends none, so they take their defaults. An installed
+// plugin's part comes from installed, by its bundle's hash.
+export async function sessionParts(
   assignment: Pick<
     Assignment,
-    "plugins" | "pluginSettings" | "requiredPlugins"
+    "plugins" | "pluginSettings" | "requiredPlugins" | "installedParts"
   >,
-): {
+  installed: (name: string, hash: string) => Promise<SessionPlugin>,
+): Promise<{
   readonly plugins: readonly SessionPlugin[];
   readonly pluginSettings: Readonly<Record<string, PluginSettings>>;
-} {
+}> {
+  const parts = Object.entries(assignment.installedParts ?? {}).filter(
+    ([name]) => assignment.plugins.includes(name),
+  );
+
   const unknown = (assignment.requiredPlugins ?? []).filter(
-    (name) => !sessionPlugins.some((plugin) => plugin.name === name),
+    (name) =>
+      !sessionPlugins.some((plugin) => plugin.name === name) &&
+      !parts.some(([part]) => part === name),
   );
 
   if (unknown.length > 0) {
@@ -114,21 +122,29 @@ export function sessionParts(
     );
   }
 
-  const plugins = sessionPlugins.filter(({ name }) =>
+  const builtIn = sessionPlugins.filter(({ name }) =>
     assignment.plugins.includes(name),
   );
 
+  const fetched = await Promise.all(
+    parts.map(async ([name, hash]) => installed(name, hash)),
+  );
+
   return {
-    plugins,
-    pluginSettings: Object.fromEntries(
-      plugins.map(({ name }) => [
+    plugins: [...builtIn, ...fetched],
+    pluginSettings: Object.fromEntries<PluginSettings>([
+      ...builtIn.map(({ name }): [string, PluginSettings] => [
         name,
         settingValues(
           builtInPlugins.find(({ id }) => id === name)?.settings,
           assignment.pluginSettings?.[name],
         ),
       ]),
-    ),
+      ...fetched.map(({ name }): [string, PluginSettings] => [
+        name,
+        assignment.pluginSettings?.[name] ?? {},
+      ]),
+    ]),
   };
 }
 
@@ -149,6 +165,8 @@ export interface PluginHost {
   ) => Promise<PluginInfo | string | undefined>;
   // The file of a running installed plugin's web part, by its name.
   readonly webPart: (name: string, file: string) => string | undefined;
+  // The file of a running installed plugin's Session part, by its hash.
+  readonly sessionPart: (name: string, hash: string) => string | undefined;
   readonly sessionPlugins: () => SessionPlugins;
   readonly profile: (id: string) => PluginProfile | undefined;
   readonly profileIds: () => readonly string[];
@@ -242,6 +260,12 @@ export function startPlugins(
   const webParts = new Map(
     deps.installed?.plugins.flatMap(({ manifest: { id }, web }) =>
       web === undefined ? [] : [[id, web] as const],
+    ),
+  );
+
+  const sessionBundles = new Map(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, session }) =>
+      session === undefined ? [] : [[id, session] as const],
     ),
   );
 
@@ -531,16 +555,33 @@ export function startPlugins(
         ? web
         : undefined;
     },
+    sessionPart: (name, hash) => {
+      const bundle = sessionBundles.get(name);
+
+      return running.includes(name) && bundle?.hash === hash
+        ? bundle.path
+        : undefined;
+    },
     sessionPlugins: () => {
       return {
         plugins: running,
         pluginSettings: Object.fromEntries(
           running.map((name) => [name, values(name)]),
         ),
-        ownSessionsOnly: sessionPlugins
-          .filter(({ ownSessionsOnly: own }) => own === true)
-          .map(({ name }) => name),
+        ownSessionsOnly: [
+          ...sessionPlugins
+            .filter(({ ownSessionsOnly: own }) => own === true)
+            .map(({ name }) => name),
+          ...[...sessionBundles.keys()].filter(
+            (name) => manifest(name)?.ownSessionsOnly === true,
+          ),
+        ],
         loadOnly: Object.fromEntries(loaded),
+        installedParts: Object.fromEntries(
+          [...sessionBundles]
+            .filter(([name]) => running.includes(name))
+            .map(([name, { hash }]) => [name, hash]),
+        ),
       };
     },
     profile: (id) => profiles.get(id),
@@ -924,6 +965,7 @@ export interface InstalledPlugins {
     readonly manifest: PluginManifest;
     readonly on: boolean;
     readonly web?: string;
+    readonly session?: { readonly path: string; readonly hash: string };
     readonly error?: string;
   }[];
   readonly turnOn: (id: string, on: boolean) => Promise<void>;

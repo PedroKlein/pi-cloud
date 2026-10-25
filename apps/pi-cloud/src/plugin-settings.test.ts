@@ -246,9 +246,16 @@ test("turns off a plugin that throws while it registers and keeps the rest", asy
   ).toEqual(["shared"]);
 });
 
-test("gives a Session part its defaults when the server sends no settings", () => {
-  const { plugins, pluginSettings } = sessionParts({ plugins: ["library"] });
+test("gives a Session part its defaults when the server sends no settings", async () => {
+  const { plugins, pluginSettings } = await sessionParts(
+    { plugins: ["library"] },
+    noInstalledParts,
+  );
 
   expect(plugins.map(({ name }) => name)).toEqual(["library"]);
   expect(pluginSettings).toEqual({ library: { fileLimitMb: 10 } });
 });
+
+async function noInstalledParts(): Promise<never> {
+  return Promise.reject(new Error("no installed parts here"));
+}
