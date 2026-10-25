@@ -452,6 +452,8 @@ export type LiveEvent =
   | { readonly type: "prompt_end"; readonly id: string }
   // The Session's shells that are still running (ADR 0026).
   | { readonly type: "terminals"; readonly terminals: readonly TerminalTab[] }
+  // What the Session asked to open in a browser (ADR 0037).
+  | { readonly type: "pages"; readonly pages: readonly OpenedPage[] }
   // Whether a browser shows Pi's TUI, which then takes the dialogs, and the
   // dialog open in it (ADR 0027).
   | {
@@ -565,6 +567,8 @@ export function liveSurface(
       return { key: "files", open: true };
     case "terminals":
       return { key: "terminals", open: event.terminals.length > 0 };
+    case "pages":
+      return { key: "pages", open: event.pages.length > 0 };
     case "pi_view":
       return { key: "pi_view", open: event.attached || event.dialog !== null };
     case "settings":
@@ -681,6 +685,14 @@ export type Command = { readonly actor: Actor } & (
       readonly cols: number;
       readonly rows: number;
     }
+  // A browser's request to a preview, which the Session host picks up on
+  // its own socket (ADR 0037).
+  | {
+      readonly type: "preview";
+      readonly connectionId: string;
+      readonly port: number;
+    }
+  | { readonly type: "close_page"; readonly id: string }
 );
 
 // The custom message type that carries a NoticeTag in its details.
@@ -712,6 +724,43 @@ export interface TerminalResize {
   readonly type: "resize";
   readonly cols: number;
   readonly rows: number;
+}
+
+export interface OpenedPage {
+  readonly id: string;
+  readonly url: string;
+}
+
+// The port of a page on the Session's own machine, which only a preview
+// reaches.
+export function previewPort(url: string): number | undefined {
+  if (!URL.canParse(url)) {
+    return undefined;
+  }
+
+  const { protocol, hostname, port } = new URL(url);
+  if (protocol !== "http:" || !loopbackNames.has(hostname)) {
+    return undefined;
+  }
+
+  return port === "" ? 80 : Number(port);
+}
+
+const loopbackNames = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
+
+// A browser's request as the server sends it to the Session host over a
+// preview socket. The body follows as one binary frame.
+export interface PreviewRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly headers: readonly (readonly [string, string])[];
+}
+
+// The answer's head, which the Session host sends first. Binary frames with
+// the body follow, and a normal close ends it.
+export interface PreviewResponse {
+  readonly status: number;
+  readonly headers: readonly (readonly [string, string])[];
 }
 
 export type SessionStatus =

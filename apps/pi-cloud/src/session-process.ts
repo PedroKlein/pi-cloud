@@ -29,9 +29,14 @@ type ChildMessage =
 const stopTimeoutMs = 10_000;
 
 // A compiled binary is its own entry point. From source, Bun runs main.ts.
-const sessionCommand = import.meta.dirname.startsWith("/$bunfs")
-  ? [process.execPath, "session"]
-  : [process.execPath, join(import.meta.dirname, "main.ts"), "session"];
+const piCloud = import.meta.dirname.startsWith("/$bunfs")
+  ? [process.execPath]
+  : [process.execPath, join(import.meta.dirname, "main.ts")];
+
+const sessionCommand = [...piCloud, "session"];
+
+// What the Session's BROWSER runs, from inside its container too.
+export const pageOpener = [...piCloud, "open"];
 
 // Runs one Session in a child process (ADR 0017). The child asks the agent to
 // open its terminals, since the agent keeps them.
@@ -153,6 +158,7 @@ export async function runSessionProcess(): Promise<void> {
         ...spec.options,
         firstMessage: spec.assignment.firstMessage,
         ...sessionParts(spec.assignment),
+        opener: pageOpener,
       },
       httpSessionStream(spec.server, spec.assignment, log, () => {
         void stop();

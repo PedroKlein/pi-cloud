@@ -1798,3 +1798,75 @@ test("signs out and back in with the password", async () => {
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "New session" }).waitFor();
 });
+
+test("opens a page the Session opened in a browser through its preview", async () => {
+  const app = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request): Response =>
+      request.headers.get("host") === `localhost:${String(app.port)}`
+        ? new Response("<h1>plan from the app</h1>", {
+            headers: { "content-type": "text/html" },
+          })
+        : new Response("wrong host", { status: 403 }),
+  });
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("bash", {
+          command: `"$BROWSER" http://localhost:${String(app.port)}/`,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("opened the plan")]),
+  ]);
+
+  // Previews live on subdomains, which an IP address doesn't have.
+  const site = `http://localhost:${server.url.port}`;
+  const context = await browser.newContext();
+
+  await context.request.post(`${site}/api/auth/login`, {
+    data: { name: "pedro", password: "correct horse" },
+  });
+
+  const [environment] = (await (
+    await context.request.get(`${site}/api/environments`)
+  ).json()) as { id: string }[];
+
+  const { id } = (await (
+    await context.request.post(`${site}/api/sessions`, {
+      data: {
+        environment: environment?.id,
+        workspace: { kind: "folder", path: root },
+      },
+    })
+  ).json()) as { id: string };
+
+  const tab = await context.newPage();
+  await tab.goto(`${site}/#${id}`);
+  await tab.locator("#status", { hasText: "idle" }).waitFor();
+  await tab.locator("#prompt-text").fill("open the plan");
+  await tab.locator("#prompt-text").press("Enter");
+
+  const pages = tab.getByRole("list", { name: "Opened pages" });
+  await pages.waitFor();
+
+  const [preview] = await Promise.all([
+    context.waitForEvent("page"),
+    pages.getByRole("link", { name: "Open" }).click(),
+  ]);
+
+  await preview.getByRole("heading", { name: "plan from the app" }).waitFor();
+
+  expect(new URL(preview.url()).hostname).toBe(
+    `${String(app.port)}--${id}.localhost`,
+  );
+
+  await pages.getByRole("button", { name: "Dismiss" }).click();
+  await pages.waitFor({ state: "detached" });
+
+  await context.close();
+  await app.stop(true);
+});

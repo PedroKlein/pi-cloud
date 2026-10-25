@@ -132,6 +132,9 @@ function fakeStream(
         },
       };
     },
+    preview: () => {
+      throw new Error("these tests open no previews");
+    },
     tools: async () => Promise.resolve(options.tools ?? []),
     callTool: async (id, name, input) => {
       await Promise.resolve();

@@ -25,6 +25,7 @@ import {
 } from "@pi-cloud/protocol";
 import { builtinCommands, builtinOf, runBuiltin, settings } from "./builtins";
 import { workspaceFiles } from "./files";
+import { browserHelper, hostPages, type PreviewExchange } from "./pages";
 import { webSurfaces } from "./surfaces";
 import { remoteUI } from "./ui";
 import {
@@ -46,6 +47,7 @@ export interface SessionStream {
   publish: (events: readonly LiveEvent[]) => Promise<void>;
   commands: (listener: (command: Command) => void) => () => void;
   terminal: (terminalId: string, peer: TerminalPeer) => TerminalChannel;
+  preview: (connectionId: string) => PreviewExchange;
   tools: () => Promise<readonly ToolSpec[]>;
   callTool: (id: string, name: string, input: unknown) => Promise<void>;
   // Keeps the user's answer for the repository the Session works in.
@@ -62,6 +64,8 @@ export interface HostOptions extends SessionOptions {
   readonly pluginSettings?: Readonly<Record<string, PluginSettings>>;
   readonly firstMessage?: string | null;
   readonly serverToolTimeoutMs?: number;
+  // Runs `pi-cloud open <url>`, for the BROWSER helper.
+  readonly opener?: readonly string[];
 }
 
 export interface TerminalPeer {
@@ -350,6 +354,21 @@ export async function hostSession(
     plugins.map(async ({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
   );
 
+  const pages = hostPages(
+    stream.preview,
+    (event) => {
+      live.push(event);
+    },
+    log,
+  );
+
+  // Pi's tools and extensions read BROWSER from the process.
+  const helper =
+    options.opener &&
+    (await browserHelper(options.sessionDir, options.opener, pages.open));
+
+  Object.assign(process.env, helper?.variables);
+
   const view = piView(
     options.agentDir,
     stream,
@@ -435,6 +454,12 @@ export async function hostSession(
     : Promise.resolve();
 
   const detach = stream.commands((command) => {
+    if (command.type === "preview") {
+      pages.connect(command);
+
+      return;
+    }
+
     log("command received", { command: command.type, actor: command.actor });
 
     if (command.type === "answer") {
@@ -463,6 +488,12 @@ export async function hostSession(
 
     if (command.type === "terminal") {
       startTerminal(command);
+
+      return;
+    }
+
+    if (command.type === "close_page") {
+      pages.close(command.id);
 
       return;
     }
@@ -575,6 +606,8 @@ export async function hostSession(
       tui.close();
       surfaces.close();
       files.stop();
+      pages.stop();
+      helper?.stop();
 
       prompts.cancelAll();
       calls.cancelAll();

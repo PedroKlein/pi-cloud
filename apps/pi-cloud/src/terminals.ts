@@ -1,24 +1,21 @@
 import { randomUUID } from "node:crypto";
-import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
-import {
-  protocolVersion,
-  type TerminalControl,
-  terminalTakenOver,
-  versionHeader,
-} from "@pi-cloud/protocol";
+import type { ServerWebSocket } from "bun";
+import { type TerminalControl, terminalTakenOver } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import type { Sessions } from "@pi-cloud/sessions";
 import type { Auth } from "./auth";
+import {
+  fromSessionHost,
+  type SocketHandler,
+  type SocketServer,
+  type TerminalData,
+} from "./sockets";
 
-interface SocketData {
-  readonly role: "browser" | "host";
-  // The Session and terminal ids, since terminal ids are per Session.
-  readonly key: string;
-}
+type Socket = ServerWebSocket<TerminalData>;
 
 interface Pair {
-  browser?: ServerWebSocket<SocketData>;
-  host?: ServerWebSocket<SocketData>;
+  browser?: Socket;
+  host?: Socket;
   readonly pending: (string | Buffer)[];
   readonly timeout: ReturnType<typeof setTimeout>;
 }
@@ -39,9 +36,9 @@ export function terminalBroker(
 ): {
   readonly upgrade: (
     request: Request,
-    server: Server<SocketData>,
+    server: SocketServer,
   ) => Response | "upgraded" | undefined;
-  readonly websocket: WebSocketHandler<SocketData>;
+  readonly websocket: SocketHandler<TerminalData>;
 } {
   const pairs = new Map<string, Pair>();
 
@@ -60,7 +57,7 @@ export function terminalBroker(
 
   const openBrowser = (
     request: Request,
-    server: Server<SocketData>,
+    server: SocketServer,
     sessionId: string,
   ): Response | "upgraded" => {
     const user = auth.userOf(request);
@@ -93,6 +90,7 @@ export function terminalBroker(
       );
     }
 
+    // Terminal ids are per Session.
     const key = `${sessionId}/${terminalId}`;
     end(key, terminalTakenOver);
 
@@ -104,7 +102,11 @@ export function terminalBroker(
     });
 
     log("terminal requested", { sessionId, terminalId });
-    if (server.upgrade(request, { data: { role: "browser", key } })) {
+    if (
+      server.upgrade(request, {
+        data: { kind: "terminal", role: "browser", key },
+      })
+    ) {
       return "upgraded";
     }
 
@@ -115,31 +117,23 @@ export function terminalBroker(
 
   const openHost = (
     request: Request,
-    server: Server<SocketData>,
+    server: SocketServer,
     sessionId: string,
     terminalId: string,
   ): Response | "upgraded" => {
-    const generation = Number(
-      new URL(request.url).searchParams.get("generation"),
-    );
-
-    const caller = auth.agentOf(request);
     const key = `${sessionId}/${terminalId}`;
     const pair = pairs.get(key);
     if (
       pair === undefined ||
       pair.host !== undefined ||
-      request.headers.get(versionHeader) !== String(protocolVersion) ||
-      caller === undefined ||
-      (caller.sessionId !== null && caller.sessionId !== sessionId) ||
-      sessions.get(sessionId)?.runner !== caller.runner ||
-      sessions.get(sessionId)?.provider !== caller.environment ||
-      !sessions.isCurrent(sessionId, generation)
+      !fromSessionHost(request, sessions, auth, sessionId)
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });
     }
 
-    return server.upgrade(request, { data: { role: "host", key } })
+    return server.upgrade(request, {
+      data: { kind: "terminal", role: "host", key },
+    })
       ? "upgraded"
       : Response.json({ error: "expected a websocket" }, { status: 400 });
   };

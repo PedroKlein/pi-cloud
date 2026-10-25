@@ -5,6 +5,8 @@ import {
   type SessionStart,
   type Command,
   type LivePost,
+  type PreviewRequest,
+  type PreviewResponse,
   type RemovalPost,
   type StartFailure,
   type ToolCall,
@@ -19,6 +21,7 @@ import {
 } from "@pi-cloud/protocol";
 import type { ControlPlane, Log } from "@pi-cloud/providers";
 import type {
+  PreviewExchange,
   SessionStream,
   TerminalChannel,
   TerminalPeer,
@@ -289,6 +292,84 @@ export function httpSessionStream(
         peer,
         log,
       ),
+    preview: (connectionId) =>
+      openPreviewSocket(
+        agent,
+        `${base}/previews/${connectionId}?generation=${String(generation)}`,
+      ),
+  };
+}
+
+// A slow browser makes the Session host wait instead of buffering a whole
+// download.
+const maxPreviewBufferedBytes = 1024 * 1024;
+
+function openPreviewSocket(agent: Agent, path: string): PreviewExchange {
+  const url = new URL(path, agent.server);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
+  const socket = new WebSocket(url, { headers: agentHeaders(agent) });
+  socket.binaryType = "arraybuffer";
+
+  const opened = new Promise((resolve) => {
+    socket.addEventListener("open", resolve, { once: true });
+  });
+
+  const request = new Promise<{
+    readonly head: PreviewRequest;
+    readonly body: Uint8Array;
+  }>((resolve, reject) => {
+    let head: PreviewRequest | undefined;
+
+    socket.addEventListener("message", (event: MessageEvent) => {
+      if (typeof event.data === "string") {
+        head = JSON.parse(event.data) as PreviewRequest;
+      } else if (head !== undefined) {
+        resolve({ head, body: new Uint8Array(event.data as ArrayBuffer) });
+      }
+    });
+
+    socket.addEventListener("close", () => {
+      reject(new Error("the preview socket closed"));
+    });
+  });
+
+  request.catch(() => undefined);
+
+  return {
+    request,
+    respond: async (response) => {
+      const head: PreviewResponse = {
+        status: response.status,
+        headers: [...response.headers],
+      };
+
+      socket.send(JSON.stringify(head));
+      if (response.body === null) {
+        socket.close(1000);
+
+        return;
+      }
+
+      const chunks: AsyncIterable<Uint8Array> = response.body;
+      for await (const chunk of chunks) {
+        if (socket.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
+        socket.send(chunk);
+        while (socket.bufferedAmount > maxPreviewBufferedBytes) {
+          await sleep(10);
+        }
+      }
+
+      socket.close(1000);
+    },
+    fail: (reason) => {
+      void opened.then(() => {
+        socket.close(1011, reason.slice(0, 120));
+      });
+    },
   };
 }
 

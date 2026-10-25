@@ -1113,8 +1113,8 @@ function repositoryCheckout(checkout: unknown): RepositoryCheckout {
   return { repository, ...startPointOf(startPoint) };
 }
 
-// Terminal commands come from the server's own terminal socket, never from a
-// browser's POST.
+// Terminal and preview commands come from the server's own sockets and
+// previews, never from a browser's POST.
 function browserCommand(body: unknown, actor: UserActor): Command {
   const fields = (
     typeof body === "object" && body !== null ? body : {}
@@ -1228,9 +1228,11 @@ function browserCommand(body: unknown, actor: UserActor): Command {
       };
     }
 
+    case "close_page":
+      return { actor, type: "close_page", id: text("id") };
     default:
       throw new BadRequest(
-        "type must be message, abort, set_model, set_thinking, ui_columns, unqueue, answer or explain",
+        "type must be message, abort, set_model, set_thinking, ui_columns, unqueue, answer, explain or close_page",
       );
   }
 }

@@ -1,6 +1,8 @@
 import {
   type Environment,
+  type OpenedPage,
   piTerminal,
+  previewPort,
   type Session,
   type TerminalTab,
   terminalTakenOver,
@@ -17,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { api } from "./api";
+import { api, command } from "./api";
 import { Composer } from "./composer";
 import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, feedReader, followEvents } from "./feed";
@@ -287,6 +289,13 @@ export function SessionView({
             session={channel.session}
           />
           {!archived && (
+            <PagesNotice
+              sessionId={sessionId}
+              pages={feed.pages}
+              report={reportError}
+            />
+          )}
+          {!archived && (
             <PiViewNotice
               piView={feed.piView}
               onOpen={() => {
@@ -461,6 +470,70 @@ function ViewSwitch({
 }
 
 // While a browser shows Pi's TUI, extension dialogs open there (ADR 0027).
+// What the Session asked to open in a browser, such as plannotator's review.
+// A page on the Session's own machine opens through a preview (ADR 0037).
+function PagesNotice({
+  sessionId,
+  pages,
+  report,
+}: {
+  readonly sessionId: string;
+  readonly pages: readonly OpenedPage[];
+  readonly report: (error: unknown) => void;
+}): ReactElement | null {
+  if (pages.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul
+      aria-label="Opened pages"
+      className="mx-auto flex w-full max-w-chat flex-col gap-1 px-4 pb-2 text-label text-fg-dim"
+    >
+      {pages.map((page) => (
+        <li key={page.id} className="flex items-center gap-3">
+          <Icon name="external-link" />
+          <span className="min-w-0 flex-1 truncate font-mono">
+            {page.url.replace(/^https?:\/\//, "")}
+          </span>
+          <a
+            href={pageLink(sessionId, page.url)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-control items-center rounded-md border border-line bg-elevated px-3 text-ui font-medium text-fg hover:border-line-strong hover:bg-hover pointer-coarse:min-h-touch"
+          >
+            Open
+          </a>
+          <Button
+            variant="ghost"
+            iconOnly
+            aria-label="Dismiss"
+            onClick={() => {
+              command(sessionId, { type: "close_page", id: page.id }).catch(
+                report,
+              );
+            }}
+          >
+            <Icon name="x" />
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function pageLink(sessionId: string, url: string): string {
+  const port = previewPort(url);
+  if (port === undefined) {
+    return url;
+  }
+
+  const { pathname, search, hash } = new URL(url);
+  const path = encodeURIComponent(`${pathname}${search}${hash}`);
+
+  return `/api/sessions/${encodeURIComponent(sessionId)}/previews/${String(port)}?path=${path}`;
+}
+
 function PiViewNotice({
   piView: { attached, dialog },
   onOpen,

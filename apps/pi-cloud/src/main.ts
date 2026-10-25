@@ -175,6 +175,20 @@ switch (command) {
     await runSessionProcess();
     break;
 
+  // BROWSER in a Session runs this to hand a URL to its Session host.
+  case "open": {
+    const [url] = rest;
+    const pages = process.env["PI_CLOUD_PAGES"];
+    if (url === undefined || pages === undefined) {
+      process.stderr.write("usage: pi-cloud open <url>, inside a Session\n");
+      process.exit(2);
+    }
+
+    const response = await fetch(pages, { method: "POST", body: url });
+    process.exitCode = response.ok ? 0 : 1;
+    break;
+  }
+
   case undefined:
   default:
     process.stderr.write(`${usage}\n`);

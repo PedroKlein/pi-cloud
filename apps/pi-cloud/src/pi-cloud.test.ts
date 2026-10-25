@@ -18,6 +18,7 @@ import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type {
@@ -3530,3 +3531,210 @@ test("keeps a session process working when its extensions print JSON", async () 
     await model.stop(true);
   }
 }, 30_000);
+
+// An app that, like plannotator and dev servers, answers only requests sent
+// to its own name.
+function localApp(): ReturnType<typeof Bun.serve> {
+  const app = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async (request): Promise<Response> => {
+      if (request.headers.get("host") !== `localhost:${String(app.port)}`) {
+        return new Response("wrong host", { status: 403 });
+      }
+
+      const url = new URL(request.url);
+      if (url.pathname === "/moved") {
+        return Response.redirect(`http://localhost:${String(app.port)}/plan`);
+      }
+
+      return Response.json({
+        method: request.method,
+        path: `${url.pathname}${url.search}`,
+        origin: request.headers.get("origin"),
+        cookie: request.headers.get("cookie"),
+        body: await request.text(),
+      });
+    },
+  });
+
+  return app;
+}
+
+// Opens a page through the Session's BROWSER, as plannotator does.
+async function openedPage(url: string): Promise<Session> {
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("bash", { command: `"$BROWSER" ${url}` })],
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage([fauxText("opened")]),
+  ]);
+
+  const session = await createSession("laptop");
+  await follow(session.id, status("idle"));
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "open it",
+  });
+
+  await follow(session.id, (events) =>
+    events.some(
+      (e) =>
+        e.type === "live" &&
+        e.event.type === "pages" &&
+        e.event.pages.some((page) => page.url === url),
+    ),
+  );
+
+  return session;
+}
+
+// Follows Pi Cloud's Open link to the preview's origin and returns that
+// origin's host and its cookie.
+async function visitPreview(
+  sessionId: string,
+  port: number,
+  path: string,
+): Promise<{ host: string; cookie: string; location: string | null }> {
+  const opened = await fetch(
+    new URL(
+      `/api/sessions/${sessionId}/previews/${String(port)}?path=${encodeURIComponent(path)}`,
+      server.url,
+    ),
+    {
+      redirect: "manual",
+      headers: {
+        cookie: await signedIn(),
+        host: `localhost:${server.url.port}`,
+      },
+    },
+  );
+
+  const admit = new URL(opened.headers.get("location") ?? "");
+
+  const admitted = await fetch(
+    new URL(`${admit.pathname}${admit.search}`, server.url),
+    { redirect: "manual", headers: { host: admit.host } },
+  );
+
+  return {
+    host: admit.host,
+    cookie: (admitted.headers.get("set-cookie") ?? "").split(";")[0] ?? "",
+    location: admitted.headers.get("location"),
+  };
+}
+
+test("previews a page the Session opened in a browser at its own origin", async () => {
+  const app = localApp();
+  const port = app.port ?? 0;
+  const session = await openedPage(`http://localhost:${String(port)}/plan`);
+
+  const preview = await visitPreview(session.id, port, "/plan?step=2");
+
+  expect(preview.host).toBe(
+    `${String(port)}--${session.id}.localhost:${server.url.port}`,
+  );
+
+  expect(preview.location).toBe("/plan?step=2");
+
+  const answer = await fetch(new URL("/plan?step=2", server.url), {
+    method: "POST",
+    headers: {
+      host: preview.host,
+      origin: `http://${preview.host}`,
+      cookie: `${preview.cookie}; theme=dark`,
+    },
+    body: "approve",
+  });
+
+  expect(await answer.json()).toEqual({
+    method: "POST",
+    path: "/plan?step=2",
+    origin: `http://localhost:${String(port)}`,
+    cookie: "theme=dark",
+    body: "approve",
+  });
+
+  const moved = await fetch(new URL("/moved", server.url), {
+    redirect: "manual",
+    headers: { host: preview.host, cookie: preview.cookie },
+  });
+
+  expect(moved.headers.get("location")).toBe("/plan");
+
+  await app.stop(true);
+});
+
+test("keeps Pi Cloud's API and other ports out of a preview's origin", async () => {
+  const app = localApp();
+  const port = app.port ?? 0;
+  const session = await openedPage(`http://localhost:${String(port)}/`);
+  const preview = await visitPreview(session.id, port, "/");
+
+  const otherPort = await visitPreview(
+    session.id,
+    Number(server.url.port),
+    "/",
+  );
+
+  const statuses = await Promise.all([
+    fetch(new URL("/api/sessions", server.url), {
+      headers: { host: preview.host },
+    }),
+    fetch(new URL("/api/sessions", server.url), {
+      headers: { host: preview.host, cookie: await signedIn() },
+    }),
+    fetch(new URL("/", server.url), {
+      headers: { host: otherPort.host, cookie: otherPort.cookie },
+    }),
+  ]);
+
+  const proxied = await Promise.all(
+    ["/", "/api/sessions"].map(async (path) =>
+      fetch(new URL(path, server.url), {
+        headers: { host: preview.host, cookie: preview.cookie },
+      }),
+    ),
+  );
+
+  expect(statuses.map((response) => response.status)).toEqual([401, 401, 502]);
+
+  expect(
+    await Promise.all(
+      proxied.map(
+        async (response) => ((await response.json()) as { path: string }).path,
+      ),
+    ),
+  ).toEqual(["/", "/api/sessions"]);
+
+  await app.stop(true);
+});
+
+test("drops a page once nothing listens on its port", async () => {
+  const app = localApp();
+  const session = await openedPage(`http://localhost:${String(app.port)}/`);
+  const next = await watch(session.id);
+
+  await app.stop(true);
+
+  const events = await next((seen) =>
+    seen.some(
+      (e) =>
+        e.type === "live" &&
+        e.event.type === "pages" &&
+        e.event.pages.length === 0,
+    ),
+  );
+
+  expect(
+    events.flatMap((e) =>
+      e.type === "live" && e.event.type === "pages"
+        ? [e.event.pages.length]
+        : [],
+    ),
+  ).toEqual([1, 0]);
+});
