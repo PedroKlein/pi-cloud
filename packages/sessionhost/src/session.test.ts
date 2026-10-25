@@ -16,8 +16,14 @@ import {
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { modelLister, startSession, stopSession } from "./session";
+import { type AgentSession, defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import {
+  modelLister,
+  type SessionHost,
+  startSession,
+  stopSession,
+} from "./session";
 import { fauxModels } from "./testdata/models";
 import { sessionOptions } from "./testdata/options";
 
@@ -146,6 +152,50 @@ test("continues the session already in the session directory", async () => {
   ).toEqual(["user", "assistant", "user", "assistant"]);
 
   expect(await readdir(join(root, "sessions"))).toHaveLength(1);
+});
+
+test("keeps tool_search on for deferred tools after a resume and /tree", async () => {
+  const { faux, models } = await fauxModels(root);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first")]),
+    fauxAssistantMessage([fauxText("second")]),
+  ]);
+
+  const options = sessionOptions(root, { models });
+
+  const host = (tools: SessionHost["tools"]): SessionHost => ({
+    ui: {} as SessionHost["ui"],
+    tools,
+    extensions: [],
+    packages: [],
+    onError: () => undefined,
+  });
+
+  const before = await startSession(options, host([]));
+  await before.prompt("one");
+  const firstReply = before.sessionManager.getLeafId() ?? "";
+  await stopSession(before);
+
+  const lookup = defineTool({
+    name: "lookup",
+    label: "lookup",
+    description: "Looks a key up",
+    parameters: Type.Object({}),
+    exposure: "deferred",
+    execute: async () =>
+      Promise.resolve({ content: [{ type: "text", text: "42" }], details: {} }),
+  });
+
+  const after = await startSession(options, host([lookup]));
+  const resumed = after.getActiveToolNames();
+  await after.prompt("two");
+  await after.navigateTree(firstReply);
+  const navigated = after.getActiveToolNames();
+  await stopSession(after);
+
+  expect(resumed).toContain("tool_search");
+  expect(navigated).toContain("tool_search");
 });
 
 test("starts and stops extensions with session events", async () => {

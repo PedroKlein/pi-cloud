@@ -166,11 +166,7 @@ export function startPlugins(
     tools: (session) =>
       [...tools.values()]
         .filter(({ tool }) => tool.appliesTo(session))
-        .map(({ tool: { name, description, parameters } }) => ({
-          name,
-          description,
-          parameters,
-        })),
+        .map(({ tool: { appliesTo: _appliesTo, run: _run, ...spec } }) => spec),
     call: (session, call) => {
       const actor: Actor = `session:${session.id}`;
       const found = tools.get(call.name);

@@ -180,10 +180,33 @@ export interface SessionEnvironment {
   readonly variables: Readonly<Record<string, string>>;
 }
 
+// How the model reaches a tool, as Pi's tool exposure has it: deferred and
+// codemode tools are found through tool_search and codemode scripts.
+export type ToolExposure = "direct" | "deferred" | "codemode";
+
+// A group of related tools, as Pi's tool namespaces have it.
+export interface ToolNamespace {
+  readonly name: string;
+  readonly description?: string;
+  readonly instructions?: string;
+}
+
+// Hints about what a tool does, with the meaning of MCP tool annotations.
+// A missing hint takes the unsafe value.
+export interface ToolAnnotations {
+  readonly readOnlyHint?: boolean;
+  readonly destructiveHint?: boolean;
+  readonly idempotentHint?: boolean;
+  readonly openWorldHint?: boolean;
+}
+
 export interface ToolSpec {
   readonly name: string;
   readonly description: string;
   readonly parameters: Readonly<Record<string, unknown>>;
+  readonly exposure?: ToolExposure;
+  readonly namespace?: ToolNamespace;
+  readonly annotations?: ToolAnnotations;
 }
 
 export interface ToolCall {

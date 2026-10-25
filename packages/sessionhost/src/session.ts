@@ -20,6 +20,7 @@ import {
   type ResourceDiagnostic,
   type Skill,
   SettingsManager,
+  type ToolExposure,
 } from "@earendil-works/pi-coding-agent";
 import type { Checkout } from "@pi-cloud/plugins";
 import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
@@ -63,6 +64,40 @@ export interface SessionHost {
   readonly onError: (error: ExtensionError) => void;
 }
 
+// The tool that lets the model reach tools of each exposure it isn't
+// declared with.
+const finderOf: Partial<Record<ToolExposure, string>> = {
+  deferred: "tool_search",
+  codemode: "codemode",
+};
+
+// Pi turns these on by itself only for MCP servers whose tools need them. A
+// resumed transcript or /tree restores the tools active back then, so they're
+// turned on again after each.
+function toolFinders(tools: readonly ToolDefinition[]): InlineExtension {
+  const finders = new Set(
+    tools.flatMap(({ exposure }) =>
+      exposure === undefined ? [] : (finderOf[exposure] ?? []),
+    ),
+  );
+
+  return {
+    name: "tool-finders",
+    factory: (pi) => {
+      if (finders.size === 0) {
+        return;
+      }
+
+      const activate = (): void => {
+        pi.setActiveTools([...new Set([...pi.getActiveTools(), ...finders])]);
+      };
+
+      pi.on("session_start", activate);
+      pi.on("session_tree", activate);
+    },
+  };
+}
+
 // The extensions Pi's CLI builds in, so hosted sessions get the same tools.
 // Its llama.cpp provider isn't exported, so it's left out.
 const builtInExtensions: InlineExtension[] = [
@@ -90,7 +125,11 @@ export async function startSession(
   const services = await loadServices(cwd, options, {
     projectTrusted: options.trusted ?? !asksForTrust(cwd, options),
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
-    extensionFactories: [...builtInExtensions, ...(host?.extensions ?? [])],
+    extensionFactories: [
+      ...builtInExtensions,
+      ...(host ? [toolFinders(host.tools)] : []),
+      ...(host?.extensions ?? []),
+    ],
     ...(host && { packages: host.packages, onError: host.onError }),
   });
 
