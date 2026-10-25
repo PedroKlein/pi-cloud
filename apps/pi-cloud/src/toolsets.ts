@@ -1,5 +1,10 @@
 import type { Toolset } from "@pi-cloud/plugins";
-import { isolations, type Profile, type Session } from "@pi-cloud/protocol";
+import {
+  isolations,
+  type PluginInfo,
+  type Profile,
+  type Session,
+} from "@pi-cloud/protocol";
 
 const workspaceSchema = {
   type: "object",
@@ -51,6 +56,19 @@ const profileFields = {
   appendSystemMd: { type: "string", description: "APPEND_SYSTEM.md" },
   settings: { type: "object", description: "Pi settings" },
 };
+
+const pluginInstructions = `An in-place plugin is a folder in the server's plugins folder, named by its id (lowercase letters, digits and dashes). Write its files with plugins_write_file, then plugins_build to check it builds. You never turn a plugin on: tell the user to turn it on on the Plugins page and restart the server, since its code then runs in the server and on runners. A plugin that is turned on can't be changed until the user turns it off.
+
+Its package.json has "type": "module", any npm "dependencies" its parts import, and a "piCloud" field:
+- id (the folder's name), title, description, engine: 1;
+- capabilities: the parts of the server context its server part uses, some of tools, toolsets, events, sessions, environments, profiles, routes, models;
+- parts: server, web and session, each a TypeScript or JavaScript file, all optional;
+- ownSessionsOnly: true to load its Session part only in the Sessions its server part owns;
+- settings: optional, by name, each { type: "string" | "number" | "boolean" | "choice" | "strings", title, description?, default, options? for choice, min?/max? for number }.
+
+The server part's default export is { name: <id>, register(context) }. context.routes.handle(async (request, path) => Response) answers /api/plugins/<id>/<path>; context.settings.get() returns its settings; context.tools, context.toolsets and context.events register tools, meta toolsets and event listeners.
+The web part's default export is a WebPlugin { name: <id>, nav?: { label, Page } , SessionPanel?, SessionHeader?, tools?, widgets? }. It imports react, react-dom, @pi-cloud/ui and @pi-cloud/plugins/web from the page, can't import CSS or other files, and styles itself with @pi-cloud/ui components.
+The Session part's default export is a SessionPlugin { name: <id>, extension?: (cloud) => Pi extension factory, packages?: Pi packages, tools?: (cloud) => Pi tool definitions }. It can't import files other than code.`;
 
 // The kernel's meta toolsets (ADR 0035). Each tool is a request to the route
 // the web UI uses for the same change.
@@ -300,6 +318,87 @@ export const kernelToolsets: readonly Toolset[] = [
       },
     ],
   },
+  {
+    namespace: {
+      name: "plugins",
+      description:
+        "List plugins, and write and build in-place plugins, which the user then turns on (ADR 0035).",
+      instructions: pluginInstructions,
+    },
+    tools: [
+      {
+        name: "list",
+        description:
+          "List the plugins with their state, whether they are turned on, and where installed ones came from.",
+        parameters: object({}),
+        annotations: { readOnlyHint: true },
+        request: () => ({ method: "GET", path: "/api/plugins" }),
+        result: (body) => (body as readonly PluginInfo[]).map(pluginSummary),
+      },
+      {
+        name: "files",
+        description: "List the files of an installed plugin.",
+        parameters: object({ plugin: { type: "string" } }, ["plugin"]),
+        annotations: { readOnlyHint: true },
+        request: (input) => ({
+          method: "GET",
+          path: `/api/plugin-files/${pluginOf(input)}`,
+        }),
+      },
+      {
+        name: "read_file",
+        description: "Read a file of an installed plugin.",
+        parameters: object(
+          { plugin: { type: "string" }, path: { type: "string" } },
+          ["plugin", "path"],
+        ),
+        annotations: { readOnlyHint: true },
+        request: (input) => ({
+          method: "GET",
+          path: `/api/plugin-files/${pluginOf(input)}?path=${encodeURIComponent(textIn(input, "path"))}`,
+        }),
+      },
+      {
+        name: "write_file",
+        description:
+          "Write a file of an in-place plugin, making the plugin when it doesn't exist yet. Nothing in it runs until the user turns it on.",
+        parameters: object(
+          {
+            plugin: { type: "string", description: "The plugin's id" },
+            path: {
+              type: "string",
+              description: "Relative to the plugin's folder, such as server.ts",
+            },
+            content: { type: "string" },
+          },
+          ["plugin", "path", "content"],
+        ),
+        annotations: { destructiveHint: false, openWorldHint: false },
+        request: (input) => ({
+          method: "PUT",
+          path: `/api/plugin-files/${pluginOf(input)}`,
+          body: picked(input, ["path", "content"]),
+        }),
+        result: (body) => pluginSummary(body as PluginInfo),
+      },
+      {
+        name: "build",
+        description:
+          "Install an in-place plugin's dependencies and bundle its parts, to see whether it builds. None of its code runs.",
+        parameters: object({ plugin: { type: "string" } }, ["plugin"]),
+        annotations: { destructiveHint: false, openWorldHint: true },
+        request: (input) => ({
+          method: "POST",
+          path: `/api/plugin-builds/${pluginOf(input)}`,
+        }),
+        result: (body) => ({
+          ...pluginSummary(body as PluginInfo),
+          note: "It builds. The user turns it on on the Plugins page, then restarts the server.",
+        }),
+        opens: () => ({ route: "plugins", label: "the Plugins page" }),
+      },
+    ],
+  },
 ];
 
 function object(
@@ -311,6 +410,30 @@ function object(
     properties,
     required,
     additionalProperties: false,
+  };
+}
+
+function pluginOf(input: Readonly<Record<string, unknown>>): string {
+  return encodeURIComponent(textIn(input, "plugin"));
+}
+
+function textIn(input: Readonly<Record<string, unknown>>, key: string): string {
+  const value = input[key];
+
+  return typeof value === "string" ? value : "";
+}
+
+function pluginSummary(plugin: PluginInfo): Record<string, unknown> {
+  return {
+    id: plugin.id,
+    title: plugin.title,
+    source: plugin.source,
+    state: plugin.state,
+    turnedOn: plugin.turnedOn,
+    ...(plugin.error !== undefined && { error: plugin.error }),
+    ...(plugin.installedFrom !== undefined && {
+      installedFrom: plugin.installedFrom.url,
+    }),
   };
 }
 

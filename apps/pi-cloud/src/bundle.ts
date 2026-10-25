@@ -45,6 +45,11 @@ export async function bundleParts(
   };
 }
 
+// A macro runs while the bundle is built, so building a plugin that isn't
+// turned on would run its code. Bun.build takes this, though its types don't
+// say so.
+const noMacros = { macros: false };
+
 // Each bundle is named after its part, so its URL needs no escaping.
 async function bundle(
   entry: string,
@@ -57,6 +62,7 @@ async function bundle(
     target: part === "web" ? "browser" : "bun",
     naming: `${part}-[hash].[ext]`,
     throw: false,
+    ...noMacros,
     ...(part === "web" && {
       plugins: [sharedWithShell],
       jsx: { development: false },

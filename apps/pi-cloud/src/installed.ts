@@ -18,7 +18,7 @@ import {
   pluginEngine,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { bundleParts } from "./bundle";
+import { bundleParts, type PluginParts } from "./bundle";
 import { builtInPlugins } from "./plugins";
 import { fetchSource, type PluginSource } from "./sources";
 
@@ -311,7 +311,7 @@ async function stagedManifest(folder: string): Promise<PluginManifest> {
     throw new Error("its package.json has no piCloud.id");
   }
 
-  const error = skipReason(id, new Set(builtInPlugins.map((each) => each.id)));
+  const error = idProblem(id);
 
   if (error !== undefined) {
     throw new Error(`piCloud.id ${id}: ${error}`);
@@ -321,7 +321,9 @@ async function stagedManifest(folder: string): Promise<PluginManifest> {
 }
 
 // A missing or broken record means it wasn't installed from a URL.
-async function sourceOf(folder: string): Promise<PluginSource | undefined> {
+export async function sourceOf(
+  folder: string,
+): Promise<PluginSource | undefined> {
   try {
     const { url, pinned } = fields(
       JSON.parse(await readFile(join(folder, sourceFile), "utf8")),
@@ -372,13 +374,7 @@ async function load(
   }
 
   try {
-    const bundles = await bundleParts(folder, {
-      ...(server !== undefined && { server: await inside(folder, server) }),
-      ...(web !== undefined && { web: await inside(folder, web) }),
-      ...(session !== undefined && {
-        session: await inside(folder, session),
-      }),
-    });
+    const bundles = await builtParts(folder, manifest);
 
     const part =
       bundles.server === undefined
@@ -409,6 +405,53 @@ async function load(
   } catch (error) {
     return { manifest, on, error: messageOf(error) };
   }
+}
+
+async function builtParts(
+  folder: string,
+  manifest: PluginManifest,
+): Promise<PluginParts> {
+  const { server, web, session } = manifest.parts ?? {};
+
+  return bundleParts(folder, {
+    ...(server !== undefined && { server: await inside(folder, server) }),
+    ...(web !== undefined && { web: await inside(folder, web) }),
+    ...(session !== undefined && { session: await inside(folder, session) }),
+  });
+}
+
+// What a plugin's folder holds now, read again after it changed, without
+// running any of its code.
+export async function reread(
+  root: string,
+  id: string,
+): Promise<InstalledPlugin> {
+  const folder = join(root, id);
+  const source = await sourceOf(folder);
+
+  return {
+    ...(await load(folder, id, false)),
+    ...(source && { source }),
+  };
+}
+
+// Builds a plugin that isn't running, so what is wrong shows before the user
+// turns it on. Building runs none of its code.
+export async function build(root: string, id: string): Promise<void> {
+  const folder = join(root, id);
+
+  await builtParts(
+    folder,
+    manifestOf(
+      JSON.parse(await readFile(join(folder, "package.json"), "utf8")),
+      id,
+    ),
+  );
+}
+
+// Why a plugin can't have this id, if it can't.
+export function idProblem(id: string): string | undefined {
+  return skipReason(id, new Set(builtInPlugins.map((each) => each.id)));
 }
 
 // The real path of a part, which must stay inside the plugin's folder even

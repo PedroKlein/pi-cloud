@@ -250,6 +250,42 @@ export function createHandler(
       },
     ],
     [
+      "GET",
+      /^\/api\/plugin-files\/([^/]+)$/,
+      async (request, [name = ""]) => {
+        const path = new URL(request.url).searchParams.get("path");
+
+        return Response.json(
+          path === null
+            ? await refused(plugins.files.list(name))
+            : { path, content: await refused(plugins.files.read(name, path)) },
+        );
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/plugin-files\/([^/]+)$/,
+      async (request, [name = ""]) => {
+        const { path, content } = fieldsOf(await readJson(request));
+
+        if (typeof content !== "string") {
+          throw new BadRequest("content must be text");
+        }
+
+        return Response.json(
+          await refused(
+            plugins.files.write(name, textOf("path", path), content),
+          ),
+        );
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/plugin-builds\/([^/]+)$/,
+      async (_request, [name = ""]) =>
+        Response.json(await refused(plugins.files.build(name))),
+    ],
+    [
       "DELETE",
       /^\/api\/plugins\/([^/]+)$/,
       async (_request, [name = ""]) => {
@@ -1060,6 +1096,15 @@ function notFound(): Response {
 }
 
 class BadRequest extends Error {}
+
+// What an in-place plugin's change can't do is the caller's to fix.
+async function refused<T>(change: Promise<T>): Promise<T> {
+  return change.catch((error: unknown) => {
+    throw new BadRequest(
+      error instanceof Error ? error.message : String(error),
+    );
+  });
+}
 
 async function readJson(request: Request): Promise<unknown> {
   try {

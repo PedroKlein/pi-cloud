@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { meta } from "@pi-cloud/meta/server";
 import type { ServerPlugin } from "@pi-cloud/plugins";
 import type {
+  PluginInfo,
   Prompt,
   Session,
   SessionEvent,
@@ -41,11 +42,15 @@ beforeEach(async () => {
   start();
 });
 
-function start(plugins?: ServeOptions["plugins"]): void {
+function start(
+  plugins?: ServeOptions["plugins"],
+  installed?: ServeOptions["installed"],
+): void {
   const logs: string[] = [];
 
   server = serve({
     ...(plugins && { plugins }),
+    ...(installed && { installed }),
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 1000 },
@@ -500,4 +505,53 @@ test("gives a meta-session no tools that reach the runner's files or shell", asy
   for (const tool of ["read", "bash", "edit", "write"]) {
     expect(declared).not.toContain(`{"name":"${tool}"`);
   }
+});
+
+test("writes and builds an in-place plugin from a meta-session, and leaves turning it on to the user", async () => {
+  await server.stop();
+  start(undefined, { root: join(root, "plugins"), plugins: [] });
+
+  const manifest = JSON.stringify({
+    piCloud: {
+      id: "hello",
+      title: "Hello",
+      description: "Says hi.",
+      engine: 1,
+      capabilities: ["routes"],
+      parts: { server: "server.ts" },
+    },
+  });
+
+  faux.setResponses([
+    call("tool_search", { query: "write a plugin file" }),
+    call("plugins_write_file", {
+      plugin: "hello",
+      path: "package.json",
+      content: manifest,
+    }),
+    call("plugins_write_file", {
+      plugin: "hello",
+      path: "server.ts",
+      content: `export default { name: "hello", register: () => undefined };\n`,
+    }),
+    call("tool_search", { query: "build a plugin" }),
+    call("plugins_build", { plugin: "hello" }),
+    fauxAssistantMessage([fauxText("built it")]),
+  ]);
+
+  const metaSession = await startMeta("Make me a hello plugin");
+  const asked = await answerNext(metaSession.id, true);
+  const events = await follow(metaSession.id, entriesInclude("built it"));
+
+  const hello = (await json<PluginInfo[]>(api("/api/plugins"))).find(
+    ({ id }) => id === "hello",
+  );
+
+  expect(asked.title).toBe("Allow plugins_build?");
+  expect(transcriptOf(events)).toContain("It builds.");
+  expect(hello).toMatchObject({ state: "off", turnedOn: false });
+
+  expect(
+    (await stat(join(root, "plugins", "hello", ".build"))).isDirectory(),
+  ).toBe(true);
 });
