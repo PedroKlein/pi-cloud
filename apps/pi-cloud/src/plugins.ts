@@ -144,6 +144,13 @@ export interface PluginHost {
   readonly profileIds: () => readonly string[];
   readonly tools: (session: Session) => readonly ToolSpec[];
   readonly call: (session: Session, call: ToolCall) => void;
+  // Every toolset's tools, and a call to one as a user, for MCP clients.
+  readonly toolsetTools: () => readonly ToolSpec[];
+  readonly callToolset: (
+    name: string,
+    input: unknown,
+    actor: UserActor,
+  ) => Promise<ToolResult>;
   readonly offeredModels: (environmentId: string) => OfferedModels;
   readonly route: (
     request: Request,
@@ -502,6 +509,16 @@ export function startPlugins(
             result: reply,
           });
         });
+    },
+    toolsetTools: () => [...routeTools.values()].map(({ spec }) => spec),
+    callToolset: async (name, input, actor) => {
+      const found = routeTools.get(name);
+
+      return found === undefined
+        ? { text: `no tool named ${name}`, isError: true }
+        : runRouteTool(found, input, actor, deps, () => undefined).catch(
+            (error: unknown) => ({ text: String(error), isError: true }),
+          );
     },
     offeredModels: (environmentId) => {
       const offered = offers.map((offer) => offer(environmentId));

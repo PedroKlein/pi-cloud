@@ -89,6 +89,16 @@ export function useEnvironments(): Polled<Environment> {
   return usePolled("/api/environments") as Polled<Environment>;
 }
 
+export interface McpToken {
+  readonly id: string;
+  readonly name: string;
+  readonly createdAt: string;
+}
+
+export function useMcpTokens(): Polled<McpToken> {
+  return usePolled("/api/mcp-tokens") as Polled<McpToken>;
+}
+
 // Tells the browser when a session stops working, unless it is on screen.
 export function useSettledNotices(
   sessions: readonly Session[],

@@ -44,8 +44,10 @@ import {
   type Auth,
   type Credentials,
   InvalidCredentials,
+  type McpToken,
   type User,
 } from "./auth";
+import { mcpHandler } from "./mcp";
 import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
 
@@ -184,6 +186,7 @@ export function createHandler(
       },
     ],
     ...authRoutes(auth, log),
+    ["ANY", /^\/api\/mcp$/, mcpHandler(auth, plugins, serverVersion, log)],
     [
       "POST",
       /^\/agent\/join$/,
@@ -219,6 +222,44 @@ export function createHandler(
 
   const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
+    [
+      "GET",
+      /^\/api\/mcp-tokens$/,
+      (_request, _params, actor) =>
+        Response.json(auth.mcpTokens(userIdOf(actor)).map(mcpTokenView)),
+    ],
+    [
+      "POST",
+      /^\/api\/mcp-tokens$/,
+      async (request, _params, actor) => {
+        const { name } = fieldsOf(await readJson(request));
+
+        const { token, secret } = auth.newMcpToken(
+          userIdOf(actor),
+          textOf("name", name),
+        );
+
+        log("mcp token created", { tokenId: token.id });
+
+        return Response.json(
+          { token: mcpTokenView(token), secret },
+          { status: 201 },
+        );
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/mcp-tokens\/([^/]+)$/,
+      (_request, [id = ""], actor) => {
+        if (!auth.revokeMcpToken(userIdOf(actor), id)) {
+          return notFound();
+        }
+
+        log("mcp token revoked", { tokenId: id });
+
+        return new Response(null, { status: 204 });
+      },
+    ],
     [
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
@@ -862,6 +903,18 @@ function profileRoutes(profiles: Profiles, log: Log): RouteTable {
       },
     ],
   ];
+}
+
+function userIdOf(actor: UserActor): string {
+  return actor.slice("user:".length);
+}
+
+function mcpTokenView({
+  id,
+  name,
+  createdAt,
+}: McpToken): Omit<McpToken, "userId"> {
+  return { id, name, createdAt };
 }
 
 function fileName(name: string): string {

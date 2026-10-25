@@ -126,6 +126,13 @@ create table if not exists browser_sessions (
   user_id text not null references users (id),
   expires_at text not null
 );
+create table if not exists mcp_tokens (
+  id text primary key,
+  token_hash text not null unique,
+  user_id text not null references users (id),
+  name text not null,
+  created_at text not null
+);
 `;
 
 const pluginTables = `
@@ -773,6 +780,22 @@ function authStore(db: DatabaseSync): AuthStore {
     "delete from agent_tokens where session_id = ?",
   );
 
+  const insertMcpToken = db.prepare(
+    "insert into mcp_tokens (id, token_hash, user_id, name, created_at) values (?, ?, ?, ?, ?)",
+  );
+
+  const selectMcpTokens = db.prepare(
+    "select id, name, created_at from mcp_tokens where user_id = ? order by created_at",
+  );
+
+  const selectMcpTokenUser = db.prepare(
+    "select users.id, users.name from mcp_tokens join users on users.id = mcp_tokens.user_id where token_hash = ?",
+  );
+
+  const deleteMcpToken = db.prepare(
+    "delete from mcp_tokens where id = ? and user_id = ?",
+  );
+
   return {
     userCount: () => (countUsers.get() as { n: number }).n,
     userByName: (name) => {
@@ -833,6 +856,32 @@ function authStore(db: DatabaseSync): AuthStore {
     deleteRunnerTokens: (provider, runner) => {
       deleteRunnerTokens.run(provider, runner);
     },
+    insertMcpToken: (token, tokenHash) => {
+      insertMcpToken.run(
+        token.id,
+        tokenHash,
+        token.userId,
+        token.name,
+        token.createdAt,
+      );
+    },
+    mcpTokens: (userId) =>
+      (
+        selectMcpTokens.all(userId) as {
+          id: string;
+          name: string;
+          created_at: string;
+        }[]
+      ).map((row) => ({
+        id: row.id,
+        userId,
+        name: row.name,
+        createdAt: row.created_at,
+      })),
+    mcpTokenUser: (tokenHash) =>
+      selectMcpTokenUser.get(tokenHash) as User | undefined,
+    deleteMcpToken: (id, userId) =>
+      Number(deleteMcpToken.run(id, userId).changes) > 0,
     agentToken: (tokenHash) => {
       const row = selectAgentToken.get(tokenHash) as
         | {
