@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
+import { fauxModels } from "./faux";
 import { stderrLog } from "./log";
 import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
@@ -143,6 +144,9 @@ switch (command) {
 
     await checkFolders(values.folder);
 
+    const dataDir = absolutePath(values["data-dir"]);
+    const fauxReply = process.env["PI_CLOUD_FAUX_REPLY"];
+
     await runAgent({
       server: values.server,
       provider: values.name,
@@ -152,9 +156,12 @@ switch (command) {
       ...(values["session-binary"] !== undefined && {
         sessionBinary: absolutePath(values["session-binary"]),
       }),
-      dataDir: absolutePath(values["data-dir"]),
+      dataDir,
       extensionPaths: values.extension.map(extensionSource),
       folders: values.folder,
+      ...(fauxReply !== undefined && {
+        models: await fauxModels(fauxReply, join(dataDir, "faux-auth.json")),
+      }),
       log: stderrLog("agent"),
       signal: shutdown.signal,
     });
