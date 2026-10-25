@@ -43,7 +43,7 @@ export function settingsFrom(body: unknown): KubernetesSettings | string {
   };
 }
 
-interface SettingsStore {
+export interface SettingsStore {
   readonly get: (environmentId: string) => KubernetesSettings | undefined;
   readonly all: () => readonly (readonly [string, KubernetesSettings])[];
   readonly set: (environmentId: string, settings: KubernetesSettings) => void;

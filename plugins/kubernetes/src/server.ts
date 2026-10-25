@@ -1,15 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
+import { type Environment, movable } from "@pi-cloud/protocol";
 import {
   type ApiAccess,
   type Cluster,
   clusterAt,
+  type RunnerPod,
   inClusterApi,
 } from "./cluster";
 import { runnerPod } from "./pods";
 import {
   type KubernetesSettings,
+  type SettingsStore,
   settingsFrom,
   settingsStore,
 } from "./settings";
@@ -33,6 +36,9 @@ interface Pods {
 
 const finished = new Set(["Succeeded", "Failed"]);
 
+// Longer than pulling a large image takes.
+const stuckAfterMs = 10 * 60_000;
+
 // Starts runner pods for the Sessions of a Kubernetes Environment that no
 // runner can take, and removes the pods that stopped (ADR 0032).
 export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
@@ -43,11 +49,16 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
 
       context.routes.handle(async (request, path, caller) => {
         const [resource, environmentId] = path.split("/");
+
+        const environment = context.environments
+          .list()
+          .find(({ id }) => id === environmentId);
+
         if (
           caller !== undefined ||
           resource !== "environments" ||
           environmentId === undefined ||
-          !context.environments.list().some(({ id }) => id === environmentId)
+          environment === undefined
         ) {
           return Response.json({ error: "not_found" }, { status: 404 });
         }
@@ -68,6 +79,13 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
 
             if (typeof settings === "string") {
               return Response.json({ error: settings }, { status: 400 });
+            }
+
+            if (environment.isolation !== "process") {
+              return Response.json(
+                { error: "runner pods run Sessions as processes" },
+                { status: 409 },
+              );
             }
 
             store.set(environmentId, settings);
@@ -112,22 +130,20 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         variables,
       };
 
+      // The first pass waits a tick: the server finishes starting plugins
+      // before their context answers.
       void (async () => {
-        while (!context.signal.aborted) {
-          for (const [environmentId, settings] of store.all()) {
-            await reconcile(context, pods, environmentId, settings).catch(
-              (error: unknown) => {
-                context.log("kubernetes runner pods not reconciled", {
-                  environmentId,
-                  error: String(error),
-                });
-              },
-            );
-          }
-
-          await sleep(intervalMs, undefined, { signal: context.signal }).catch(
-            () => undefined,
-          );
+        while (
+          await sleep(intervalMs, undefined, { signal: context.signal }).then(
+            () => true,
+            () => false,
+          )
+        ) {
+          await reconcile(context, pods, store).catch((error: unknown) => {
+            context.log("kubernetes runner pods not reconciled", {
+              error: String(error),
+            });
+          });
         }
       })();
     },
@@ -148,41 +164,85 @@ export const kubernetesPlugin = kubernetes(() => {
 
 async function reconcile(
   context: ServerPluginContext,
-  { cluster, image, server, variables }: Pods,
-  environmentId: string,
-  settings: KubernetesSettings,
+  pods: Pods,
+  store: SettingsStore,
 ): Promise<void> {
-  const environment = context.environments
-    .list()
-    .find(({ id }) => id === environmentId);
+  const environments = context.environments.list();
+  const all = await pods.cluster.runnerPods();
+  const now = Date.now();
 
-  if (environment === undefined) {
-    return;
-  }
+  // Pods of an Environment without settings run until their agent stops.
+  // Pods of an Environment this server doesn't know belong to another server
+  // in the namespace.
+  for (const pod of all) {
+    const known = environments.some(({ id }) => id === pod.environmentId);
+    const reason = removalReason(pod, now);
+    if (!known || reason === undefined) {
+      continue;
+    }
 
-  const pods = await cluster.runnerPods(environmentId);
+    context.environments.revokeRunner(pod.environmentId, pod.name);
 
-  for (const pod of pods.filter(({ phase }) => finished.has(phase))) {
-    context.environments.revokeRunner(environmentId, pod.name);
-    await cluster.deletePod(pod.name);
-    await cluster.deleteSecret(pod.name);
+    await pods.cluster.deletePod(pod.name);
+    await pods.cluster.deleteSecret(pod.name);
 
     context.log("runner pod removed", {
-      environmentId,
+      environmentId: pod.environmentId,
       pod: pod.name,
       phase: pod.phase,
+      reason,
     });
   }
 
-  const active = pods.filter(({ phase }) => !finished.has(phase));
+  for (const [environmentId, settings] of store.all()) {
+    const environment = environments.find(({ id }) => id === environmentId);
+    if (environment === undefined) {
+      continue;
+    }
+
+    const active = all.filter(
+      (pod) => pod.environmentId === environmentId && !finished.has(pod.phase),
+    );
+
+    await scale(context, pods, environment, settings, active).catch(
+      (error: unknown) => {
+        context.log("kubernetes runner pods not started", {
+          environmentId,
+          error: String(error),
+        });
+      },
+    );
+  }
+}
+
+async function scale(
+  context: ServerPluginContext,
+  { cluster, image, server, variables }: Pods,
+  environment: Environment,
+  settings: KubernetesSettings,
+  active: readonly RunnerPod[],
+): Promise<void> {
+  const environmentId = environment.id;
+
+  // The agent in a pod runs Sessions as processes; it has no Docker.
+  if (environment.isolation !== "process") {
+    return;
+  }
 
   const online = new Set(
     environment.runners.filter((r) => r.online).map(({ name }) => name),
   );
 
-  // A pod that hasn't polled yet takes Sessions once it does.
+  // A pod that hasn't polled yet takes Sessions once it does. A Session held
+  // by a runner that went away moves to a pod only if its Workspace can be
+  // made again there.
   const joining = active.filter(({ name }) => !online.has(name)).length;
-  const unplaced = context.environments.unplaced(environmentId).length;
+
+  const unplaced = context.environments
+    .unplaced(environmentId)
+    .filter(
+      (session) => session.runner === null || movable(session.workspace),
+    ).length;
 
   const wanted = Math.ceil(
     Math.max(0, unplaced - joining * settings.capacity) / settings.capacity,
@@ -217,4 +277,16 @@ async function reconcile(
 
     context.log("runner pod started", { environmentId, pod: name, unplaced });
   }
+}
+
+function removalReason(pod: RunnerPod, now: number): string | undefined {
+  if (finished.has(pod.phase)) {
+    return "stopped";
+  }
+
+  if (pod.phase !== "Running" && now - pod.createdAt > stuckAfterMs) {
+    return "never started";
+  }
+
+  return undefined;
 }

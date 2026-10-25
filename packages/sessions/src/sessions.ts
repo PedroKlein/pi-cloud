@@ -505,7 +505,8 @@ export class Sessions {
   // Sessions no online runner in the pool can take now, for a plugin that
   // starts runners on demand (ADR 0032): those beyond the room its runners
   // have, and those held by a runner that went away. A Session that only an
-  // online runner can take waits for it, since a new runner never gets it.
+  // online runner can take waits for it, since a new runner never gets it,
+  // and one that can move waits for its runner's lease to lapse.
   unplaced(environmentId: string): readonly Session[] {
     const environment = this.#store
       .environments()
@@ -555,7 +556,9 @@ export class Sessions {
         (session) =>
           !online.some(({ name }) => name === session.runner) &&
           !takesSlot(session) &&
-          (session.runner !== null || placesOnNewRunner(session, pool)),
+          (session.runner === null
+            ? placesOnNewRunner(session, pool)
+            : !movable(session.workspace) || pool.leaseLapsed(session.runner)),
       )
       .map((session) => this.#view(session));
   }

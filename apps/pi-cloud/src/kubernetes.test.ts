@@ -19,12 +19,14 @@ interface FakePod {
   readonly metadata: {
     readonly name: string;
     readonly labels: Record<string, string>;
+    creationTimestamp?: string;
   };
   readonly spec: {
     readonly containers: readonly {
       readonly image: string;
       readonly command: readonly string[];
     }[];
+    readonly [field: string]: unknown;
   };
   status?: { phase: string };
 }
@@ -52,8 +54,10 @@ function fakeApi(): {
         const [label = "", value] = selector.split("=");
 
         return Response.json({
-          items: [...pods.values()].filter(
-            (pod) => pod.metadata.labels[label] === value,
+          items: [...pods.values()].filter((pod) =>
+            value === undefined
+              ? label in pod.metadata.labels
+              : pod.metadata.labels[label] === value,
           ),
         });
       }
@@ -95,15 +99,14 @@ let root: string;
 let api: ReturnType<typeof fakeApi>;
 let server: ReturnType<typeof serve>;
 let signedIn: () => Promise<string>;
+let logs: string[];
 
-beforeEach(async () => {
-  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-k8s-")));
-  api = fakeApi();
-  const logs: string[] = [];
+function startServer(database = ":memory:"): void {
+  logs = [];
 
   server = serve({
     port: 0,
-    database: ":memory:",
+    database,
     sessions: { pollWaitMs: 100, offlineAfterMs: 1000 },
     plugins: [
       kubernetes(() => ({
@@ -120,6 +123,12 @@ beforeEach(async () => {
   });
 
   signedIn = firstUser(server, logs);
+}
+
+beforeEach(async () => {
+  root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-k8s-")));
+  api = fakeApi();
+  startServer();
 });
 
 afterEach(async () => {
@@ -284,5 +293,93 @@ test("refuses Kubernetes settings it can't use", async () => {
     call("GET", path),
   ]);
 
+  await call("PATCH", `/api/environments/${environment.id}`, {
+    isolation: "container",
+  });
+
+  const inContainers = await call("PUT", path, {});
+
   expect(responses.map(({ status }) => status)).toEqual([400, 400, 404, 404]);
+  expect(inContainers.status).toBe(409);
+});
+
+test("keeps a pod patch from giving runner pods a service account token", async () => {
+  const environment = await kubernetesEnvironment({
+    podPatch: {
+      spec: {
+        serviceAccountName: "pi-cloud",
+        automountServiceAccountToken: true,
+        nodeSelector: { pool: "agents" },
+      },
+    },
+  });
+
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [pod] = api.pods.values();
+
+  expect(pod?.spec).toMatchObject({
+    automountServiceAccountToken: false,
+    nodeSelector: { pool: "agents" },
+  });
+
+  expect(pod?.spec["serviceAccountName"]).toBeUndefined();
+});
+
+test("removes a runner pod that never starts, and starts another", async () => {
+  const environment = await kubernetesEnvironment({});
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [first] = api.pods.values();
+  if (first) {
+    first.metadata.creationTimestamp = new Date(
+      Date.now() - 60 * 60_000,
+    ).toISOString();
+  }
+
+  await eventually(
+    () =>
+      first !== undefined &&
+      !api.pods.has(first.metadata.name) &&
+      api.pods.size === 1,
+  );
+
+  expect(api.secrets.size).toBe(1);
+});
+
+test("removes stopped runner pods of an Environment whose settings were removed", async () => {
+  const environment = await kubernetesEnvironment({});
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  await call(
+    "DELETE",
+    `/api/plugins/kubernetes/environments/${environment.id}`,
+  );
+
+  const [pod] = api.pods.values();
+  if (pod) {
+    pod.status = { phase: "Succeeded" };
+  }
+
+  await eventually(() => api.pods.size === 0 && api.secrets.size === 0);
+});
+
+test("reconciles saved settings once the server starts again", async () => {
+  const database = join(root, "server.db");
+  await server.stop();
+  startServer(database);
+
+  const environment = await kubernetesEnvironment({});
+  const cookie = await signedIn();
+  await server.stop();
+  startServer(database);
+  signedIn = async () => Promise.resolve(cookie);
+
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  expect(logs.filter((line) => line.includes("not reconciled"))).toEqual([]);
 });

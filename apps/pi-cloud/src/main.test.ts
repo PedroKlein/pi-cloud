@@ -112,6 +112,57 @@ test("refuses to start an agent with a folder that does not exist", async () => 
   expect(log).toContain("folder does not exist: /no/such/folder");
 });
 
+test("exits an agent started to exit when idle once it has run no session for that long", async () => {
+  const dataDir = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
+  const main = join(import.meta.dirname, "main.ts");
+
+  const server = spawn(
+    process.execPath,
+    [main, "server", "--port", "0", "--database", ":memory:"],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  try {
+    const { url, cookie } = await signedIn(server);
+
+    const key = await runnerCredentials({ url: new URL(url) }, async () =>
+      Promise.resolve(cookie),
+    ).key("pods");
+
+    const agent = spawn(
+      process.execPath,
+      [
+        main,
+        "agent",
+        "--name",
+        "pod-1",
+        "--server",
+        url,
+        "--data-dir",
+        dataDir,
+        "--exit-when-idle",
+        "1",
+      ],
+      { stdio: "ignore", env: { ...process.env, PI_CLOUD_KEY: key } },
+    );
+
+    const exited = once(agent, "exit") as Promise<[number | null]>;
+
+    const timeout = sleep(15_000).then(() => {
+      agent.kill("SIGKILL");
+
+      return [null] as [number | null];
+    });
+
+    const [code] = await Promise.race([exited, timeout]);
+
+    expect(code).toBe(0);
+  } finally {
+    server.kill("SIGKILL");
+    await rm(dataDir, { recursive: true, force: true });
+  }
+}, 30_000);
+
 test("marks a session failed and keeps running when its process cannot be spawned", async () => {
   const folder = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
 

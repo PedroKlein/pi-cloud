@@ -87,7 +87,15 @@ export function runnerPod(options: PodOptions): object {
     },
   };
 
-  return mergePatch(pod, settings.podPatch) as object;
+  // A patch must not hand the pod a service account token: the server's own
+  // lives in this namespace and can read every runner's Secret.
+  return mergePatch(mergePatch(pod, settings.podPatch), {
+    spec: {
+      automountServiceAccountToken: false,
+      serviceAccountName: null,
+      serviceAccount: null,
+    },
+  }) as object;
 }
 
 // RFC 7386.

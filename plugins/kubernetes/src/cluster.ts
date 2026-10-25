@@ -3,12 +3,15 @@ import { join } from "node:path";
 
 export interface RunnerPod {
   readonly name: string;
+  readonly environmentId: string;
   readonly phase: string;
+  readonly createdAt: number;
 }
 
 // The calls the plugin makes in the server's own namespace.
 export interface Cluster {
-  readonly runnerPods: (environmentId: string) => Promise<readonly RunnerPod[]>;
+  // The runner pods of every Environment.
+  readonly runnerPods: () => Promise<readonly RunnerPod[]>;
   readonly createSecret: (
     name: string,
     data: Record<string, string>,
@@ -90,21 +93,26 @@ export function clusterAt(options: ApiAccess): Cluster {
   };
 
   return {
-    runnerPods: async (environmentId) => {
-      const selector = encodeURIComponent(
-        `${environmentLabel}=${environmentId}`,
-      );
-
-      const list = (await call("GET", `pods?labelSelector=${selector}`)) as {
+    runnerPods: async () => {
+      const list = (await call(
+        "GET",
+        `pods?labelSelector=${encodeURIComponent(environmentLabel)}`,
+      )) as {
         readonly items: readonly {
-          readonly metadata: { readonly name: string };
+          readonly metadata: {
+            readonly name: string;
+            readonly labels?: Readonly<Record<string, string>>;
+            readonly creationTimestamp?: string;
+          };
           readonly status?: { readonly phase?: string };
         }[];
       };
 
       return list.items.map(({ metadata, status }) => ({
         name: metadata.name,
+        environmentId: metadata.labels?.[environmentLabel] ?? "",
         phase: status?.phase ?? "Pending",
+        createdAt: Date.parse(metadata.creationTimestamp ?? "") || Date.now(),
       }));
     },
     createSecret: async (name, data) => {
