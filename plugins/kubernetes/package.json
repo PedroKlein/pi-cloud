@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     "./server": "./src/server.ts",
-    "./web": "./web/index.tsx"
+    "./web": "./web/index.tsx",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@pi-cloud/plugins": "workspace:*",
@@ -14,5 +15,10 @@
   },
   "devDependencies": {
     "@types/react": "19.3.0"
+  },
+  "piCloud": {
+    "id": "kubernetes",
+    "title": "Kubernetes",
+    "description": "Starts runner pods for an Environment when the server runs in a cluster."
   }
 }

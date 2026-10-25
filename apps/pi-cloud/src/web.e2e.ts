@@ -239,6 +239,28 @@ test("makes an Environment and shows its key once", async () => {
   await page.getByRole("link", { name: /^e2e/ }).click();
 });
 
+test("changes a plugin's setting on the Plugins page", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  const library = page.getByRole("listitem", { name: "Library" });
+  await library.getByText("On", { exact: true }).waitFor();
+
+  const limit = library.getByLabel(/^File size limit in MB/);
+  expect(await limit.inputValue()).toBe("10");
+
+  await limit.fill("25");
+  await library.getByRole("button", { name: "Save" }).click();
+  await library.getByText("Saved").waitFor();
+
+  await page.reload();
+  expect(await limit.inputValue()).toBe("25");
+
+  await limit.fill("10");
+  await library.getByRole("button", { name: "Save" }).click();
+  await library.getByText("Saved").waitFor();
+});
+
 test("edits an Environment's variables and secrets without showing secret values", async () => {
   await page.goto(server.url.href);
   await page.getByRole("link", { name: "Environments" }).click();

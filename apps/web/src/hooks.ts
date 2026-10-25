@@ -5,7 +5,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { Environment, Profile, Session } from "@pi-cloud/protocol";
+import type {
+  Environment,
+  PluginInfo,
+  Profile,
+  Session,
+} from "@pi-cloud/protocol";
 import { api } from "./api";
 import { noticeText, settled } from "./notices";
 import { responseOrder } from "./responses";
@@ -74,6 +79,10 @@ export function useSessions(archived: boolean): Polled<Session> {
 
 export function useProfiles(): Polled<Profile> {
   return usePolled("/api/profiles") as Polled<Profile>;
+}
+
+export function usePlugins(): Polled<PluginInfo> {
+  return usePolled("/api/plugins") as Polled<PluginInfo>;
 }
 
 export function useEnvironments(): Polled<Environment> {

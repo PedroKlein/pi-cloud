@@ -5,7 +5,8 @@
   "exports": {
     "./model": "./src/model.ts",
     "./server": "./src/server.ts",
-    "./web": "./web/index.tsx"
+    "./web": "./web/index.tsx",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@pi-cloud/plugins": "workspace:*",
@@ -15,5 +16,10 @@
   },
   "devDependencies": {
     "@types/react": "19.3.0"
+  },
+  "piCloud": {
+    "id": "projects",
+    "title": "Projects",
+    "description": "Groups Sessions around a coordinator that works across repositories."
   }
 }

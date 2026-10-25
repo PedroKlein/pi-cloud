@@ -21,7 +21,9 @@ export const library: SessionPlugin = {
     (await cloud.request("member")).ok ? libraryTools(cloud) : [],
 };
 
-function libraryTools({ request }: SessionCloud): ToolDefinition[] {
+function libraryTools({ request, settings }: SessionCloud): ToolDefinition[] {
+  const limit = fileLimit(settings);
+
   const ok = async (response: Response): Promise<Response> => {
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as {
@@ -95,8 +97,8 @@ function libraryTools({ request }: SessionCloud): ToolDefinition[] {
         const path = resolve(ctx.cwd, params.path);
         const name = params.name ?? basename(path);
 
-        if ((await stat(path)).size > fileLimit) {
-          throw new Error(sizeRule);
+        if ((await stat(path)).size > limit) {
+          throw new Error(sizeRule(limit));
         }
 
         const content = await readFile(path);

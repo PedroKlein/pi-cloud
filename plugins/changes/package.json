@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     "./session": "./src/session.ts",
-    "./web": "./web/index.tsx"
+    "./web": "./web/index.tsx",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@pi-cloud/plugins": "workspace:*",
@@ -13,5 +14,10 @@
   },
   "devDependencies": {
     "@types/react": "19.3.0"
+  },
+  "piCloud": {
+    "id": "changes",
+    "title": "Changes",
+    "description": "Shows a Session's changes as a diff and opens pull requests."
   }
 }

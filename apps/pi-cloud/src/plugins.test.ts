@@ -286,7 +286,10 @@ test("routes requests to a plugin that keeps its own tables", async () => {
   expect(await items.json()).toEqual([{ text: "hello" }]);
   expect(unknown.status).toBe(404);
   expect(refused).toContain("plugin notes may only create notes_ tables");
-  expect(await (await api("/api/plugins")).json()).toEqual(["notes"]);
+
+  expect(await (await api("/api/plugins")).json()).toMatchObject([
+    { id: "notes", state: "on" },
+  ]);
 });
 
 test("publishes kernel events and starts sessions for plugins", async () => {
@@ -502,7 +505,11 @@ test("leaves out plugins that are turned off", async () => {
   );
 
   expect(registered).toBe(false);
-  expect(await (await api("/api/plugins")).json()).toEqual([]);
+
+  expect(await (await api("/api/plugins")).json()).toMatchObject([
+    { id: "off", state: "off" },
+  ]);
+
   expect((await api("/api/plugins/off/anything")).status).toBe(404);
 });
 

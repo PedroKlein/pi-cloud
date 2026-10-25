@@ -9,7 +9,7 @@ import type {
   WebPlugin,
   WidgetProps,
 } from "@pi-cloud/plugins/web";
-import type { Session } from "@pi-cloud/protocol";
+import type { PluginInfo, PluginSettings, Session } from "@pi-cloud/protocol";
 import { projects } from "@pi-cloud/projects/web";
 import { subagents } from "@pi-cloud/subagents/web";
 import { usage } from "@pi-cloud/usage/web";
@@ -28,11 +28,15 @@ const webPlugins: readonly WebPlugin[] = [
 ];
 
 let enabled: readonly WebPlugin[] = [];
+let settings: ReadonlyMap<string, PluginSettings> = new Map();
 
 export async function loadPlugins(): Promise<void> {
   const response = await fetch("/api/plugins");
-  const names = (await response.json()) as string[];
-  enabled = webPlugins.filter(({ name }) => names.includes(name));
+  const listed = (await response.json()) as PluginInfo[];
+  const on = listed.filter(({ state }) => state === "on");
+
+  enabled = webPlugins.filter(({ name }) => on.some(({ id }) => id === name));
+  settings = new Map(on.map(({ id, values }) => [id, values]));
 }
 
 export function enabledPlugins(): readonly WebPlugin[] {
@@ -60,6 +64,7 @@ export function pluginContext(name: string): WebContext {
       location.hash = sessionId;
     },
     href: (path) => `#plugin/${name}/${path}`,
+    settings: settings.get(name) ?? {},
     SessionView: EmbeddedSession,
   };
 

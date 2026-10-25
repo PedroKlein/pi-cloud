@@ -19,6 +19,7 @@ import {
   liveSurface,
   noticeType,
   piTerminal,
+  type PluginSettings,
   type SlashCommand,
   type ToolSpec,
 } from "@pi-cloud/protocol";
@@ -58,6 +59,7 @@ export interface SessionStream {
 
 export interface HostOptions extends SessionOptions {
   readonly plugins?: readonly SessionPlugin[];
+  readonly pluginSettings?: Readonly<Record<string, PluginSettings>>;
   readonly firstMessage?: string | null;
   readonly serverToolTimeoutMs?: number;
 }
@@ -335,6 +337,7 @@ export async function hostSession(
       },
       askQuestions: prompts.questions,
       checkouts: options.checkouts ?? [],
+      settings: options.pluginSettings?.[plugin.name] ?? {},
       request: async (path: string, init?: RequestInit) =>
         stream.pluginRequest(plugin.name, path, init),
       log: (message: string, fields?: Readonly<Record<string, unknown>>) => {

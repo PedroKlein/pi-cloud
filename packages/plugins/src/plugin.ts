@@ -8,6 +8,7 @@ import type {
   CreateSession,
   Environment,
   ModelRef,
+  PluginSettings,
   Question,
   QuestionsAnswer,
   Session,
@@ -162,7 +163,10 @@ export interface ServerPluginContext {
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly models: { readonly offer: (offer: ModelOffer) => void };
   readonly store: PluginStore;
-  // Aborted when the server stops.
+  // The plugin's settings as they are now, a default for each it declares
+  // (ADR 0036).
+  readonly settings: { readonly get: () => PluginSettings };
+  // Aborted when the server stops, or when the plugin fails to register.
   readonly signal: AbortSignal;
   readonly log: (
     message: string,
@@ -201,6 +205,8 @@ export interface SessionCloud {
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
   readonly checkouts: readonly Checkout[];
+  // The plugin's settings when the Session started (ADR 0036).
+  readonly settings: PluginSettings;
   // Sends a request to the plugin's own server routes as this Session.
   readonly request: (path: string, init?: RequestInit) => Promise<Response>;
   readonly log: (

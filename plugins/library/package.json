@@ -6,7 +6,8 @@
     "./model": "./src/model.ts",
     "./server": "./src/server.ts",
     "./session": "./src/session.ts",
-    "./web": "./web/index.tsx"
+    "./web": "./web/index.tsx",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.3.0",
@@ -18,5 +19,20 @@
   },
   "devDependencies": {
     "@types/react": "19.3.0"
+  },
+  "piCloud": {
+    "id": "library",
+    "title": "Library",
+    "description": "Files that every Session in a Project can read and add to.",
+    "settings": {
+      "fileLimitMb": {
+        "type": "number",
+        "title": "File size limit in MB",
+        "description": "The largest file a user or a Session can add to a Project's library.",
+        "default": 10,
+        "min": 1,
+        "max": 100
+      }
+    }
   }
 }

@@ -163,7 +163,55 @@ export interface Assignment {
   readonly systemPrompt: string | null;
   readonly firstMessage: string | null;
   readonly plugins: readonly string[];
+  // Each plugin's settings when the Session started (ADR 0036). Older
+  // servers leave it out, and Session parts get their defaults.
+  readonly pluginSettings?: Readonly<Record<string, PluginSettings>>;
   readonly environment: SessionEnvironment;
+}
+
+export type SettingValue = string | number | boolean | readonly string[];
+
+export type PluginSettings = Readonly<Record<string, SettingValue>>;
+
+// A setting a plugin declares in its manifest (ADR 0036).
+export type SettingSpec = {
+  readonly title: string;
+  readonly description?: string;
+} & (
+  | { readonly type: "string"; readonly default: string }
+  | {
+      readonly type: "number";
+      readonly default: number;
+      readonly min?: number;
+      readonly max?: number;
+    }
+  | { readonly type: "boolean"; readonly default: boolean }
+  | {
+      readonly type: "choice";
+      readonly options: readonly string[];
+      readonly default: string;
+    }
+  | { readonly type: "strings"; readonly default: readonly string[] }
+);
+
+// The piCloud field of a plugin's package.json (ADR 0022, ADR 0036).
+export interface PluginManifest {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly settings?: Readonly<Record<string, SettingSpec>>;
+}
+
+// A plugin as the Plugins page shows it. A failed plugin's server part threw
+// while it registered, so the plugin is off until the server restarts.
+export interface PluginInfo extends PluginManifest {
+  readonly state: "on" | "off" | "failed";
+  readonly error?: string;
+  readonly values: PluginSettings;
+}
+
+export interface PluginUpdate {
+  readonly settings: PluginSettings;
 }
 
 // A Session runs as a process on its runner's machine, or as a process in a

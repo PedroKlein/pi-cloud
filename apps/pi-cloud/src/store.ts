@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   emptyProfile,
   type ModelRef,
+  type PluginSettings,
   type ProfileContent,
   type SessionOwner,
   type SessionStatus,
@@ -127,6 +128,13 @@ create table if not exists browser_sessions (
 );
 `;
 
+const pluginTables = `
+create table if not exists plugin_settings (
+  plugin text primary key,
+  settings text not null
+);
+`;
+
 const sessionTables = `
 create table if not exists sessions (
   id text primary key,
@@ -165,6 +173,7 @@ function migrate(db: DatabaseSync): void {
   db.exec(environmentsTable);
   db.exec(profileTables);
   db.exec(authTables);
+  db.exec(pluginTables);
 
   const tokenColumns = db
     .prepare("select name from pragma_table_info('agent_tokens')")
@@ -355,6 +364,7 @@ export function openStore(
     check: () => void;
     close: () => void;
     plugin: (name: string) => PluginStore;
+    pluginSettings: PluginSettingsStore;
   } {
   if (path !== ":memory:") {
     mkdirSync(dirname(path), { recursive: true });
@@ -701,6 +711,7 @@ export function openStore(
     profileInUse: (id) => selectProfileUse.get(id) !== undefined,
     auth: authStore(db),
     plugin: (name) => pluginStore(db, name),
+    pluginSettings: pluginSettingsStore(db),
     close: () => {
       db.close();
     },
@@ -840,6 +851,37 @@ function authStore(db: DatabaseSync): AuthStore {
           joined: row.joined === 1,
         }
       );
+    },
+  };
+}
+
+// What a plugin's settings were saved as, checked against its schema when
+// read (ADR 0036).
+export interface PluginSettingsStore {
+  readonly get: (plugin: string) => unknown;
+  readonly set: (plugin: string, settings: PluginSettings) => void;
+}
+
+function pluginSettingsStore(db: DatabaseSync): PluginSettingsStore {
+  const select = db.prepare(
+    "select settings from plugin_settings where plugin = ?",
+  );
+
+  const upsert = db.prepare(
+    `insert into plugin_settings (plugin, settings) values (?, ?)
+     on conflict (plugin) do update set settings = excluded.settings`,
+  );
+
+  return {
+    get: (plugin) => {
+      const row = select.get(plugin) as { settings: string } | undefined;
+
+      return row === undefined
+        ? undefined
+        : (JSON.parse(row.settings) as unknown);
+    },
+    set: (plugin, settings) => {
+      upsert.run(plugin, JSON.stringify(settings));
     },
   };
 }

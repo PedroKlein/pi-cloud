@@ -1,46 +1,67 @@
+import askPackage from "@pi-cloud/ask/package.json";
 import { ask } from "@pi-cloud/ask/session";
+import changesPackage from "@pi-cloud/changes/package.json";
 import { changes } from "@pi-cloud/changes/session";
-import { library as librarySession } from "@pi-cloud/library/session";
+import kubernetesPackage from "@pi-cloud/kubernetes/package.json";
 import { kubernetesPlugin } from "@pi-cloud/kubernetes/server";
+import libraryPackage from "@pi-cloud/library/package.json";
 import { library } from "@pi-cloud/library/server";
-import { models as modelsSession } from "@pi-cloud/models/session";
+import { library as librarySession } from "@pi-cloud/library/session";
+import modelsPackage from "@pi-cloud/models/package.json";
 import { models } from "@pi-cloud/models/server";
+import { models as modelsSession } from "@pi-cloud/models/session";
+import projectsPackage from "@pi-cloud/projects/package.json";
 import { projects } from "@pi-cloud/projects/server";
+import subagentsPackage from "@pi-cloud/subagents/package.json";
 import { subagents } from "@pi-cloud/subagents/session";
-import type {
-  EventBus,
-  ModelOffer,
-  OfferedModels,
-  PluginRoute,
-  PluginStore,
-  ServerPlugin,
-  ServerPluginContext,
-  ServerTool,
-  ToolCaller,
-  SessionPlugin,
+import usagePackage from "@pi-cloud/usage/package.json";
+import {
+  checkedSettings,
+  type EventBus,
+  type ModelOffer,
+  type OfferedModels,
+  type PluginRoute,
+  type PluginStore,
+  type ServerPlugin,
+  type ServerPluginContext,
+  type ServerTool,
+  type SessionPlugin,
+  settingValues,
+  type ToolCaller,
 } from "@pi-cloud/plugins";
 import type {
   Actor,
+  Assignment,
   Command,
+  PluginInfo,
+  PluginManifest,
+  PluginSettings,
   Session,
   ToolCall,
   ToolSpec,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { owner, type Result, type Sessions } from "@pi-cloud/sessions";
+import {
+  owner,
+  type Result,
+  type SessionPlugins,
+  type Sessions,
+} from "@pi-cloud/sessions";
+import type { PluginSettingsStore } from "./store";
 
-// The plugins built into this binary (ADR 0015). Each app imports its own
-// parts statically, so the compiled binary needs no dynamic loading.
-export const builtInPlugins: readonly string[] = [
-  "ask",
-  "changes",
-  "usage",
-  "projects",
-  "library",
-  "models",
-  "subagents",
-  "kubernetes",
-];
+// The plugins built into this binary (ADR 0015), described by the piCloud
+// field of their package.json (ADR 0036). Each app imports its own parts
+// statically, so the compiled binary needs no dynamic loading.
+export const builtInPlugins: readonly PluginManifest[] = [
+  askPackage,
+  changesPackage,
+  usagePackage,
+  projectsPackage,
+  libraryPackage,
+  modelsPackage,
+  subagentsPackage,
+  kubernetesPackage,
+].map(({ piCloud }) => piCloud as PluginManifest);
 
 export const serverPlugins: readonly ServerPlugin[] = [
   projects,
@@ -57,14 +78,43 @@ const sessionPlugins: readonly SessionPlugin[] = [
   subagents,
 ];
 
-export function sessionPluginsNamed(
-  enabled: readonly string[],
-): readonly SessionPlugin[] {
-  return sessionPlugins.filter(({ name }) => enabled.includes(name));
+// The Session parts an assignment names, each with its settings. A server
+// from before settings sends none, so they take their defaults.
+export function sessionParts(
+  assignment: Pick<Assignment, "plugins" | "pluginSettings">,
+): {
+  readonly plugins: readonly SessionPlugin[];
+  readonly pluginSettings: Readonly<Record<string, PluginSettings>>;
+} {
+  const plugins = sessionPlugins.filter(({ name }) =>
+    assignment.plugins.includes(name),
+  );
+
+  return {
+    plugins,
+    pluginSettings: Object.fromEntries(
+      plugins.map(({ name }) => [
+        name,
+        settingValues(
+          builtInPlugins.find(({ id }) => id === name)?.settings,
+          assignment.pluginSettings?.[name],
+        ),
+      ]),
+    ),
+  };
 }
 
 export interface PluginHost {
+  // The plugins that are on, without any that failed to register.
   readonly names: readonly string[];
+  readonly list: () => readonly PluginInfo[];
+  // The plugin's new settings, what is wrong with them, or undefined when no
+  // plugin has the name.
+  readonly saveSettings: (
+    name: string,
+    settings: unknown,
+  ) => PluginInfo | string | undefined;
+  readonly sessionPlugins: () => SessionPlugins;
   readonly tools: (session: Session) => readonly ToolSpec[];
   readonly call: (session: Session, call: ToolCall) => void;
   readonly offeredModels: (environmentId: string) => OfferedModels;
@@ -110,6 +160,8 @@ export function startPlugins(
   plugins: readonly ServerPlugin[],
   enabled: readonly string[],
   deps: {
+    // What the Plugins page lists, on or not.
+    readonly manifests: readonly PluginManifest[];
     readonly sessions: Sessions;
     readonly runners: {
       readonly token: (environment: string, runner: string) => string;
@@ -117,6 +169,7 @@ export function startPlugins(
     };
     readonly events: EventBus;
     readonly store: (name: string) => PluginStore;
+    readonly settings: PluginSettingsStore;
     readonly signal: AbortSignal;
     readonly log: Log;
   },
@@ -124,45 +177,133 @@ export function startPlugins(
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
+  const failures = new Map<string, string>();
+
+  const manifest = (name: string): PluginManifest | undefined =>
+    deps.manifests.find(({ id }) => id === name);
+
+  const values = (name: string): PluginSettings =>
+    settingValues(manifest(name)?.settings, deps.settings.get(name));
+
   for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
     };
 
-    plugin.register({
-      owner,
-      tools: {
-        register: (tool) => {
-          if (tools.has(tool.name)) {
-            throw new Error(`tool ${tool.name} is already registered`);
-          }
+    // What the plugin registers is kept aside until register returns, so a
+    // plugin that throws leaves nothing behind in the host (ADR 0036).
+    const staged = {
+      tools: new Map<string, ServerTool>(),
+      route: undefined as PluginRoute | undefined,
+      offers: [] as ModelOffer[],
+      unsubscribes: [] as (() => void)[],
+    };
 
-          tools.set(tool.name, { plugin: plugin.name, tool });
+    const failed = new AbortController();
+
+    try {
+      plugin.register({
+        owner,
+        tools: {
+          register: (tool) => {
+            if (tools.has(tool.name) || staged.tools.has(tool.name)) {
+              throw new Error(`tool ${tool.name} is already registered`);
+            }
+
+            staged.tools.set(tool.name, tool);
+          },
         },
-      },
-      events: deps.events,
-      sessions: pluginSessions(deps.sessions, plugin.name),
-      environments: pluginEnvironments(deps.sessions, deps.runners),
-      routes: {
-        handle: (route) => {
-          routes.set(plugin.name, route);
+        events: {
+          publish: deps.events.publish,
+          subscribe: (type, listener) => {
+            const unsubscribe = deps.events.subscribe(type, listener);
+            staged.unsubscribes.push(unsubscribe);
+
+            return unsubscribe;
+          },
         },
-      },
-      models: {
-        offer: (offer) => {
-          offers.push(offer);
+        sessions: pluginSessions(deps.sessions, plugin.name),
+        environments: pluginEnvironments(deps.sessions, deps.runners),
+        routes: {
+          handle: (route) => {
+            staged.route = route;
+          },
         },
-      },
-      store: deps.store(plugin.name),
-      signal: deps.signal,
-      log,
-    });
+        models: {
+          offer: (offer) => {
+            staged.offers.push(offer);
+          },
+        },
+        store: deps.store(plugin.name),
+        settings: { get: () => values(plugin.name) },
+        signal: AbortSignal.any([deps.signal, failed.signal]),
+        log,
+      });
+    } catch (error) {
+      for (const unsubscribe of staged.unsubscribes) {
+        unsubscribe();
+      }
+
+      failed.abort();
+
+      const message = error instanceof Error ? error.message : String(error);
+      failures.set(plugin.name, message);
+      log("plugin failed to register", { error: message });
+
+      continue;
+    }
+
+    for (const [name, tool] of staged.tools) {
+      tools.set(name, { plugin: plugin.name, tool });
+    }
+
+    if (staged.route !== undefined) {
+      routes.set(plugin.name, staged.route);
+    }
+
+    offers.push(...staged.offers);
 
     deps.log("plugin registered", { plugin: plugin.name });
   }
 
+  const running = enabled.filter((name) => !failures.has(name));
+
+  const info = (found: PluginManifest): PluginInfo => {
+    const error = failures.get(found.id);
+    const base = { ...found, values: values(found.id) };
+
+    if (error !== undefined) {
+      return { ...base, state: "failed", error };
+    }
+
+    return { ...base, state: running.includes(found.id) ? "on" : "off" };
+  };
+
   return {
-    names: enabled,
+    names: running,
+    list: () => deps.manifests.map(info),
+    saveSettings: (name, settings) => {
+      const found = manifest(name);
+      if (found === undefined) {
+        return undefined;
+      }
+
+      const checked = checkedSettings(found.settings, settings);
+      if (typeof checked === "string") {
+        return checked;
+      }
+
+      deps.settings.set(name, checked);
+      deps.log("plugin settings saved", { plugin: name });
+
+      return info(found);
+    },
+    sessionPlugins: () => ({
+      plugins: running,
+      pluginSettings: Object.fromEntries(
+        running.map((name) => [name, values(name)]),
+      ),
+    }),
     tools: (session) =>
       [...tools.values()]
         .filter(({ tool }) => tool.appliesTo(session))

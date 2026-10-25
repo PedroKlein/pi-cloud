@@ -11,6 +11,7 @@ import { ShellMenu } from "./embedded-session";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
 import { EnvironmentsPage } from "./environments";
+import { PluginsPage } from "./plugins-page";
 import { ProfilesPage } from "./profiles";
 import {
   enabledPlugins,
@@ -123,6 +124,17 @@ export function App({
             selected={profilesRoute[1] ?? ""}
             onChange={profiles.reload}
           />
+        </div>
+      );
+    }
+
+    if (route === "plugins") {
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="p-2 md:hidden">
+            <MenuButton onMenu={openDrawer} />
+          </div>
+          <PluginsPage />
         </div>
       );
     }
