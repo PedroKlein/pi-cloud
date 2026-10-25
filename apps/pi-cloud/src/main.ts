@@ -16,7 +16,7 @@ import { runSessionProcess } from "./session-process";
 const usage = `usage:
   [PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \\
   pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
-                  [--database ~/.pi-cloud/server.db]
+                  [--database ~/.pi-cloud/server.db] [--sso-only]
                   [--plugins <folder next to the database>/plugins]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
@@ -64,6 +64,7 @@ switch (command) {
         url: { type: "string" },
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
+        "sso-only": { type: "boolean", default: false },
         plugins: { type: "string" },
         provider: { type: "string" },
         "data-dir": { type: "string", default: join(dataRoot, "server") },
@@ -91,6 +92,7 @@ switch (command) {
       ...(values.url !== undefined && { url: new URL(values.url) }),
       port: Number(values.port),
       database: values.database,
+      passwordLogin: !values["sso-only"],
       ...(secretKey !== undefined && { secretKey: parseSecretKey(secretKey) }),
       ...(values.provider !== undefined && {
         agent: {

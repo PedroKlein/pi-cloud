@@ -20,11 +20,13 @@ export function SignInPage({
   setup,
   setupToken: linkToken,
   logins,
+  passwordLogin,
 }: {
   // No user exists yet.
   readonly setup: boolean;
   readonly setupToken: string | undefined;
   readonly logins: readonly Login[];
+  readonly passwordLogin: boolean;
 }): ReactElement {
   const [error, setError] = useState<string>();
   const setupToken = setup ? linkToken : undefined;
@@ -85,41 +87,43 @@ export function SignInPage({
           ))}
         </div>
       )}
-      <form
-        onSubmit={submit}
-        className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
-      >
-        <Field label="Name">
-          <input
-            name="name"
-            required
-            autoComplete="username"
-            className={fieldClass}
-          />
-        </Field>
-        <Field label="Password">
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={setupToken === undefined ? undefined : 8}
-            autoComplete={
-              setupToken === undefined ? "current-password" : "new-password"
-            }
-            className={fieldClass}
-          />
-        </Field>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" type="submit">
-            {setupToken === undefined ? "Sign in" : "Create user"}
-          </Button>
-          {error !== undefined && (
-            <p role="alert" className="text-caption text-failed">
-              {error}
-            </p>
-          )}
-        </div>
-      </form>
+      {(passwordLogin || setupToken !== undefined) && (
+        <form
+          onSubmit={submit}
+          className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
+        >
+          <Field label="Name">
+            <input
+              name="name"
+              required
+              autoComplete="username"
+              className={fieldClass}
+            />
+          </Field>
+          <Field label="Password">
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={setupToken === undefined ? undefined : 8}
+              autoComplete={
+                setupToken === undefined ? "current-password" : "new-password"
+              }
+              className={fieldClass}
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" type="submit">
+              {setupToken === undefined ? "Sign in" : "Create user"}
+            </Button>
+            {error !== undefined && (
+              <p role="alert" className="text-caption text-failed">
+                {error}
+              </p>
+            )}
+          </div>
+        </form>
+      )}
     </main>
   );
 }

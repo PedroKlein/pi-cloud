@@ -103,6 +103,16 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
   --set apiRule.enabled=true --set apiRule.host=pi-cloud.<cluster domain>
 ```
 
+To sign in through an OpenID Connect provider, such as SAP IAS ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as a redirect URI with the provider and make the ID token carry a `groups` claim. Put the client secret, if the provider gives you one, in a Secret and set `oidc.existingSecret`:
+
+```sh
+kubectl -n pi-cloud create secret generic pi-cloud-oidc --from-literal=clientSecret=<secret>
+helm upgrade pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --reuse-values \
+  --set oidc.existingSecret=pi-cloud-oidc
+```
+
+Then set the issuer, client ID and groups on the Plugins page, under Single sign-on. Members of the access group get a user on their first sign-in, and members of the admin group can change plugins. Link your own user from Settings first, then `oidc.ssoOnly=true` turns the password login off.
+
 Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
 The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, turn on runner pods in its Kubernetes section on the Environments page, or save its settings:

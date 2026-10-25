@@ -18,6 +18,7 @@ const status = await fetch("/api/auth")
         readonly user: unknown;
         readonly setup: boolean;
         readonly logins: readonly Login[];
+        readonly passwordLogin: boolean;
       },
   )
   .catch(() => undefined);
@@ -32,6 +33,7 @@ if (status === undefined) {
       setup={status.setup}
       setupToken={setupToken}
       logins={status.logins}
+      passwordLogin={status.passwordLogin}
     />,
   );
 } else {

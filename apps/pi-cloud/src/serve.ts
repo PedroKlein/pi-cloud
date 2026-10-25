@@ -39,6 +39,8 @@ export interface ServeOptions {
   readonly database: string;
   // Encrypts Environment secrets; a file next to the database when unset.
   readonly secretKey?: Buffer;
+  // False leaves only the setup link and plugin logins, such as OIDC.
+  readonly passwordLogin?: boolean;
   readonly sessions?: SessionsOptions;
   readonly agent?: Omit<
     AgentOptions,
@@ -104,7 +106,7 @@ export function serve(options: ServeOptions): {
   });
 
   const pluginsStop = new AbortController();
-  const auth = new Auth(store.auth);
+  const auth = new Auth(store.auth, options.passwordLogin);
 
   const pluginHost = startPlugins(plugins, enabled, {
     manifests: known,

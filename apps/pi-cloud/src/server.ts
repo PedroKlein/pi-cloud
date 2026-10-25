@@ -903,6 +903,13 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
         const credentials = credentialsOf(fieldsOf(await readJson(request)));
         const user = await auth.signIn(credentials);
 
+        if (user === "off") {
+          return Response.json(
+            { error: "password_login_off" },
+            { status: 403 },
+          );
+        }
+
         if (user === "locked") {
           log("sign-in locked", { name: credentials.name });
 

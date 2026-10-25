@@ -75,6 +75,8 @@ export interface AuthStatus {
   readonly user: User | null;
   // No user exists yet, so the setup link creates the first one.
   readonly setup: boolean;
+  // Off when people sign in only through a plugin, such as OIDC.
+  readonly passwordLogin: boolean;
 }
 
 export interface Credentials {
@@ -99,9 +101,11 @@ export class Auth {
   readonly #failures = new Map<string, { count: number; since: number }>();
   readonly #ownTokens = new Map<string, Agent>();
   #setupToken: string | undefined;
+  readonly #passwordLogin: boolean;
 
-  constructor(store: AuthStore) {
+  constructor(store: AuthStore, passwordLogin = true) {
     this.#store = store;
+    this.#passwordLogin = passwordLogin;
 
     this.#setupToken =
       store.userCount() === 0
@@ -128,6 +132,7 @@ export class Auth {
     return {
       user: this.userOf(request) ?? null,
       setup: this.#store.userCount() === 0,
+      passwordLogin: this.#passwordLogin,
     };
   }
 
@@ -165,7 +170,11 @@ export class Auth {
   async signIn({
     name,
     password,
-  }: Credentials): Promise<User | "wrong" | "locked"> {
+  }: Credentials): Promise<User | "wrong" | "locked" | "off"> {
+    if (!this.#passwordLogin) {
+      return "off";
+    }
+
     if (name.length > maxNameLength || password.length > maxPasswordLength) {
       return "wrong";
     }

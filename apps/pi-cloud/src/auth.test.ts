@@ -20,10 +20,14 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function start(database: string): ReturnType<typeof serve> {
+function start(
+  database: string,
+  passwordLogin?: boolean,
+): ReturnType<typeof serve> {
   return serve({
     port: 0,
     database,
+    ...(passwordLogin !== undefined && { passwordLogin }),
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
     },
@@ -66,6 +70,7 @@ test("creates the first user from the one-time setup link and signs them in", as
   expect(await (await get("/api/auth")).json()).toEqual({
     user: null,
     setup: true,
+    passwordLogin: true,
     logins: [],
   });
 
@@ -81,6 +86,7 @@ test("creates the first user from the one-time setup link and signs them in", as
   expect(await (await get("/api/auth", cookieOf(created))).json()).toEqual({
     user: { id: expect.any(String) as string, name: "pedro", admin: true },
     setup: false,
+    passwordLogin: true,
     logins: [],
   });
 
@@ -221,4 +227,23 @@ test("keeps users and browser sessions across a restart, with no new setup link"
 
   expect(logs.some((line) => line.includes("#setup/"))).toBe(false);
   expect((await get("/api/sessions", cookie)).status).toBe(200);
+});
+
+test("refuses passwords when only single sign-on is on, but keeps the setup link", async () => {
+  await server?.stop();
+  server = start(":memory:", false);
+
+  const created = await post("/api/auth/setup", {
+    ...pedro,
+    token: setupTokenOf(logs),
+  });
+
+  const login = await post("/api/auth/login", pedro);
+
+  expect([created.status, login.status]).toEqual([201, 403]);
+  expect(await login.json()).toEqual({ error: "password_login_off" });
+
+  expect(await (await get("/api/auth")).json()).toMatchObject({
+    passwordLogin: false,
+  });
 });

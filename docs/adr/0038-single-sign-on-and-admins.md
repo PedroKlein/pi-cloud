@@ -40,6 +40,6 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 
 - Pi Cloud can sit behind a company identity provider, and MFA comes from the provider's own rules.
 - Everyone in the access group sees every Session, Environment and secret until v3 brings roles and per-user ownership, so the group should hold only the people who would get the password.
-- The password login stays on. Turning it off for a public host is its own change.
+- The server's `--sso-only` flag (`oidc.ssoOnly` in the Helm chart) turns the password login off, for a public host. The setup link still works, so the first user can link their provider account from Settings.
 - A sign-in started before a restart has to start again, since its state lives in memory.
 - Sessions still act as the installation's owner, not as the user who started them, so a meta-session can't do anything that needs an admin.
