@@ -34,19 +34,21 @@ import {
   type ToolCaller,
   type Toolset,
 } from "@pi-cloud/plugins";
-import type {
-  Actor,
-  Assignment,
-  Command,
-  PluginInfo,
-  PluginManifest,
-  PluginSettings,
-  Session,
-  ToolCall,
-  ToolNamespace,
-  ToolResult,
-  ToolSpec,
-  UiAction,
+import {
+  type Actor,
+  type Assignment,
+  type Capability,
+  capabilities,
+  type Command,
+  type PluginInfo,
+  type PluginManifest,
+  type PluginSettings,
+  type Session,
+  type ToolCall,
+  type ToolNamespace,
+  type ToolResult,
+  type ToolSpec,
+  type UiAction,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import {
@@ -139,6 +141,11 @@ export interface PluginHost {
     name: string,
     settings: unknown,
   ) => PluginInfo | string | undefined;
+  // Turns an installed plugin on or off for the next start.
+  readonly turnOn: (
+    name: string,
+    on: boolean,
+  ) => Promise<PluginInfo | string | undefined>;
   readonly sessionPlugins: () => SessionPlugins;
   readonly profile: (id: string) => PluginProfile | undefined;
   readonly profileIds: () => readonly string[];
@@ -208,6 +215,7 @@ export function startPlugins(
     readonly toolsets: readonly Toolset[];
     // Handles a toolset tool's request as the user.
     readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+    readonly installed?: InstalledPlugins;
     readonly signal: AbortSignal;
     readonly log: Log;
   },
@@ -217,7 +225,23 @@ export function startPlugins(
   const toolsetUsers = new Set<string>();
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
-  const failures = new Map<string, string>();
+
+  const failures = new Map<string, string>(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, error }) =>
+      error === undefined ? [] : [[id, error] as const],
+    ),
+  );
+
+  const installedIds = new Set(
+    deps.installed?.plugins.map(({ manifest: { id } }) => id),
+  );
+
+  const switchedOn = new Set(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, on }) =>
+      on ? [id] : [],
+    ),
+  );
+
   const profiles = new Map<string, PluginProfile>();
   const loaded = new Map<string, readonly string[]>();
 
@@ -281,81 +305,89 @@ export function startPlugins(
     const stagedTaken = (name: string): boolean =>
       taken(name) || staged.tools.has(name) || staged.routeTools.has(name);
 
+    const declared = installedIds.has(plugin.name)
+      ? (manifest(plugin.name)?.capabilities ?? [])
+      : capabilities;
+
     try {
-      plugin.register({
-        owner,
-        tools: {
-          register: (tool) => {
-            if (stagedTaken(tool.name)) {
-              throw new Error(`tool ${tool.name} is already registered`);
-            }
-
-            staged.tools.set(tool.name, tool);
-          },
-        },
-        toolsets: {
-          register: (toolset) => {
-            const taker = namespaces.get(toolset.namespace.name);
-            if (taker !== undefined && taker !== plugin.name) {
-              throw new Error(
-                `toolset ${toolset.namespace.name} belongs to ${taker}`,
-              );
-            }
-
-            staged.namespaces.add(toolset.namespace.name);
-
-            for (const tool of toolsetTools(toolset, plugin.name)) {
-              if (stagedTaken(tool.spec.name)) {
-                throw new Error(`tool ${tool.spec.name} is already registered`);
+      plugin.register(
+        limited(plugin.name, declared, {
+          owner,
+          tools: {
+            register: (tool) => {
+              if (stagedTaken(tool.name)) {
+                throw new Error(`tool ${tool.name} is already registered`);
               }
 
-              staged.routeTools.set(tool.spec.name, tool);
-            }
+              staged.tools.set(tool.name, tool);
+            },
           },
-          loadInOwnSessions: () => {
-            staged.loadsToolsets = true;
-          },
-        },
-        events: {
-          publish: deps.events.publish,
-          subscribe: (type, listener) => {
-            const unsubscribe = deps.events.subscribe(type, listener);
-            staged.unsubscribes.push(unsubscribe);
+          toolsets: {
+            register: (toolset) => {
+              const taker = namespaces.get(toolset.namespace.name);
+              if (taker !== undefined && taker !== plugin.name) {
+                throw new Error(
+                  `toolset ${toolset.namespace.name} belongs to ${taker}`,
+                );
+              }
 
-            return unsubscribe;
+              staged.namespaces.add(toolset.namespace.name);
+
+              for (const tool of toolsetTools(toolset, plugin.name)) {
+                if (stagedTaken(tool.spec.name)) {
+                  throw new Error(
+                    `tool ${tool.spec.name} is already registered`,
+                  );
+                }
+
+                staged.routeTools.set(tool.spec.name, tool);
+              }
+            },
+            loadInOwnSessions: () => {
+              staged.loadsToolsets = true;
+            },
           },
-        },
-        sessions: pluginSessions(deps.sessions, plugin.name, (names) => {
-          staged.loadOnly = names;
+          events: {
+            publish: deps.events.publish,
+            subscribe: (type, listener) => {
+              const unsubscribe = deps.events.subscribe(type, listener);
+              staged.unsubscribes.push(unsubscribe);
+
+              return unsubscribe;
+            },
+          },
+          sessions: pluginSessions(deps.sessions, plugin.name, (names) => {
+            staged.loadOnly = names;
+          }),
+          environments: pluginEnvironments(deps.sessions, deps.runners),
+          profiles: {
+            provide: (key, { name: _name, ...content }) => {
+              const id = `${plugin.name}.${key}`;
+
+              staged.profiles.set(id, {
+                plugin: plugin.name,
+                profile: { id, ...content },
+              });
+
+              return id;
+            },
+          },
+          routes: {
+            handle: (route) => {
+              staged.route = route;
+            },
+          },
+          models: {
+            offer: (offer) => {
+              staged.offers.push(offer);
+            },
+          },
+          store: deps.store(plugin.name),
+          settings: { get: () => values(plugin.name) },
+          signal: AbortSignal.any([deps.signal, failed.signal]),
+          log,
         }),
-        environments: pluginEnvironments(deps.sessions, deps.runners),
-        profiles: {
-          provide: (key, { name: _name, ...content }) => {
-            const id = `${plugin.name}.${key}`;
-
-            staged.profiles.set(id, {
-              plugin: plugin.name,
-              profile: { id, ...content },
-            });
-
-            return id;
-          },
-        },
-        routes: {
-          handle: (route) => {
-            staged.route = route;
-          },
-        },
-        models: {
-          offer: (offer) => {
-            staged.offers.push(offer);
-          },
-        },
-        store: deps.store(plugin.name),
-        settings: { get: () => values(plugin.name) },
-        signal: AbortSignal.any([deps.signal, failed.signal]),
-        log,
-      });
+      );
     } catch (error) {
       for (const unsubscribe of staged.unsubscribes) {
         unsubscribe();
@@ -407,7 +439,16 @@ export function startPlugins(
 
   const info = (found: PluginManifest): PluginInfo => {
     const error = failures.get(found.id);
-    const base = { ...found, values: values(found.id) };
+    const installed = installedIds.has(found.id);
+
+    const base = {
+      ...found,
+      source: installed ? "installed" : "built-in",
+      turnedOn: installed
+        ? switchedOn.has(found.id)
+        : enabled.includes(found.id),
+      values: values(found.id),
+    } as const;
 
     if (error !== undefined) {
       return { ...base, state: "failed", error };
@@ -432,6 +473,33 @@ export function startPlugins(
 
       deps.settings.set(name, checked);
       deps.log("plugin settings saved", { plugin: name });
+
+      return info(found);
+    },
+    turnOn: async (name, on) => {
+      const found = manifest(name);
+      if (found === undefined) {
+        return undefined;
+      }
+
+      if (deps.installed === undefined || !installedIds.has(name)) {
+        return "only an installed plugin can be turned on or off here";
+      }
+
+      const error = failures.get(name);
+      if (on && error !== undefined && !switchedOn.has(name)) {
+        return `fix its manifest first: ${error}`;
+      }
+
+      await deps.installed.turnOn(name, on);
+
+      if (on) {
+        switchedOn.add(name);
+      } else {
+        switchedOn.delete(name);
+      }
+
+      deps.log("plugin turned on or off", { plugin: name, on });
 
       return info(found);
     },
@@ -821,4 +889,36 @@ function sendResult(
   }, resultRetryMs);
 
   deps.signal.addEventListener("abort", stop);
+}
+
+export interface InstalledPlugins {
+  readonly plugins: readonly {
+    readonly manifest: PluginManifest;
+    readonly on: boolean;
+    readonly error?: string;
+  }[];
+  readonly turnOn: (id: string, on: boolean) => Promise<void>;
+}
+
+// An installed plugin reaches only the parts of its context it declared, so a
+// mistake shows when it registers. It isn't a sandbox: the plugin runs in the
+// server's process (ADR 0022).
+function limited(
+  plugin: string,
+  declared: readonly Capability[],
+  context: ServerPluginContext,
+): ServerPluginContext {
+  return new Proxy(context, {
+    get: (target, key, receiver) => {
+      const capability = capabilities.find((each) => each === key);
+
+      if (capability !== undefined && !declared.includes(capability)) {
+        throw new Error(
+          `${plugin} uses ${capability} without declaring it in piCloud.capabilities`,
+        );
+      }
+
+      return Reflect.get(target, key, receiver) as unknown;
+    },
+  });
 }

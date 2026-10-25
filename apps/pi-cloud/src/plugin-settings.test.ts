@@ -134,7 +134,13 @@ test("saves a plugin's settings, refusing values that don't fit", async () => {
   ).json()) as PluginInfo[];
 
   expect(listed).toEqual([
-    { ...greeter, state: "on", values: { greeting: "hello", times: 1 } },
+    {
+      ...greeter,
+      source: "built-in",
+      state: "on",
+      turnedOn: true,
+      values: { greeting: "hello", times: 1 },
+    },
   ]);
 
   const refused = await api("PATCH", "/api/plugins/greeter", {

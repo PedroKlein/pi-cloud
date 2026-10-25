@@ -264,10 +264,16 @@ export function createHandler(
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
       async (request, [name = ""]) => {
-        const saved = plugins.saveSettings(
-          name,
-          fieldsOf(await readJson(request))["settings"],
-        );
+        const { settings, enabled } = fieldsOf(await readJson(request));
+
+        if (enabled !== undefined && typeof enabled !== "boolean") {
+          throw new BadRequest("enabled must be true or false");
+        }
+
+        const saved =
+          enabled === undefined
+            ? plugins.saveSettings(name, settings)
+            : await plugins.turnOn(name, enabled);
 
         if (typeof saved === "string") {
           throw new BadRequest(saved);

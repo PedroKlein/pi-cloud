@@ -65,7 +65,7 @@ Options:
 ```text
 [PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \
 pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
-                [--database ~/.pi-cloud/server.db]
+                [--database ~/.pi-cloud/server.db] [--plugins ~/.pi-cloud/plugins]
                 [--provider <name> [--data-dir ~/.pi-cloud/server]
                 [--folder <path>]... [--extension <path>]...]
 PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \
@@ -76,6 +76,8 @@ pi-cloud agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
 ```
 
 `--host` is the address the server listens on; use `0.0.0.0` behind a proxy or in a container. `--url` is where people open it, when that differs, so the setup link points there. `--provider` also runs an agent inside the server, in the Environment of that name, which needs no key.
+
+`--plugins` is the folder for installed plugins, next to the database by default ([ADR 0022](docs/adr/0022-plugin-model-v2.md#installing-third-party-plugins)). Each plugin is a folder named by its id, holding a `package.json` with a `piCloud` field: `id`, `title`, `description`, `engine` (1), `capabilities`, and `parts.server`. An installed plugin starts turned off and none of its code runs. Turn it on on the Plugins page; that takes effect when the server next starts, and `enabled.json` in the folder lists the ones turned on. Its server part only gets the parts of the plugin context its `capabilities` name: `tools`, `toolsets`, `events`, `sessions`, `environments`, `profiles`, `routes` and `models`.
 
 An agent joins the pool of the Environment whose key it holds, under its `--name`, and gets a token of its own for everything else ([ADR 0033](docs/adr/0033-v2-authentication-and-order.md)). Each session it starts gets a token too, which reaches only that session. Replace key on the Environments page lets go of every agent that joined with the old key; start them again with the new one. The agent reads the key from `PI_CLOUD_KEY` and removes it from what its sessions inherit. A runner that a plugin starts, such as a Kubernetes pod, gets a token in `PI_CLOUD_TOKEN` instead, and `--exit-when-idle <seconds>` stops it once it has run no session for that long. Tests of the built binary set `PI_CLOUD_FAUX_REPLY` so every turn answers with that text and no model provider is needed.
 

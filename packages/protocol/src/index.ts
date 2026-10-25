@@ -197,24 +197,54 @@ export type SettingSpec = {
   | { readonly type: "strings"; readonly default: readonly string[] }
 );
 
+// What an installed plugin's server part may reach on its context besides
+// its own store, settings, signal and log (ADR 0022). Built-in plugins reach
+// all of it.
+export const capabilities = [
+  "tools",
+  "toolsets",
+  "events",
+  "sessions",
+  "environments",
+  "profiles",
+  "routes",
+  "models",
+] as const;
+
+export type Capability = (typeof capabilities)[number];
+
+// The plugin interface an installed plugin is written for. It changes only
+// when something a plugin can reach goes away or changes meaning (ADR 0036).
+export const pluginEngine = 1;
+
 // The piCloud field of a plugin's package.json (ADR 0022, ADR 0036).
 export interface PluginManifest {
   readonly id: string;
   readonly title: string;
   readonly description: string;
   readonly settings?: Readonly<Record<string, SettingSpec>>;
+  readonly version?: string;
+  readonly engine?: number;
+  // Paths inside the plugin's folder.
+  readonly parts?: { readonly server?: string };
+  readonly capabilities?: readonly Capability[];
 }
 
 // A plugin as the Plugins page shows it. A failed plugin's server part threw
-// while it registered, so the plugin is off until the server restarts.
+// while it loaded or registered, so the plugin is off until the server
+// restarts. turnedOn is whether it will be on after the next restart.
 export interface PluginInfo extends PluginManifest {
+  readonly source: "built-in" | "installed";
   readonly state: "on" | "off" | "failed";
+  readonly turnedOn: boolean;
   readonly error?: string;
   readonly values: PluginSettings;
 }
 
 export interface PluginUpdate {
-  readonly settings: PluginSettings;
+  readonly settings?: PluginSettings;
+  // Only an installed plugin can be turned on or off here.
+  readonly enabled?: boolean;
 }
 
 // A Session runs as a process on its runner's machine, or as a process in a
