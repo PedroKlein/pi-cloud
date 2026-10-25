@@ -25,12 +25,22 @@ export async function bundleServerPart(
 
   if (!result.success || output === undefined) {
     throw new Error(
-      `${basename(entry)} doesn't build: ${result.logs.map(String).join("\n")}`,
+      `${basename(entry)} doesn't build: ${result.logs.map(described).join("\n")}`,
     );
   }
 
   return output.path;
 }
+
+function described(log: BuildMessage | ResolveMessage): string {
+  const { position, message } = log;
+
+  return position === null
+    ? message
+    : `${position.file}:${String(position.line)}:${String(position.column)}: ${message}`;
+}
+
+const installTimeoutMs = 2 * 60_000;
 
 async function installDependencies(folder: string): Promise<void> {
   const { dependencies } = JSON.parse(
@@ -42,18 +52,27 @@ async function installDependencies(folder: string): Promise<void> {
   }
 
   // BUN_BE_BUN makes the compiled server act as the bun CLI, so installing
-  // needs no npm on the machine.
-  const install = Bun.spawn([process.execPath, "install"], {
+  // needs no npm on the machine. The server waits for this before it
+  // listens, so a registry that never answers can't hold it forever, and the
+  // plugin's own scripts don't run on every start.
+  const install = Bun.spawn([process.execPath, "install", "--ignore-scripts"], {
     cwd: folder,
     env: { ...process.env, BUN_BE_BUN: "1" },
     stdout: "ignore",
     stderr: "pipe",
+    timeout: installTimeoutMs,
   });
 
   const [code, errors] = await Promise.all([
     install.exited,
     new Response(install.stderr).text(),
   ]);
+
+  if (install.signalCode !== null) {
+    throw new Error(
+      `installing its dependencies took longer than ${String(installTimeoutMs / 60_000)} minutes`,
+    );
+  }
 
   if (code !== 0) {
     throw new Error(`installing its dependencies failed: ${errors.trim()}`);

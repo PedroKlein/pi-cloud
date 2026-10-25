@@ -287,7 +287,7 @@ test("starts with every installed plugin off when enabled.json is broken", async
   expect(await listed("hello")).toMatchObject({ state: "off" });
 });
 
-test("builds a plugin with its dependencies before running it", async () => {
+test("builds a plugin with its dependencies, without its scripts, before running it", async () => {
   await writePlugin("greeter");
 
   const folder = join(plugins, "greeter");
@@ -312,6 +312,7 @@ test("builds a plugin with its dependencies before running it", async () => {
     JSON.stringify({
       ...manifest,
       dependencies: { greeting: "file:./vendor/greeting" },
+      scripts: { prepare: "exit 3" },
     }),
   );
 
@@ -362,4 +363,5 @@ test("shows why a plugin doesn't build", async () => {
 
   expect(broken?.state).toBe("failed");
   expect(broken?.error).toContain("server.ts doesn't build");
+  expect(broken?.error).toMatch(/broken\/server\.ts:1:\d+: /);
 });
