@@ -68,7 +68,7 @@ async function poll(): Promise<{ readonly start: readonly Assignment[] }> {
     fetch(new URL("/agent/work", server.url), {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "2",
+        "pi-cloud-protocol": "3",
         authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
@@ -317,7 +317,7 @@ test("keeps a repository trust answer for the next Session in it", async () => {
     {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "2",
+        "pi-cloud-protocol": "3",
         authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },

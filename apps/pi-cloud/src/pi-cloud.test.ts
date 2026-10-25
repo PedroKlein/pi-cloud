@@ -21,12 +21,13 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type {
-  CreateSession,
-  Environment,
-  Session,
-  SessionEvent,
-  Work,
+import {
+  type CreateSession,
+  type Environment,
+  protocolVersion,
+  type Session,
+  type SessionEvent,
+  type Work,
 } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
@@ -684,7 +685,7 @@ async function asAgent(
   provider: string,
   path: string,
   body?: unknown,
-  version = "2",
+  version = String(protocolVersion),
 ): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
@@ -2255,7 +2256,7 @@ test("accepts a runner's calls under Docker's host name with its token alone", a
       await fetch(new URL(path, server.url), {
         headers: {
           host,
-          "pi-cloud-protocol": "2",
+          "pi-cloud-protocol": "3",
           ...(token !== undefined && { authorization: `Bearer ${token}` }),
         },
       })
@@ -2345,7 +2346,7 @@ test("does not let a host take another session's terminal", async () => {
 
   const response = await fetch(url, {
     headers: {
-      "pi-cloud-protocol": "2",
+      "pi-cloud-protocol": "3",
       authorization: `Bearer ${await runners.token("laptop")}`,
       ...webSocketUpgrade,
     },

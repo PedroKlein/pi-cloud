@@ -17,6 +17,7 @@
     "@pi-cloud/changes": "workspace:*",
     "@pi-cloud/kubernetes": "workspace:*",
     "@pi-cloud/library": "workspace:*",
+    "@pi-cloud/meta": "workspace:*",
     "@pi-cloud/models": "workspace:*",
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/profiles": "workspace:*",

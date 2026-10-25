@@ -130,6 +130,9 @@ export interface ServerPluginContext {
       ownerKey: string,
       options?: { readonly archived?: boolean },
     ) => readonly Session[];
+    // The Session plugins that load in the Sessions this plugin owns, by
+    // name. All of them load until the plugin says.
+    readonly loadOnly: (plugins: readonly string[]) => void;
     // Takes ownership of a Session started before owners existed.
     readonly adopt: (id: string, ownerKey: string) => void;
     // Archive or bring back a Session this plugin owns, such as every
@@ -228,6 +231,8 @@ export interface SessionCloud {
 
 export interface SessionPlugin {
   readonly name: string;
+  // Loads only in the Sessions the server plugin of the same name owns.
+  readonly ownSessionsOnly?: boolean;
   readonly extension?: (cloud: SessionCloud) => ExtensionFactory;
   // Pi packages, such as npm:<name>@<version>, loaded in every Session. Pi
   // installs each on first use. A user's own extension that registers the same
