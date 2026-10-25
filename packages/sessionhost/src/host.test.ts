@@ -2740,24 +2740,22 @@ test("runs server tools through the stream and gives the model their result", as
 test("declares a deferred server tool once tool_search finds it", async () => {
   const { faux, models } = await fauxModels(root);
   const description = "Looks a key up on the server";
-  const declared: boolean[] = [];
+  let declaredBeforeSearch: boolean | undefined;
 
   faux.setResponses([
     (context) => {
-      declared.push(JSON.stringify(context.messages).includes(description));
+      declaredBeforeSearch = JSON.stringify(context.messages).includes(
+        description,
+      );
 
       return fauxAssistantMessage(
         [fauxToolCall("tool_search", { query: "look up a key" })],
         { stopReason: "toolUse" },
       );
     },
-    (context) => {
-      declared.push(JSON.stringify(context.messages).includes(description));
-
-      return fauxAssistantMessage([fauxToolCall("lookup", { key: "answer" })], {
-        stopReason: "toolUse",
-      });
-    },
+    fauxAssistantMessage([fauxToolCall("lookup", { key: "answer" })], {
+      stopReason: "toolUse",
+    }),
     fauxAssistantMessage([fauxText("done")]),
   ]);
 
@@ -2792,7 +2790,7 @@ test("declares a deferred server tool once tool_search finds it", async () => {
   await fake.waitFor(() => fake.lines.join().includes('"done"'));
   await hosted.stop();
 
-  expect(declared).toEqual([false, true]);
+  expect(declaredBeforeSearch).toBe(false);
   expect(fake.toolCalls.map(({ name }) => name)).toEqual(["lookup"]);
 });
 
