@@ -75,7 +75,7 @@ The kernel already has most of the pieces. Server tools pick their Sessions with
 
 ### Build order
 
-Meta-sessions are built next, before automations. [ADR 0033](0033-v2-authentication-and-order.md#build-order) gains them as step 5. In-place plugins need third-party install, which isn't built yet, so both come in step 6 (decided 2026-10-25), and automations move to step 7. Automation plugins are then designed with their meta toolsets and UI actions from the start. Projects, Environments and Profiles get the first toolsets.
+Meta-sessions are built next, before automations. [ADR 0033](0033-v2-authentication-and-order.md#build-order) gains them as step 5. In-place plugins need third-party install, which isn't built yet, so both come in step 6 (decided 2026-10-25), and automations move to step 7 (amended 2026-10-25: automations then left v2, see ADR 0033). Automation plugins are designed with their meta toolsets and UI actions from the start. Projects, Environments and Profiles get the first toolsets.
 
 ## Consequences
 

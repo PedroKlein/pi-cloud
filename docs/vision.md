@@ -53,7 +53,7 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 - Pi Cloud on SAP's Kyma as a container image and a Helm chart, with HTTPS in Kyma's gateway ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
 - A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
 
-v2 is built in this order: Profiles, Environments as pools, authentication, Kubernetes, meta-sessions ([ADR 0035](adr/0035-meta-sessions.md)), then automation plugins such as Jobs, AI workflows and software factories, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
+v2 is built in this order: Profiles, Environments as pools, authentication, Kubernetes, meta-sessions ([ADR 0035](adr/0035-meta-sessions.md)), then third-party and in-place plugins, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 
 ### v3: a team's control center
 
@@ -68,7 +68,7 @@ The scope of v3 is designed once v2 is under way.
 
 ### Later
 
-Enforced network policy, brokered secrets and hardened runtimes ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)), and everything else under "Expected evolution" below.
+Automation plugins such as Jobs, AI workflows and software factories ([ADR 0033](adr/0033-v2-authentication-and-order.md#build-order)). Enforced network policy, brokered secrets and hardened runtimes ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)). And everything else under "Expected evolution" below.
 
 ## Product model
 
