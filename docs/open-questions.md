@@ -108,6 +108,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Resolved: a Session may propose a plugin but only the user enables it, and third-party plugins install turned off ([ADR 0022](adr/0022-plugin-model-v2.md#installing-third-party-plugins)).
 - Resolved for v2: plugins are installed and turned on for the whole installation, and changing them restarts the server; each user's Pi personalization stays in their Profile ([ADR 0022](adr/0022-plugin-model-v2.md#plugins-are-per-installation)).
 - Resolved for v2: third-party web parts run in the page like first-party ones, with no sandboxed iframe ([ADR 0022](adr/0022-plugin-model-v2.md#trust)).
+- Resolved for v2: Pi Cloud is changed from chat in meta-sessions, which run on a built-in read-only Profile, get toolsets that plugins contribute, ask before risky calls and can drive the UI; the same toolsets are served over MCP, and a meta-session can write in-place plugins ([ADR 0035](adr/0035-meta-sessions.md)). How a meta-session's powers vary per user is left for v3.
 - Is an integrated browser still wanted, and if so as a preview iframe the agent drives through an injected script, or in a desktop app? The CDP screencast was rejected ([ADR 0022](adr/0022-plugin-model-v2.md#no-browser-plugin-yet)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - Resolved for v2: a plugin declares `capabilities` and `requires` in its manifest; the exact capability names are open ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest)).

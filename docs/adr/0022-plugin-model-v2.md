@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server)
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md))
 - Date: 2026-10-22
 
 ## Context
@@ -99,6 +99,7 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 ### Installing third-party plugins
 
 - A plugin is installed from a git URL or a tarball into the data directory, pinned to the version it resolved to.
+- A plugin can also live in a local plugins folder in the data directory, written in place by a meta-session or by hand, like Pi's local extensions ([ADR 0035](0035-meta-sessions.md#in-place-plugins)). It isn't pinned and starts turned off like the others.
 - Install and enable are separate steps. A third-party plugin starts turned off, and only the user turns it on, like Obsidian's Restricted mode. A Session may propose a plugin but can't enable one.
 - Server parts are loaded with a dynamic `import()` from the data directory. Whether a compiled Bun binary can import files from outside itself must be checked when this is built.
 - Web parts are built as ES modules that leave `react`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` external. The shell serves an import map for them, so every plugin shares the app's React and design system.

@@ -1,6 +1,6 @@
 # 0031: Profiles
 
-- Status: accepted
+- Status: accepted, amended 2026-10-25 (a built-in read-only meta Profile for meta-sessions, [ADR 0035](0035-meta-sessions.md))
 - Date: 2026-10-24
 
 ## Context
@@ -21,6 +21,7 @@ The earlier docs planned versioned Profiles: each change makes a revision, and a
   - MCP servers;
   - Pi settings, such as the default model and thinking level.
 - A Profile has an `ownerId`, like every other record ([ADR 0015](0015-plugins.md#actors-and-owners)).
+- Pi Cloud ships one built-in Profile users can't edit, the meta Profile. Every meta-session runs on it, and only meta-sessions do ([ADR 0035](0035-meta-sessions.md)). It is picked by the meta-session itself, never by the order below.
 - A Profile has no revisions. It works like Pi's agent directory: a Session's Pi process loads what the Profile holds when it starts, and loads it again when it restarts.
 
 ### Sessions and Profiles
