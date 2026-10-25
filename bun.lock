@@ -27,6 +27,7 @@
         "@earendil-works/pi-coding-agent": "1.3.0",
         "@pi-cloud/ask": "workspace:*",
         "@pi-cloud/changes": "workspace:*",
+        "@pi-cloud/kubernetes": "workspace:*",
         "@pi-cloud/library": "workspace:*",
         "@pi-cloud/models": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
@@ -151,6 +152,13 @@
       },
       "devDependencies": {
         "@types/react": "19.3.0",
+      },
+    },
+    "plugins/kubernetes": {
+      "name": "@pi-cloud/kubernetes",
+      "dependencies": {
+        "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/protocol": "workspace:*",
       },
     },
     "plugins/library": {
@@ -380,6 +388,8 @@
     "@pi-cloud/ask": ["@pi-cloud/ask@workspace:plugins/ask"],
 
     "@pi-cloud/changes": ["@pi-cloud/changes@workspace:plugins/changes"],
+
+    "@pi-cloud/kubernetes": ["@pi-cloud/kubernetes@workspace:plugins/kubernetes"],
 
     "@pi-cloud/library": ["@pi-cloud/library@workspace:plugins/library"],
 

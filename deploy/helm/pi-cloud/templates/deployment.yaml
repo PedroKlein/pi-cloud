@@ -21,6 +21,11 @@ spec:
         sidecar.istio.io/inject: "true"
         {{- end }}
     spec:
+      {{- if .Values.runnerPods.enabled }}
+      serviceAccountName: {{ .Release.Name }}
+      {{- else }}
+      automountServiceAccountToken: false
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -46,6 +51,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "pi-cloud.secretName" . }}
                   key: secretKey
+            {{- if .Values.runnerPods.enabled }}
+            - name: PI_CLOUD_IMAGE
+              value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            - name: PI_CLOUD_RUNNER_URL
+              value: "http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}"
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 7420

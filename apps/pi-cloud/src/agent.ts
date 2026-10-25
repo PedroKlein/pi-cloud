@@ -634,6 +634,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     },
   }).finally(() => {
     idle.stop();
+    clearInterval(relisting);
   });
 
   log("stopping sessions", { count: hosted.size });

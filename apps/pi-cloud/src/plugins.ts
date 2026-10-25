@@ -1,6 +1,7 @@
 import { ask } from "@pi-cloud/ask/session";
 import { changes } from "@pi-cloud/changes/session";
 import { library as librarySession } from "@pi-cloud/library/session";
+import { kubernetesPlugin } from "@pi-cloud/kubernetes/server";
 import { library } from "@pi-cloud/library/server";
 import { models as modelsSession } from "@pi-cloud/models/session";
 import { models } from "@pi-cloud/models/server";
@@ -38,12 +39,14 @@ export const builtInPlugins: readonly string[] = [
   "library",
   "models",
   "subagents",
+  "kubernetes",
 ];
 
 export const serverPlugins: readonly ServerPlugin[] = [
   projects,
   library,
   models,
+  kubernetesPlugin,
 ];
 
 const sessionPlugins: readonly SessionPlugin[] = [

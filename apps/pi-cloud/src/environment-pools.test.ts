@@ -495,7 +495,7 @@ test("leaves a folder Session to the full runner that lists its folder", async (
   expect(await unplaced()).toEqual([]);
 });
 
-test("reports a Session whose runner went offline while it ran", async () => {
+test("reports a clone Session whose runner went offline once its lease lapses", async () => {
   await server.stop();
   startServer({ offlineAfterMs: 100 });
   await claimed("mac-1");
@@ -506,8 +506,11 @@ test("reports a Session whose runner went offline while it ran", async () => {
   });
 
   await claimed("mac-1");
-  await sleep(200);
+  await sleep(150);
+  const beforeLease = await unplaced();
+  await sleep(leaseMs);
 
+  expect(beforeLease).toEqual([]);
   expect(await unplaced()).toEqual([clone]);
 });
 

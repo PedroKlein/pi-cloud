@@ -29,3 +29,11 @@ service:
   port: 7420
 
 resources: {}
+
+# Lets the kubernetes plugin start runner pods in this namespace, with a
+# service account allowed to manage pods and Secrets here (ADR 0032).
+runnerPods:
+  enabled: true
+
+# More environment for the server, such as PI_CLOUD_FAUX_REPLY in tests.
+extraEnv: []
