@@ -458,6 +458,10 @@ test("turns an installed plugin on for the next start", async () => {
   const hello = page.getByRole("listitem", { name: "Hello" });
   await hello.getByText("Installed", { exact: true }).waitFor();
 
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+
   await hello.getByRole("button", { name: "Turn on" }).click();
   await hello.getByText("It turns on when the server restarts.").waitFor();
 
@@ -469,6 +473,62 @@ test("turns an installed plugin on for the next start", async () => {
   await hello.getByRole("button", { name: "Turn on" }).waitFor();
 
   expect(await hello.getByText(/when the server restarts/).count()).toBe(0);
+});
+
+test("installs a plugin from a git repository, asks before turning it on, and removes it", async () => {
+  const source = join(root, "sources", "weather");
+  await mkdir(source, { recursive: true });
+
+  await writeFile(
+    join(source, "package.json"),
+    JSON.stringify({
+      piCloud: {
+        id: "weather",
+        title: "Weather",
+        description: "Says the weather.",
+        engine: 1,
+        capabilities: ["routes"],
+      },
+    }),
+  );
+
+  for (const args of [
+    ["init", "-q"],
+    ["add", "-A"],
+    ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
+  ]) {
+    execFileSync("git", ["-C", source, ...args]);
+  }
+
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  await page
+    .getByLabel(/Install from a git repository/)
+    .fill(`file://${source}`);
+
+  await page.getByRole("button", { name: "Install" }).click();
+
+  const weather = page.getByRole("listitem", { name: "Weather" });
+  await weather.getByText(`file://${source} at`).waitFor();
+
+  const asked = new Promise<string>((resolve) => {
+    page.once("dialog", (dialog) => {
+      resolve(dialog.message());
+      void dialog.accept();
+    });
+  });
+
+  await weather.getByRole("button", { name: "Turn on" }).click();
+  expect(await asked).toContain("It asks for routes");
+  await weather.getByRole("button", { name: "Turn off" }).click();
+
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+
+  await weather.getByRole("button", { name: "Remove" }).click();
+  await weather.waitFor({ state: "detached" });
 });
 
 test("shows an installed plugin's page with the app's React and components", async () => {

@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
+  mkdir,
   readdir,
   readFile,
   realpath,
   rename,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -18,6 +20,7 @@ import {
 import type { Log } from "@pi-cloud/providers";
 import { bundleParts } from "./bundle";
 import { builtInPlugins } from "./plugins";
+import { fetchSource, type PluginSource } from "./sources";
 
 // A plugin installed into the plugins folder, one folder each, named by its
 // id (ADR 0022). Only the ones turned on are built and imported, since that
@@ -32,9 +35,12 @@ export interface InstalledPlugin {
   readonly session?: { readonly path: string; readonly hash: string };
   // Why its manifest or, when it is on, its code couldn't load.
   readonly error?: string;
+  // Where it was installed from, unless it was put in the folder by hand.
+  readonly source?: PluginSource;
 }
 
 const switchesFile = "enabled.json";
+const sourceFile = ".source.json";
 const idPattern = /^[a-z][a-z0-9-]*$/;
 
 export async function installedPlugins(
@@ -70,9 +76,18 @@ export async function installedPlugins(
     named.map(async (name) => {
       const folder = join(root, name);
 
-      return (await isFolder(folder))
-        ? [await load(folder, name, on.includes(name))]
-        : [];
+      if (!(await isFolder(folder))) {
+        return [];
+      }
+
+      const source = await sourceOf(folder);
+
+      return [
+        {
+          ...(await load(folder, name, on.includes(name))),
+          ...(source && { source }),
+        },
+      ];
     }),
   );
 
@@ -128,6 +143,166 @@ export async function turnedOn(root: string): Promise<string[]> {
 
     throw error;
   }
+}
+
+let changing = Promise.resolve();
+
+// One install, update or removal at a time, so two can't take one id.
+async function oneAtATime<T>(change: () => Promise<T>): Promise<T> {
+  const next = changing.then(change);
+
+  changing = next.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return next;
+}
+
+// Installed turned off, so none of its code runs until the user turns it on
+// (ADR 0022).
+export async function install(
+  root: string,
+  url: string,
+  taken: (id: string) => boolean,
+): Promise<InstalledPlugin> {
+  return oneAtATime(async () => {
+    await mkdir(root, { recursive: true });
+
+    const staging = join(root, `.install-${randomUUID()}`);
+
+    try {
+      const source = { url, pinned: await fetchSource(url, staging) };
+      const manifest = await stagedManifest(staging);
+
+      if (taken(manifest.id) || (await isFolder(join(root, manifest.id)))) {
+        throw new Error(`a plugin with the id ${manifest.id} is already here`);
+      }
+
+      await writeSource(staging, source);
+      await rename(staging, join(root, manifest.id));
+
+      return { manifest, on: false, source };
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  });
+}
+
+// Fetches the newest version from where the plugin was installed from, to
+// run when the server restarts. Undefined when it already has it.
+export async function update(
+  root: string,
+  id: string,
+): Promise<InstalledPlugin | undefined> {
+  return oneAtATime(async () => {
+    const folder = join(root, id);
+    const installed = await sourceOf(folder);
+
+    if (installed === undefined) {
+      throw new Error(`${id} wasn't installed from a URL, so it can't update`);
+    }
+
+    const staging = join(root, `.install-${randomUUID()}`);
+
+    try {
+      const source = {
+        url: installed.url,
+        pinned: await fetchSource(installed.url, staging),
+      };
+
+      if (source.pinned === installed.pinned) {
+        return undefined;
+      }
+
+      const manifest = await stagedManifest(staging);
+
+      if (manifest.id !== id) {
+        throw new Error(`its newest version has the id ${manifest.id}`);
+      }
+
+      await writeSource(staging, source);
+
+      // The running version's bundles are served until the restart rebuilds
+      // them, and its dependencies make the next install quicker.
+      for (const kept of [".build", "node_modules"]) {
+        await rm(join(staging, kept), { recursive: true, force: true });
+
+        await rename(join(folder, kept), join(staging, kept)).catch(
+          (error: unknown) => {
+            if (!isMissing(error)) {
+              throw error;
+            }
+          },
+        );
+      }
+
+      const old = join(root, `.old-${randomUUID()}`);
+
+      await rename(folder, old);
+      await rename(staging, folder);
+      await rm(old, { recursive: true, force: true });
+
+      return { manifest, on: (await turnedOn(root)).includes(id), source };
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+  });
+}
+
+// A folder that links to a plugin elsewhere loses only the link.
+export async function remove(root: string, id: string): Promise<void> {
+  return oneAtATime(async () => {
+    await rm(join(root, id), { recursive: true, force: true });
+    await turnOn(root, id, false);
+  });
+}
+
+async function stagedManifest(folder: string): Promise<PluginManifest> {
+  const packageJson: unknown = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8").catch(() => {
+      throw new Error("it has no package.json at its top");
+    }),
+  );
+
+  const { id } = fields(fields(packageJson)["piCloud"]);
+
+  if (typeof id !== "string") {
+    throw new Error("its package.json has no piCloud.id");
+  }
+
+  const error = skipReason(id, new Set(builtInPlugins.map((each) => each.id)));
+
+  if (error !== undefined) {
+    throw new Error(`piCloud.id ${id}: ${error}`);
+  }
+
+  return manifestOf(packageJson, id);
+}
+
+// A missing or broken record means it wasn't installed from a URL.
+async function sourceOf(folder: string): Promise<PluginSource | undefined> {
+  try {
+    const { url, pinned } = fields(
+      JSON.parse(await readFile(join(folder, sourceFile), "utf8")),
+    );
+
+    return typeof url === "string" && typeof pinned === "string"
+      ? { url, pinned }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeSource(
+  folder: string,
+  source: PluginSource,
+): Promise<void> {
+  await writeFile(
+    join(folder, sourceFile),
+    `${JSON.stringify(source, null, 2)}\n`,
+  );
 }
 
 async function load(

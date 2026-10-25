@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { $ } from "bun";
 import { join } from "node:path";
 import {
   fauxAssistantMessage,
@@ -50,8 +51,9 @@ async function writePlugin(
   id: string,
   manifest: Record<string, unknown> = {},
   register = `context.routes.handle(async () => new Response("hi from ${id}"));`,
+  parent = plugins,
 ): Promise<void> {
-  const folder = join(plugins, id);
+  const folder = join(parent, id);
   await mkdir(folder);
 
   await writeFile(
@@ -544,4 +546,252 @@ test("fails a Session part that imports a file the runner wouldn't get", async (
   expect((await listed("prompted"))?.error).toContain(
     "imports files other than code",
   );
+});
+
+// A git repository holding a plugin, committed, and the URL to install it by.
+async function gitPlugin(
+  id: string,
+  manifest: Record<string, unknown> = {},
+  register?: string,
+): Promise<string> {
+  const sources = join(root, "sources");
+  const folder = join(sources, id);
+
+  await mkdir(sources, { recursive: true });
+  await writePlugin(id, manifest, register, sources);
+  await $`git -C ${folder} init -q`;
+  await commit(folder);
+
+  return `file://${folder}`;
+}
+
+async function commit(folder: string): Promise<string> {
+  await $`git -C ${folder} add -A`;
+  await $`git -C ${folder} -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qm c`;
+
+  return (await $`git -C ${folder} rev-parse HEAD`.text()).trim();
+}
+
+async function install(url: string): Promise<Response> {
+  return api("POST", "/api/plugins", { url });
+}
+
+test("installs a plugin from a git repository turned off, pinned to its commit", async () => {
+  const url = await gitPlugin("hello");
+
+  const pinned = (
+    await $`git -C ${join(root, "sources", "hello")} rev-parse HEAD`.text()
+  ).trim();
+
+  await start();
+
+  const installed = await install(url);
+
+  expect(installed.status).toBe(201);
+
+  expect(await installed.json()).toMatchObject({
+    id: "hello",
+    source: "installed",
+    state: "off",
+    turnedOn: false,
+    installedFrom: { url, pinned },
+  });
+
+  expect(await exists(join(plugins, "hello", ".git"))).toBe(false);
+  expect(await exists(join(plugins, "hello", "imported"))).toBe(false);
+
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/hello/")).text()).toBe(
+    "hi from hello",
+  );
+
+  expect((await listed("hello"))?.installedFrom).toEqual({ url, pinned });
+});
+
+test("installs a plugin from a branch or tag after # in its URL", async () => {
+  const url = await gitPlugin("hello");
+  const folder = join(root, "sources", "hello");
+
+  await $`git -C ${folder} tag v1`;
+  const tagged = (await $`git -C ${folder} rev-parse HEAD`.text()).trim();
+  await writeFile(join(folder, "later.txt"), "");
+  await commit(folder);
+  await start();
+
+  const installed = (await (await install(`${url}#v1`)).json()) as PluginInfo;
+
+  expect(installed.installedFrom?.pinned).toBe(tagged);
+});
+
+test("installs a plugin from a tarball, pinned to its SHA-256", async () => {
+  await gitPlugin("packed");
+
+  const tarball = join(root, "packed.tgz");
+  await $`tar -czf ${tarball} -C ${join(root, "sources")} packed`;
+
+  const hash = new Bun.CryptoHasher("sha256")
+    .update(await readFile(tarball))
+    .digest("hex");
+
+  await start();
+
+  const installed = await install(`file://${tarball}`);
+
+  expect(await installed.json()).toMatchObject({
+    id: "packed",
+    installedFrom: { pinned: `sha256:${hash}` },
+  });
+
+  expect(await exists(join(plugins, "packed", "server.ts"))).toBe(true);
+});
+
+test("refuses an install that would take an id already here, leaving nothing behind", async () => {
+  await writePlugin("hello");
+  const taken = await gitPlugin("hello");
+  const builtIn = await gitPlugin("projects");
+
+  await start();
+
+  const twice = await install(taken);
+  const projects = await install(builtIn);
+
+  expect(twice.status).toBe(400);
+
+  expect(((await twice.json()) as { error: string }).error).toContain(
+    "already here",
+  );
+
+  expect(projects.status).toBe(400);
+
+  expect(((await projects.json()) as { error: string }).error).toContain(
+    "built-in",
+  );
+
+  expect((await readdir(plugins)).sort()).toEqual(["hello"]);
+});
+
+test("refuses to install from anything but an https, ssh or file URL", async () => {
+  await start();
+
+  for (const url of ["http://example.com/x.git", "ext::sh -c id", "-u"]) {
+    expect((await install(url)).status).toBe(400);
+  }
+});
+
+test("updates a plugin to its repository's newest commit for the next start", async () => {
+  const url = await gitPlugin("hello");
+  const folder = join(root, "sources", "hello");
+
+  await start();
+  await install(url);
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+  await start();
+
+  const same = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await same.json()).not.toHaveProperty("updated");
+
+  await writeFile(
+    join(folder, "server.ts"),
+    `export default {
+  name: "hello",
+  register: (context) => {
+    context.routes.handle(async () => new Response("hi again"));
+  },
+};
+`,
+  );
+
+  const newest = await commit(folder);
+
+  const updated = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await updated.json()).toMatchObject({
+    state: "on",
+    turnedOn: true,
+    updated: true,
+    installedFrom: { pinned: newest },
+  });
+
+  expect(await (await api("GET", "/api/plugins/hello/")).text()).toBe(
+    "hi from hello",
+  );
+
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/hello/")).text()).toBe(
+    "hi again",
+  );
+});
+
+test("turns off an update that asks for more than was trusted", async () => {
+  const url = await gitPlugin("hello");
+  const folder = join(root, "sources", "hello");
+
+  await start();
+  await install(url);
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+
+  const manifest = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8"),
+  ) as { piCloud: { capabilities: string[] } };
+
+  manifest.piCloud.capabilities = ["routes", "sessions"];
+  await writeFile(join(folder, "package.json"), JSON.stringify(manifest));
+  await commit(folder);
+
+  const updated = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await updated.json()).toMatchObject({
+    turnedOn: false,
+    capabilities: ["routes", "sessions"],
+  });
+
+  expect(
+    JSON.parse(await readFile(join(plugins, "enabled.json"), "utf8")),
+  ).toEqual([]);
+});
+
+test("won't update a plugin put in the folder by hand", async () => {
+  await writePlugin("hello");
+  await start();
+
+  const refused = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(refused.status).toBe(400);
+});
+
+test("removes an installed plugin only once it isn't running", async () => {
+  await writePlugin("hello");
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["hello"]));
+  await start();
+
+  const running = await api("DELETE", "/api/plugins/hello");
+
+  expect(running.status).toBe(400);
+
+  await api("PATCH", "/api/plugins/hello", { enabled: false });
+  await start();
+
+  const removed = await api("DELETE", "/api/plugins/hello");
+
+  expect(removed.status).toBe(204);
+  expect(await listed("hello")).toBeUndefined();
+  expect(await exists(join(plugins, "hello"))).toBe(false);
+  expect((await api("DELETE", "/api/plugins/hello")).status).toBe(404);
+  expect((await api("DELETE", "/api/plugins/projects")).status).toBe(400);
+});
+
+test("removes only the link to a plugin developed elsewhere", async () => {
+  await writePlugin("linked");
+  await rename(join(plugins, "linked"), join(root, "linked"));
+  await symlink(join(root, "linked"), join(plugins, "linked"));
+  await start();
+
+  await api("DELETE", "/api/plugins/linked");
+
+  expect(await exists(join(plugins, "linked"))).toBe(false);
+  expect(await exists(join(root, "linked", "package.json"))).toBe(true);
 });

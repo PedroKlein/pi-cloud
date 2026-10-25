@@ -10,6 +10,7 @@ import {
   type LiveEvent,
   type LivePost,
   type ModelRef,
+  type PluginInfo,
   type QuestionAnswer,
   type RemovalPost,
   type RemovalReport,
@@ -236,6 +237,33 @@ export function createHandler(
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
     [
       "POST",
+      /^\/api\/plugins$/,
+      async (request) => {
+        const { url } = fieldsOf(await readJson(request));
+        const installed = await plugins.install(textOf("url", url));
+
+        if (typeof installed === "string") {
+          throw new BadRequest(installed);
+        }
+
+        return Response.json(installed, { status: 201 });
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/plugins\/([^/]+)$/,
+      async (_request, [name = ""]) => {
+        const removed = await plugins.remove(name);
+
+        if (typeof removed === "string") {
+          throw new BadRequest(removed);
+        }
+
+        return removed ? new Response(null, { status: 204 }) : notFound();
+      },
+    ],
+    [
+      "POST",
       /^\/api\/restart$/,
       async (request) => {
         if (restart === undefined) {
@@ -323,16 +351,17 @@ export function createHandler(
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
       async (request, [name = ""]) => {
-        const { settings, enabled } = fieldsOf(await readJson(request));
+        const { settings, enabled, update } = fieldsOf(await readJson(request));
 
         if (enabled !== undefined && typeof enabled !== "boolean") {
           throw new BadRequest("enabled must be true or false");
         }
 
-        const saved =
-          enabled === undefined
-            ? plugins.saveSettings(name, settings)
-            : await plugins.turnOn(name, enabled);
+        const saved = await pluginChange(plugins, name, {
+          settings,
+          enabled,
+          update: update === true,
+        });
 
         if (typeof saved === "string") {
           throw new BadRequest(saved);
@@ -977,6 +1006,24 @@ function profileRoutes(profiles: Profiles, log: Log): RouteTable {
       },
     ],
   ];
+}
+
+async function pluginChange(
+  plugins: PluginHost,
+  name: string,
+  change: {
+    readonly settings: unknown;
+    readonly enabled: boolean | undefined;
+    readonly update: boolean;
+  },
+): Promise<PluginInfo | string | undefined> {
+  if (change.update) {
+    return plugins.update(name);
+  }
+
+  return change.enabled === undefined
+    ? plugins.saveSettings(name, change.settings)
+    : plugins.turnOn(name, change.enabled);
 }
 
 function userIdOf(actor: UserActor): string {

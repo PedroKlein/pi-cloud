@@ -7,7 +7,13 @@ import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
-import { type InstalledPlugin, turnOn } from "./installed";
+import {
+  type InstalledPlugin,
+  install,
+  remove,
+  turnOn,
+  update,
+} from "./installed";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { previewBroker } from "./previews";
 import { createHandler, onBehalfOf } from "./server";
@@ -111,6 +117,9 @@ export function serve(options: ServeOptions): {
       installed: {
         plugins: installed,
         turnOn: async (id, on) => turnOn(folder.root, id, on),
+        install: async (url, taken) => install(folder.root, url, taken),
+        update: async (id) => update(folder.root, id),
+        remove: async (id) => remove(folder.root, id),
       },
     }),
     signal: pluginsStop.signal,
