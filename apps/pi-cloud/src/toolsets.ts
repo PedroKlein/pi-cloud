@@ -58,7 +58,7 @@ export const kernelToolsets: readonly Toolset[] = [
   {
     namespace: {
       name: "sessions",
-      description: "List, start and archive Pi Cloud Sessions.",
+      description: "List, start, open and archive Pi Cloud Sessions.",
     },
     tools: [
       {
@@ -124,6 +124,27 @@ export const kernelToolsets: readonly Toolset[] = [
           ]),
         }),
         result: (body) => summary(body as Session),
+        opens: (body) => ({
+          route: (body as Session).id,
+          label: "the new Session",
+        }),
+      },
+      {
+        name: "open",
+        description: "Open a Session for the user to watch or take over.",
+        parameters: object({ id: { type: "string" } }, ["id"]),
+        exposure: "direct",
+        annotations: { readOnlyHint: true },
+        request: (input) => ({
+          method: "GET",
+          path: `/api/sessions/${idOf(input)}`,
+        }),
+        result: () =>
+          "Offered it to the user in the browsers that show this chat.",
+        opens: (body) => ({
+          route: (body as Session).id,
+          label: titleOf(body as Session),
+        }),
       },
       {
         name: "archive",
@@ -328,4 +349,8 @@ function profileView(profile: Profile): Record<string, unknown> {
   const { mcpServers, ...rest } = profile;
 
   return { ...rest, mcpServers: Object.keys(mcpServers) };
+}
+
+function titleOf({ title }: Session): string {
+  return title === null || title === "" ? "the Session" : title;
 }

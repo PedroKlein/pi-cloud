@@ -46,6 +46,7 @@ import type {
   ToolNamespace,
   ToolResult,
   ToolSpec,
+  UiAction,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import {
@@ -472,6 +473,12 @@ export function startPlugins(
             call.input,
             `user:${session.ownerId}`,
             deps,
+            (action) => {
+              deps.sessions.publish(session.id, {
+                generation: call.generation,
+                events: [{ type: "ui_action", action }],
+              });
+            },
           );
         }
 
@@ -523,7 +530,7 @@ function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
   const namespace: ToolNamespace = toolset.namespace;
 
   return toolset.tools.map((tool) => {
-    const { request: _request, result: _result, ...spec } = tool;
+    const { request: _request, result: _result, opens: _opens, ...spec } = tool;
 
     return {
       plugin,
@@ -538,6 +545,10 @@ function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
   });
 }
 
+// A route of the web app such as a Session id or <project id>/<thread id>,
+// so what a tool opens stays a page of Pi Cloud.
+const appRoute = /^[\w-]+(\/[\w-]+)*$/;
+
 // Never sent anywhere: the request goes straight to the server's handler.
 const internalOrigin = "http://pi-cloud.internal";
 
@@ -548,6 +559,7 @@ async function runRouteTool(
   deps: {
     readonly api: (actor: UserActor, request: Request) => Promise<Response>;
   },
+  open: (action: UiAction) => void,
 ): Promise<ToolResult> {
   const { method, path, body } = found.tool.request(
     typeof input === "object" && input !== null && !Array.isArray(input)
@@ -601,6 +613,19 @@ async function runRouteTool(
   }
 
   try {
+    const opened = found.tool.opens?.(parsed);
+
+    if (opened !== undefined && appRoute.test(opened.route)) {
+      open({
+        kind: "open",
+        route:
+          found.plugin === undefined
+            ? opened.route
+            : `plugin/${found.plugin}/${opened.route}`,
+        label: opened.label,
+      });
+    }
+
     return {
       text: JSON.stringify(
         found.tool.result ? found.tool.result(parsed) : parsed,

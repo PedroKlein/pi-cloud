@@ -220,6 +220,51 @@ test("asks the assistant from the home screen and lists the conversation", async
     .waitFor();
 }, 30_000);
 
+test("goes where the assistant opens on a wide screen, and offers it on a phone", async () => {
+  const startOne = (): ReturnType<typeof fauxAssistantMessage> =>
+    fauxAssistantMessage(
+      [
+        fauxToolCall("sessions_start", {
+          workspace: { kind: "folder", path: root },
+        }),
+      ],
+      { stopReason: "toolUse" },
+    );
+
+  faux.setResponses([
+    startOne(),
+    fauxAssistantMessage([fauxText("started one")]),
+    startOne(),
+    fauxAssistantMessage([fauxText("started another")]),
+  ]);
+
+  const ask = async (text: string): Promise<void> => {
+    await page.goto(server.url.href);
+    const composer = page.getByLabel("Ask the Pi Cloud assistant");
+    await composer.fill(text);
+    await composer.press("Enter");
+    await page.getByRole("button", { name: "Yes" }).click();
+  };
+
+  await ask("Start a session in my folder");
+  await page.waitForURL(/#(?!plugin\/)[\w-]+$/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ask("Start another one");
+
+  const notice = page.getByRole("status").filter({
+    hasText: "Open the new Session?",
+  });
+
+  await notice.waitFor();
+
+  expect(new URL(page.url()).hash).toMatch(/^#plugin\/meta\//);
+
+  await notice.getByRole("link", { name: "Open" }).click();
+  await page.waitForURL(/#(?!plugin\/)[\w-]+$/);
+  await page.setViewportSize({ width: 1280, height: 720 });
+}, 30_000);
+
 test("starts a session with the task from the New session form", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("on it")])]);
   await page.goto(server.url.href);

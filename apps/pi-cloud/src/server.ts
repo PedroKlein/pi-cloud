@@ -1516,6 +1516,10 @@ function liveEventOf(event: unknown): LiveEvent {
     throw new BadRequest("each event needs a type");
   }
 
+  if (type === "ui_action") {
+    throw new BadRequest("only the server sends ui_action");
+  }
+
   if (type === "status" && status !== "idle" && status !== "running") {
     throw new BadRequest('status must be "idle" or "running"');
   }

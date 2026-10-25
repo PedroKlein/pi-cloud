@@ -11,7 +11,12 @@ import {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { meta } from "@pi-cloud/meta/server";
 import type { ServerPlugin } from "@pi-cloud/plugins";
-import type { Prompt, Session, SessionEvent } from "@pi-cloud/protocol";
+import type {
+  Prompt,
+  Session,
+  SessionEvent,
+  UiAction,
+} from "@pi-cloud/protocol";
 import { serve, type ServeOptions } from "./serve";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
@@ -375,4 +380,103 @@ test("refuses a plugin's toolset in a namespace the kernel has", async () => {
     state: "failed",
     error: "toolset sessions belongs to kernel",
   });
+});
+
+const uiActions = (events: readonly SessionEvent[]): UiAction[] =>
+  events.flatMap((e) =>
+    e.type === "live" && e.event.type === "ui_action" ? [e.event.action] : [],
+  );
+
+test("opens what a tool started or asked for in the browsers watching, once", async () => {
+  faux.setResponses([
+    call("sessions_start", { workspace: { kind: "folder", path: root } }),
+    call("projects_create", {
+      name: "Shop",
+      repositories: ["https://example.com/shop.git"],
+    }),
+    fauxAssistantMessage([fauxText("all opened")]),
+  ]);
+
+  const metaSession = await startMeta("Start things");
+  const answered = new Set<string>();
+
+  const events = await follow(metaSession.id, (all) => {
+    for (const prompt of prompts(all).filter(({ id }) => !answered.has(id))) {
+      answered.add(prompt.id);
+
+      void api(`/api/sessions/${metaSession.id}/commands`, {
+        type: "answer",
+        id: prompt.id,
+        value: true,
+      });
+    }
+
+    return entriesInclude("all opened")(all);
+  });
+
+  const [started] = await json<Session[]>(api("/api/sessions"));
+
+  const [project] = await json<{ id: string }[]>(
+    api("/api/plugins/projects/projects"),
+  );
+
+  expect(uiActions(events)).toEqual([
+    { kind: "open", route: started?.id ?? "", label: "the new Session" },
+    {
+      kind: "open",
+      route: `plugin/projects/${project?.id ?? ""}`,
+      label: "Shop",
+    },
+  ]);
+
+  const replayed = await follow(metaSession.id, entriesInclude("all opened"));
+
+  expect(uiActions(replayed)).toEqual([]);
+});
+
+test("opens a Session on request without asking, and only routes of the app", async () => {
+  const probe: ServerPlugin = {
+    name: "probe",
+    register: (context) => {
+      context.routes.handle(() => Response.json({}));
+
+      context.toolsets.register({
+        namespace: { name: "probe" },
+        tools: [
+          {
+            name: "escape",
+            description: "Opens a route outside the app",
+            parameters: { type: "object" },
+            exposure: "direct",
+            annotations: { readOnlyHint: true },
+            request: () => ({ method: "GET", path: "x" }),
+            opens: () => ({ route: "../../elsewhere", label: "elsewhere" }),
+          },
+        ],
+      });
+    },
+  };
+
+  await server.stop();
+  start([meta, probe]);
+  await environmentReady();
+
+  const target = await json<Session>(
+    api("/api/sessions", { workspace: { kind: "folder", path: root } }),
+  );
+
+  faux.setResponses([
+    call("probe_escape", {}),
+    call("sessions_open", { id: target.id }),
+    fauxAssistantMessage([fauxText("opened it")]),
+  ]);
+
+  const metaSession = await startMeta("Show me that Session");
+  const events = await follow(metaSession.id, entriesInclude("opened it"));
+
+  expect(prompts(events)).toEqual([]);
+
+  expect(uiActions(events)).toEqual([
+    { kind: "open", route: target.id, label: "the Session" },
+  ]);
 });

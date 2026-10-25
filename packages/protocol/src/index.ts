@@ -443,6 +443,14 @@ export type Prompt =
       readonly prefill: string | null;
     };
 
+// What a meta-session's tool asks the browsers watching it to do (ADR 0035):
+// open a route of the web app, such as a Session's id or plugin/projects/<id>.
+export interface UiAction {
+  readonly kind: "open";
+  readonly route: string;
+  readonly label: string;
+}
+
 export type LiveEvent =
   | {
       readonly type: "status";
@@ -513,6 +521,8 @@ export type LiveEvent =
       readonly followUp: readonly string[];
     }
   | { readonly type: "editor_text"; readonly text: string }
+  // Sent by the server, never by a runner, and not replayed.
+  | { readonly type: "ui_action"; readonly action: UiAction }
   // The Session's model and reasoning level, the levels its model takes
   // (ADR 0023), and the models it has credentials for (ADR 0024).
   | {
@@ -586,6 +596,7 @@ export function liveSurface(
     case "status":
     case "notify":
     case "editor_text":
+    case "ui_action":
     case "explanation":
     case "text":
     case "tool_start":
