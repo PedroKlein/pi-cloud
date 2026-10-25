@@ -222,6 +222,22 @@ export function startPlugins(
   const taken = (name: string): boolean =>
     tools.has(name) || routeTools.has(name);
 
+  // A toolset's namespace has one owner, so its description stays its own.
+  const namespaces = new Map<string, string>();
+
+  const claim = (namespace: string, claimant: string): void => {
+    const taker = namespaces.get(namespace);
+    if (taker !== undefined && taker !== claimant) {
+      throw new Error(`toolset ${namespace} belongs to ${taker}`);
+    }
+
+    namespaces.set(namespace, claimant);
+  };
+
+  for (const { name } of deps.toolsets.map(({ namespace }) => namespace)) {
+    claim(name, "kernel");
+  }
+
   for (const tool of deps.toolsets.flatMap((each) => toolsetTools(each))) {
     if (taken(tool.spec.name)) {
       throw new Error(`tool ${tool.spec.name} is already registered`);
@@ -243,6 +259,7 @@ export function startPlugins(
     const staged = {
       tools: new Map<string, ServerTool>(),
       routeTools: new Map<string, ToolsetTool>(),
+      namespaces: new Set<string>(),
       loadsToolsets: false,
       route: undefined as PluginRoute | undefined,
       offers: [] as ModelOffer[],
@@ -270,6 +287,15 @@ export function startPlugins(
         },
         toolsets: {
           register: (toolset) => {
+            const taker = namespaces.get(toolset.namespace.name);
+            if (taker !== undefined && taker !== plugin.name) {
+              throw new Error(
+                `toolset ${toolset.namespace.name} belongs to ${taker}`,
+              );
+            }
+
+            staged.namespaces.add(toolset.namespace.name);
+
             for (const tool of toolsetTools(toolset, plugin.name)) {
               if (stagedTaken(tool.spec.name)) {
                 throw new Error(`tool ${tool.spec.name} is already registered`);
@@ -338,6 +364,10 @@ export function startPlugins(
 
     for (const [name, tool] of staged.tools) {
       tools.set(name, { plugin: plugin.name, tool });
+    }
+
+    for (const namespace of staged.namespaces) {
+      claim(namespace, plugin.name);
     }
 
     for (const [name, tool] of staged.routeTools) {
@@ -526,12 +556,18 @@ async function runRouteTool(
   );
 
   const base =
-    found.plugin === undefined ? "" : `/api/plugins/${found.plugin}/`;
+    found.plugin === undefined ? "/api/" : `/api/plugins/${found.plugin}/`;
+
+  const url = routeUrl(found.plugin === undefined ? path : base + path, base);
+
+  if (url === undefined) {
+    return { text: `${path} isn't one of its routes`, isError: true };
+  }
 
   const response = await deps.api(
     actor,
     new Request(
-      new URL(base + path, internalOrigin).href,
+      url,
       body === undefined
         ? { method }
         : {
@@ -555,14 +591,43 @@ async function runRouteTool(
     return { text: "Done.", isError: false };
   }
 
-  const parsed: unknown = JSON.parse(text);
+  // The change is made by now, so a reply the tool can't read is still a
+  // success; an error would make the model try again.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { text, isError: false };
+  }
 
-  return {
-    text: JSON.stringify(
-      found.tool.result ? found.tool.result(parsed) : parsed,
-    ),
-    isError: false,
-  };
+  try {
+    return {
+      text: JSON.stringify(
+        found.tool.result ? found.tool.result(parsed) : parsed,
+      ),
+      isError: false,
+    };
+  } catch {
+    return { text: "Done, with a reply it couldn't show.", isError: false };
+  }
+}
+
+// A tool's path stays under its own routes: dot segments, plain or
+// percent-encoded, would let input such as an id name another route.
+function routeUrl(path: string, base: string): string | undefined {
+  const [pathname = ""] = path.split("?");
+
+  const dotted = pathname.split("/").some((segment) => {
+    try {
+      return [".", ".."].includes(decodeURIComponent(segment));
+    } catch {
+      return true;
+    }
+  });
+
+  const url = new URL(path, internalOrigin);
+
+  return dotted || !url.pathname.startsWith(base) ? undefined : url.href;
 }
 
 function pluginSessions(

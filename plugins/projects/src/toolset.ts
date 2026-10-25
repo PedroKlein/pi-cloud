@@ -10,7 +10,10 @@ const settingsFields = {
     type: "string",
     description: "provider/id of the model thread Sessions use",
   },
-  profile: { type: "string", description: "Profile id" },
+  profile: {
+    type: ["string", "null"],
+    description: "Profile id, or null for the default Profile",
+  },
 };
 
 // The Projects meta toolset (ADR 0035), through the routes the Projects page
@@ -59,7 +62,9 @@ export const projectsToolset: Toolset = {
         ["name", "repositories"],
       ),
       exposure: "direct",
-      annotations: { destructiveHint: false, openWorldHint: false },
+      // It clones the repositories and starts a coordinator, whose agent
+      // runs without a confirm of its own.
+      annotations: { destructiveHint: false, openWorldHint: true },
       request: (input) => ({ method: "POST", path: "projects", body: input }),
     },
     {

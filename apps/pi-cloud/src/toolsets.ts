@@ -1,5 +1,5 @@
 import type { Toolset } from "@pi-cloud/plugins";
-import { isolations, type Session } from "@pi-cloud/protocol";
+import { isolations, type Profile, type Session } from "@pi-cloud/protocol";
 
 const workspaceSchema = {
   type: "object",
@@ -28,7 +28,23 @@ const profileFields = {
   packages: {
     type: "array",
     description: "Pi packages, such as npm:pi-subagents",
-    items: { type: "string" },
+    items: {
+      anyOf: [
+        { type: "string" },
+        {
+          type: "object",
+          properties: {
+            source: { type: "string" },
+            autoload: { type: "boolean" },
+            extensions: { type: "array", items: { type: "string" } },
+            skills: { type: "array", items: { type: "string" } },
+            prompts: { type: "array", items: { type: "string" } },
+            themes: { type: "array", items: { type: "string" } },
+          },
+          required: ["source"],
+        },
+      ],
+    },
   },
   agentsMd: { type: "string", description: "AGENTS.md" },
   systemMd: { type: "string", description: "SYSTEM.md, replacing Pi's" },
@@ -93,7 +109,9 @@ export const kernelToolsets: readonly Toolset[] = [
           ["workspace"],
         ),
         exposure: "direct",
-        annotations: { destructiveHint: false, openWorldHint: false },
+        // The new Session's agent runs whatever firstMessage says without a
+        // confirm of its own, so starting one is open-world.
+        annotations: { destructiveHint: false, openWorldHint: true },
         request: (input) => ({
           method: "POST",
           path: "/api/sessions",
@@ -201,6 +219,7 @@ export const kernelToolsets: readonly Toolset[] = [
         parameters: object({}),
         annotations: { readOnlyHint: true },
         request: () => ({ method: "GET", path: "/api/profiles" }),
+        result: (body) => (body as readonly Profile[]).map(profileView),
       },
       {
         name: "get",
@@ -211,6 +230,7 @@ export const kernelToolsets: readonly Toolset[] = [
           method: "GET",
           path: `/api/profiles/${idOf(input)}`,
         }),
+        result: (body) => profileView(body as Profile),
       },
       {
         name: "create",
@@ -218,12 +238,14 @@ export const kernelToolsets: readonly Toolset[] = [
         parameters: object({ name: { type: "string" }, ...profileFields }, [
           "name",
         ]),
-        annotations: { destructiveHint: false, openWorldHint: false },
+        // Its packages are installed and run in every Session that uses it.
+        annotations: { destructiveHint: false, openWorldHint: true },
         request: (input) => ({
           method: "POST",
           path: "/api/profiles",
           body: picked(input, ["name", ...Object.keys(profileFields)]),
         }),
+        result: (body) => profileView(body as Profile),
       },
       {
         name: "update",
@@ -243,6 +265,7 @@ export const kernelToolsets: readonly Toolset[] = [
           path: `/api/profiles/${idOf(input)}`,
           body: picked(input, ["name", ...Object.keys(profileFields)]),
         }),
+        result: (body) => profileView(body as Profile),
       },
       {
         name: "make_default",
@@ -297,4 +320,12 @@ function summary(session: Session): Record<string, unknown> {
     model: session.model,
     createdAt: session.createdAt,
   };
+}
+
+// MCP server entries usually hold tokens in their env and headers, so the
+// model sees only their names.
+function profileView(profile: Profile): Record<string, unknown> {
+  const { mcpServers, ...rest } = profile;
+
+  return { ...rest, mcpServers: Object.keys(mcpServers) };
 }

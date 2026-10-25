@@ -9,8 +9,10 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { meta } from "@pi-cloud/meta/server";
+import type { ServerPlugin } from "@pi-cloud/plugins";
 import type { Prompt, Session, SessionEvent } from "@pi-cloud/protocol";
-import { serve } from "./serve";
+import { serve, type ServeOptions } from "./serve";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
@@ -18,21 +20,27 @@ let root: string;
 let faux: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve>;
 let signedIn: () => Promise<string>;
+let runtime: ModelRuntime;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-toolsets-")));
   faux = fauxProvider();
 
-  const runtime = await ModelRuntime.create({
+  runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
   });
 
   runtime.registerNativeProvider(faux.provider);
+  start();
+});
+
+function start(plugins?: ServeOptions["plugins"]): void {
   const logs: string[] = [];
 
   server = serve({
+    ...(plugins && { plugins }),
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 1000 },
@@ -50,7 +58,7 @@ beforeEach(async () => {
   });
 
   signedIn = firstUser(server, logs);
-});
+}
 
 afterEach(async () => {
   await server.stop();
@@ -141,13 +149,14 @@ async function answerNext(
   return asked;
 }
 
-test("starts a Session from a meta-session through the Sessions route, without asking", async () => {
+test("starts a Session from a meta-session through the Sessions route once the user allows it", async () => {
   faux.setResponses([
     call("sessions_start", { workspace: { kind: "folder", path: root } }),
     fauxAssistantMessage([fauxText("started it")]),
   ]);
 
   const metaSession = await startMeta("Start a Session in my folder");
+  const asked = await answerNext(metaSession.id, true);
   const events = await follow(metaSession.id, entriesInclude("started it"));
 
   const [started] = await json<Session[]>(api("/api/sessions"));
@@ -156,7 +165,7 @@ test("starts a Session from a meta-session through the Sessions route, without a
     api("/api/profiles"),
   );
 
-  expect(prompts(events)).toEqual([]);
+  expect(asked.title).toBe("Allow sessions_start?");
   expect(started?.workspace).toEqual({ kind: "folder", path: root });
 
   expect(started?.profileId).toBe(
@@ -173,6 +182,7 @@ test("hands the route's own validation error back to the model", async () => {
   ]);
 
   const metaSession = await startMeta("Start a Session");
+  await answerNext(metaSession.id, true);
   const events = await follow(metaSession.id, entriesInclude("that failed"));
 
   expect(transcriptOf(events)).toContain("workspace must be a folder");
@@ -234,6 +244,7 @@ test("creates a Project through the Projects plugin's route", async () => {
   ]);
 
   const metaSession = await startMeta("Make a Project for my shop");
+  await answerNext(metaSession.id, true);
   await follow(metaSession.id, entriesInclude("created the Project"));
 
   const projects = await json<{ name: string }[]>(
@@ -261,4 +272,107 @@ test("gives an ordinary Session none of the toolsets", async () => {
   const events = await follow(session.id, entriesInclude("all done"));
 
   expect(transcriptOf(events)).toContain("Tool sessions_list not found");
+});
+
+test("shows a Profile's MCP servers by name only", async () => {
+  await api("/api/profiles", {
+    name: "With MCP",
+    mcpServers: { github: { env: { GITHUB_TOKEN: "token-in-env" } } },
+  });
+
+  faux.setResponses([
+    call("tool_search", { query: "list Profiles" }),
+    call("profiles_list", {}),
+    fauxAssistantMessage([fauxText("listed them")]),
+  ]);
+
+  const metaSession = await startMeta("Which Profiles do I have?");
+  const events = await follow(metaSession.id, entriesInclude("listed them"));
+
+  expect(transcriptOf(events)).toContain('\\"mcpServers\\":[\\"github\\"]');
+  expect(transcriptOf(events)).not.toContain("token-in-env");
+});
+
+test("keeps a plugin's tool inside the plugin's own routes", async () => {
+  const probe: ServerPlugin = {
+    name: "probe",
+    register: (context) => {
+      context.routes.handle((_request, path) =>
+        path === "text"
+          ? new Response("plain words")
+          : Response.json({ reached: "probe" }),
+      );
+
+      context.toolsets.register({
+        namespace: { name: "probe" },
+        tools: [
+          {
+            name: "run",
+            description: "Runs an item",
+            parameters: { type: "object" },
+            exposure: "direct",
+            annotations: { readOnlyHint: true },
+            request: (input) => ({
+              method: "GET",
+              path: `items/${String(input["id"])}`,
+            }),
+          },
+          {
+            name: "text",
+            description: "Answers in plain text",
+            parameters: { type: "object" },
+            exposure: "direct",
+            annotations: { readOnlyHint: true },
+            request: () => ({ method: "GET", path: "text" }),
+          },
+        ],
+      });
+    },
+  };
+
+  await server.stop();
+  start([meta, probe]);
+
+  faux.setResponses([
+    call("probe_run", { id: "../../../profiles" }),
+    call("probe_run", { id: "%2e%2e/%2e%2e/%2e%2e/profiles" }),
+    call("probe_run", { id: "7" }),
+    call("probe_text", {}),
+    fauxAssistantMessage([fauxText("tried them")]),
+  ]);
+
+  const metaSession = await startMeta("Run the items");
+
+  const transcript = transcriptOf(
+    await follow(metaSession.id, entriesInclude("tried them")),
+  );
+
+  expect(transcript.match(/isn't one of its routes/g)).toHaveLength(2);
+  expect(transcript).toContain("reached");
+  expect(transcript).not.toContain("isDefault");
+  expect(transcript).toMatch(/"plain words".*"isError":false/);
+});
+
+test("refuses a plugin's toolset in a namespace the kernel has", async () => {
+  const squatter: ServerPlugin = {
+    name: "squatter",
+    register: (context) => {
+      context.toolsets.register({
+        namespace: { name: "sessions" },
+        tools: [],
+      });
+    },
+  };
+
+  await server.stop();
+  start([meta, squatter]);
+
+  const plugins = await json<{ id: string; state: string; error?: string }[]>(
+    api("/api/plugins"),
+  );
+
+  expect(plugins.find(({ id }) => id === "squatter")).toMatchObject({
+    state: "failed",
+    error: "toolset sessions belongs to kernel",
+  });
 });
