@@ -43,6 +43,7 @@ import type {
 import type { Log } from "@pi-cloud/providers";
 import {
   owner,
+  type PluginProfile,
   type Result,
   type SessionPlugins,
   type Sessions,
@@ -115,6 +116,8 @@ export interface PluginHost {
     settings: unknown,
   ) => PluginInfo | string | undefined;
   readonly sessionPlugins: () => SessionPlugins;
+  readonly profile: (id: string) => PluginProfile | undefined;
+  readonly profileIds: () => readonly string[];
   readonly tools: (session: Session) => readonly ToolSpec[];
   readonly call: (session: Session, call: ToolCall) => void;
   readonly offeredModels: (environmentId: string) => OfferedModels;
@@ -178,6 +181,7 @@ export function startPlugins(
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
   const failures = new Map<string, string>();
+  const profiles = new Map<string, PluginProfile>();
 
   const manifest = (name: string): PluginManifest | undefined =>
     deps.manifests.find(({ id }) => id === name);
@@ -196,6 +200,7 @@ export function startPlugins(
       tools: new Map<string, ServerTool>(),
       route: undefined as PluginRoute | undefined,
       offers: [] as ModelOffer[],
+      profiles: new Map<string, PluginProfile>(),
       unsubscribes: [] as (() => void)[],
     };
 
@@ -224,6 +229,18 @@ export function startPlugins(
         },
         sessions: pluginSessions(deps.sessions, plugin.name),
         environments: pluginEnvironments(deps.sessions, deps.runners),
+        profiles: {
+          provide: (key, { name: _name, ...content }) => {
+            const id = `${plugin.name}.${key}`;
+
+            staged.profiles.set(id, {
+              plugin: plugin.name,
+              profile: { id, ...content },
+            });
+
+            return id;
+          },
+        },
         routes: {
           handle: (route) => {
             staged.route = route;
@@ -262,6 +279,10 @@ export function startPlugins(
     }
 
     offers.push(...staged.offers);
+
+    for (const [id, profile] of staged.profiles) {
+      profiles.set(id, profile);
+    }
 
     deps.log("plugin registered", { plugin: plugin.name });
   }
@@ -304,6 +325,8 @@ export function startPlugins(
         running.map((name) => [name, values(name)]),
       ),
     }),
+    profile: (id) => profiles.get(id),
+    profileIds: () => [...profiles.keys()],
     tools: (session) =>
       [...tools.values()]
         .filter(({ tool }) => tool.appliesTo(session))

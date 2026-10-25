@@ -248,6 +248,103 @@ test("serves a tool's exposure, namespace and hints to its sessions", async () =
   expect(await tools.json()).toEqual([spec]);
 });
 
+test("starts a plugin's own Sessions on the Profile it provides, and no others", async () => {
+  await start([
+    {
+      name: "meta",
+      register: ({ owner, profiles, routes, sessions }) => {
+        const profile = profiles.provide("assistant", {
+          name: "Assistant",
+          packages: [],
+          agentsMd: "",
+          systemMd: "",
+          appendSystemMd: "You are the Pi Cloud assistant.",
+          mcpServers: {},
+          settings: {},
+        });
+
+        routes.handle((_request, path) => {
+          const [last] = sessions.owned("chat");
+
+          if (path === "again" && last !== undefined) {
+            sessions.archive(last.id);
+            sessions.unarchive(last.id);
+
+            return Response.json(sessions.get(last.id));
+          }
+
+          return Response.json(
+            sessions.start(
+              {
+                actor: `user:${owner}`,
+                workspace: { kind: "folder", path: root },
+                profile,
+              },
+              "chat",
+            ),
+          );
+        });
+      },
+    },
+  ]);
+
+  faux.setResponses([
+    (context) =>
+      fauxAssistantMessage([
+        fauxText(
+          JSON.stringify(context.messages).includes(
+            "You are the Pi Cloud assistant.",
+          )
+            ? "on the assistant Profile"
+            : "on another Profile",
+        ),
+      ]),
+  ]);
+
+  await environmentReady();
+
+  const owned = (await (
+    await api("/api/plugins/meta/start", {})
+  ).json()) as Session;
+
+  await follow(owned.id, idle);
+
+  await api(`/api/sessions/${owned.id}/commands`, {
+    type: "message",
+    text: "hello",
+  });
+
+  await follow(owned.id, entriesInclude("on the assistant Profile"));
+
+  const anyone = await api("/api/sessions", {
+    workspace: { kind: "folder", path: root },
+    profile: owned.profileId,
+  });
+
+  const listed = (await (await api("/api/profiles")).json()) as {
+    id: string;
+  }[];
+
+  const again = (await (
+    await api("/api/plugins/meta/again", {})
+  ).json()) as Session;
+
+  const fork = await api(`/api/sessions/${owned.id}/fork`, {});
+
+  const profiles = (await (await api("/api/profiles")).json()) as {
+    id: string;
+    isDefault: boolean;
+  }[];
+
+  expect(((await fork.json()) as Session).profileId).toBe(
+    profiles.find(({ isDefault }) => isDefault)?.id ?? "",
+  );
+
+  expect(again.archivedAt).toBeNull();
+  expect(anyone.status).toBe(400);
+  expect(listed.map(({ id }) => id)).not.toContain(owned.profileId);
+});
+
 test("routes requests to a plugin that keeps its own tables", async () => {
   let refused = "";
 

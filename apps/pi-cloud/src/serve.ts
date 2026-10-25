@@ -68,6 +68,7 @@ export function serve(options: ServeOptions): {
     events: events.publish,
     sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
+    pluginProfile: (id) => pluginHost.profile(id),
   });
 
   const pluginsStop = new AbortController();

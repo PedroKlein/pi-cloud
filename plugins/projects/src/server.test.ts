@@ -203,6 +203,11 @@ function fakeKernel(): {
       },
       transcriptLength: (id) => transcripts.get(id)?.length ?? 0,
     },
+    profiles: {
+      provide: () => {
+        throw new Error("not used by the projects plugin");
+      },
+    },
     routes: {
       handle: (handler) => {
         route = handler;
