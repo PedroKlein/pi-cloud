@@ -30,6 +30,7 @@ import type {
 import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { readSse } from "./sse";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUserCookie, setupTokenOf } from "./testdata/sign-in";
 
 let root: string;
@@ -41,19 +42,20 @@ let laptop: () => Promise<void>;
 let agentLogs: string[];
 let serverLogs: string[];
 let cookie: Promise<string> | undefined;
+let runners: ReturnType<typeof runnerCredentials>;
 
-function startAgent(
+async function startAgent(
   provider: string,
   extensionPaths: readonly string[] = [],
   serverUrl: URL = server.url,
-  environment?: string,
-): () => Promise<void> {
+  environment = provider,
+): Promise<() => Promise<void>> {
   const controller = new AbortController();
 
   const done = runAgent({
     server: serverUrl.href,
     provider,
-    ...(environment !== undefined && { environment }),
+    credential: { key: await runners.key(environment) },
     dataDir: join(root, provider),
     extensionPaths,
     folders: [root, join(root, "origin")],
@@ -94,6 +96,7 @@ function startServer(builtInProvider?: string): ReturnType<typeof serve> {
   });
 
   cookie = undefined;
+  runners = runnerCredentials(started, signedIn);
 
   return started;
 }
@@ -124,7 +127,7 @@ beforeEach(async () => {
   server = startServer();
   agents = [];
   agentLogs = [];
-  laptop = startAgent("laptop");
+  laptop = await startAgent("laptop");
 });
 
 afterEach(async () => {
@@ -680,13 +683,13 @@ async function asAgent(
   provider: string,
   path: string,
   body?: unknown,
-  version = "1",
+  version = "2",
 ): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
     headers: {
       "pi-cloud-protocol": version,
-      "pi-cloud-provider": provider,
+      authorization: `Bearer ${await runners.token(provider)}`,
       "content-type": "application/json",
     },
     ...(body !== undefined && { body: JSON.stringify(body) }),
@@ -1172,7 +1175,7 @@ test("restarts an interrupted session as a new attempt with its transcript", asy
     events.some((e) => e.type === "session" && !e.session.online),
   );
 
-  startAgent("laptop");
+  await startAgent("laptop");
 
   await follow(
     session.id,
@@ -1250,7 +1253,7 @@ test("restarts a session on a runner without its files from the server's transcr
     force: true,
   });
 
-  startAgent("laptop");
+  await startAgent("laptop");
 
   await follow(
     session.id,
@@ -1294,7 +1297,7 @@ test("restarts a session on a runner without its files from the server's transcr
 });
 
 test("marks a session failed when its host cannot start", async () => {
-  startAgent("broken", [join(root, "missing-extension.ts")]);
+  await startAgent("broken", [join(root, "missing-extension.ts")]);
   const session = await createSession("broken");
 
   await follow(session.id, status("failed"));
@@ -1493,7 +1496,7 @@ test("runs a shell in the session's directory over a terminal socket", async () 
 });
 
 test("opens a terminal on a runner named apart from its Environment", async () => {
-  startAgent("mac-1", [], server.url, "pool");
+  await startAgent("mac-1", [], server.url, "pool");
 
   while (
     !((await (await api("/api/environments")).json()) as Environment[]).some(
@@ -1659,9 +1662,61 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   expect(output).toContain(`branch=${branch}`);
 });
 
+test("keeps the server's own runner when its Environment gets a key", async () => {
+  await server.stop();
+  server = startServer("cloud");
+  await environmentOf("cloud");
+  await runners.key("cloud");
+
+  const session = await createSession("cloud", {
+    kind: "clone",
+    repository: await gitRepository(),
+  });
+
+  await follow(session.id, status("idle"));
+
+  expect([...serverLogs, ...agentLogs].join("\n")).not.toContain("pct_");
+});
+
+test("stops a runner the server let go when its Environment got a new key", async () => {
+  const controller = new AbortController();
+  const polling = Promise.withResolvers<undefined>();
+
+  const done = runAgent({
+    server: server.url.href,
+    provider: "mac",
+    credential: { key: await runners.key("pool") },
+    dataDir: join(root, "mac"),
+    extensionPaths: [],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+    log: (message) => {
+      if (message === "provider polling for work") {
+        polling.resolve(undefined);
+      }
+    },
+    signal: controller.signal,
+  });
+
+  agents.push(async () => {
+    controller.abort();
+    await done.catch(() => undefined);
+  });
+
+  await polling.promise;
+  await api(`/api/environments/${await environmentOf("pool")}/key`, {});
+
+  const stopped = await done.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+
+  expect(stopped).toEqual(new Error("the server let this runner go"));
+});
+
 test("lists an Environment for each provider with the folders and models its agent offers", async () => {
   let environments: Environment[] = [];
-  while (!environments.some((e) => e.provider === "laptop")) {
+  while (!environments.some((e) => e.provider === "laptop" && e.online)) {
     environments = (await (
       await api("/api/environments")
     ).json()) as Environment[];
@@ -2182,29 +2237,26 @@ test("rejects requests from other sites", async () => {
   expect(statuses).toEqual([403, 403, 403, 200]);
 });
 
-test("accepts only a runner's own calls through Docker's host name", async () => {
+test("accepts a runner's calls under Docker's host name with its token alone", async () => {
   const session = await createSession("laptop");
   const host = `host.docker.internal:${server.url.port}`;
 
-  const reached = async (
-    path: string,
-    headers: Record<string, string> = {},
-  ): Promise<number> =>
+  const reached = async (path: string, token?: string): Promise<number> =>
     (
       await fetch(new URL(path, server.url), {
         headers: {
           host,
-          "pi-cloud-protocol": "1",
-          "pi-cloud-provider": "laptop",
-          ...headers,
+          "pi-cloud-protocol": "2",
+          ...(token !== undefined && { authorization: `Bearer ${token}` }),
         },
       })
     ).status;
 
   const transcript = `/agent/sessions/${session.id}/transcript`;
 
-  expect(await reached(transcript)).toBe(200);
-  expect(await reached(transcript, { origin: `http://${host}` })).toBe(403);
+  expect(await reached(transcript, await runners.token("laptop"))).toBe(200);
+  expect(await reached(transcript)).toBe(401);
+  expect(await reached(transcript, "pct_guess")).toBe(401);
   expect(await reached("/api/sessions")).toBe(403);
 });
 
@@ -2284,8 +2336,8 @@ test("does not let a host take another session's terminal", async () => {
 
   const response = await fetch(url, {
     headers: {
-      "pi-cloud-protocol": "1",
-      "pi-cloud-provider": "laptop",
+      "pi-cloud-protocol": "2",
+      authorization: `Bearer ${await runners.token("laptop")}`,
       ...webSocketUpgrade,
     },
   });
@@ -2655,7 +2707,7 @@ test("sends a lost removal report again instead of removing the worktree twice",
   );
 
   await laptop();
-  const agent = startAgent("laptop", [], proxy.url);
+  const agent = await startAgent("laptop", [], proxy.url);
   try {
     const { session, dir } = await archivedWithPushedWork();
     await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
@@ -2676,7 +2728,7 @@ test("sends a lost removal report again instead of removing the worktree twice",
 test("brings pushed work back when unarchived before a lost removal report gets through", async () => {
   const proxy = reportLosingProxy(() => "request");
   await laptop();
-  const agent = startAgent("laptop", [], proxy.url);
+  const agent = await startAgent("laptop", [], proxy.url);
   try {
     const { session, dir } = await archivedWithPushedWork();
 
@@ -2708,7 +2760,7 @@ test("forces a removal whose kept report reached the server but not its reply", 
   );
 
   await laptop();
-  const agent = startAgent("laptop", [], proxy.url);
+  const agent = await startAgent("laptop", [], proxy.url);
   try {
     const checkout = await pushedCheckout();
 
@@ -3079,7 +3131,7 @@ test("removes an archived session's workspace when its provider comes back", asy
 
   expect(await pending.json()).toMatchObject({ workspaceRemoval: "pending" });
 
-  startAgent("laptop");
+  await startAgent("laptop");
   await sessionWhere(session.id, (s) => s.workspaceRemoval === "removed");
 
   expect(stat(dir)).rejects.toThrow();
@@ -3212,6 +3264,7 @@ async function startProcessAgent(
   const done = runAgent({
     server: server.url.href,
     provider: "process",
+    credential: { key: await runners.key("process") },
     dataDir,
     extensionPaths,
     folders: [root],

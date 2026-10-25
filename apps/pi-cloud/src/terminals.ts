@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import {
   protocolVersion,
-  providerHeader,
   type TerminalControl,
   terminalTakenOver,
   versionHeader,
@@ -124,14 +123,17 @@ export function terminalBroker(
       new URL(request.url).searchParams.get("generation"),
     );
 
-    const provider = request.headers.get(providerHeader);
+    const caller = auth.agentOf(request);
     const key = `${sessionId}/${terminalId}`;
     const pair = pairs.get(key);
     if (
       pair === undefined ||
       pair.host !== undefined ||
       request.headers.get(versionHeader) !== String(protocolVersion) ||
-      sessions.get(sessionId)?.runner !== provider ||
+      caller === undefined ||
+      (caller.sessionId !== null && caller.sessionId !== sessionId) ||
+      sessions.get(sessionId)?.runner !== caller.runner ||
+      sessions.get(sessionId)?.provider !== caller.environment ||
       !sessions.isCurrent(sessionId, generation)
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });

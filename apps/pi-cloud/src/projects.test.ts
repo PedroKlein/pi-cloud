@@ -16,6 +16,7 @@ import type { ProjectView } from "@pi-cloud/projects/model";
 import type { Environment, Session, ToolSpec } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
 const run = promisify(execFile);
@@ -25,6 +26,7 @@ let faux: ReturnType<typeof fauxProvider>;
 let runtime: ModelRuntime;
 let server: ReturnType<typeof serve> | undefined;
 let signedIn: () => Promise<string>;
+let runners: ReturnType<typeof runnerCredentials>;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-projects-")));
@@ -57,6 +59,7 @@ beforeEach(async () => {
   });
 
   signedIn = firstUser(server, logs);
+  runners = runnerCredentials(server, signedIn);
 });
 
 afterEach(async () => {
@@ -295,7 +298,10 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
             server?.url,
           ),
           {
-            headers: { "pi-cloud-protocol": "1", "pi-cloud-provider": "local" },
+            headers: {
+              "pi-cloud-protocol": "2",
+              authorization: `Bearer ${await runners.token("local")}`,
+            },
           },
         )
       ).json()) as ToolSpec[]
@@ -999,6 +1005,7 @@ test("runs a Project's threads across two machines and two repositories", async 
   const laptopDone = runAgent({
     server: server?.url.href ?? "",
     provider: "laptop",
+    credential: { key: await runners.key("laptop") },
     dataDir: join(root, "laptop"),
     extensionPaths: [],
     folders: [],
@@ -1160,6 +1167,7 @@ test("holds a thread's turn notice while the coordinator's machine is offline", 
     runAgent({
       server: server?.url.href ?? "",
       provider: "laptop",
+      credential: { key: await runners.key("laptop") },
       dataDir: join(root, "laptop"),
       extensionPaths: [],
       folders: [],

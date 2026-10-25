@@ -217,6 +217,28 @@ test("starts a session with the task from the New session form", async () => {
     .waitFor();
 }, 30_000);
 
+test("makes an Environment and shows its key once", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Environments" }).click();
+
+  await page.getByLabel("New Environment name").fill("builders");
+  await page.getByRole("button", { name: "New Environment" }).click();
+
+  const command = page.getByLabel("Join command");
+  await command.filter({ hasText: "PI_CLOUD_KEY=pck_" }).waitFor();
+
+  expect(await command.textContent()).toContain(
+    `--server ${server.url.origin}`,
+  );
+
+  await page.reload();
+  await page.getByRole("button", { name: "Replace key" }).waitFor();
+
+  expect(await command.count()).toBe(0);
+
+  await page.getByRole("link", { name: /^e2e/ }).click();
+});
+
 test("edits an Environment's variables and secrets without showing secret values", async () => {
   await page.goto(server.url.href);
   await page.getByRole("link", { name: "Environments" }).click();

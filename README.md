@@ -28,12 +28,17 @@ You need [Bun](https://bun.sh) and a working Pi setup with at least one model yo
 bun install
 bun run build
 apps/pi-cloud/dist/pi-cloud server
-apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
 ```
 
 The first time it starts, the server logs a setup link (`open the setup link to create the first user`). Open it to create your user; the link works once. After that, the page asks for that name and password, and a browser stays signed in for 30 days. Ten wrong passwords for a name lock it for 15 minutes.
 
-Open http://127.0.0.1:7420, pick the `laptop` Environment, enter `~/code/my-project`, and start chatting. Each provider gets an Environment of the same name the first time it connects, and a session runs in the Environment it was created in ([ADR 0014](docs/adr/0014-concept-map-and-environments.md)).
+On the Environments page, make an Environment named `laptop`. The page shows its key once, in the command that starts an agent:
+
+```sh
+PI_CLOUD_KEY=pck_… apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
+```
+
+Then open New session, pick the `laptop` Environment, enter `~/code/my-project`, and start chatting. A session runs in the Environment it was created in ([ADR 0014](docs/adr/0014-concept-map-and-environments.md)).
 
 The agent only runs sessions in the folders you list with `--folder`, or in folders inside them. One `--folder ~/code` covers every checkout under it, and the form suggests the git checkouts it finds there. By default each session gets its own Git worktree of that folder, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Choose "Folder" instead to run in the folder itself; sessions sharing a folder this way can step on each other's changes. "Several repositories" takes clone URLs separated by spaces and checks each one out side by side in one workspace, all on the session's branch: as a worktree of a checkout under a listed folder whose remote is that repository, or as a fresh clone when none is. The Changes panel then shows each repository on its own, and archiving deletes the workspace only if none of them would lose work and no other files sit beside them.
 
@@ -48,20 +53,26 @@ Archive hides a session from the list and stops it on its machine; its transcrip
 Options:
 
 ```text
-pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
+pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
+                [--database ~/.pi-cloud/server.db]
                 [--provider <name> [--data-dir ~/.pi-cloud/server]
                 [--folder <path>]... [--extension <path>]...]
-pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
+PI_CLOUD_KEY=<Environment key> \
+pi-cloud agent --name <runner> [--capacity <n>]
                [--server http://127.0.0.1:7420] [--data-dir ~/.pi-cloud/agent]
                [--session-binary <path>] [--folder <path>]...
                [--extension <path>]...
 ```
 
+`--host` is the address the server listens on; use `0.0.0.0` behind a proxy or in a container. `--url` is where people open it, when that differs, so the setup link points there. `--provider` also runs an agent inside the server, in the Environment of that name, which needs no key.
+
+An agent joins the pool of the Environment whose key it holds, under its `--name`, and gets a token of its own for everything else ([ADR 0033](docs/adr/0033-v2-authentication-and-order.md)). Each session it starts gets a token too, which reaches only that session. Replace key on the Environments page lets go of every agent that joined with the old key; start them again with the new one. The agent reads the key from `PI_CLOUD_KEY` and removes it from what its sessions inherit.
+
 An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only. A `GH_TOKEN` secret also signs git in to GitHub over https, both for cloning a session's repositories and for the session's own pushes.
 
 With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pi-cloud binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.
 
-Several agents can join one Environment's pool with `--environment <name>` ([ADR 0032](docs/adr/0032-environments-and-runners.md)); without it an agent joins the Environment named after it. `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
+Several agents can join one Environment's pool with its key ([ADR 0032](docs/adr/0032-environments-and-runners.md)). `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
 
 ## Roadmap
 

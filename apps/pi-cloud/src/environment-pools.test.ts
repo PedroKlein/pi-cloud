@@ -6,19 +6,20 @@ import {
   type Environment,
   type Session,
   type WorkspaceRequest,
-  environmentHeader,
   protocolVersion,
-  providerHeader,
   versionHeader,
+  type Work,
   type WorkPoll,
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
 const leaseMs = 200;
 
 let server: ReturnType<typeof serve>;
 let signedIn: () => Promise<string>;
+let runners: ReturnType<typeof runnerCredentials>;
 let logged: string[];
 
 beforeEach(() => {
@@ -34,6 +35,7 @@ beforeEach(() => {
   });
 
   signedIn = firstUser(server, logged);
+  runners = runnerCredentials(server, signedIn);
 });
 
 afterEach(async () => {
@@ -73,8 +75,7 @@ async function poll(
       method: "POST",
       headers: {
         [versionHeader]: String(protocolVersion),
-        [providerHeader]: runner,
-        [environmentHeader]: environment,
+        authorization: `Bearer ${await runners.token(runner, environment)}`,
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
@@ -320,4 +321,126 @@ test("forks a Session that never started from where it would have, and keeps fol
       startPoint: "main",
     },
   });
+});
+
+async function asRunner(
+  token: string | undefined,
+  path: string,
+  body?: unknown,
+): Promise<Response> {
+  return fetch(new URL(path, server.url), {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      "content-type": "application/json",
+      ...(token !== undefined && { authorization: `Bearer ${token}` }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
+  });
+}
+
+const emptyPoll: WorkPoll = { running: [], folders: [], models: [] };
+
+test("lets a runner join only with its Environment's key", async () => {
+  await runners.key("laptops");
+
+  const wrongKey = await fetch(new URL("/agent/join", server.url), {
+    method: "POST",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      authorization: "Bearer pck_guess",
+    },
+    body: JSON.stringify({ name: "mac-1" }),
+  });
+
+  expect(wrongKey.status).toBe(401);
+
+  expect((await asRunner(undefined, "/agent/work", emptyPoll)).status).toBe(
+    401,
+  );
+
+  expect((await asRunner("pct_guess", "/agent/work", emptyPoll)).status).toBe(
+    401,
+  );
+
+  const token = await runners.token("mac-1", "laptops");
+
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+});
+
+test("lets go of runners that joined with an Environment's earlier key", async () => {
+  const token = await runners.token("mac-1", "laptops");
+  const id = await startSession("/srv/a");
+
+  const work = await json<Work>(
+    asRunner(token, "/agent/work", { ...emptyPoll, folders: ["/srv/a"] }),
+  );
+
+  const sessionToken = work.start[0]?.token;
+
+  const [environment] = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
+  );
+
+  const replaced = await fetch(
+    new URL(`/api/environments/${environment?.id ?? ""}/key`, server.url),
+    { method: "POST", headers: { cookie: await signedIn() } },
+  );
+
+  expect(replaced.status).toBe(200);
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(401);
+
+  expect(
+    (await asRunner(sessionToken, `/agent/sessions/${id}/transcript`)).status,
+  ).toBe(401);
+});
+
+test("gives each Session a token that reaches only that Session", async () => {
+  const runner = await runners.token("mac-1", "laptops");
+  const first = await startSession("/srv/a");
+  const second = await startSession("/srv/a");
+
+  const work = await json<Work>(
+    asRunner(runner, "/agent/work", { ...emptyPoll, folders: ["/srv/a"] }),
+  );
+
+  const token = work.start.find(({ sessionId }) => sessionId === first)?.token;
+
+  const statuses = [
+    (await asRunner(token, `/agent/sessions/${first}/transcript`)).status,
+    (await asRunner(token, `/agent/sessions/${second}/transcript`)).status,
+    (await asRunner(token, "/agent/work", emptyPoll)).status,
+  ];
+
+  expect(work.start.map(({ sessionId }) => sessionId).sort()).toEqual(
+    [first, second].sort(),
+  );
+
+  expect(work.start).toHaveLength(2);
+
+  expect(statuses).toEqual([200, 404, 404]);
+});
+
+test("makes an Environment once, with a key, under a name runners can use", async () => {
+  const create = async (name: string): Promise<Response> =>
+    fetch(new URL("/api/environments", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: await signedIn() },
+      body: JSON.stringify({ name }),
+    });
+
+  const created = await create("builders");
+
+  const body = (await created.json()) as {
+    environment: Environment;
+    key: string;
+  };
+
+  expect(created.status).toBe(201);
+  expect(body.environment).toMatchObject({ name: "builders", hasKey: true });
+  expect(body.key).toStartWith("pck_");
+  expect((await create("builders")).status).toBe(409);
+  expect((await create("no spaces")).status).toBe(400);
 });

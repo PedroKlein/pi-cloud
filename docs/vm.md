@@ -77,8 +77,8 @@ The server logs a one-time setup link the first time it starts (`journalctl --us
 
 Open http://127.0.0.1:7420, choose the `vm` Environment and "Clone repository", enter a repository URL the VM can clone, and start the session. The session's branch starts from the repository's default branch, or from the branch, tag or commit you enter under "start from".
 
-To also run sessions on the laptop, start an agent against the tunnel:
+To also run sessions on the laptop, make a `laptop` Environment on the Environments page and start an agent against the tunnel with the key it shows:
 
 ```sh
-pi-cloud agent --name laptop
+PI_CLOUD_KEY=pck_… pi-cloud agent --name laptop
 ```

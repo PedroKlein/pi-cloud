@@ -16,6 +16,7 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Session, SessionEvent } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
@@ -23,6 +24,7 @@ let root: string;
 let faux: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve> | undefined;
 let signedIn: () => Promise<string>;
+let runners: ReturnType<typeof runnerCredentials>;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-plugins-")));
@@ -67,6 +69,7 @@ async function start(
   });
 
   signedIn = firstUser(server, logs);
+  runners = runnerCredentials(server, signedIn);
 }
 
 async function api(path: string, body?: unknown): Promise<Response> {
@@ -190,7 +193,12 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
 
   const tools = await fetch(
     new URL(`/agent/sessions/${toolless.id}/tools?generation=1`, server?.url),
-    { headers: { "pi-cloud-protocol": "1", "pi-cloud-provider": "local" } },
+    {
+      headers: {
+        "pi-cloud-protocol": "2",
+        authorization: `Bearer ${await runners.token("local")}`,
+      },
+    },
   );
 
   await follow(toolless.id, idle);

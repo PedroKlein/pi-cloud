@@ -11,10 +11,18 @@ import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
 
 export interface ServeOptions {
+  // 127.0.0.1 unless a proxy or other machines reach the server directly.
+  readonly hostname?: string;
   readonly port: number;
+  // Where people open the server, for the setup link, when that isn't where
+  // it listens, such as behind a gateway.
+  readonly url?: URL;
   readonly database: string;
   readonly sessions?: SessionsOptions;
-  readonly agent?: Omit<AgentOptions, "server" | "log" | "signal">;
+  readonly agent?: Omit<
+    AgentOptions,
+    "server" | "credential" | "log" | "signal"
+  >;
   readonly plugins?: readonly ServerPlugin[];
   readonly disabledPlugins?: readonly string[];
   readonly log: Log;
@@ -66,14 +74,22 @@ export function serve(options: ServeOptions): {
 
   const terminals = terminalBroker(sessions, auth, options.log);
 
+  const siteHosts = new Set([
+    ...loopback,
+    ...(options.url ? [options.url.hostname] : []),
+    ...(options.hostname === undefined || wildcards.has(options.hostname)
+      ? []
+      : [options.hostname]),
+  ]);
+
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: options.hostname ?? "127.0.0.1",
     port: options.port,
     idleTimeout: 30,
     development: false,
     routes: { "/": web },
     fetch: async (request, bunServer) => {
-      if (!fromThisSite(request)) {
+      if (!fromThisSite(request, siteHosts)) {
         return Response.json({ error: "forbidden" }, { status: 403 });
       }
 
@@ -91,7 +107,8 @@ export function serve(options: ServeOptions): {
 
   if (auth.setupToken !== undefined) {
     options.log("open the setup link to create the first user", {
-      link: new URL(`/#setup/${auth.setupToken}`, server.url).href,
+      link: new URL(`/#setup/${auth.setupToken}`, options.url ?? server.url)
+        .href,
     });
   }
 
@@ -99,11 +116,22 @@ export function serve(options: ServeOptions): {
 
   // The built-in provider is the same agent a laptop runs, talking to this
   // server over loopback, so both providers share one tested path.
+  const ownRunner = options.agent?.provider;
+  if (ownRunner !== undefined) {
+    store.ensureEnvironment(ownRunner);
+  }
+
   const agent =
     options.agent &&
     runAgent({
       ...options.agent,
       server: server.url.href,
+      credential: {
+        token: auth.ownRunnerToken(
+          options.agent.provider,
+          options.agent.provider,
+        ),
+      },
       log: options.log,
       signal: agentStop.signal,
     });
@@ -122,32 +150,24 @@ export function serve(options: ServeOptions): {
   };
 }
 
-const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const loopback = ["127.0.0.1", "localhost", "[::1]"];
+const wildcards = new Set(["0.0.0.0", "::", "[::]"]);
 
-// Docker Desktop and colima containers reach the runner's own loopback, where
-// a laptop's server listens, under this name. A browser may resolve it through
-// DNS, so for it only a runner's calls count, which a browser page can't make
-// without sending an Origin.
-const dockerHost = "host.docker.internal";
-
-// Without auth, a page on another site, or one reached by DNS rebinding,
-// could otherwise drive sessions and terminals from the user's browser.
-function fromThisSite(request: Request): boolean {
+// Runners carry a token and reach the server under any name, such as Docker's
+// host.docker.internal or a cluster Service's. A browser page sends an Origin.
+// Pages are refused under names the server doesn't go by, so one that rebinds
+// its own name to the server can't even try passwords (ADR 0033).
+function fromThisSite(request: Request, hosts: ReadonlySet<string>): boolean {
   const host = request.headers.get("host") ?? "";
   const origin = request.headers.get("origin");
 
-  if (
-    URL.canParse(`http://${host}`) &&
-    new URL(`http://${host}`).hostname === dockerHost
-  ) {
-    return (
-      origin === null && new URL(request.url).pathname.startsWith("/agent/")
-    );
+  if (new URL(request.url).pathname.startsWith("/agent/")) {
+    return origin === null;
   }
 
   return (
     URL.canParse(`http://${host}`) &&
-    loopback.has(new URL(`http://${host}`).hostname) &&
+    hosts.has(new URL(`http://${host}`).hostname) &&
     (origin === null || (URL.canParse(origin) && new URL(origin).host === host))
   );
 }

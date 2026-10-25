@@ -61,6 +61,13 @@ const setUp = await fetch(new URL("/api/auth/setup", server.url), {
 
 const cookie = setUp.headers.get("set-cookie")?.split(";")[0] ?? "";
 
+const environment = await fetch(new URL("/api/environments", server.url), {
+  method: "POST",
+  headers: { "content-type": "application/json", cookie },
+  body: JSON.stringify({ name: "smoke" }),
+});
+
+const { key } = (await environment.json()) as { key: string };
 const agentOutput: string[] = [];
 
 const agent = spawn(
@@ -77,7 +84,10 @@ const agent = spawn(
     "--folder",
     cwd,
   ],
-  { stdio: ["ignore", "pipe", "pipe"] },
+  {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PI_CLOUD_KEY: key },
+  },
 );
 
 for (const output of [agent.stdout, agent.stderr]) {

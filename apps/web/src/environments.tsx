@@ -9,7 +9,7 @@ import {
   Section,
 } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
-import { send } from "./api";
+import { api, send } from "./api";
 import { variablesOf, variablesText } from "./variables";
 
 export function EnvironmentsPage({
@@ -23,6 +23,12 @@ export function EnvironmentsPage({
 }): ReactElement {
   const environment =
     environments.find(({ id }) => id === selected) ?? environments[0];
+
+  // A key shows once, right after it is made (ADR 0033).
+  const [madeKey, setMadeKey] = useState<{
+    readonly environmentId: string;
+    readonly key: string;
+  }>();
 
   return (
     <div
@@ -47,26 +53,156 @@ export function EnvironmentsPage({
           </a>
         ))}
       </div>
-      {environment ? (
+      <NewEnvironment
+        onCreated={(environmentId, key) => {
+          setMadeKey({ environmentId, key });
+          onChange();
+          location.hash = `#environments/${environmentId}`;
+        }}
+      />
+      {environment && (
         <Editor
           key={environment.id}
           environment={environment}
+          madeKey={
+            madeKey?.environmentId === environment.id ? madeKey.key : undefined
+          }
+          onKey={(key) => {
+            setMadeKey({ environmentId: environment.id, key });
+            onChange();
+          }}
           onChange={onChange}
         />
-      ) : (
-        <p className="mt-6 text-ui text-fg-dim">
-          An Environment appears when an agent first connects.
+      )}
+    </div>
+  );
+}
+
+function NewEnvironment({
+  onCreated,
+}: {
+  readonly onCreated: (environmentId: string, key: string) => void;
+}): ReactElement {
+  const [error, setError] = useState<string>();
+
+  const submit = (event: SubmitEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const name = new FormData(form).get("name");
+
+    void api("/api/environments", { name })
+      .then(async (response) => {
+        const created = (await response.json()) as {
+          readonly environment: Environment;
+          readonly key: string;
+        };
+
+        setError(undefined);
+        form.reset();
+        onCreated(created.environment.id, created.key);
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      aria-label="New Environment"
+      className="mt-4 flex flex-wrap items-center gap-2"
+    >
+      <input
+        name="name"
+        required
+        aria-label="New Environment name"
+        placeholder="laptops"
+        className={cn(fieldClass, "w-48 font-mono")}
+      />
+      <Button type="submit">New Environment</Button>
+      {error !== undefined && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
         </p>
       )}
+    </form>
+  );
+}
+
+function JoinKey({
+  environment,
+  madeKey,
+  onKey,
+}: {
+  readonly environment: Environment;
+  readonly madeKey: string | undefined;
+  readonly onKey: (key: string) => void;
+}): ReactElement {
+  const [error, setError] = useState<string>();
+
+  const replace = (): void => {
+    if (
+      environment.hasKey &&
+      !confirm(
+        "Agents that joined with the current key will have to join again with the new one.",
+      )
+    ) {
+      return;
+    }
+
+    void api(`/api/environments/${environment.id}/key`, {})
+      .then(async (response) => {
+        onKey(((await response.json()) as { readonly key: string }).key);
+      })
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+  };
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 text-ui">
+      {madeKey === undefined ? (
+        <p className="text-fg-dim">
+          {environment.hasKey
+            ? "Agents join with this Environment's key, which was shown when it was made."
+            : "No agent can join until the Environment has a key."}
+        </p>
+      ) : (
+        <>
+          <p className="text-fg-dim">
+            Start an agent with this key. It is shown only now.
+          </p>
+          <pre
+            aria-label="Join command"
+            className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm"
+          >
+            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --name <machine> --server ${location.origin}`}
+          </pre>
+        </>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={replace}>
+          {environment.hasKey ? "Replace key" : "Make key"}
+        </Button>
+        {error !== undefined && (
+          <p role="alert" className="text-caption text-failed">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
 function Editor({
   environment,
+  madeKey,
+  onKey,
   onChange,
 }: {
   readonly environment: Environment;
+  readonly madeKey: string | undefined;
+  readonly onKey: (key: string) => void;
   readonly onChange: () => void;
 }): ReactElement {
   const [error, setError] = useState<string>();
@@ -163,6 +299,7 @@ function Editor({
             </li>
           ))}
         </ul>
+        <JoinKey environment={environment} madeKey={madeKey} onKey={onKey} />
       </Section>
       <Section title={environment.name}>
         <form

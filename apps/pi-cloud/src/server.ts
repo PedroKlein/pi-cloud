@@ -21,10 +21,11 @@ import {
   thinkingLevels,
   type ToolCall,
   protocolVersion,
-  environmentHeader,
   type EnvironmentUpdate,
   isolations,
-  providerHeader,
+  type CreateEnvironment,
+  type EnvironmentKey,
+  type JoinRequest,
   type TranscriptBatch,
   type TrustAnswer,
   versionHeader,
@@ -39,6 +40,7 @@ import type { Log } from "@pi-cloud/providers";
 import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
 import { version as serverVersion } from "../package.json";
 import {
+  type Agent,
   type Auth,
   type Credentials,
   InvalidCredentials,
@@ -54,6 +56,7 @@ const rejectionStatus = {
   archived: 409,
   not_kept: 409,
   unknown_environment: 400,
+  environment_exists: 409,
   unknown_profile: 400,
   not_movable: 409,
 } as const satisfies Record<Rejection, number>;
@@ -66,6 +69,12 @@ type Route = (
 type RouteTable = readonly (readonly [string, RegExp, Route])[];
 
 type UserActor = `user:${string}`;
+
+type AgentRoute = (
+  request: Request,
+  params: readonly string[],
+  caller: Agent,
+) => Response | Promise<Response>;
 
 type BrowserRoute = (
   request: Request,
@@ -81,37 +90,40 @@ export function createHandler(
   checkStore: () => void,
   log: Log,
 ): (request: Request) => Promise<Response> {
-  const agent = (route: Route): Route => {
+  const agent = (route: AgentRoute): Route => {
     return async (request, params) => {
-      const version = request.headers.get(versionHeader);
-      if (version !== String(protocolVersion)) {
-        return Response.json(
-          { error: `unsupported protocol version ${String(version)}` },
-          { status: 400 },
-        );
+      const unsupported = unsupportedVersion(request);
+      if (unsupported) {
+        return unsupported;
       }
 
-      const runner = runnerOf(request);
-      if (runner === undefined) {
-        return Response.json({ error: "missing provider" }, { status: 400 });
+      const caller = auth.agentOf(request);
+      if (caller === undefined) {
+        return Response.json({ error: "unknown_token" }, { status: 401 });
       }
 
       const sessionId = params[0];
 
-      const session =
-        sessionId === undefined ? undefined : sessions.get(sessionId);
+      if (sessionId === undefined) {
+        return caller.sessionId === null
+          ? await route(request, params, caller)
+          : notFound();
+      }
+
+      const session = sessions.get(sessionId);
 
       // A Session that never reached a runner can still have a workspace
       // removal for any runner of its Environment.
+      // Runner names are unique only within an Environment.
       if (
-        sessionId !== undefined &&
-        session?.runner !== runner.name &&
-        !(session?.runner === null && session.provider === runner.environment)
+        (caller.sessionId !== null && caller.sessionId !== sessionId) ||
+        session?.provider !== caller.environment ||
+        (session.runner !== null && session.runner !== caller.runner)
       ) {
         return notFound();
       }
 
-      return route(request, params);
+      return await route(request, params, caller);
     };
   };
 
@@ -158,6 +170,37 @@ export function createHandler(
       },
     ],
     ...authRoutes(auth, log),
+    [
+      "POST",
+      /^\/agent\/join$/,
+      async (request) => {
+        const unsupported = unsupportedVersion(request);
+        if (unsupported) {
+          return unsupported;
+        }
+
+        const [scheme, key] = (
+          request.headers.get("authorization") ?? ""
+        ).split(" ");
+
+        const { name } = joinRequest(await readJson(request));
+
+        const joined =
+          scheme === "Bearer" && key !== undefined
+            ? auth.join(key, name)
+            : undefined;
+
+        if (joined === undefined) {
+          log("runner refused", { runner: name });
+
+          return Response.json({ error: "unknown_key" }, { status: 401 });
+        }
+
+        log("runner joined", { runner: name, environment: joined.environment });
+
+        return Response.json(joined);
+      },
+    ],
   ];
 
   const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
@@ -172,6 +215,46 @@ export function createHandler(
       "GET",
       /^\/api\/environments$/,
       () => Response.json(sessions.environments()),
+    ],
+    [
+      "POST",
+      /^\/api\/environments$/,
+      async (request) => {
+        const { name } = createEnvironment(await readJson(request));
+        const created = sessions.createEnvironment(name);
+        if (!created.ok) {
+          return reply(created, 201);
+        }
+
+        const key = auth.newEnvironmentKey(created.value.provider);
+        log("environment created", { environmentId: created.value.id });
+
+        return Response.json(
+          { environment: { ...created.value, hasKey: true }, key },
+          { status: 201 },
+        );
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/environments\/([^/]+)\/key$/,
+      (_request, [id = ""]) => {
+        const environment = sessions
+          .environments()
+          .find((each) => each.id === id);
+
+        if (!environment) {
+          return notFound();
+        }
+
+        const key: EnvironmentKey = {
+          key: auth.newEnvironmentKey(environment.provider),
+        };
+
+        log("environment key replaced", { environmentId: id });
+
+        return Response.json(key);
+      },
     ],
     [
       "PATCH",
@@ -323,7 +406,7 @@ export function createHandler(
     ],
   ];
 
-  const agentRoutes: RouteTable = [
+  const agentRoutes: readonly (readonly [string, RegExp, AgentRoute])[] = [
     [
       "ANY",
       /^\/agent\/sessions\/([^/]+)\/plugins\/([^/]+)\/(.*)$/,
@@ -379,8 +462,8 @@ export function createHandler(
     [
       "POST",
       /^\/agent\/work$/,
-      async (request) => {
-        const runner = runnerOf(request) ?? { name: "", environment: "" };
+      async (request, _params, caller) => {
+        const runner = { name: caller.runner, environment: caller.environment };
         const poll = workPoll(await readJson(request));
 
         const { start, unload, remove, interrupted } = await sessions.claim(
@@ -408,7 +491,10 @@ export function createHandler(
         }
 
         const work: Work = {
-          start,
+          start: start.map((assignment) => ({
+            ...assignment,
+            token: auth.sessionToken(caller, assignment.sessionId),
+          })),
           unload,
           remove,
           profiles: profiles.list().map(({ id }) => id),
@@ -1244,21 +1330,37 @@ function toolCall(body: unknown): ToolCall {
   };
 }
 
-function runnerOf(
-  request: Request,
-): { readonly name: string; readonly environment: string } | undefined {
-  const name = request.headers.get(providerHeader);
-  if (name === null || name === "") {
-    return undefined;
+function unsupportedVersion(request: Request): Response | undefined {
+  const version = request.headers.get(versionHeader);
+
+  return version === String(protocolVersion)
+    ? undefined
+    : Response.json(
+        { error: `unsupported protocol version ${String(version)}` },
+        { status: 400 },
+      );
+}
+
+// Runner and Environment names show in logs, container names and paths.
+const agentName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+function nameOf(key: string, value: unknown): string {
+  const name = textOf(key, value);
+  if (!agentName.test(name)) {
+    throw new BadRequest(
+      `${key} must be 1 to 64 letters, digits, dots, dashes or underscores`,
+    );
   }
 
-  const environment = request.headers.get(environmentHeader);
+  return name;
+}
 
-  return {
-    name,
-    environment:
-      environment === null || environment === "" ? name : environment,
-  };
+function joinRequest(body: unknown): JoinRequest {
+  return { name: nameOf("name", fieldsOf(body)["name"]) };
+}
+
+function createEnvironment(body: unknown): CreateEnvironment {
+  return { name: nameOf("name", fieldsOf(body)["name"]) };
 }
 
 function workPoll(body: unknown): WorkPoll {

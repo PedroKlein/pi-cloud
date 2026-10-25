@@ -1,9 +1,23 @@
-export const protocolVersion = 1;
+export const protocolVersion = 2;
 export const versionHeader = "pi-cloud-protocol";
-// A runner names itself, and the Environment whose pool it joins (ADR 0032).
-// A runner that names no Environment joins the one named after it.
-export const providerHeader = "pi-cloud-provider";
-export const environmentHeader = "pi-cloud-environment";
+
+// A runner joins the pool of the Environment whose key it holds, under a name
+// of its own, and gets a token for its other calls (ADR 0033).
+export interface JoinRequest {
+  readonly name: string;
+}
+
+export interface Joined {
+  readonly token: string;
+  // The provider name of the Environment it joined.
+  readonly environment: string;
+}
+
+// The key is shown once. Runners that joined with an Environment's earlier
+// key are let go.
+export interface EnvironmentKey {
+  readonly key: string;
+}
 
 // A runner's lease on its Sessions lasts this long after its last poll. Then
 // a Session whose Workspace can be made again elsewhere moves to another
@@ -204,8 +218,13 @@ export interface Removal {
   readonly force: boolean;
 }
 
+// A Session's own calls use its token, which reaches only that Session.
+export interface SessionStart extends Assignment {
+  readonly token: string;
+}
+
 export interface Work {
-  readonly start: readonly Assignment[];
+  readonly start: readonly SessionStart[];
   readonly unload: readonly Attempt[];
   readonly remove: readonly Removal[];
   // Every Profile's id, so runners can delete the folders of the others.
@@ -692,6 +711,12 @@ export interface Environment {
   readonly variables: Readonly<Record<string, string>>;
   // Secret values never leave the server except in a Session's assignment.
   readonly secrets: readonly string[];
+  // Whether runners can join, which takes the Environment's key.
+  readonly hasKey: boolean;
+}
+
+export interface CreateEnvironment {
+  readonly name: string;
 }
 
 // A null secret removes it.

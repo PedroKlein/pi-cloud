@@ -10,10 +10,12 @@ import { serve } from "./serve";
 import { runSessionProcess } from "./session-process";
 
 const usage = `usage:
-  pi-cloud server [--port 7420] [--database ~/.pi-cloud/server.db]
+  pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
+                  [--database ~/.pi-cloud/server.db]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
-  pi-cloud agent --name <runner> [--environment <name>] [--capacity <n>]
+  PI_CLOUD_KEY=<Environment key> \\
+  pi-cloud agent --name <runner> [--capacity <n>]
                  [--server http://127.0.0.1:7420] [--session-binary <path>]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
                  [--extension <path>]...`;
@@ -52,6 +54,8 @@ switch (command) {
     const { values } = parseArgs({
       args: rest,
       options: {
+        host: { type: "string", default: "127.0.0.1" },
+        url: { type: "string" },
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
         provider: { type: "string" },
@@ -64,6 +68,8 @@ switch (command) {
     await checkFolders(values.folder);
 
     const server = serve({
+      hostname: values.host,
+      ...(values.url !== undefined && { url: new URL(values.url) }),
       port: Number(values.port),
       database: values.database,
       ...(values.provider !== undefined && {
@@ -89,7 +95,6 @@ switch (command) {
       args: rest,
       options: {
         name: { type: "string" },
-        environment: { type: "string" },
         capacity: { type: "string" },
         "session-binary": { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
@@ -102,8 +107,13 @@ switch (command) {
     const capacity =
       values.capacity === undefined ? undefined : Number(values.capacity);
 
+    // Sessions inherit the environment, and the key would let one join too.
+    const key = process.env["PI_CLOUD_KEY"];
+    delete process.env["PI_CLOUD_KEY"];
+
     if (
       values.name === undefined ||
+      key === undefined ||
       (capacity !== undefined &&
         !(Number.isSafeInteger(capacity) && capacity > 0))
     ) {
@@ -116,9 +126,7 @@ switch (command) {
     await runAgent({
       server: values.server,
       provider: values.name,
-      ...(values.environment !== undefined && {
-        environment: values.environment,
-      }),
+      credential: { key },
       ...(capacity !== undefined && { capacity }),
       ...(values["session-binary"] !== undefined && {
         sessionBinary: absolutePath(values["session-binary"]),

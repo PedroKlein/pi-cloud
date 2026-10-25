@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import type { Assignment } from "@pi-cloud/protocol";
+import type { SessionStart } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import {
   type HostedSession,
@@ -17,9 +17,7 @@ import { sessionPluginsNamed } from "./plugins";
 
 export interface SessionSpec {
   readonly server: string;
-  readonly provider: string;
-  readonly environment?: string;
-  readonly assignment: Assignment;
+  readonly assignment: SessionStart;
   readonly options: Omit<SessionOptions, "models">;
 }
 
@@ -156,7 +154,7 @@ export async function runSessionProcess(): Promise<void> {
         firstMessage: spec.assignment.firstMessage,
         plugins: sessionPluginsNamed(spec.assignment.plugins),
       },
-      httpSessionStream(spec, spec.assignment, log, () => {
+      httpSessionStream(spec.server, spec.assignment, log, () => {
         void stop();
       }),
       log,

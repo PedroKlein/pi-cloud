@@ -1,3 +1,4 @@
+import type { Joined } from "@pi-cloud/protocol";
 import {
   createHash,
   randomBytes,
@@ -30,6 +31,20 @@ export interface AuthStore {
     now: string,
   ) => User | undefined;
   readonly deleteBrowserSession: (tokenHash: string) => void;
+  // Also lets go of every runner that joined with the earlier key.
+  readonly setEnvironmentKey: (provider: string, keyHash: string) => void;
+  readonly keyEnvironment: (keyHash: string) => string | undefined;
+  // A Session holds one token, for its current attempt.
+  readonly insertAgentToken: (tokenHash: string, holder: Agent) => void;
+  readonly agentToken: (tokenHash: string) => Agent | undefined;
+}
+
+// Who sent a call to /agent/: a runner, or one of its Sessions.
+export interface Agent {
+  // The provider name of the runner's Environment.
+  readonly environment: string;
+  readonly runner: string;
+  readonly sessionId: string | null;
 }
 
 export interface AuthStatus {
@@ -58,6 +73,7 @@ const failureWindowMs = 15 * 60_000;
 export class Auth {
   readonly #store: AuthStore;
   readonly #failures = new Map<string, { count: number; since: number }>();
+  readonly #ownTokens = new Map<string, Agent>();
   #setupToken: string | undefined;
 
   constructor(store: AuthStore) {
@@ -161,6 +177,75 @@ export class Auth {
     this.#failures.delete(user.id);
 
     return { id: user.id, name: user.name };
+  }
+
+  // The key runners join the Environment with, shown only now.
+  newEnvironmentKey(provider: string): string {
+    const key = `pck_${randomBytes(32).toString("base64url")}`;
+    this.#store.setEnvironmentKey(provider, hash(key));
+
+    return key;
+  }
+
+  join(key: string, runner: string): Joined | undefined {
+    const environment = this.#store.keyEnvironment(hash(key));
+
+    return environment === undefined
+      ? undefined
+      : {
+          token: this.#agentToken({ environment, runner, sessionId: null }),
+          environment,
+        };
+  }
+
+  // The server's own runner needs no key, and it and its Sessions stop with
+  // the server, so their tokens live only in memory. A new key for its
+  // Environment leaves them be.
+  ownRunnerToken(environment: string, runner: string): string {
+    return this.#agentToken({ environment, runner, sessionId: null }, true);
+  }
+
+  // The token a Session of the calling runner uses for its current attempt.
+  sessionToken(runner: Agent, sessionId: string): string {
+    return this.#agentToken(
+      { ...runner, sessionId },
+      [...this.#ownTokens.values()].includes(runner),
+    );
+  }
+
+  agentOf(request: Request): Agent | undefined {
+    const [scheme, token] = (request.headers.get("authorization") ?? "").split(
+      " ",
+    );
+
+    if (scheme !== "Bearer" || token === undefined) {
+      return undefined;
+    }
+
+    const hashed = hash(token);
+
+    return this.#ownTokens.get(hashed) ?? this.#store.agentToken(hashed);
+  }
+
+  #agentToken(holder: Agent, own = false): string {
+    const token = `pct_${randomBytes(32).toString("base64url")}`;
+    const hashed = hash(token);
+
+    if (!own) {
+      this.#store.insertAgentToken(hashed, holder);
+
+      return token;
+    }
+
+    for (const [previous, { sessionId }] of this.#ownTokens) {
+      if (sessionId !== null && sessionId === holder.sessionId) {
+        this.#ownTokens.delete(previous);
+      }
+    }
+
+    this.#ownTokens.set(hashed, holder);
+
+    return token;
   }
 
   // The Set-Cookie value of a new browser session for the user.

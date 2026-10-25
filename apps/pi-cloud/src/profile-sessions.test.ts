@@ -25,12 +25,14 @@ import type {
 } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
 let root: string;
 let server: ReturnType<typeof serve>;
 let signedIn: () => Promise<string>;
+let runners: ReturnType<typeof runnerCredentials>;
 let faux: ReturnType<typeof fauxProvider>;
 let stopAgent: () => Promise<void>;
 
@@ -58,12 +60,14 @@ beforeEach(async () => {
   });
 
   signedIn = firstUser(server, logs);
+  runners = runnerCredentials(server, signedIn);
 
   const controller = new AbortController();
 
   const done = runAgent({
     server: server.url.href,
     provider: "laptop",
+    credential: { key: await runners.key("laptop") },
     dataDir: join(root, "laptop"),
     extensionPaths: [],
     folders: [root],
@@ -248,6 +252,7 @@ test("leaves Profile folders another server wrote in a shared data directory", a
   const done = runAgent({
     server: server.url.href,
     provider: "shared",
+    credential: { key: await runners.key("shared") },
     dataDir,
     extensionPaths: [],
     folders: [],
@@ -284,6 +289,7 @@ test("moves a machine's login files into its logins folder", async () => {
   const done = runAgent({
     server: server.url.href,
     provider: "upgraded",
+    credential: { key: await runners.key("upgraded") },
     dataDir,
     extensionPaths: [],
     folders: [],
