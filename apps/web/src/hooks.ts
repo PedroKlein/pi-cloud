@@ -11,11 +11,10 @@ import type {
   Profile,
   Session,
 } from "@pi-cloud/protocol";
+import { watchChanges } from "@pi-cloud/plugins/web";
 import { api } from "./api";
 import { noticeText, settled } from "./notices";
 import { responseOrder } from "./responses";
-
-const refreshMs = 2000;
 
 function subscribeHash(onChange: () => void): () => void {
   window.addEventListener("hashchange", onChange);
@@ -29,13 +28,14 @@ export function useHash(): string {
   return useSyncExternalStore(subscribeHash, () => location.hash.slice(1));
 }
 
-interface Polled<T> {
+interface WatchedList<T> {
   readonly value: readonly T[];
   readonly reload: () => void;
 }
 
-// Reads a JSON list from the server and keeps it fresh while mounted.
-function usePolled(path: string): Polled<unknown> {
+// Reads a JSON list from the server and reads it again whenever the server
+// says its topic changed (ADR 0038).
+function useWatchedList(path: string, topic: string): WatchedList<unknown> {
   const [value, setValue] = useState<readonly unknown[]>([]);
   const [order] = useState(responseOrder);
 
@@ -60,33 +60,37 @@ function usePolled(path: string): Polled<unknown> {
 
   useEffect(() => {
     reload();
-    const timer = setInterval(reload, refreshMs);
+    const unwatch = watchChanges([topic], reload);
 
     return () => {
-      clearInterval(timer);
+      unwatch();
       order.drop();
     };
-  }, [reload, order]);
+  }, [reload, order, topic]);
 
   return { value, reload };
 }
 
-export function useSessions(archived: boolean): Polled<Session> {
-  return usePolled(
+export function useSessions(archived: boolean): WatchedList<Session> {
+  return useWatchedList(
     `/api/sessions?archived=${String(archived)}&owner=all`,
-  ) as Polled<Session>;
+    "sessions",
+  ) as WatchedList<Session>;
 }
 
-export function useProfiles(): Polled<Profile> {
-  return usePolled("/api/profiles") as Polled<Profile>;
+export function useProfiles(): WatchedList<Profile> {
+  return useWatchedList("/api/profiles", "profiles") as WatchedList<Profile>;
 }
 
-export function usePlugins(): Polled<PluginInfo> {
-  return usePolled("/api/plugins") as Polled<PluginInfo>;
+export function usePlugins(): WatchedList<PluginInfo> {
+  return useWatchedList("/api/plugins", "plugins") as WatchedList<PluginInfo>;
 }
 
-export function useEnvironments(): Polled<Environment> {
-  return usePolled("/api/environments") as Polled<Environment>;
+export function useEnvironments(): WatchedList<Environment> {
+  return useWatchedList(
+    "/api/environments",
+    "environments",
+  ) as WatchedList<Environment>;
 }
 
 export interface McpToken {
@@ -95,8 +99,11 @@ export interface McpToken {
   readonly createdAt: string;
 }
 
-export function useMcpTokens(): Polled<McpToken> {
-  return usePolled("/api/mcp-tokens") as Polled<McpToken>;
+export function useMcpTokens(): WatchedList<McpToken> {
+  return useWatchedList(
+    "/api/mcp-tokens",
+    "mcp-tokens",
+  ) as WatchedList<McpToken>;
 }
 
 // Tells the browser when a session stops working, unless it is on screen.

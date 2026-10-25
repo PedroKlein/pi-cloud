@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  PluginStore,
   SendOutcome,
   ServerPlugin,
   ServerPluginContext,
@@ -31,7 +32,16 @@ export const projects: ServerPlugin = {
   name: "projects",
   register: (context) => {
     // Other plugins, like the library, follow who is in which Project.
-    const store = projectStore(context.store, (member) => {
+    // Every write can change what an open Project shows (ADR 0038).
+    const tables: PluginStore = {
+      ...context.store,
+      run: (sql, ...params) => {
+        context.store.run(sql, ...params);
+        context.changes.publish("projects");
+      },
+    };
+
+    const store = projectStore(tables, (member) => {
       context.events.publish({
         type: "projects.MemberAdded",
         sessionId: member.sessionId,

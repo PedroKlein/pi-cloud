@@ -48,7 +48,7 @@ export default {
 };
 ```
 
-`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `signal` and `log` are always there.
+`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `changes`, `signal` and `log` are always there. `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 
 | Capability     | What it gives                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------- |
@@ -90,6 +90,8 @@ export default { name: "greeter", nav: { label: "Greeter", Page } };
 ```
 
 The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
+
+`useLoaded(load, key, { topics })` from `@pi-cloud/plugins/web` loads data and loads it again when one of the topics changes, such as `sessions`, `profiles`, `environments`, `plugins` or your own `<id>.<name>`. Pass `everyMs` instead for data that changes outside Pi Cloud.
 
 The part shares `react`, `react-dom`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` with the page, so hooks work and it looks like the rest of the app. It can't import CSS or other files yet. The page only has the Tailwind classes the app itself uses, so build the UI from `@pi-cloud/ui` components.
 

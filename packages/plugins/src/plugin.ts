@@ -175,6 +175,9 @@ export interface ServerPluginContext {
     readonly publish: (event: PluginEvent) => void;
     readonly subscribe: EventBus["subscribe"];
   };
+  // Tells open pages that something of the plugin's changed. They hear it as
+  // the topic "<plugin>.<name>" and fetch again (ADR 0038).
+  readonly changes: { readonly publish: (name: string) => void };
   readonly sessions: {
     // With an owner key the plugin owns the Session: it stays out of the
     // Session list and opens where the plugin's web part says (ADR 0028).

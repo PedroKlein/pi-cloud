@@ -268,6 +268,46 @@ test("repairs JSON-encoded tool arguments and names the allowed choices", async 
   ).toBe(true);
 });
 
+test("tells open pages which kind of thing changed, never what", async () => {
+  await start([
+    {
+      name: "notes",
+      register: ({ routes, changes }) => {
+        routes.handle(() => {
+          changes.publish("entries");
+
+          return new Response(null, { status: 204 });
+        });
+      },
+    },
+  ]);
+
+  const response = await api("/api/changes");
+  const topics: string[] = [];
+
+  const reading = (async () => {
+    for await (const event of readSse(response)) {
+      topics.push((event as { topic: string }).topic);
+      if (topics.includes("notes.entries")) {
+        break;
+      }
+    }
+  })();
+
+  await api("/api/mcp-tokens", { name: "laptop" });
+  await createSession();
+  await api("/api/plugins/notes/add", {});
+  await reading;
+
+  expect(topics).toContain("mcp-tokens");
+  expect(topics).toContain("sessions");
+  expect(topics.at(-1)).toBe("notes.entries");
+
+  expect(new Set(topics)).toEqual(
+    new Set(["mcp-tokens", "sessions", "notes.entries"]),
+  );
+});
+
 test("serves a tool's exposure, namespace and hints to its sessions", async () => {
   const spec = {
     name: "keys_list",

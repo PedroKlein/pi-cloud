@@ -23,6 +23,7 @@ import {
 } from "./installed";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { previewBroker } from "./previews";
+import { changeFeed } from "./changes";
 import { createHandler, onBehalfOf } from "./server";
 import { kernelToolsets } from "./toolsets";
 import type { PreviewData, SocketData, TerminalData } from "./sockets";
@@ -97,9 +98,14 @@ export function serve(options: ServeOptions): {
     options.log("event listener failed", { type, error: String(error) });
   });
 
+  const changes = changeFeed();
+
   const sessions = new Sessions(store, {
     ...options.sessions,
     events: events.publish,
+    changed: () => {
+      changes.publish("sessions");
+    },
     sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
     pluginProfile: (id) => pluginHost.profile(id),
@@ -118,6 +124,7 @@ export function serve(options: ServeOptions): {
       },
     },
     events,
+    changes: changes.publish,
     store: store.plugin,
     settings: store.pluginSettings,
     toolsets: kernelToolsets,
@@ -158,6 +165,7 @@ export function serve(options: ServeOptions): {
     sessions,
     new Profiles(store, owner),
     pluginHost,
+    changes,
     store.check,
     options.log,
     options.restart && {

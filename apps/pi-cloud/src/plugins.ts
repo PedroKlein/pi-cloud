@@ -265,6 +265,7 @@ export function startPlugins(
       readonly revoke: (environment: string, runner: string) => void;
     };
     readonly events: EventBus;
+    readonly changes: (topic: string) => void;
     readonly store: (name: string) => PluginStore;
     readonly settings: PluginSettingsStore;
     // The kernel's own toolsets (ADR 0035).
@@ -526,6 +527,11 @@ export function startPlugins(
               staged.unsubscribes.push(unsubscribe);
 
               return unsubscribe;
+            },
+          },
+          changes: {
+            publish: (name) => {
+              deps.changes(`${plugin.name}.${name}`);
             },
           },
           sessions: pluginSessions(deps.sessions, plugin.name, (names) => {
