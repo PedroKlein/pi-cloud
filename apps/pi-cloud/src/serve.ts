@@ -163,7 +163,14 @@ function fromThisSite(request: Request, hosts: ReadonlySet<string>): boolean {
   const host = request.headers.get("host") ?? "";
   const origin = request.headers.get("origin");
 
-  if (new URL(request.url).pathname.startsWith("/agent/")) {
+  const { pathname } = new URL(request.url);
+
+  // Health checks, such as Kubernetes probes, use the pod's own address.
+  if (pathname === "/healthz") {
+    return true;
+  }
+
+  if (pathname.startsWith("/agent/")) {
     return origin === null;
   }
 

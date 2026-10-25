@@ -2237,6 +2237,14 @@ test("rejects requests from other sites", async () => {
   expect(statuses).toEqual([403, 403, 403, 200]);
 });
 
+test("answers health checks sent to the pod's address", async () => {
+  const response = await fetch(new URL("/healthz", server.url), {
+    headers: { host: `10.244.0.6:${server.url.port}` },
+  });
+
+  expect(response.status).toBe(200);
+});
+
 test("accepts a runner's calls under Docker's host name with its token alone", async () => {
   const session = await createSession("laptop");
   const host = `host.docker.internal:${server.url.port}`;
