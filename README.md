@@ -46,6 +46,14 @@ In a session, Enter queues a message for when Pi finishes its turn, and Ctrl+Ent
 
 The home screen asks the Pi Cloud assistant (the `meta` plugin, [ADR 0035](docs/adr/0035-meta-sessions.md)). Type a question and press Enter: that starts a meta-session, a session with no repositories that runs on the plugin's own read-only Profile. Before any tool call that could change something, it shows a card with the tool and its whole input and waits for you to allow it; read-only tools run without asking. A meta-session loads only the `ask`, `models` and `meta` session parts, so subagents and `/pr` aren't there. Its tools manage Sessions, Environments, Profiles and Projects through the same routes as the web UI. They never see secret values, runner keys or what a Profile's MCP servers hold. When it starts or opens something, a wide screen goes there, and a phone shows a notice with an Open button. Earlier conversations are listed under the composer and on the Assistant page, not in the session list. "Start a session yourself" opens the New session form.
 
+The same tools are served over MCP at `/api/mcp`, so Pi or Claude Code on your laptop can manage Pi Cloud too. Make a token under Settings, MCP clients; it is shown once, with the command that adds the server:
+
+```sh
+claude mcp add --transport http pi-cloud https://pi-cloud.example/api/mcp --header "Authorization: Bearer pcm_..."
+```
+
+A client acts as the user who made its token, and asking before risky tools is up to the client. Revoking the token cuts it off at once. The endpoint answers each request with one JSON reply and opens no event stream.
+
 Projects (the `projects` plugin, [ADR 0016](docs/adr/0016-projects.md)) group work on one goal. Create one on the Projects page with a name, an Environment, its repository URLs and optional instructions. That starts its coordinator, a session with every repository checked out. Tell the coordinator what you want: it starts a thread session for each piece of work, gets a turn with a short notice after each thread turn, and shares Project memory with the threads. The Projects page lists the threads with their run and work state and highlights the ones that need you. You can open any thread and talk to it directly. The Library page (the `library` plugin, [ADR 0018](docs/adr/0018-project-library.md)) holds files shared by a Project: upload them there, and Project sessions get them with `fetch_file` and add their own with `publish_file`.
 
 Fork, in a session's menu, starts a new session that remembers the chat so far, on its own branch from the forked session's branch. `POST /api/sessions/<id>/fork` with an `environment` forks it into another Environment; the new machine gets only what the session pushed.

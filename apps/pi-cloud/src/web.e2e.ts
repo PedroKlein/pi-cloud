@@ -336,6 +336,40 @@ test("changes a plugin's setting on the Plugins page", async () => {
   await library.getByText("Saved").waitFor();
 });
 
+test("makes an MCP token that works once shown, and revokes it", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Settings" }).click();
+
+  await page.getByLabel("Client name").fill("My laptop");
+  await page.getByRole("button", { name: "New token" }).click();
+
+  const command = await page.getByLabel("Add command").textContent();
+  const secret = /Bearer (pcm_[\w-]+)/.exec(command ?? "")?.[1] ?? "";
+
+  const ping = async (): Promise<number> =>
+    (
+      await fetch(new URL("/api/mcp", server.url), {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secret}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      })
+    ).status;
+
+  expect(command).toContain(`${server.url.origin}/api/mcp`);
+  expect(await ping()).toBe(200);
+
+  await page.reload();
+  await page.getByLabel("Add command").waitFor({ state: "detached" });
+  expect(await page.content()).not.toContain(secret);
+
+  await page.getByRole("button", { name: "Revoke My laptop" }).click();
+  await page.getByText("No client has a token.").waitFor();
+  expect(await ping()).toBe(401);
+});
+
 test("edits an Environment's variables and secrets without showing secret values", async () => {
   await page.goto(server.url.href);
   await page.getByRole("link", { name: "Environments" }).click();

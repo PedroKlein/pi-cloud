@@ -39,6 +39,20 @@ export interface AuthStore {
   // A Session holds one token, for its current attempt.
   readonly insertAgentToken: (tokenHash: string, holder: Agent) => void;
   readonly agentToken: (tokenHash: string) => Agent | undefined;
+  readonly insertMcpToken: (token: McpToken, tokenHash: string) => void;
+  readonly mcpTokens: (userId: string) => readonly McpToken[];
+  readonly mcpTokenUser: (tokenHash: string) => User | undefined;
+  // Whether the user had a token with the id.
+  readonly deleteMcpToken: (id: string, userId: string) => boolean;
+}
+
+// A token an MCP client such as Claude Code uses to act as its user
+// (ADR 0035). Only its hash is kept.
+export interface McpToken {
+  readonly id: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly createdAt: string;
 }
 
 // Who sent a call to /agent/: a runner, or one of its Sessions.
@@ -273,6 +287,49 @@ export class Auth {
     this.#ownTokens.set(hashed, holder);
 
     return token;
+  }
+
+  // The secret is shown once, when the token is made.
+  newMcpToken(
+    userId: string,
+    name: string,
+  ): { readonly token: McpToken; readonly secret: string } {
+    if (name.trim() === "" || name.length > maxNameLength) {
+      throw new InvalidCredentials(
+        `name must be 1 to ${String(maxNameLength)} characters`,
+      );
+    }
+
+    const secret = `pcm_${randomBytes(32).toString("base64url")}`;
+
+    const token: McpToken = {
+      id: randomUUID(),
+      userId,
+      name: name.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    this.#store.insertMcpToken(token, hash(secret));
+
+    return { token, secret };
+  }
+
+  mcpTokens(userId: string): readonly McpToken[] {
+    return this.#store.mcpTokens(userId);
+  }
+
+  revokeMcpToken(userId: string, id: string): boolean {
+    return this.#store.deleteMcpToken(id, userId);
+  }
+
+  mcpUserOf(request: Request): User | undefined {
+    const token = /^bearer\s+(pcm_\S+)$/i.exec(
+      request.headers.get("authorization") ?? "",
+    )?.[1];
+
+    return token === undefined
+      ? undefined
+      : this.#store.mcpTokenUser(hash(token));
   }
 
   // The Set-Cookie value of a new browser session for the user.

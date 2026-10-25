@@ -22,6 +22,7 @@ import {
   sessionHref,
 } from "./plugins";
 import { SessionView } from "./session-view";
+import { SettingsPage } from "./settings";
 import { Sidebar } from "./sidebar";
 
 export function App({
@@ -124,6 +125,17 @@ export function App({
             selected={profilesRoute[1] ?? ""}
             onChange={profiles.reload}
           />
+        </div>
+      );
+    }
+
+    if (route === "settings") {
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="p-2 md:hidden">
+            <MenuButton onMenu={openDrawer} />
+          </div>
+          <SettingsPage />
         </div>
       );
     }
