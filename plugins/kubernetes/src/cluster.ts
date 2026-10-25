@@ -16,6 +16,7 @@ export interface Cluster {
   readonly runnerPods: () => Promise<readonly RunnerPod[]>;
   readonly createSecret: (
     name: string,
+    environmentId: string,
     data: Record<string, string>,
   ) => Promise<void>;
   readonly createPod: (pod: object) => Promise<void>;
@@ -129,13 +130,16 @@ export function clusterAt(options: ApiAccess): Cluster {
         createdAt: Date.parse(metadata.creationTimestamp ?? "") || Date.now(),
       }));
     },
-    createSecret: async (name, data) => {
+    createSecret: async (name, environmentId, data) => {
       await call("POST", "secrets", {
         apiVersion: "v1",
         kind: "Secret",
         metadata: {
           name,
-          labels: { "app.kubernetes.io/managed-by": "pi-cloud" },
+          labels: {
+            "app.kubernetes.io/managed-by": "pi-cloud",
+            [environmentLabel]: environmentId,
+          },
         },
         stringData: data,
       });
