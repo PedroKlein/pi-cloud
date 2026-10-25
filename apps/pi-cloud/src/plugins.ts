@@ -159,9 +159,12 @@ export interface PluginHost {
     settings: unknown,
   ) => PluginInfo | string | undefined;
   // Turns an installed plugin on or off for the next start.
+  // Turning one on with the digest of the manifest the user saw refuses it
+  // when its folder changed since.
   readonly turnOn: (
     name: string,
     on: boolean,
+    digest?: string,
   ) => Promise<PluginInfo | string | undefined>;
   // Installs a plugin from a git repository or a tarball, turned off.
   readonly install: (url: string) => Promise<PluginInfo | string>;
@@ -309,6 +312,38 @@ export function startPlugins(
     }
 
     return folder();
+  };
+
+  // Writes, builds and switches go one at a time, so a plugin isn't turned
+  // on while a write changes it.
+  let changing = Promise.resolve();
+
+  const oneAtATime = async <T>(change: () => Promise<T>): Promise<T> => {
+    const next = changing.then(change);
+
+    changing = next.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return next;
+  };
+
+  const turned = async (
+    found: PluginManifest,
+    on: boolean,
+  ): Promise<PluginInfo> => {
+    await folder().turnOn(found.id, on);
+
+    if (on) {
+      switchedOn.add(found.id);
+    } else {
+      switchedOn.delete(found.id);
+    }
+
+    deps.log("plugin turned on or off", { plugin: found.id, on });
+
+    return info(found);
   };
 
   // A plugin running until the restart keeps its state; the listing shows
@@ -565,6 +600,9 @@ export function startPlugins(
         ? switchedOn.has(found.id)
         : enabled.includes(found.id),
       values: values(found.id),
+      digest: new Bun.CryptoHasher("sha256")
+        .update(JSON.stringify(listed(found.id) ?? found))
+        .digest("hex"),
       ...(source !== undefined && { installedFrom: source }),
       ...(updated.has(found.id) && { updated: true }),
     } as const;
@@ -605,33 +643,28 @@ export function startPlugins(
 
       return info(found);
     },
-    turnOn: async (name, on) => {
-      const found = manifest(name);
-      if (found === undefined) {
-        return undefined;
-      }
+    turnOn: async (name, on, digest) =>
+      oneAtATime(async () => {
+        const found = manifest(name);
+        if (found === undefined) {
+          return undefined;
+        }
 
-      if (deps.installed === undefined || !installedIds.has(name)) {
-        return "only an installed plugin can be turned on or off here";
-      }
+        if (deps.installed === undefined || !installedIds.has(name)) {
+          return "only an installed plugin can be turned on or off here";
+        }
 
-      const error = failures.get(name);
-      if (on && error !== undefined && !switchedOn.has(name)) {
-        return `fix its manifest first: ${error}`;
-      }
+        const error = failures.get(name);
+        if (on && error !== undefined && !switchedOn.has(name)) {
+          return `fix its manifest first: ${error}`;
+        }
 
-      await deps.installed.turnOn(name, on);
+        if (on && digest !== undefined && digest !== info(found).digest) {
+          return "it changed since the page showed it; look at it again before turning it on";
+        }
 
-      if (on) {
-        switchedOn.add(name);
-      } else {
-        switchedOn.delete(name);
-      }
-
-      deps.log("plugin turned on or off", { plugin: name, on });
-
-      return info(found);
-    },
+        return turned(found, on);
+      }),
     install: async (url) => {
       if (deps.installed === undefined) {
         return "this server has no plugins folder";
@@ -728,25 +761,27 @@ export function startPlugins(
     files: {
       list: async (name) => folder().files(name),
       read: async (name, path) => folder().read(name, path),
-      write: async (name, path, content) => {
-        await changeable(name).write(name, path, content);
-        deps.log("plugin file written", { plugin: name, path });
+      write: async (name, path, content) =>
+        oneAtATime(async () => {
+          await changeable(name).write(name, path, content);
+          deps.log("plugin file written", { plugin: name, path });
 
-        return reread(name);
-      },
-      build: async (name) => {
-        // The running version's bundles are served from its folder.
-        if (running.includes(name)) {
-          throw new Error(
-            `${name} is running; it builds when the server restarts`,
-          );
-        }
+          return reread(name);
+        }),
+      build: async (name) =>
+        oneAtATime(async () => {
+          // The running version's bundles are served from its folder.
+          if (running.includes(name)) {
+            throw new Error(
+              `${name} is running; it builds when the server restarts`,
+            );
+          }
 
-        await changeable(name).build(name);
-        deps.log("plugin built", { plugin: name });
+          await changeable(name).build(name);
+          deps.log("plugin built", { plugin: name });
 
-        return reread(name);
-      },
+          return reread(name);
+        }),
     },
     webPart: (name, file) => {
       const web = webParts.get(name);

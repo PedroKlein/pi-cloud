@@ -303,6 +303,7 @@ function Controls({
     run(async () => {
       await send(`/api/plugins/${plugin.id}`, "PATCH", {
         enabled: !plugin.turnedOn,
+        digest: plugin.digest,
       });
 
       return undefined;

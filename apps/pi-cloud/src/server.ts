@@ -387,7 +387,9 @@ export function createHandler(
       "PATCH",
       /^\/api\/plugins\/([^/]+)$/,
       async (request, [name = ""]) => {
-        const { settings, enabled, update } = fieldsOf(await readJson(request));
+        const { settings, enabled, update, digest } = fieldsOf(
+          await readJson(request),
+        );
 
         if (enabled !== undefined && typeof enabled !== "boolean") {
           throw new BadRequest("enabled must be true or false");
@@ -397,6 +399,7 @@ export function createHandler(
           settings,
           enabled,
           update: update === true,
+          ...(typeof digest === "string" && { digest }),
         });
 
         if (typeof saved === "string") {
@@ -1051,6 +1054,7 @@ async function pluginChange(
     readonly settings: unknown;
     readonly enabled: boolean | undefined;
     readonly update: boolean;
+    readonly digest?: string;
   },
 ): Promise<PluginInfo | string | undefined> {
   if (change.update) {
@@ -1059,7 +1063,7 @@ async function pluginChange(
 
   return change.enabled === undefined
     ? plugins.saveSettings(name, change.settings)
-    : plugins.turnOn(name, change.enabled);
+    : plugins.turnOn(name, change.enabled, change.digest);
 }
 
 function userIdOf(actor: UserActor): string {

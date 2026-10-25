@@ -274,3 +274,124 @@ test("shows a plugin's broken manifest once it is written", async () => {
     state: "failed",
   });
 });
+
+test("writes a new plugin turned off even when a removed one of its id was on", async () => {
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["hello"]));
+  await start();
+  await write("hello", "package.json", manifest());
+  await write("hello", "server.ts", serverPart);
+  await start();
+
+  expect((await api("GET", "/api/plugins/hello/")).status).toBe(404);
+});
+
+test("won't turn on a plugin that changed since the user saw it", async () => {
+  await start();
+
+  const seen = (await (
+    await write("hello", "package.json", manifest())
+  ).json()) as PluginInfo;
+
+  await write("hello", "package.json", manifest({ server: "other.ts" }));
+
+  expect(
+    await errorOf(
+      api("PATCH", "/api/plugins/hello", {
+        enabled: true,
+        digest: seen.digest,
+      }),
+    ),
+  ).toContain("changed since");
+
+  const now = (await (await api("GET", "/api/plugins")).json()) as PluginInfo[];
+  const digest = now.find(({ id }) => id === "hello")?.digest;
+
+  expect(
+    (await api("PATCH", "/api/plugins/hello", { enabled: true, digest }))
+      .status,
+  ).toBe(200);
+});
+
+test("keeps what the server makes in a plugin's folder out of reach, whatever the case or links", async () => {
+  await start();
+  await write("hello", "package.json", manifest());
+  await mkdir(join(plugins, "hello", ".build"));
+  await symlink(join(plugins, "hello", ".build"), join(plugins, "hello", "b"));
+
+  for (const path of [
+    ".Build/x.js",
+    "NODE_MODULES/x.js",
+    ".GIT/hooks/x",
+    "b/x.js",
+  ]) {
+    expect((await write("hello", path, "x")).status).toBe(400);
+  }
+
+  expect(await exists(join(plugins, "hello", ".build", "x.js"))).toBe(false);
+});
+
+test("won't build a plugin whose install would reach outside its folder", async () => {
+  await start();
+  await write("hello", "server.ts", serverPart);
+
+  for (const [field, value] of [
+    ["workspaces", ["../other"]],
+    ["dependencies", { other: "file:../other" }],
+    ["devDependencies", { other: "link:other" }],
+    ["overrides", { other: "../other" }],
+  ] as const) {
+    await write(
+      "hello",
+      "package.json",
+      JSON.stringify({ ...JSON.parse(manifest()), [field]: value }),
+    );
+
+    expect(await errorOf(api("POST", "/api/plugin-builds/hello"))).toMatch(
+      /can't have|not from elsewhere/,
+    );
+  }
+
+  await write("hello", "package.json", manifest());
+  await write("hello", "bunfig.toml", "[install]\n");
+
+  expect(await errorOf(api("POST", "/api/plugin-builds/hello"))).toContain(
+    "bunfig.toml",
+  );
+});
+
+test("builds only plugins of its own folder", async () => {
+  await mkdir(join(root, "elsewhere"));
+  await writeFile(join(root, "elsewhere", "package.json"), manifest());
+  await symlink(join(root, "elsewhere"), join(plugins, "linked"));
+  await mkdir(join(plugins, "pinned"));
+  await writeFile(join(plugins, "pinned", "package.json"), manifest());
+
+  await writeFile(
+    join(plugins, "pinned", ".source.json"),
+    JSON.stringify({ url: "https://example.com/p.git", pinned: "abc" }),
+  );
+
+  await start();
+
+  expect(await errorOf(api("POST", "/api/plugin-builds/linked"))).toContain(
+    "elsewhere",
+  );
+
+  expect(await errorOf(api("POST", "/api/plugin-builds/pinned"))).toContain(
+    "updating",
+  );
+
+  expect(await exists(join(root, "elsewhere", ".build"))).toBe(false);
+});
+
+test("leaves no folder behind for a write it refuses, nor reads one that isn't a plugin", async () => {
+  await mkdir(join(plugins, ".install-left"));
+  await start();
+
+  expect((await write("fresh", "../x", "x")).status).toBe(400);
+  expect(await exists(join(plugins, "fresh"))).toBe(false);
+
+  expect((await api("GET", "/api/plugin-files/.install-left")).status).toBe(
+    400,
+  );
+});

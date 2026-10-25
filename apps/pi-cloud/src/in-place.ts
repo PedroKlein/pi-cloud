@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { idProblem, sourceOf } from "./installed";
+import { build, idProblem, sourceOf, turnOn } from "./installed";
 
 // The files of a plugin a meta-session writes straight into the plugins
 // folder (ADR 0035). None of its code runs until the user turns it on.
@@ -31,7 +31,7 @@ export async function pluginFiles(root: string, id: string): Promise<string[]> {
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => relative(folder, join(entry.parentPath, entry.name)))
-    .filter((path) => !reserved.has(path.split(sep)[0] ?? ""))
+    .filter((path) => !isReserved(path.split(sep)[0] ?? ""))
     .sort();
 }
 
@@ -69,14 +69,17 @@ export async function writePluginFile(
 
   const folder = join(root, id);
 
-  await mkdir(folder, { recursive: true });
-  await pluginFolder(root, id);
+  lexicalPath(folder, path);
 
-  if ((await sourceOf(folder)) !== undefined) {
-    throw new Error(
-      `${id} was installed from a URL, so it changes only by updating`,
-    );
+  // A switch left from a plugin of this id removed by hand would turn the
+  // new one on at the next start.
+  if ((await lstat(folder).catch(() => undefined)) === undefined) {
+    await mkdir(root, { recursive: true });
+    await turnOn(root, id, false);
+    await mkdir(folder, { recursive: true });
   }
+
+  await changeableFolder(root, id);
 
   const target = await insideFolder(folder, path);
 
@@ -100,8 +103,32 @@ export async function writePluginFile(
   );
 }
 
+// Builds an in-place plugin, whose dependencies install into its folder.
+export async function buildPlugin(root: string, id: string): Promise<void> {
+  await changeableFolder(root, id);
+  await build(root, id);
+}
+
+async function changeableFolder(root: string, id: string): Promise<string> {
+  const folder = await pluginFolder(root, id);
+
+  if ((await sourceOf(folder)) !== undefined) {
+    throw new Error(
+      `${id} was installed from a URL, so it changes only by updating`,
+    );
+  }
+
+  return folder;
+}
+
 // A folder linked from elsewhere belongs to whoever develops it there.
 async function pluginFolder(root: string, id: string): Promise<string> {
+  const problem = idProblem(id);
+
+  if (problem !== undefined) {
+    throw new Error(problem);
+  }
+
   const folder = join(root, id);
   const found = await lstat(folder).catch(() => undefined);
 
@@ -119,16 +146,7 @@ async function pluginFolder(root: string, id: string): Promise<string> {
 // The real path of a file in the plugin's folder, refusing one outside it
 // or among what the server keeps there.
 async function insideFolder(folder: string, path: string): Promise<string> {
-  if (path === "" || isAbsolute(path)) {
-    throw new Error("a file's path is relative to the plugin's folder");
-  }
-
-  const lexical = relative(folder, join(folder, path));
-  const [first = ""] = lexical.split(sep);
-
-  if (lexical === "" || first === ".." || reserved.has(first)) {
-    throw new Error(`${path} isn't a file the plugin can have`);
-  }
+  const lexical = lexicalPath(folder, path);
 
   const real = await realpath(join(folder, lexical)).catch((error: unknown) => {
     if ((error as { code?: unknown }).code === "ENOENT") {
@@ -141,6 +159,26 @@ async function insideFolder(folder: string, path: string): Promise<string> {
   return real === undefined
     ? join(folder, lexical)
     : contained(folder, real, path);
+}
+
+function lexicalPath(folder: string, path: string): string {
+  if (path === "" || isAbsolute(path)) {
+    throw new Error("a file's path is relative to the plugin's folder");
+  }
+
+  const lexical = relative(folder, join(folder, path));
+  const [first = ""] = lexical.split(sep);
+
+  if (lexical === "" || first === ".." || isReserved(first)) {
+    throw new Error(`${path} isn't a file the plugin can have`);
+  }
+
+  return lexical;
+}
+
+// Case-insensitive, as macOS's file system is.
+function isReserved(name: string): boolean {
+  return reserved.has(name.normalize("NFC").toLowerCase());
 }
 
 async function nearestFolder(path: string): Promise<string> {
@@ -161,6 +199,11 @@ async function contained(
 
   if (isAbsolute(within) || within.split(sep)[0] === "..") {
     throw new Error(`${path} leads outside the plugin's folder`);
+  }
+
+  // A link can lead into what the server keeps in the folder too.
+  if (isReserved(within.split(sep)[0] ?? "")) {
+    throw new Error(`${path} isn't a file the plugin can have`);
   }
 
   return resolved;

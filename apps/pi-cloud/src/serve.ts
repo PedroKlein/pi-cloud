@@ -7,9 +7,13 @@ import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
-import { pluginFiles, readPluginFile, writePluginFile } from "./in-place";
 import {
-  build,
+  buildPlugin,
+  pluginFiles,
+  readPluginFile,
+  writePluginFile,
+} from "./in-place";
+import {
   type InstalledPlugin,
   install,
   remove,
@@ -128,7 +132,7 @@ export function serve(options: ServeOptions): {
         read: async (id, path) => readPluginFile(folder.root, id, path),
         write: async (id, path, content) =>
           writePluginFile(folder.root, id, path, content),
-        build: async (id) => build(folder.root, id),
+        build: async (id) => buildPlugin(folder.root, id),
       },
     }),
     signal: pluginsStop.signal,
