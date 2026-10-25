@@ -523,7 +523,7 @@ test("lets a plugin start a runner for a Session no runner can take, until it re
   });
 
   expect(
-    context?.environments.waiting(environment.id).map(({ id }) => id),
+    context?.environments.unplaced(environment.id).map(({ id }) => id),
   ).toEqual([session.id]);
 
   const pod = startRunner(
@@ -538,7 +538,7 @@ test("lets a plugin start a runner for a Session no runner can take, until it re
       events.some((e) => e.type === "session" && e.session.runner === "pod-1"),
   );
 
-  expect(context?.environments.waiting(environment.id)).toEqual([]);
+  expect(context?.environments.unplaced(environment.id)).toEqual([]);
 
   await api(`/api/environments/${environment.id}/key`, {});
 

@@ -30,7 +30,7 @@ import {
   type WorkPoll,
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
-import { placesOn, uniqueModels } from "./placement";
+import { placesOn, placesOnNewRunner, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
 
 export type StoredSession = Omit<Session, "online" | "waiting">;
@@ -502,9 +502,11 @@ export class Sessions {
     });
   }
 
-  // Queued Sessions that no online runner in the pool can take now, for a
-  // plugin that starts runners on demand (ADR 0032).
-  waiting(environmentId: string): readonly Session[] {
+  // Sessions no online runner in the pool can take now, for a plugin that
+  // starts runners on demand (ADR 0032): those beyond the room its runners
+  // have, and those held by a runner that went away. A Session that only an
+  // online runner can take waits for it, since a new runner never gets it.
+  unplaced(environmentId: string): readonly Session[] {
     const environment = this.#store
       .environments()
       .find(({ id }) => id === environmentId);
@@ -514,6 +516,7 @@ export class Sessions {
     }
 
     const runners = this.#polls.runners(environment.provider);
+    const online = runners.filter((runner) => runner.online);
 
     const pool = {
       runners,
@@ -521,17 +524,38 @@ export class Sessions {
         this.#polls.leaseLapsed(name, environment.provider),
     };
 
-    const free = runners.filter(
-      ({ name, online, capacity }) =>
-        online &&
-        (capacity === null ||
-          this.#store.byRunner(name, attempting).length < capacity),
+    const room = new Map(
+      online.map(({ name, capacity }) => [
+        name,
+        capacity === null
+          ? Infinity
+          : capacity - this.#store.byRunner(name, attempting).length,
+      ]),
     );
 
+    const takesSlot = (session: StoredSession): boolean => {
+      const runner = online.find(
+        ({ name }) =>
+          (room.get(name) ?? 0) > 0 && placesOn(session, name, pool),
+      );
+
+      if (runner !== undefined) {
+        room.set(runner.name, (room.get(runner.name) ?? 0) - 1);
+      }
+
+      return runner !== undefined;
+    };
+
     return this.#store
-      .byEnvironment(environment.provider, claimableStatuses)
+      .byEnvironment(environment.provider, [
+        ...claimableStatuses,
+        ...attempting,
+      ])
       .filter(
-        (session) => !free.some(({ name }) => placesOn(session, name, pool)),
+        (session) =>
+          !online.some(({ name }) => name === session.runner) &&
+          !takesSlot(session) &&
+          (session.runner !== null || placesOnNewRunner(session, pool)),
       )
       .map((session) => this.#view(session));
   }

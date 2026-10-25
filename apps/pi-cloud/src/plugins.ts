@@ -94,7 +94,7 @@ function pluginEnvironments(
 
   return {
     list: () => sessions.environments(),
-    waiting: (environmentId) => sessions.waiting(environmentId),
+    unplaced: (environmentId) => sessions.unplaced(environmentId),
     runnerToken: (environmentId, runner) =>
       runners.token(provider(environmentId), runner),
     revokeRunner: (environmentId, runner) => {

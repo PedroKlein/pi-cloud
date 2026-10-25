@@ -24,19 +24,30 @@ export function placesOn(
   }
 
   const { workspace } = session;
-  if (workspace.kind !== "folder" && workspace.kind !== "worktree") {
-    return true;
-  }
-
-  const lists = ({ inventory }: PolledRunner): boolean =>
-    inventory.folders.some((folder) => inside(folder, workspace.path));
-
   const self = pool.runners.find(({ name }) => name === runner);
 
   return (
-    (self !== undefined && lists(self)) ||
-    !pool.runners.some((each) => each.online && lists(each))
+    ((workspace.kind === "folder" || workspace.kind === "worktree") &&
+      self !== undefined &&
+      lists(self, workspace.path)) ||
+    placesOnNewRunner(session, pool)
   );
+}
+
+// Whether a runner that hasn't joined the pool yet, and so lists no folder,
+// could take a Session that hasn't run.
+export function placesOnNewRunner(
+  { workspace }: StoredSession,
+  pool: { readonly runners: readonly PolledRunner[] },
+): boolean {
+  return (
+    (workspace.kind !== "folder" && workspace.kind !== "worktree") ||
+    !pool.runners.some((each) => each.online && lists(each, workspace.path))
+  );
+}
+
+function lists({ inventory }: PolledRunner, path: string): boolean {
+  return inventory.folders.some((folder) => inside(folder, path));
 }
 
 function inside(root: string, folder: string): boolean {

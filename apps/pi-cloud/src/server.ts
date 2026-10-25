@@ -472,6 +472,12 @@ export function createHandler(
           request.signal,
         );
 
+        // The plugin that started the runner may have revoked it during the
+        // poll, and a revoked runner must not get Session tokens.
+        if (auth.agentOf(request) === undefined) {
+          return Response.json({ error: "unknown_token" }, { status: 401 });
+        }
+
         const fields = {
           provider: runner.name,
           environment: runner.environment,

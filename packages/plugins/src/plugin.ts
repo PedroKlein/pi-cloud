@@ -152,7 +152,7 @@ export interface ServerPluginContext {
   readonly environments: {
     readonly list: () => readonly Environment[];
     // Queued Sessions that no online runner in the pool can take now.
-    readonly waiting: (environmentId: string) => readonly Session[];
+    readonly unplaced: (environmentId: string) => readonly Session[];
     // The token a runner the plugin starts polls with. It lasts until revoked,
     // and a new Environment key leaves it be.
     readonly runnerToken: (environmentId: string, runner: string) => string;

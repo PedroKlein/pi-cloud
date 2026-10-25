@@ -632,9 +632,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           pruning = undefined;
         });
     },
+  }).finally(() => {
+    idle.stop();
   });
 
-  idle.stop();
   log("stopping sessions", { count: hosted.size });
 
   await Promise.all(
