@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { stderrLog } from "./log";
+import { restartExitCode } from "./restart";
 
 const log = stderrLog("dev");
 const main = join(import.meta.dirname, "main.ts");
@@ -34,14 +35,34 @@ let children: ChildProcess[] = [];
 let restart: ReturnType<typeof setTimeout> | undefined;
 let restarting: Promise<void> = Promise.resolve();
 let exiting = false;
+// A restart the server asked for waits while the watcher restarts everything.
+let stopping = false;
 
 function start(): void {
-  children = commands.map((args) =>
-    spawn(process.execPath, [main, ...args], { stdio: "inherit" }),
-  );
+  children = commands.map(run);
+}
+
+// The server restarts itself by exiting with restartExitCode for this loop
+// to start it again.
+function run(args: readonly string[]): ChildProcess {
+  const child = spawn(process.execPath, [main, ...args], {
+    stdio: "inherit",
+    env: { ...process.env, PI_CLOUD_SUPERVISED: "1" },
+  });
+
+  child.once("exit", (code) => {
+    if (code === restartExitCode && !exiting && !stopping) {
+      log("restarting", { asked: args[0] });
+      children = children.map((each) => (each === child ? run(args) : each));
+    }
+  });
+
+  return child;
 }
 
 async function stop(): Promise<void> {
+  stopping = true;
+
   await Promise.all(
     children.map(async (child) => {
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -53,6 +74,8 @@ async function stop(): Promise<void> {
       await exited;
     }),
   );
+
+  stopping = false;
 }
 
 // Restart child processes instead of using bun --watch, which does not

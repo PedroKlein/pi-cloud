@@ -7,6 +7,7 @@ import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
 import { fauxModels } from "./faux";
 import { installedPlugins } from "./installed";
+import { restartExitCode, supervised } from "./restart";
 import { stderrLog } from "./log";
 import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
@@ -83,6 +84,8 @@ switch (command) {
       values.plugins ?? join(dirname(values.database), "plugins"),
     );
 
+    let restarting: Promise<never> | undefined;
+
     const server = serve({
       hostname: values.host,
       ...(values.url !== undefined && { url: new URL(values.url) }),
@@ -101,6 +104,13 @@ switch (command) {
         root: pluginsRoot,
         plugins: await installedPlugins(pluginsRoot, log),
       },
+      ...(supervised(process.env) && {
+        restart: () => {
+          restarting ??= server
+            .stop()
+            .then(() => process.exit(restartExitCode));
+        },
+      }),
       log,
     });
 

@@ -41,6 +41,9 @@ export interface ServeOptions {
     readonly root: string;
     readonly plugins: readonly InstalledPlugin[];
   };
+  // Exits so that whatever runs the server starts it again. Without it the
+  // server can't restart itself.
+  readonly restart?: () => void;
   readonly log: Log;
 }
 
@@ -121,6 +124,16 @@ export function serve(options: ServeOptions): {
     pluginHost,
     store.check,
     options.log,
+    options.restart && {
+      busy: () =>
+        sessions
+          .list()
+          .filter(
+            ({ provider, status }) =>
+              provider === options.agent?.provider && status === "running",
+          ).length,
+      now: options.restart,
+    },
   );
 
   const terminals = terminalBroker(sessions, auth, options.log);
