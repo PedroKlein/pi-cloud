@@ -388,6 +388,38 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   expect(await settings()).toBeNull();
 });
 
+test("shows why an Environment's last runner pod failed", async () => {
+  await page.route("**/api/plugins/kubernetes/environments/*", async (route) =>
+    route.fulfill({
+      json: {
+        settings: null,
+        startsPods: true,
+        lastFailure: {
+          pod: "pi-runner-1a2b3c4d",
+          problem: "runner exited with 1: EACCES: permission denied",
+          at: "2026-10-25T11:00:00.000Z",
+          retryAt: "2026-10-25T11:00:20.000Z",
+        },
+      },
+    }),
+  );
+
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Environments" }).click();
+
+  const failure = page
+    .getByLabel("Kubernetes", { exact: true })
+    .getByRole("alert");
+
+  await failure.getByText("EACCES: permission denied").waitFor();
+
+  expect(await failure.textContent()).toContain(
+    "Runner pod pi-runner-1a2b3c4d failed",
+  );
+
+  await page.unroute("**/api/plugins/kubernetes/environments/*");
+});
+
 test("makes a Profile and starts a session that follows its instructions", async () => {
   let request = "";
 

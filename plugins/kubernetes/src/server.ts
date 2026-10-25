@@ -14,6 +14,7 @@ import {
   isObject,
   type KubernetesEnvironment,
   type KubernetesSettings,
+  type PodFailure,
   type SettingsStore,
   settingsFrom,
   settingsStore,
@@ -27,6 +28,9 @@ export interface KubernetesOptions {
   readonly server: string | undefined;
   readonly variables?: Readonly<Record<string, string>>;
   readonly intervalMs?: number;
+  // How long an Environment waits for a new pod after one fails. It doubles
+  // with each failure in a row, up to 32 times as long.
+  readonly retryAfterMs?: number;
 }
 
 interface Pods {
@@ -34,7 +38,14 @@ interface Pods {
   readonly image: string;
   readonly server: string;
   readonly variables: Readonly<Record<string, string>>;
+  readonly retryAfterMs: number;
 }
+
+// Failures in a row and the last one, by Environment.
+type Failures = Map<
+  string,
+  { readonly count: number; readonly last: PodFailure }
+>;
 
 const finished = new Set(["Succeeded", "Failed"]);
 
@@ -55,13 +66,23 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         server,
         variables = {},
         intervalMs = 2000,
+        retryAfterMs = 10_000,
       } = options();
+
+      const failures: Failures = new Map();
 
       const startsPods =
         api !== undefined && image !== undefined && server !== undefined;
 
-      const answer = (settings: KubernetesSettings | null): Response =>
-        Response.json({ settings, startsPods } satisfies KubernetesEnvironment);
+      const answer = (
+        environmentId: string,
+        settings: KubernetesSettings | null,
+      ): Response =>
+        Response.json({
+          settings,
+          startsPods,
+          lastFailure: failures.get(environmentId)?.last ?? null,
+        } satisfies KubernetesEnvironment);
 
       context.routes.handle(async (request, path, caller) => {
         const [resource, environmentId] = path.split("/");
@@ -80,7 +101,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         }
 
         if (request.method === "GET") {
-          return answer(store.get(environmentId) ?? null);
+          return answer(environmentId, store.get(environmentId) ?? null);
         }
 
         if (request.method !== "POST") {
@@ -100,7 +121,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           store.remove(environmentId);
           context.log("kubernetes settings removed", { environmentId });
 
-          return answer(null);
+          return answer(environmentId, null);
         }
 
         const settings = settingsFrom(body["settings"]);
@@ -119,7 +140,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         store.set(environmentId, settings);
         context.log("kubernetes settings saved", { environmentId });
 
-        return answer(settings);
+        return answer(environmentId, settings);
       });
 
       if (api === undefined || image === undefined || server === undefined) {
@@ -137,6 +158,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         image,
         server,
         variables,
+        retryAfterMs,
       };
 
       // The first pass waits a tick: the server finishes starting plugins
@@ -148,11 +170,13 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
             () => false,
           )
         ) {
-          await reconcile(context, pods, store).catch((error: unknown) => {
-            context.log("kubernetes runner pods not reconciled", {
-              error: String(error),
-            });
-          });
+          await reconcile(context, pods, store, failures).catch(
+            (error: unknown) => {
+              context.log("kubernetes runner pods not reconciled", {
+                error: String(error),
+              });
+            },
+          );
         }
       })();
     },
@@ -175,6 +199,7 @@ async function reconcile(
   context: ServerPluginContext,
   pods: Pods,
   store: SettingsStore,
+  failures: Failures,
 ): Promise<void> {
   const environments = context.environments.list();
   const all = await pods.cluster.runnerPods();
@@ -186,10 +211,28 @@ async function reconcile(
   const removed = new Set<string>();
 
   for (const pod of all) {
-    const known = environments.some(({ id }) => id === pod.environmentId);
+    const environment = environments.find(({ id }) => id === pod.environmentId);
     const reason = removalReason(pod, now);
-    if (!known || reason === undefined) {
+    if (environment === undefined || reason === undefined) {
       continue;
+    }
+
+    const joined = environment.runners.some(({ name }) => name === pod.name);
+    const problem = failureOf(pod, reason, joined, pods.server);
+
+    if (problem !== undefined) {
+      const count = (failures.get(pod.environmentId)?.count ?? 0) + 1;
+      const waitMs = pods.retryAfterMs * 2 ** Math.min(count - 1, 5);
+
+      failures.set(pod.environmentId, {
+        count,
+        last: {
+          pod: pod.name,
+          problem,
+          at: new Date(now).toISOString(),
+          retryAt: new Date(now + waitMs).toISOString(),
+        },
+      });
     }
 
     removed.add(pod.name);
@@ -203,6 +246,7 @@ async function reconcile(
       pod: pod.name,
       phase: pod.phase,
       reason,
+      ...(problem !== undefined && { problem }),
     });
   }
 
@@ -233,6 +277,21 @@ async function reconcile(
     const active = all.filter(
       (pod) => pod.environmentId === environmentId && !finished.has(pod.phase),
     );
+
+    const healthy = active.some(({ name }) =>
+      environment.runners.some(
+        (runner) => runner.online && runner.name === name,
+      ),
+    );
+
+    if (healthy) {
+      failures.delete(environmentId);
+    }
+
+    const retryAt = failures.get(environmentId)?.last.retryAt;
+    if (retryAt !== undefined && Date.parse(retryAt) > now) {
+      continue;
+    }
 
     await scale(context, pods, environment, settings, active).catch(
       (error: unknown) => {
@@ -359,6 +418,25 @@ async function startPod(
     await cluster.deleteSecret(name);
     throw error;
   }
+}
+
+// A pod that stopped before its agent ever polled failed as surely as one
+// whose agent crashed: the server never got a runner out of it.
+function failureOf(
+  pod: RunnerPod,
+  reason: string,
+  joined: boolean,
+  server: string,
+): string | undefined {
+  if (reason === "never started") {
+    return pod.problem ?? "it didn't start in 10 minutes";
+  }
+
+  if (pod.phase === "Failed") {
+    return pod.problem ?? "its agent failed";
+  }
+
+  return joined ? undefined : `its agent never reached the server at ${server}`;
 }
 
 function removalReason(pod: RunnerPod, now: number): string | undefined {

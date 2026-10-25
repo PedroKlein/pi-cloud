@@ -28,7 +28,7 @@ interface FakePod {
     }[];
     readonly [field: string]: unknown;
   };
-  status?: { phase: string };
+  status?: { phase: string; containerStatuses?: readonly object[] };
 }
 
 interface Labelled {
@@ -141,6 +141,7 @@ function startServer(database = ":memory:"): void {
         server: "http://pi-cloud:7420",
         variables: { PI_CLOUD_FAUX_REPLY: "hi" },
         intervalMs: 20,
+        retryAfterMs: 300,
       })),
     ],
     log: (message, fields) => {
@@ -249,10 +250,20 @@ test("starts one runner pod per Session no runner can take, up to the most allow
   });
 });
 
-test("lets the runner in a started pod run the Session, and removes the pod once it stops", async () => {
+test("lets the runner in a started pod run the Session, and forgets an earlier failed pod once it joins", async () => {
   const environment = await kubernetesEnvironment({});
+  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
   const session = await startSession(environment);
   await eventually(() => api.pods.size === 1);
+
+  const [failed] = api.pods.values();
+  if (failed) {
+    failed.status = { phase: "Failed" };
+  }
+
+  await eventually(
+    () => api.pods.size === 1 && !api.pods.has(failed?.metadata.name ?? ""),
+  );
 
   const [name = ""] = api.pods.keys();
   const token = api.secrets.get(name)?.["token"] ?? "";
@@ -291,6 +302,12 @@ test("lets the runner in a started pod run the Session, and removes the pod once
     await sleep(20);
   }
 
+  await sleep(100);
+
+  const whileRunning = (await (await call("GET", path)).json()) as {
+    readonly lastFailure: unknown;
+  };
+
   const pod = api.pods.get(name);
   if (pod) {
     pod.status = { phase: "Succeeded" };
@@ -303,6 +320,13 @@ test("lets the runner in a started pod run the Session, and removes the pod once
 
   expect(stopped).toEqual(new Error("the server let this runner go"));
   await eventually(() => api.pods.size === 0 && api.secrets.size === 0);
+
+  const afterStop = (await (await call("GET", path)).json()) as {
+    readonly lastFailure: unknown;
+  };
+
+  expect(whileRunning.lastFailure).toBeNull();
+  expect(afterStop.lastFailure).toBeNull();
 }, 30_000);
 
 test("refuses Kubernetes settings it can't use", async () => {
@@ -335,7 +359,12 @@ test("refuses Kubernetes settings it can't use", async () => {
     400, 400, 400, 400, 400, 404,
   ]);
 
-  expect(unsaved).toEqual({ settings: null, startsPods: true });
+  expect(unsaved).toEqual({
+    settings: null,
+    startsPods: true,
+    lastFailure: null,
+  });
+
   expect(inContainers.status).toBe(409);
 });
 
@@ -384,6 +413,21 @@ test("removes a runner pod that never starts, and starts another", async () => {
     first.metadata.creationTimestamp = new Date(
       Date.now() - 60 * 60_000,
     ).toISOString();
+
+    first.status = {
+      phase: "Pending",
+      containerStatuses: [
+        {
+          name: "runner",
+          state: {
+            waiting: {
+              reason: "ImagePullBackOff",
+              message: 'Back-off pulling image "nope:1"',
+            },
+          },
+        },
+      ],
+    };
   }
 
   await eventually(
@@ -393,7 +437,85 @@ test("removes a runner pod that never starts, and starts another", async () => {
       api.pods.size === 1,
   );
 
+  const { lastFailure } = (await (
+    await call("GET", `/api/plugins/kubernetes/environments/${environment.id}`)
+  ).json()) as { readonly lastFailure: { readonly problem: string } | null };
+
   expect(api.secrets.size).toBe(1);
+
+  expect(lastFailure?.problem).toBe(
+    'runner is waiting: Back-off pulling image "nope:1"',
+  );
+});
+
+test("waits longer for a new runner pod after each one that fails, and says why", async () => {
+  const environment = await kubernetesEnvironment({});
+  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  await startSession(environment);
+
+  const fail = async (): Promise<number> => {
+    await eventually(() => api.pods.size === 1);
+
+    const [pod] = api.pods.values();
+    if (pod) {
+      pod.status = {
+        phase: "Failed",
+        containerStatuses: [
+          {
+            name: "runner",
+            state: {
+              terminated: {
+                exitCode: 1,
+                message: "EACCES: permission denied, mkdir '/home/pi'",
+              },
+            },
+          },
+        ],
+      };
+    }
+
+    await eventually(() => api.pods.size === 0);
+    const failedAt = Date.now();
+    await eventually(() => api.pods.size === 1);
+
+    return Date.now() - failedAt;
+  };
+
+  const firstWait = await fail();
+  const secondWait = await fail();
+
+  const { lastFailure } = (await (await call("GET", path)).json()) as {
+    readonly lastFailure: { readonly problem: string } | null;
+  };
+
+  expect(firstWait).toBeGreaterThanOrEqual(250);
+  expect(secondWait).toBeGreaterThanOrEqual(550);
+
+  expect(lastFailure?.problem).toBe(
+    "runner exited with 1: EACCES: permission denied, mkdir '/home/pi'",
+  );
+});
+
+test("counts a runner pod whose agent never reached the server as failed", async () => {
+  const environment = await kubernetesEnvironment({});
+  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [pod] = api.pods.values();
+  if (pod) {
+    pod.status = { phase: "Succeeded" };
+  }
+
+  await eventually(() => api.pods.size === 0);
+
+  const { lastFailure } = (await (await call("GET", path)).json()) as {
+    readonly lastFailure: { readonly problem: string } | null;
+  };
+
+  expect(lastFailure?.problem).toBe(
+    "its agent never reached the server at http://pi-cloud:7420",
+  );
 });
 
 test("removes stopped runner pods of an Environment whose settings were removed", async () => {
