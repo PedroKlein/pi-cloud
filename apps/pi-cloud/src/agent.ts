@@ -43,7 +43,7 @@ import {
 import { sessionParts } from "./plugins";
 import { containerSession } from "./container";
 import { environmentSetup } from "./setup";
-import { spawnSession } from "./session-process";
+import { pageOpener, spawnSession } from "./session-process";
 
 export interface AgentOptions {
   readonly server: string;
@@ -362,6 +362,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
             models: options.models,
             firstMessage: assignment.firstMessage,
             ...sessionParts(assignment),
+            opener: pageOpener,
           },
           stream,
           sessionLog,

@@ -115,7 +115,8 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Resolved for v2: a plugin declares `capabilities` and `requires` in its manifest; the exact capability names are open ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest)).
 - Which first-party features must prove the public extension surface?
 - How are blocking or faulty trusted extensions diagnosed and disabled safely?
-- Do browsers resolve `*.localhost` for previews, and can a compiled Bun binary import plugin files from outside itself? Both are checked when ADR 0022 is built.
+- Resolved: Chromium resolves `*.localhost` for previews, which cover pages a Session opens through `BROWSER` ([ADR 0037](adr/0037-previews-and-opened-pages.md)). Other browsers are checked as they are used.
+- Can a compiled Bun binary import plugin files from outside itself? It is checked when ADR 0022's third-party install is built.
 
 ## Explicitly postponed
 

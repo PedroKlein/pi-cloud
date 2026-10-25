@@ -1,3 +1,4 @@
+import type { ServerWebSocket } from "bun";
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
 import type { PluginManifest } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -7,7 +8,9 @@ import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
+import { previewBroker } from "./previews";
 import { createHandler } from "./server";
+import type { PreviewData, SocketData, TerminalData } from "./sockets";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
 
@@ -105,25 +108,67 @@ export function serve(options: ServeOptions): {
       : [options.hostname]),
   ]);
 
-  const server = Bun.serve({
+  const previews = previewBroker({
+    sessions,
+    auth,
+    siteHosts,
+    secure: options.url?.protocol === "https:",
+    log: options.log,
+  });
+
+  const server = Bun.serve<SocketData>({
     hostname: options.hostname ?? "127.0.0.1",
     port: options.port,
     idleTimeout: 30,
     development: false,
-    routes: { "/": web },
+    routes: { [webPath]: web },
     fetch: async (request, bunServer) => {
+      const preview = await previews.visit(request, bunServer);
+      if (preview !== undefined) {
+        return preview;
+      }
+
+      if (new URL(request.url).pathname === "/") {
+        return fetch(new URL(webPath, bunServer.url));
+      }
+
       if (!fromThisSite(request, siteHosts)) {
         return Response.json({ error: "forbidden" }, { status: 403 });
       }
 
-      const upgraded = terminals.upgrade(request, bunServer);
+      const upgraded =
+        terminals.upgrade(request, bunServer) ??
+        previews.upgrade(request, bunServer);
+
       if (upgraded === "upgraded") {
         return undefined;
       }
 
-      return upgraded ?? handler(request);
+      return upgraded ?? previews.open(request) ?? handler(request);
     },
-    websocket: terminals.websocket,
+    websocket: {
+      open: (ws) => {
+        if (isPreview(ws)) {
+          previews.websocket.open(ws);
+        } else if (isTerminal(ws)) {
+          terminals.websocket.open(ws);
+        }
+      },
+      message: (ws, message) => {
+        if (isPreview(ws)) {
+          previews.websocket.message(ws, message);
+        } else if (isTerminal(ws)) {
+          terminals.websocket.message(ws, message);
+        }
+      },
+      close: (ws, code, reason) => {
+        if (isPreview(ws)) {
+          previews.websocket.close(ws, code, reason);
+        } else if (isTerminal(ws)) {
+          terminals.websocket.close(ws, code, reason);
+        }
+      },
+    },
   });
 
   options.log("server listening", { url: server.url.href });
@@ -172,6 +217,22 @@ export function serve(options: ServeOptions): {
     },
   };
 }
+
+function isPreview(
+  ws: ServerWebSocket<SocketData>,
+): ws is ServerWebSocket<PreviewData> {
+  return ws.data.kind === "preview";
+}
+
+function isTerminal(
+  ws: ServerWebSocket<SocketData>,
+): ws is ServerWebSocket<TerminalData> {
+  return ws.data.kind === "terminal";
+}
+
+// Bun matches routes before fetch and on every host, so the web UI can't be
+// a route at "/", where a preview's own page is.
+const webPath = "/__pi-cloud/web";
 
 const loopback = ["127.0.0.1", "localhost", "[::1]"];
 const wildcards = new Set(["0.0.0.0", "::", "[::]"]);

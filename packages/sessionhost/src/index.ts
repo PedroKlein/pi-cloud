@@ -7,6 +7,7 @@ export {
   type TerminalChannel,
   type TerminalPeer,
 } from "./host";
+export type { PreviewExchange } from "./pages";
 export { modelLister, type SessionOptions } from "./session";
 export { syncProfile } from "./profile";
 export { restoreTranscript } from "./restore";

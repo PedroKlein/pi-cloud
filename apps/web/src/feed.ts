@@ -1,6 +1,7 @@
 import {
   type LiveEvent,
   liveSurface,
+  type OpenedPage,
   type Prompt,
   type Session,
   type SessionEvent,
@@ -51,6 +52,7 @@ export interface Feed {
   readonly files: readonly string[];
   readonly settings: Settings | undefined;
   readonly terminals: readonly TerminalTab[];
+  readonly pages: readonly OpenedPage[];
   readonly piView: {
     readonly attached: boolean;
     readonly dialog: string | null;
@@ -76,6 +78,7 @@ export const emptyFeed: Feed = {
   files: [],
   settings: undefined,
   terminals: [],
+  pages: [],
   piView: { attached: false, dialog: null },
 };
 
@@ -278,6 +281,10 @@ export function feedReader({
         update({ terminals: event.terminals });
 
         return;
+      case "pages":
+        update({ pages: event.pages });
+
+        return;
       case "pi_view":
         update({ piView: { attached: event.attached, dialog: event.dialog } });
 
@@ -331,6 +338,7 @@ export function feedReader({
       tools: [],
       queue: emptyFeed.queue,
       terminals: [],
+      pages: [],
       piView: emptyFeed.piView,
     };
   };
