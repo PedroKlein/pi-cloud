@@ -181,9 +181,9 @@ async function kubernetesEnvironment(settings: object): Promise<Environment> {
   ).json()) as { environment: Environment };
 
   const saved = await call(
-    "PUT",
+    "POST",
     `/api/plugins/kubernetes/environments/${environment.id}`,
-    settings,
+    { settings },
   );
 
   expect(saved.status).toBe(200);
@@ -313,24 +313,29 @@ test("refuses Kubernetes settings it can't use", async () => {
   const path = `/api/plugins/kubernetes/environments/${environment.id}`;
 
   const responses = await Promise.all([
-    call("PUT", path, { capacity: 0 }),
-    call("PUT", path, { podPatch: [] }),
-    call("PUT", path, { workspace: "disk" }),
-    call("PUT", path, { claimSize: "lots" }),
-    call("PUT", "/api/plugins/kubernetes/environments/nope", {}),
-    call("GET", path),
+    call("POST", path, { settings: { capacity: 0 } }),
+    call("POST", path, { settings: { podPatch: [] } }),
+    call("POST", path, { settings: { workspace: "disk" } }),
+    call("POST", path, { settings: { claimSize: "lots" } }),
+    call("POST", path, { capacity: 1 }),
+    call("POST", "/api/plugins/kubernetes/environments/nope", {
+      settings: {},
+    }),
   ]);
+
+  const unsaved = await (await call("GET", path)).json();
 
   await call("PATCH", `/api/environments/${environment.id}`, {
     isolation: "container",
   });
 
-  const inContainers = await call("PUT", path, {});
+  const inContainers = await call("POST", path, { settings: {} });
 
   expect(responses.map(({ status }) => status)).toEqual([
-    400, 400, 400, 400, 404, 404,
+    400, 400, 400, 400, 400, 404,
   ]);
 
+  expect(unsaved).toEqual({ settings: null, startsPods: true });
   expect(inContainers.status).toBe(409);
 });
 
@@ -385,10 +390,9 @@ test("removes stopped runner pods of an Environment whose settings were removed"
   await startSession(environment);
   await eventually(() => api.pods.size === 1);
 
-  await call(
-    "DELETE",
-    `/api/plugins/kubernetes/environments/${environment.id}`,
-  );
+  await call("POST", `/api/plugins/kubernetes/environments/${environment.id}`, {
+    settings: null,
+  });
 
   const [pod] = api.pods.values();
   if (pod) {

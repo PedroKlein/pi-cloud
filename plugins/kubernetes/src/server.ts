@@ -11,6 +11,8 @@ import {
 } from "./cluster";
 import { runnerPod, sessionClaim, sessionPodName } from "./pods";
 import {
+  isObject,
+  type KubernetesEnvironment,
   type KubernetesSettings,
   type SettingsStore,
   settingsFrom,
@@ -47,6 +49,20 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
     register: (context) => {
       const store = settingsStore(context.store);
 
+      const {
+        api,
+        image,
+        server,
+        variables = {},
+        intervalMs = 2000,
+      } = options();
+
+      const startsPods =
+        api !== undefined && image !== undefined && server !== undefined;
+
+      const answer = (settings: KubernetesSettings | null): Response =>
+        Response.json({ settings, startsPods } satisfies KubernetesEnvironment);
+
       context.routes.handle(async (request, path, caller) => {
         const [resource, environmentId] = path.split("/");
 
@@ -63,55 +79,48 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           return Response.json({ error: "not_found" }, { status: 404 });
         }
 
-        switch (request.method) {
-          case "GET": {
-            const settings = store.get(environmentId);
-
-            return settings === undefined
-              ? Response.json({ error: "not_found" }, { status: 404 })
-              : Response.json(settings);
-          }
-
-          case "PUT": {
-            const settings = settingsFrom(
-              await request.json().catch(() => null),
-            );
-
-            if (typeof settings === "string") {
-              return Response.json({ error: settings }, { status: 400 });
-            }
-
-            if (environment.isolation !== "process") {
-              return Response.json(
-                { error: "runner pods run Sessions as processes" },
-                { status: 409 },
-              );
-            }
-
-            store.set(environmentId, settings);
-            context.log("kubernetes settings saved", { environmentId });
-
-            return Response.json(settings);
-          }
-
-          case "DELETE":
-            store.remove(environmentId);
-            context.log("kubernetes settings removed", { environmentId });
-
-            return new Response(null, { status: 204 });
-
-          default:
-            return Response.json({ error: "not_found" }, { status: 404 });
+        if (request.method === "GET") {
+          return answer(store.get(environmentId) ?? null);
         }
-      });
 
-      const {
-        api,
-        image,
-        server,
-        variables = {},
-        intervalMs = 2000,
-      } = options();
+        if (request.method !== "POST") {
+          return Response.json({ error: "not_found" }, { status: 404 });
+        }
+
+        const body: unknown = await request.json().catch(() => null);
+
+        if (!isObject(body)) {
+          return Response.json(
+            { error: "send { settings }, or { settings: null } to stop" },
+            { status: 400 },
+          );
+        }
+
+        if (body["settings"] === null) {
+          store.remove(environmentId);
+          context.log("kubernetes settings removed", { environmentId });
+
+          return answer(null);
+        }
+
+        const settings = settingsFrom(body["settings"]);
+
+        if (typeof settings === "string") {
+          return Response.json({ error: settings }, { status: 400 });
+        }
+
+        if (environment.isolation !== "process") {
+          return Response.json(
+            { error: "runner pods run Sessions as processes" },
+            { status: 409 },
+          );
+        }
+
+        store.set(environmentId, settings);
+        context.log("kubernetes settings saved", { environmentId });
+
+        return answer(settings);
+      });
 
       if (api === undefined || image === undefined || server === undefined) {
         context.log("kubernetes runner pods off", {

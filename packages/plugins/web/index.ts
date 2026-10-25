@@ -1,4 +1,4 @@
-import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
 import {
   type ComponentType,
   type ReactNode,
@@ -68,6 +68,11 @@ export interface SessionPartProps {
   readonly session: MountedSession;
 }
 
+export interface EnvironmentSectionProps {
+  readonly context: WebContext;
+  readonly environment: Environment;
+}
+
 // A tool call a plugin draws in the chat, from the transcript (ADR 0030).
 export interface ToolCall {
   readonly id: string;
@@ -110,6 +115,9 @@ export interface WebPlugin {
   // Renderers for links in chat answers, by URL scheme.
   readonly links?: Readonly<Record<string, ComponentType<LinkProps>>>;
   readonly SessionPanel?: ComponentType<SessionPartProps>;
+  // A section on the Environments page for the open Environment, such as the
+  // plugin's settings for it (ADR 0032).
+  readonly EnvironmentSection?: ComponentType<EnvironmentSectionProps>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;
   // Tools whose calls the plugin draws instead of a work step, by name.
   readonly tools?: Readonly<Record<string, ComponentType<ToolCallProps>>>;

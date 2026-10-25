@@ -17,6 +17,13 @@ export interface KubernetesSettings {
   readonly podPatch: Readonly<Record<string, unknown>>;
 }
 
+// What the plugin's route answers for an Environment. Without settings it
+// starts no pods there; outside a cluster it starts none anywhere.
+export interface KubernetesEnvironment {
+  readonly settings: KubernetesSettings | null;
+  readonly startsPods: boolean;
+}
+
 export const defaultSettings: KubernetesSettings = {
   workspace: "pod",
   capacity: 1,

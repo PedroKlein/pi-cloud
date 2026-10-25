@@ -1,4 +1,5 @@
 import { changes } from "@pi-cloud/changes/web";
+import { kubernetes } from "@pi-cloud/kubernetes/web";
 import { library } from "@pi-cloud/library/web";
 import { models } from "@pi-cloud/models/web";
 import type {
@@ -23,6 +24,7 @@ const webPlugins: readonly WebPlugin[] = [
   library,
   models,
   subagents,
+  kubernetes,
 ];
 
 let enabled: readonly WebPlugin[] = [];
