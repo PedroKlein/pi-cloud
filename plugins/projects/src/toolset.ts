@@ -51,7 +51,8 @@ export const projectsToolset: Toolset = {
           ...settingsFields,
           repositories: {
             type: "array",
-            description: "Clone URLs, each with a different name",
+            description:
+              "Clone URLs of git repositories, such as https://github.com/owner/name.git, each with a different name. A folder that isn't a git repository can't be one.",
             items: { type: "string" },
           },
           environment: { type: "string", description: "Environment id" },
@@ -69,7 +70,7 @@ export const projectsToolset: Toolset = {
       request: (input) => ({ method: "POST", path: "projects", body: input }),
       opens: (body) => ({
         route: (body as ProjectView).id,
-        label: (body as ProjectView).name,
+        label: `“${(body as ProjectView).name}”`,
       }),
     },
     {

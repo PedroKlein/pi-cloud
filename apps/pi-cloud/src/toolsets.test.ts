@@ -425,7 +425,7 @@ test("opens what a tool started or asked for in the browsers watching, once", as
     {
       kind: "open",
       route: `plugin/projects/${project?.id ?? ""}`,
-      label: "Shop",
+      label: "“Shop”",
     },
   ]);
 

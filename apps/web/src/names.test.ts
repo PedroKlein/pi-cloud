@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Session } from "@pi-cloud/protocol";
-import { ago, sessionBadge, shortName } from "./names";
+import { ago, sessionBadge, shortName, workspaceName } from "./names";
 
 const session = (change: Partial<Session>): Session => ({
   id: "s",
@@ -92,4 +92,22 @@ test("says how long ago something happened", () => {
   expect(ago("2026-10-21T11:15:00Z", now)).toBe("45m ago");
   expect(ago("2026-10-21T09:00:00Z", now)).toBe("3h ago");
   expect(ago("2026-10-19T12:00:00Z", now)).toBe("2d ago");
+});
+
+test("names a workspace with no repositories without its branch", () => {
+  expect(
+    workspaceName({
+      kind: "repositories",
+      repositories: [],
+      branch: "pi-cloud/3204c1c7",
+    }),
+  ).toBe("no repositories");
+
+  expect(
+    workspaceName({
+      kind: "repositories",
+      repositories: [{ repository: "https://example.com/shop.git" }],
+      branch: "pi-cloud/1",
+    }),
+  ).toBe("https://example.com/shop.git (pi-cloud/1)");
 });
