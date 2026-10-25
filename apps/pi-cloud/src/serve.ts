@@ -7,6 +7,7 @@ import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
+import { type InstalledPlugin, turnOn } from "./installed";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { previewBroker } from "./previews";
 import { createHandler, onBehalfOf } from "./server";
@@ -35,6 +36,11 @@ export interface ServeOptions {
   readonly plugins?: readonly ServerPlugin[];
   readonly manifests?: readonly PluginManifest[];
   readonly disabledPlugins?: readonly string[];
+  // The plugins folder and what was found in it (ADR 0022).
+  readonly installed?: {
+    readonly root: string;
+    readonly plugins: readonly InstalledPlugin[];
+  };
   readonly log: Log;
 }
 
@@ -43,10 +49,16 @@ export function serve(options: ServeOptions): {
   readonly stop: () => Promise<void>;
 } {
   const store = openStore(options.database, options.secretKey);
-  const plugins = options.plugins ?? serverPlugins;
   const disabled = options.disabledPlugins ?? [];
+  const folder = options.installed;
+  const installed = folder?.plugins ?? [];
 
-  const known =
+  const plugins = [
+    ...(options.plugins ?? serverPlugins),
+    ...installed.flatMap(({ server }) => (server ? [server] : [])),
+  ];
+
+  const builtIn =
     options.plugins?.map(
       ({ name }) =>
         options.manifests?.find(({ id }) => id === name) ?? {
@@ -56,9 +68,12 @@ export function serve(options: ServeOptions): {
         },
     ) ?? builtInPlugins;
 
-  const enabled = known
-    .map(({ id }) => id)
-    .filter((name) => !disabled.includes(name));
+  const known = [...builtIn, ...installed.map(({ manifest }) => manifest)];
+
+  const enabled = [
+    ...builtIn.map(({ id }) => id).filter((name) => !disabled.includes(name)),
+    ...installed.flatMap(({ manifest: { id }, on }) => (on ? [id] : [])),
+  ];
 
   const events = eventBus((type, error) => {
     options.log("event listener failed", { type, error: String(error) });
@@ -89,6 +104,12 @@ export function serve(options: ServeOptions): {
     settings: store.pluginSettings,
     toolsets: kernelToolsets,
     api: async (actor, request) => handler(onBehalfOf(actor, request)),
+    ...(folder && {
+      installed: {
+        plugins: installed,
+        turnOn: async (id, on) => turnOn(folder.root, id, on),
+      },
+    }),
     signal: pluginsStop.signal,
     log: options.log,
   });

@@ -36,12 +36,18 @@ export function PluginsPage(): ReactElement {
               <Badge state={states[plugin.state].badge}>
                 {states[plugin.state].label}
               </Badge>
+              {plugin.source === "installed" && (
+                <Badge state="offline">Installed</Badge>
+              )}
             </div>
             <p className="text-ui text-fg-dim">{plugin.description}</p>
             {plugin.error !== undefined && (
               <p className="text-ui text-failed">
                 It failed to start: {plugin.error}
               </p>
+            )}
+            {plugin.source === "installed" && (
+              <Switch plugin={plugin} onChange={reload} />
             )}
             {plugin.settings !== undefined &&
               Object.keys(plugin.settings).length > 0 && (
@@ -54,6 +60,54 @@ export function PluginsPage(): ReactElement {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// An installed plugin starts turned off, and turning it on is the user's call
+// (ADR 0022). Either way it takes effect when the server restarts.
+function Switch({
+  plugin,
+  onChange,
+}: {
+  readonly plugin: PluginInfo;
+  readonly onChange: () => void;
+}): ReactElement {
+  const [error, setError] = useState<string>();
+
+  // A failed plugin shows its error instead.
+  const pending =
+    plugin.state !== "failed" && plugin.turnedOn !== (plugin.state === "on");
+
+  const turn = (): void => {
+    send(`/api/plugins/${plugin.id}`, "PATCH", {
+      enabled: !plugin.turnedOn,
+    }).then(
+      () => {
+        setError(undefined);
+        onChange();
+      },
+      (reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-ui">
+      <Button onClick={turn}>{plugin.turnedOn ? "Turn off" : "Turn on"}</Button>
+      {pending && (
+        <span className="text-fg-dim">
+          {plugin.turnedOn
+            ? "It turns on when the server restarts."
+            : "It turns off when the server restarts."}
+        </span>
+      )}
+      {error !== undefined && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

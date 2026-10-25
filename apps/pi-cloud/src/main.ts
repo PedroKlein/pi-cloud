@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 import { stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
 import { fauxModels } from "./faux";
+import { installedPlugins } from "./installed";
 import { stderrLog } from "./log";
 import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
@@ -15,6 +16,7 @@ const usage = `usage:
   [PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \\
   pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                   [--database ~/.pi-cloud/server.db]
+                  [--plugins <folder next to the database>/plugins]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
   PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \\
@@ -61,6 +63,7 @@ switch (command) {
         url: { type: "string" },
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
+        plugins: { type: "string" },
         provider: { type: "string" },
         "data-dir": { type: "string", default: join(dataRoot, "server") },
         folder: { type: "string", multiple: true, default: [] },
@@ -73,6 +76,12 @@ switch (command) {
     // Sessions of the built-in runner inherit the environment.
     const secretKey = process.env["PI_CLOUD_SECRET_KEY"];
     delete process.env["PI_CLOUD_SECRET_KEY"];
+
+    const log = stderrLog("server");
+
+    const pluginsRoot = absolutePath(
+      values.plugins ?? join(dirname(values.database), "plugins"),
+    );
 
     const server = serve({
       hostname: values.host,
@@ -88,7 +97,11 @@ switch (command) {
           folders: values.folder,
         },
       }),
-      log: stderrLog("server"),
+      installed: {
+        root: pluginsRoot,
+        plugins: await installedPlugins(pluginsRoot, log),
+      },
+      log,
     });
 
     shutdown.signal.addEventListener("abort", () => {

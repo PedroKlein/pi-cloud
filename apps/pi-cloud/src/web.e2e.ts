@@ -11,6 +11,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { type Browser, chromium, type Page } from "playwright-core";
+import { installedPlugins } from "./installed";
 import { serve } from "./serve";
 import { setupTokenOf } from "./testdata/sign-in";
 
@@ -35,6 +36,21 @@ beforeAll(async () => {
 
   runtime.registerNativeProvider(faux.provider);
 
+  const plugins = join(root, "plugins");
+  await mkdir(join(plugins, "hello"), { recursive: true });
+
+  await writeFile(
+    join(plugins, "hello", "package.json"),
+    JSON.stringify({
+      piCloud: {
+        id: "hello",
+        title: "Hello",
+        description: "Says hi.",
+        engine: 1,
+      },
+    }),
+  );
+
   const logs: string[] = [];
 
   server = serve({
@@ -47,6 +63,10 @@ beforeAll(async () => {
       extensionPaths: [],
       folders: [root],
       models: { runtime, model: faux.getModel() },
+    },
+    installed: {
+      root: plugins,
+      plugins: await installedPlugins(plugins, () => undefined),
     },
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
@@ -372,6 +392,23 @@ test("changes a plugin's setting on the Plugins page", async () => {
   await limit.fill("10");
   await library.getByRole("button", { name: "Save" }).click();
   await library.getByText("Saved").waitFor();
+});
+
+test("turns an installed plugin on for the next start", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  const hello = page.getByRole("listitem", { name: "Hello" });
+  await hello.getByText("Installed", { exact: true }).waitFor();
+
+  await hello.getByRole("button", { name: "Turn on" }).click();
+  await hello.getByText("It turns on when the server restarts.").waitFor();
+
+  await page.reload();
+  await hello.getByRole("button", { name: "Turn off" }).click();
+  await hello.getByRole("button", { name: "Turn on" }).waitFor();
+
+  expect(await hello.getByText(/when the server restarts/).count()).toBe(0);
 });
 
 test("makes an MCP token that works once shown, and revokes it", async () => {
