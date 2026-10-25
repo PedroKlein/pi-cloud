@@ -14,7 +14,8 @@ import type {
   ServerPlugin,
   ServerPluginContext,
 } from "@pi-cloud/plugins";
-import type { Session, SessionEvent } from "@pi-cloud/protocol";
+import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
+import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
@@ -25,6 +26,7 @@ let faux: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve> | undefined;
 let signedIn: () => Promise<string>;
 let runners: ReturnType<typeof runnerCredentials>;
+let runtime: ModelRuntime;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-plugins-")));
@@ -41,7 +43,7 @@ async function start(
   plugins: readonly ServerPlugin[],
   disabledPlugins: readonly string[] = [],
 ): Promise<void> {
-  const runtime = await ModelRuntime.create({
+  runtime = await ModelRuntime.create({
     authPath: join(root, "auth.json"),
     modelsPath: null,
     allowModelNetwork: false,
@@ -462,4 +464,139 @@ test("leaves out plugins that are turned off", async () => {
   expect(registered).toBe(false);
   expect(await (await api("/api/plugins")).json()).toEqual([]);
   expect((await api("/api/plugins/off/anything")).status).toBe(404);
+});
+
+// A runner a plugin started, such as a pod, with the token the plugin gave it.
+function startRunner(
+  name: string,
+  token: string,
+  exitWhenIdleMs?: number,
+): { readonly done: Promise<void>; readonly logs: string[] } {
+  const logs: string[] = [];
+
+  const done = runAgent({
+    server: server?.url.href ?? "",
+    provider: name,
+    credential: { token },
+    ...(exitWhenIdleMs !== undefined && { exitWhenIdleMs }),
+    dataDir: join(root, name),
+    extensionPaths: [],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+    log: (message) => {
+      logs.push(message);
+    },
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  return { done, logs };
+}
+
+async function poolEnvironment(): Promise<Environment> {
+  await environmentReady();
+
+  return (
+    (await (await api("/api/environments", { name: "pool" })).json()) as {
+      environment: Environment;
+    }
+  ).environment;
+}
+
+test("lets a plugin start a runner for a Session no runner can take, until it revokes it", async () => {
+  let context: ServerPluginContext | undefined;
+
+  await start([
+    {
+      name: "machines",
+      register: (registered) => {
+        context = registered;
+      },
+    },
+  ]);
+
+  const environment = await poolEnvironment();
+  faux.setResponses([fauxAssistantMessage([fauxText("hi from a pod")])]);
+
+  const session = await createSession({
+    environment: environment.id,
+    workspace: { kind: "folder", path: root },
+  });
+
+  expect(
+    context?.environments.unplaced(environment.id).map(({ id }) => id),
+  ).toEqual([session.id]);
+
+  const pod = startRunner(
+    "pod-1",
+    context?.environments.runnerToken(environment.id, "pod-1") ?? "",
+  );
+
+  await follow(
+    session.id,
+    (events) =>
+      idle(events) &&
+      events.some((e) => e.type === "session" && e.session.runner === "pod-1"),
+  );
+
+  expect(context?.environments.unplaced(environment.id)).toEqual([]);
+
+  await api(`/api/environments/${environment.id}/key`, {});
+
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  expect(
+    pod.logs.filter((line) => line.includes("let this runner go")),
+  ).toEqual([]);
+
+  context?.environments.revokeRunner(environment.id, "pod-1");
+
+  const stopped = await pod.done.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+
+  expect(stopped).toEqual(new Error("the server let this runner go"));
+});
+
+test("stops a runner started to exit when idle once it runs no Session", async () => {
+  let context: ServerPluginContext | undefined;
+
+  await start([
+    {
+      name: "machines",
+      register: (registered) => {
+        context = registered;
+      },
+    },
+  ]);
+
+  const environment = await poolEnvironment();
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
+  const session = await createSession({
+    environment: environment.id,
+    workspace: { kind: "folder", path: root },
+  });
+
+  const pod = startRunner(
+    "pod-1",
+    context?.environments.runnerToken(environment.id, "pod-1") ?? "",
+    300,
+  );
+
+  await follow(
+    session.id,
+    (events) =>
+      idle(events) &&
+      events.some((e) => e.type === "session" && e.session.runner === "pod-1"),
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 600));
+
+  expect(pod.logs).not.toContain("no sessions for a while; stopping");
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+  await pod.done;
+
+  expect(pod.logs).toContain("no sessions for a while; stopping");
 });

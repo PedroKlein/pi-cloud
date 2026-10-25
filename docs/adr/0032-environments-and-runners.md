@@ -57,6 +57,16 @@ Pi Cloud's agent already works like that runner. It connects outbound, long-poll
 - Everything else goes in a raw pod template patch that Pi Cloud passes through: node selectors, tolerations, service accounts, annotations, sidecars, resources and security context.
 - A plugin for one Kubernetes flavor, such as SAP's Kyma, can build on the `kubernetes` plugin. Previews ([ADR 0022](0022-plugin-model-v2.md#previews)) become a seam a plugin can provide, so such a plugin can expose them through the platform's own routing instead of the server's proxy.
 
+### How the kubernetes plugin works (decided 2026-10-25)
+
+- Server plugins get a machine source seam. It reports the queued Sessions in an Environment that none of its online runners can take now, and it mints and revokes a token for a runner the plugin starts. That runner needs no Environment key, and a new key leaves it be.
+- A Kubernetes Environment's typed fields live in the plugin's own store, keyed by Environment. They're edited in a section the plugin adds to the Environments page.
+- The plugin reaches the cluster with the server pod's own service account and a Role from the Helm chart. It calls the API with plain `fetch`. No kubeconfig is stored.
+- A runner pod runs the Environment's image. An init container copies the `pi-cloud` binary in from the Pi Cloud image, and the pod runs `pi-cloud agent` against the server's in-cluster Service with its token from a Secret per pod. Sessions in a pod use process isolation.
+- The plugin starts one pod for each `capacity` queued Sessions, up to a maximum per Environment. Agents started with `--exit-when-idle` stop after running no Session for that long, and the plugin deletes finished pods and their Secrets.
+- A pod for a Session with its own claim is named after that Session, has capacity one and mounts the claim. A Session that has run goes back to the runner it ran on, so a replacement pod with that name picks it up.
+- CI runs a Session in a runner pod on kind, with Pi's faux model switched on in the binary by an environment variable only tests set.
+
 ### Variables and secrets
 
 - An Environment holds variables and secrets on the server. They are injected into the Session's environment, where the agent can read them, as environments.md's Session-readable secrets.

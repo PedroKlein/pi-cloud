@@ -117,7 +117,8 @@ create table if not exists agent_tokens (
   token_hash text primary key,
   environment text not null,
   runner text not null,
-  session_id text
+  session_id text,
+  joined integer not null default 1
 );
 create table if not exists browser_sessions (
   token_hash text primary key,
@@ -164,6 +165,16 @@ function migrate(db: DatabaseSync): void {
   db.exec(environmentsTable);
   db.exec(profileTables);
   db.exec(authTables);
+
+  const tokenColumns = db
+    .prepare("select name from pragma_table_info('agent_tokens')")
+    .all() as { name: string }[];
+
+  if (!tokenColumns.some(({ name }) => name === "joined")) {
+    db.exec(
+      "alter table agent_tokens add column joined integer not null default 1",
+    );
+  }
 
   const environmentColumns = db
     .prepare("select name from pragma_table_info('environments')")
@@ -732,15 +743,19 @@ function authStore(db: DatabaseSync): AuthStore {
   );
 
   const insertAgentToken = db.prepare(
-    "insert into agent_tokens (token_hash, environment, runner, session_id) values (?, ?, ?, ?)",
+    "insert into agent_tokens (token_hash, environment, runner, session_id, joined) values (?, ?, ?, ?, ?)",
   );
 
   const selectAgentToken = db.prepare(
-    "select environment, runner, session_id from agent_tokens where token_hash = ?",
+    "select environment, runner, session_id, joined from agent_tokens where token_hash = ?",
   );
 
-  const deleteEnvironmentTokens = db.prepare(
-    "delete from agent_tokens where environment = ?",
+  const deleteJoinedTokens = db.prepare(
+    "delete from agent_tokens where environment = ? and joined = 1",
+  );
+
+  const deleteRunnerTokens = db.prepare(
+    "delete from agent_tokens where environment = ? and runner = ?",
   );
 
   const deleteSessionTokens = db.prepare(
@@ -783,7 +798,7 @@ function authStore(db: DatabaseSync): AuthStore {
     setEnvironmentKey: (provider, keyHash) => {
       transaction(db, () => {
         updateKey.run(keyHash, provider);
-        deleteEnvironmentTokens.run(provider);
+        deleteJoinedTokens.run(provider);
       });
     },
     keyEnvironment: (keyHash) =>
@@ -800,12 +815,21 @@ function authStore(db: DatabaseSync): AuthStore {
           holder.environment,
           holder.runner,
           holder.sessionId,
+          holder.joined ? 1 : 0,
         );
       });
     },
+    deleteRunnerTokens: (provider, runner) => {
+      deleteRunnerTokens.run(provider, runner);
+    },
     agentToken: (tokenHash) => {
       const row = selectAgentToken.get(tokenHash) as
-        | { environment: string; runner: string; session_id: string | null }
+        | {
+            environment: string;
+            runner: string;
+            session_id: string | null;
+            joined: number;
+          }
         | undefined;
 
       return (
@@ -813,6 +837,7 @@ function authStore(db: DatabaseSync): AuthStore {
           environment: row.environment,
           runner: row.runner,
           sessionId: row.session_id,
+          joined: row.joined === 1,
         }
       );
     },

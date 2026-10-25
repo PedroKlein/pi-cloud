@@ -84,8 +84,18 @@ function fakeKernel(): {
     return { ok: true };
   };
 
+  const notUsed = (): never => {
+    throw new Error("not used by the projects plugin");
+  };
+
   const context: ServerPluginContext = {
     owner: "pedro",
+    environments: {
+      list: notUsed,
+      unplaced: notUsed,
+      runnerToken: notUsed,
+      revokeRunner: notUsed,
+    },
     tools: {
       register: (tool) => {
         tools.set(tool.name, tool);

@@ -67,6 +67,12 @@ function registered(): PluginRoute {
     owner: "owner",
     tools: { register: unused },
     events,
+    environments: {
+      list: unused,
+      unplaced: unused,
+      runnerToken: unused,
+      revokeRunner: unused,
+    },
     sessions: {
       start: unused,
       get: unused,

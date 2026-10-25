@@ -33,6 +33,7 @@ test("reports unhealthy when the database can't be read", async () => {
     new Profiles(store, owner),
     startPlugins([], [], {
       sessions,
+      runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
       store: store.plugin,
       signal: new AbortController().signal,
@@ -90,6 +91,7 @@ function startServer(
     new Profiles(store, owner),
     startPlugins([plugin], [plugin.name], {
       sessions,
+      runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
       store: store.plugin,
       signal: stopped.signal,
@@ -345,6 +347,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
       new Profiles(store, owner),
       startPlugins([keeper], enabled, {
         sessions,
+        runners: { token: () => "pct_test", revoke: () => undefined },
         events: eventBus(() => undefined),
         store: store.plugin,
         signal: new AbortController().signal,

@@ -11,6 +11,7 @@ import {
   type Work,
   type WorkPoll,
 } from "@pi-cloud/protocol";
+import type { ServerPluginContext } from "@pi-cloud/plugins";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
@@ -22,13 +23,23 @@ let signedIn: () => Promise<string>;
 let runners: ReturnType<typeof runnerCredentials>;
 let logged: string[];
 
-beforeEach(() => {
+let machines: ServerPluginContext["environments"] | undefined;
+
+function startServer({ pollWaitMs = 0, offlineAfterMs = 30_000 } = {}): void {
   logged = [];
 
   server = serve({
     port: 0,
     database: ":memory:",
-    sessions: { pollWaitMs: 0, leaseMs },
+    sessions: { pollWaitMs, offlineAfterMs, leaseMs },
+    plugins: [
+      {
+        name: "machines",
+        register: ({ environments }) => {
+          machines = environments;
+        },
+      },
+    ],
     log: (message, fields) => {
       logged.push(`${message} ${JSON.stringify(fields)}`);
     },
@@ -36,6 +47,10 @@ beforeEach(() => {
 
   signedIn = firstUser(server, logged);
   runners = runnerCredentials(server, signedIn);
+}
+
+beforeEach(() => {
+  startServer();
 });
 
 afterEach(async () => {
@@ -107,6 +122,22 @@ async function startSession(
   );
 
   return session.id;
+}
+
+async function environmentId(provider = "laptops"): Promise<string> {
+  const listed = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
+  );
+
+  return listed.find((each) => each.provider === provider)?.id ?? "";
+}
+
+async function unplaced(): Promise<readonly string[]> {
+  const id = await environmentId();
+
+  return machines?.unplaced(id).map((session) => session.id) ?? [];
 }
 
 function ids(assignments: readonly Assignment[]): readonly string[] {
@@ -443,4 +474,63 @@ test("makes an Environment once, with a key, under a name runners can use", asyn
   expect(body.key).toStartWith("pck_");
   expect((await create("builders")).status).toBe(409);
   expect((await create("no spaces")).status).toBe(400);
+});
+
+test("reports the Sessions beyond the room an Environment's online runners have", async () => {
+  await claimed("mac-1", { capacity: 1 });
+
+  await startSession("/srv/a");
+  const second = await startSession("/srv/b");
+
+  expect(await unplaced()).toEqual([second]);
+});
+
+test("leaves a folder Session to the full runner that lists its folder", async () => {
+  await claimed("mac-1", { folders: ["/srv/a"], capacity: 1 });
+  await startSession("/srv/b");
+  await claimed("mac-1", { folders: ["/srv/a"], capacity: 1 });
+
+  await startSession("/srv/a/app");
+
+  expect(await unplaced()).toEqual([]);
+});
+
+test("reports a Session whose runner went offline while it ran", async () => {
+  await server.stop();
+  startServer({ offlineAfterMs: 100 });
+  await claimed("mac-1");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  await claimed("mac-1");
+  await sleep(200);
+
+  expect(await unplaced()).toEqual([clone]);
+});
+
+test("gives no work to a runner revoked while it waited for some", async () => {
+  await server.stop();
+  startServer({ pollWaitMs: 10_000 });
+  await runners.key("pods");
+
+  const id = await environmentId("pods");
+  const token = machines?.runnerToken(id, "pod-1");
+  const waited = asRunner(token, "/agent/work", emptyPoll);
+
+  await sleep(100);
+  machines?.revokeRunner(id, "pod-1");
+
+  await fetch(new URL("/api/sessions", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: await signedIn() },
+    body: JSON.stringify({
+      environment: id,
+      workspace: { kind: "folder", path: "/srv/a" },
+    }),
+  });
+
+  expect((await waited).status).toBe(401);
 });
