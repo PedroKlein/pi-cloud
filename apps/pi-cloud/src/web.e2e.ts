@@ -220,6 +220,44 @@ test("asks the assistant from the home screen and lists the conversation", async
     .waitFor();
 }, 30_000);
 
+test("asks the assistant with the model picked last time", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("Deep answer")])]);
+  await page.goto(server.url.href);
+
+  const ask = page.getByLabel("Ask the Pi Cloud assistant");
+  const model = page.locator("form", { has: ask }).getByLabel("Model");
+
+  const deep = model.locator("option", { hasText: /\/faux-deep$/ });
+  await deep.waitFor({ state: "attached" });
+  const name = await deep.textContent();
+
+  await model.selectOption({ label: name ?? "missing" });
+
+  await ask.fill("Think hard");
+  await ask.press("Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "Deep answer" })
+    .waitFor();
+
+  const sessions = (await (
+    await fetch(new URL("/api/plugins/meta/sessions", server.url), {
+      headers: { cookie },
+    })
+  ).json()) as { firstMessage: string; model: { id: string } | null }[];
+
+  await page.goto(server.url.href);
+
+  expect(
+    sessions.find(({ firstMessage }) => firstMessage === "Think hard")?.model
+      ?.id,
+  ).toBe("faux-deep");
+
+  expect(await model.inputValue()).toBe(name ?? "");
+
+  await model.selectOption({ label: "Default model" });
+}, 30_000);
+
 test("goes where the assistant opens on a wide screen, and offers it on a phone", async () => {
   const startOne = (): ReturnType<typeof fauxAssistantMessage> =>
     fauxAssistantMessage(
@@ -364,6 +402,8 @@ test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.reload();
   await page.getByLabel("Add command").waitFor({ state: "detached" });
   expect(await page.content()).not.toContain(secret);
+
+  page.once("dialog", async (dialog) => dialog.accept());
 
   await page.getByRole("button", { name: "Revoke My laptop" }).click();
   await page.getByText("No client has a token.").waitFor();

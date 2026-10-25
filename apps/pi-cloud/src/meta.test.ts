@@ -147,16 +147,32 @@ test("refuses a meta-session without a first message", async () => {
   expect(response.status).toBe(400);
 });
 
+async function environmentId(): Promise<string> {
+  await environmentReady();
+  const [environment] = await json<{ id: string }[]>(api("/api/environments"));
+
+  return environment?.id ?? "";
+}
+
+const rename = (id: string, name: string): ReturnType<typeof fauxToolCall> =>
+  fauxToolCall("environments_update", { id, name });
+
+// Environment changes are deferred, so the model loads them first.
+const searched = fauxAssistantMessage(
+  [fauxToolCall("tool_search", { query: "change an Environment" })],
+  { stopReason: "toolUse" },
+);
+
 test("asks before a risky call, runs it only when allowed, and never asks for reads", async () => {
+  const environment = await environmentId();
+
   faux.setResponses([
+    searched,
     fauxAssistantMessage(
-      [
-        fauxToolCall("read", { path: "missing.txt" }),
-        fauxToolCall("bash", { command: "echo first" }),
-      ],
+      [fauxToolCall("sessions_list", {}), rename(environment, "first")],
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage([fauxToolCall("bash", { command: "echo second" })], {
+    fauxAssistantMessage([rename(environment, "second")], {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage([fauxText("all done")]),
@@ -193,14 +209,17 @@ test("asks before a risky call, runs it only when allowed, and never asks for re
     .flatMap((e) => (e.type === "entry" ? [e.entry] : []))
     .join("\n");
 
+  const names = (await json<{ name: string }[]>(api("/api/environments"))).map(
+    ({ name }) => name,
+  );
+
   expect(asked.map(({ title }) => title)).toEqual([
-    "Allow bash?",
-    "Allow bash?",
+    "Allow environments_update?",
+    "Allow environments_update?",
   ]);
 
-  expect(transcript).toContain("The user didn't allow bash.");
-  expect(transcript).toContain("second");
-  expect(transcript).not.toContain("first\\n");
+  expect(transcript).toContain("The user didn't allow environments_update.");
+  expect(names).toEqual(["second"]);
 });
 
 test("loads the meta-session's confirm only in meta-sessions", async () => {
@@ -258,12 +277,19 @@ test("loads only the Session parts the meta plugin allows in a meta-session", as
 });
 
 test("shows the whole input of a risky call it asks about", async () => {
-  const command = `echo ${"x".repeat(900)}; echo the end`;
+  const id = await environmentId();
 
   faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("bash", { command })], {
-      stopReason: "toolUse",
-    }),
+    searched,
+    fauxAssistantMessage(
+      [
+        fauxToolCall("environments_update", {
+          id,
+          setupScript: `echo ${"x".repeat(900)}; echo the end`,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
     fauxAssistantMessage([fauxText("all done")]),
   ]);
 
@@ -283,10 +309,11 @@ test("shows the whole input of a risky call it asks about", async () => {
 });
 
 test("stops a turn that waits on a confirm", async () => {
+  const id = await environmentId();
+
   faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("bash", { command: "echo hi" })], {
-      stopReason: "toolUse",
-    }),
+    searched,
+    fauxAssistantMessage([rename(id, "renamed")], { stopReason: "toolUse" }),
   ]);
 
   const session = await startMeta("Run something");

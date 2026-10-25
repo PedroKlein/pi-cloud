@@ -12,7 +12,11 @@ export function SettingsPage(): ReactElement {
     readonly secret: string;
   }>();
 
-  const revoke = (id: string): void => {
+  const revoke = (id: string, name: string): void => {
+    if (!confirm(`${name} won't be able to reach Pi Cloud any more.`)) {
+      return;
+    }
+
     void send(`/api/mcp-tokens/${encodeURIComponent(id)}`, "DELETE").then(
       reload,
       reload,
@@ -70,7 +74,7 @@ export function SettingsPage(): ReactElement {
               <Button
                 aria-label={`Revoke ${token.name}`}
                 onClick={() => {
-                  revoke(token.id);
+                  revoke(token.id, token.name);
                 }}
               >
                 Revoke

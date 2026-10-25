@@ -480,3 +480,24 @@ test("opens a Session on request without asking, and only routes of the app", as
     { kind: "open", route: target.id, label: "the Session" },
   ]);
 });
+
+test("gives a meta-session no tools that reach the runner's files or shell", async () => {
+  let declared = "";
+
+  faux.setResponses([
+    (context) => {
+      declared = JSON.stringify(context);
+
+      return fauxAssistantMessage([fauxText("looked")]);
+    },
+  ]);
+
+  const metaSession = await startMeta("What can you do?");
+  await follow(metaSession.id, entriesInclude("looked"));
+
+  expect(declared).toContain('{"name":"sessions_list"');
+
+  for (const tool of ["read", "bash", "edit", "write"]) {
+    expect(declared).not.toContain(`{"name":"${tool}"`);
+  }
+});
