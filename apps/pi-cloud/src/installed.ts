@@ -440,13 +440,18 @@ export async function reread(
 export async function build(root: string, id: string): Promise<void> {
   const folder = join(root, id);
 
-  await builtParts(
-    folder,
-    manifestOf(
-      JSON.parse(await readFile(join(folder, "package.json"), "utf8")),
-      id,
-    ),
+  const manifest = manifestOf(
+    JSON.parse(await readFile(join(folder, "package.json"), "utf8")),
+    id,
   );
+
+  if (Object.keys(manifest.parts ?? {}).length === 0) {
+    throw new Error(
+      "it has no parts, so it would do nothing: list a server, web or session file in piCloud.parts",
+    );
+  }
+
+  await builtParts(folder, manifest);
 }
 
 // Why a plugin can't have this id, if it can't.
