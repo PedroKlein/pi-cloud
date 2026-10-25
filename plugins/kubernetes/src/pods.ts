@@ -74,6 +74,9 @@ export function runnerPod(options: PodOptions): object {
             options.sessionId === undefined ? String(settings.capacity) : "1",
             "--exit-when-idle",
             String(settings.idleSeconds),
+            ...(options.sessionId === undefined
+              ? []
+              : ["--session", options.sessionId]),
           ],
           env: [
             { name: "HOME", value: home },

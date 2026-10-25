@@ -1,6 +1,6 @@
 import type { WorkPoll } from "@pi-cloud/protocol";
 
-type Inventory = Pick<WorkPoll, "folders" | "models">;
+type Inventory = Pick<WorkPoll, "folders" | "models" | "session">;
 
 export interface PolledRunner {
   readonly name: string;

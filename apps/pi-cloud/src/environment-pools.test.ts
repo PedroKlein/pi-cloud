@@ -67,9 +67,11 @@ async function poll(
     folders = [],
     running = [],
     capacity,
+    session,
     environment = "laptops",
   }: {
     readonly environment?: string;
+    readonly session?: string;
     readonly folders?: readonly string[];
     readonly running?: readonly Attempt[];
     readonly capacity?: number;
@@ -83,6 +85,7 @@ async function poll(
     folders,
     models: [],
     ...(capacity !== undefined && { capacity }),
+    ...(session !== undefined && { session }),
   };
 
   return json(
@@ -538,38 +541,76 @@ test("gives no work to a runner revoked while it waited for some", async () => {
   expect((await waited).status).toBe(401);
 });
 
-test("gives a reserved Session only to its runner, which takes no other", async () => {
+test("gives a Session with a runner of its own only to that runner, which takes no other", async () => {
   await claimed("mac-1");
 
-  const reserved = await startSession({
+  const older = await startSession({
     kind: "clone",
     repository: "https://example.com/a.git",
   });
 
-  const other = await startSession({
+  const own = await startSession({
     kind: "clone",
     repository: "https://example.com/b.git",
   });
 
-  machines?.reserve(reserved, "pod-b");
-  const waiting = await unplaced();
+  const onPod = await claimed("pod-b", { session: own });
   const onMac = await claimed("mac-1");
-  const onPod = await claimed("pod-b");
+
+  await json(
+    fetch(new URL(`/api/sessions/${own}/archive`, server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: await signedIn() },
+      body: "{}",
+    }),
+  );
 
   await startSession({
     kind: "clone",
     repository: "https://example.com/c.git",
   });
 
-  const [attempt] = onPod;
+  const afterArchive = await claimed("pod-b", { session: own });
 
-  const later = await claimed("pod-b", {
-    running: attempt === undefined ? [] : [attempt],
+  expect(ids(onPod)).toEqual([own]);
+  expect(ids(onMac)).toEqual([older]);
+  expect(afterArchive).toEqual([]);
+  expect(await unplaced()).toEqual([]);
+});
+
+test("keeps a Session with a runner of its own from every other runner", async () => {
+  await claimed("mac-1");
+
+  const own = await startSession({
+    kind: "clone",
+    repository: "https://example.com/a.git",
   });
 
-  expect(waiting).toEqual([reserved]);
-  expect(ids(onMac)).toEqual([other]);
-  expect(ids(onPod)).toEqual([reserved]);
-  expect(later).toEqual([]);
-  expect(await unplaced()).toEqual([]);
+  const full = { sessionId: "other", generation: 1 };
+  await claimed("pod-a", { session: own, capacity: 1, running: [full] });
+
+  const onMac = await claimed("mac-1");
+  const onPod = await claimed("pod-a", { session: own });
+
+  expect(onMac).toEqual([]);
+  expect(ids(onPod)).toEqual([own]);
+});
+
+test("reports a Session whose own runner went offline", async () => {
+  await server.stop();
+  startServer({ offlineAfterMs: 100 });
+  const full = { sessionId: "other", generation: 1 };
+  await claimed("mac-1", { capacity: 1, running: [full] });
+
+  const own = await startSession({
+    kind: "clone",
+    repository: "https://example.com/a.git",
+  });
+
+  await claimed("pod-a", { session: own, capacity: 1, running: [full] });
+  const whileOnline = await unplaced();
+  await sleep(150);
+
+  expect(whileOnline).toEqual([]);
+  expect(await unplaced()).toEqual([own]);
 });

@@ -21,7 +21,7 @@ const usage = `usage:
   pi-cloud agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
                  [--server http://127.0.0.1:7420] [--session-binary <path>]
                  [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
-                 [--extension <path>]...`;
+                 [--extension <path>]... [--session <id>]`;
 
 const dataRoot = join(homedir(), ".pi-cloud");
 
@@ -105,6 +105,7 @@ switch (command) {
         name: { type: "string" },
         capacity: { type: "string" },
         "exit-when-idle": { type: "string" },
+        session: { type: "string" },
         "session-binary": { type: "string" },
         server: { type: "string", default: "http://127.0.0.1:7420" },
         "data-dir": { type: "string", default: join(dataRoot, "agent") },
@@ -153,6 +154,7 @@ switch (command) {
       credential,
       ...(capacity !== undefined && { capacity }),
       ...(idleSeconds !== undefined && { exitWhenIdleMs: idleSeconds * 1000 }),
+      ...(values.session !== undefined && { session: values.session }),
       ...(values["session-binary"] !== undefined && {
         sessionBinary: absolutePath(values["session-binary"]),
       }),

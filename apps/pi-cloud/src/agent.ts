@@ -54,6 +54,8 @@ export interface AgentOptions {
   readonly credential: { readonly key: string } | { readonly token: string };
   // How many Sessions it runs at once. Absent means no limit.
   readonly capacity?: number;
+  // The one Session it runs, as a pod on that Session's own volume does.
+  readonly session?: string;
   // Stops after running no Session for this long, as a pod started on demand
   // does (ADR 0032). Absent means it never does.
   readonly exitWhenIdleMs?: number;
@@ -576,6 +578,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     signal: AbortSignal.any([options.signal, letGo.signal, idle.signal]),
     folders: [...new Set([...options.folders, ...checkouts])],
     ...(options.capacity !== undefined && { capacity: options.capacity }),
+    ...(options.session !== undefined && { session: options.session }),
     models: () => models,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({

@@ -415,7 +415,11 @@ test("reconciles saved settings once the server starts again", async () => {
   expect(logs.filter((line) => line.includes("not reconciled"))).toEqual([]);
 });
 
-async function startRunner(name: string, signal: AbortSignal): Promise<void> {
+async function startRunner(
+  name: string,
+  session: string,
+  signal: AbortSignal,
+): Promise<void> {
   const faux = fauxProvider();
   faux.setResponses([fauxAssistantMessage([fauxText("hi from a pod")])]);
 
@@ -430,6 +434,7 @@ async function startRunner(name: string, signal: AbortSignal): Promise<void> {
       server: server.url.href,
       provider: name,
       credential: { token: api.secrets.get(name)?.["token"] ?? "" },
+      session,
       dataDir: join(root, name),
       extensionPaths: [],
       folders: [root],
@@ -458,7 +463,7 @@ test("gives each Session a pod of its own that mounts its claim, and brings it b
   const pod = api.pods.get(name);
   const token = api.secrets.get(name)?.["token"];
   const stop = new AbortController();
-  const runner = startRunner(name, stop.signal);
+  const runner = startRunner(name, second.id, stop.signal);
 
   for (let attempt = 0; attempt < 250; attempt++) {
     const current = await sessionOf(second.id);
@@ -491,11 +496,13 @@ test("gives each Session a pod of its own that mounts its claim, and brings it b
     persistentVolumeClaim: { claimName: name },
   });
 
-  expect(pod?.spec.containers[0]?.command.slice(-4)).toEqual([
+  expect(pod?.spec.containers[0]?.command.slice(-6)).toEqual([
     "--capacity",
     "1",
     "--exit-when-idle",
     "300",
+    "--session",
+    second.id,
   ]);
 
   expect(heldFirst).toMatchObject({ runner: null, status: "queued" });

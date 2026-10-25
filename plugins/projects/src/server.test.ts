@@ -95,7 +95,6 @@ function fakeKernel(): {
       unplaced: notUsed,
       runnerToken: notUsed,
       revokeRunner: notUsed,
-      reserve: notUsed,
     },
     tools: {
       register: (tool) => {

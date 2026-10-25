@@ -284,8 +284,8 @@ async function scale(
   }
 }
 
-// A Session reserved for its own pod goes back to a pod of that name, which
-// mounts the same claim, after the pod stops or is deleted (ADR 0032).
+// A Session's own pod takes only that Session, and a pod of that name, on the
+// same claim, takes it back after the pod stops or is deleted (ADR 0032).
 async function scaleSessions(
   context: ServerPluginContext,
   pods: Pods,
@@ -294,41 +294,26 @@ async function scaleSessions(
   active: readonly RunnerPod[],
 ): Promise<void> {
   const running = new Set(active.map(({ name }) => name));
-
-  const owned = active.flatMap(({ name, sessionId }) =>
-    sessionId === undefined ? [] : [{ name, sessionId }],
-  );
-
   let room = settings.maxPods - active.length;
 
-  try {
-    for (const session of context.environments.unplaced(environment.id)) {
-      const name = sessionPodName(session.id);
-      if (running.has(name) || room <= 0) {
-        continue;
-      }
-
-      await pods.cluster.createClaim(
-        sessionClaim(session.id, environment.id, settings),
-      );
-
-      await startPod(context, pods, environment, settings, name, session.id);
-      owned.push({ name, sessionId: session.id });
-      room--;
-
-      context.log("session pod started", {
-        environmentId: environment.id,
-        sessionId: session.id,
-        pod: name,
-      });
+  for (const session of context.environments.unplaced(environment.id)) {
+    const name = sessionPodName(session.id);
+    if (running.has(name) || room <= 0) {
+      continue;
     }
-  } finally {
-    // Again on every pass, since the server forgets reservations on restart.
-    for (const { name, sessionId } of owned) {
-      if (context.sessions.get(sessionId)?.archivedAt === null) {
-        context.environments.reserve(sessionId, name);
-      }
-    }
+
+    await pods.cluster.createClaim(
+      sessionClaim(session.id, environment.id, settings),
+    );
+
+    await startPod(context, pods, environment, settings, name, session.id);
+    room--;
+
+    context.log("session pod started", {
+      environmentId: environment.id,
+      sessionId: session.id,
+      pod: name,
+    });
   }
 }
 
