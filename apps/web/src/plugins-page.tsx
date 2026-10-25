@@ -38,6 +38,7 @@ export function PluginsPage(): ReactElement {
               </h2>
               <Badge state={states[plugin.state].badge}>
                 {states[plugin.state].label}
+                {switchesAtRestart(plugin) && " until restart"}
               </Badge>
               {plugin.source === "installed" && (
                 <Badge state="offline">Installed</Badge>
@@ -54,10 +55,16 @@ export function PluginsPage(): ReactElement {
                 Its web part didn't load: {webPartError(plugin.id)}
               </p>
             )}
-            {plugin.installedFrom !== undefined && (
+            {plugin.source === "installed" && (
               <p className="break-all font-mono text-mono-sm text-fg-dim">
-                {plugin.installedFrom.url} at{" "}
-                {shortPin(plugin.installedFrom.pinned)}
+                {[
+                  plugin.version,
+                  plugin.installedFrom === undefined
+                    ? "written in place"
+                    : `${plugin.installedFrom.url} at ${shortPin(plugin.installedFrom.pinned)}`,
+                ]
+                  .filter((part) => part !== undefined)
+                  .join(" · ")}
               </p>
             )}
             {plugin.source === "installed" && (
@@ -79,12 +86,20 @@ export function PluginsPage(): ReactElement {
 }
 
 // A failed plugin shows its error instead.
-function waitsForRestart(plugin: PluginInfo): boolean {
+function switchesAtRestart(plugin: PluginInfo): boolean {
   return (
     plugin.source === "installed" &&
-    ((plugin.updated === true && plugin.turnedOn) ||
-      (plugin.state !== "failed" &&
-        plugin.turnedOn !== (plugin.state === "on")))
+    plugin.state !== "failed" &&
+    plugin.turnedOn !== (plugin.state === "on")
+  );
+}
+
+function waitsForRestart(plugin: PluginInfo): boolean {
+  return (
+    switchesAtRestart(plugin) ||
+    (plugin.source === "installed" &&
+      plugin.updated === true &&
+      plugin.turnedOn)
   );
 }
 
@@ -102,6 +117,7 @@ function Install({
   readonly onInstalled: () => void;
 }): ReactElement {
   const [error, setError] = useState<string>();
+  const [installed, setInstalled] = useState<string>();
   const [installing, setInstalling] = useState(false);
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
@@ -111,11 +127,18 @@ function Install({
     const url = new FormData(form).get("url");
 
     setInstalling(true);
+    setInstalled(undefined);
 
     api("/api/plugins", { url: typeof url === "string" ? url.trim() : "" })
+      .then(async (response) => (await response.json()) as PluginInfo)
       .then(
-        () => {
+        (plugin) => {
           setError(undefined);
+
+          setInstalled(
+            `Installed ${plugin.title}, turned off. It's listed below.`,
+          );
+
           form.reset();
           onInstalled();
         },
@@ -149,6 +172,11 @@ function Install({
         {error !== undefined && (
           <p role="alert" className="text-caption text-failed">
             {error}
+          </p>
+        )}
+        {installed !== undefined && (
+          <p role="status" className="text-caption text-fg-dim">
+            {installed}
           </p>
         )}
       </div>
@@ -322,8 +350,12 @@ function Controls({
         return "It already has the newest version.";
       }
 
+      const added = (next.capabilities ?? []).filter(
+        (capability) => !(plugin.capabilities ?? []).includes(capability),
+      );
+
       return plugin.turnedOn && !next.turnedOn
-        ? "Its newest version asks for more, so it stays off until you turn it on again."
+        ? `Its newest version asks for more${added.length > 0 ? `, ${added.join(", ")}` : ""}, so it stays off until you turn it on again.`
         : undefined;
     });
   };
@@ -346,7 +378,17 @@ function Controls({
       {plugin.installedFrom !== undefined && (
         <Button onClick={update}>Update</Button>
       )}
-      {plugin.state !== "on" && <Button onClick={remove}>Remove</Button>}
+      <Button
+        onClick={remove}
+        disabled={plugin.state === "on"}
+        title={
+          plugin.state === "on"
+            ? "Turn it off and restart the server to remove it"
+            : undefined
+        }
+      >
+        Remove
+      </Button>
       <span className="text-fg-dim">{pendingNote(plugin) ?? note}</span>
       {error !== undefined && (
         <p role="alert" className="text-caption text-failed">
@@ -358,11 +400,7 @@ function Controls({
 }
 
 function pendingNote(plugin: PluginInfo): string | undefined {
-  if (
-    plugin.source === "installed" &&
-    plugin.state !== "failed" &&
-    plugin.turnedOn !== (plugin.state === "on")
-  ) {
+  if (switchesAtRestart(plugin)) {
     return plugin.turnedOn
       ? "It turns on when the server restarts."
       : "It turns off when the server restarts.";
