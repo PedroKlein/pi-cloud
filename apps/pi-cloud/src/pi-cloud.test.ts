@@ -1675,9 +1675,43 @@ test("keeps the server's own runner when its Environment gets a key", async () =
 
   await follow(session.id, status("idle"));
 
-  expect(serverLogs.some((line) => line.includes("environment key"))).toBe(
-    true,
+  expect([...serverLogs, ...agentLogs].join("\n")).not.toContain("pct_");
+});
+
+test("stops a runner the server let go when its Environment got a new key", async () => {
+  const controller = new AbortController();
+  const polling = Promise.withResolvers<undefined>();
+
+  const done = runAgent({
+    server: server.url.href,
+    provider: "mac",
+    credential: { key: await runners.key("pool") },
+    dataDir: join(root, "mac"),
+    extensionPaths: [],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+    log: (message) => {
+      if (message === "provider polling for work") {
+        polling.resolve(undefined);
+      }
+    },
+    signal: controller.signal,
+  });
+
+  agents.push(async () => {
+    controller.abort();
+    await done.catch(() => undefined);
+  });
+
+  await polling.promise;
+  await api(`/api/environments/${await environmentOf("pool")}/key`, {});
+
+  const stopped = await done.then(
+    () => undefined,
+    (error: unknown) => error,
   );
+
+  expect(stopped).toEqual(new Error("the server let this runner go"));
 });
 
 test("lists an Environment for each provider with the folders and models its agent offers", async () => {
@@ -2196,10 +2230,11 @@ test("rejects requests from other sites", async () => {
       ...webSocketUpgrade,
       origin: "https://evil.example",
     }),
+    await fromSite("/api/sessions", { host: "evil.example" }),
     await fromSite("/api/sessions", { origin: server.url.origin }),
   ];
 
-  expect(statuses).toEqual([403, 403, 200]);
+  expect(statuses).toEqual([403, 403, 403, 200]);
 });
 
 test("accepts a runner's calls under Docker's host name with its token alone", async () => {
@@ -2222,7 +2257,7 @@ test("accepts a runner's calls under Docker's host name with its token alone", a
   expect(await reached(transcript, await runners.token("laptop"))).toBe(200);
   expect(await reached(transcript)).toBe(401);
   expect(await reached(transcript, "pct_guess")).toBe(401);
-  expect(await reached("/api/sessions")).toBe(401);
+  expect(await reached("/api/sessions")).toBe(403);
 });
 
 test("does not open a terminal for a request that is not a WebSocket", async () => {

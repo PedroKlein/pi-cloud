@@ -128,16 +128,28 @@ async function call(
   return response;
 }
 
-export function httpControlPlane(agent: Agent): ControlPlane {
+export function httpControlPlane(
+  agent: Agent,
+  letGo: () => void,
+): ControlPlane {
   return {
-    work: async (poll, signal) =>
-      (await (
-        await call(agent, "/agent/work", {
+    work: async (poll, signal) => {
+      try {
+        const response = await call(agent, "/agent/work", {
           method: "POST",
           body: poll,
           signal: AbortSignal.any([signal, AbortSignal.timeout(pollTimeoutMs)]),
-        })
-      ).json()) as Work,
+        });
+
+        return (await response.json()) as Work;
+      } catch (error) {
+        if (error instanceof HttpError && error.status === 401) {
+          letGo();
+        }
+
+        throw error;
+      }
+    },
   };
 }
 

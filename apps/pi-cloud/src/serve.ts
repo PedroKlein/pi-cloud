@@ -74,6 +74,14 @@ export function serve(options: ServeOptions): {
 
   const terminals = terminalBroker(sessions, auth, options.log);
 
+  const siteHosts = new Set([
+    ...loopback,
+    ...(options.url ? [options.url.hostname] : []),
+    ...(options.hostname === undefined || wildcards.has(options.hostname)
+      ? []
+      : [options.hostname]),
+  ]);
+
   const server = Bun.serve({
     hostname: options.hostname ?? "127.0.0.1",
     port: options.port,
@@ -81,7 +89,7 @@ export function serve(options: ServeOptions): {
     development: false,
     routes: { "/": web },
     fetch: async (request, bunServer) => {
-      if (!sameOrigin(request)) {
+      if (!fromThisSite(request, siteHosts)) {
         return Response.json({ error: "forbidden" }, { status: 403 });
       }
 
@@ -142,15 +150,24 @@ export function serve(options: ServeOptions): {
   };
 }
 
-// Browser sessions and runners carry their own credentials (ADR 0033). A
-// cross-site page can't send the SameSite cookie, so this only refuses what a
-// browser says came from another site.
-function sameOrigin(request: Request): boolean {
+const loopback = ["127.0.0.1", "localhost", "[::1]"];
+const wildcards = new Set(["0.0.0.0", "::", "[::]"]);
+
+// Runners carry a token and reach the server under any name, such as Docker's
+// host.docker.internal or a cluster Service's. A browser page sends an Origin.
+// Pages are refused under names the server doesn't go by, so one that rebinds
+// its own name to the server can't even try passwords (ADR 0033).
+function fromThisSite(request: Request, hosts: ReadonlySet<string>): boolean {
+  const host = request.headers.get("host") ?? "";
   const origin = request.headers.get("origin");
 
+  if (new URL(request.url).pathname.startsWith("/agent/")) {
+    return origin === null;
+  }
+
   return (
-    origin === null ||
-    (URL.canParse(origin) &&
-      new URL(origin).host === request.headers.get("host"))
+    URL.canParse(`http://${host}`) &&
+    hosts.has(new URL(`http://${host}`).hostname) &&
+    (origin === null || (URL.canParse(origin) && new URL(origin).host === host))
   );
 }

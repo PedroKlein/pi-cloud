@@ -114,12 +114,11 @@ export function createHandler(
 
       // A Session that never reached a runner can still have a workspace
       // removal for any runner of its Environment.
+      // Runner names are unique only within an Environment.
       if (
         (caller.sessionId !== null && caller.sessionId !== sessionId) ||
-        (session?.runner !== caller.runner &&
-          !(
-            session?.runner === null && session.provider === caller.environment
-          ))
+        session?.provider !== caller.environment ||
+        (session.runner !== null && session.runner !== caller.runner)
       ) {
         return notFound();
       }
@@ -494,11 +493,7 @@ export function createHandler(
         const work: Work = {
           start: start.map((assignment) => ({
             ...assignment,
-            token: auth.sessionToken(
-              runner.environment,
-              runner.name,
-              assignment.sessionId,
-            ),
+            token: auth.sessionToken(caller, assignment.sessionId),
           })),
           unload,
           remove,

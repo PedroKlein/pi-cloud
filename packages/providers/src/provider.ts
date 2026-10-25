@@ -106,7 +106,7 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
       for (const assignment of work.start) {
         started++;
         workspaces.set(assignment.sessionId, assignment.workspace);
-        const { environment: _secret, ...logged } = assignment;
+        const { environment: _secrets, token: _token, ...logged } = assignment;
         log("starting session", { ...logged, started });
         start(assignment);
       }

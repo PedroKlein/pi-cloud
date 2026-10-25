@@ -556,10 +556,20 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     }
   };
 
+  // A server that no longer knows the token, as after a new key, has let the
+  // runner go. It stops instead of polling forever.
+  const letGo = new AbortController();
+
   await runProvider({
-    controlPlane: httpControlPlane(agent),
+    controlPlane: httpControlPlane(agent, () => {
+      log(
+        "the server let this runner go; join again with the Environment's key",
+      );
+
+      letGo.abort();
+    }),
     log,
-    signal: options.signal,
+    signal: AbortSignal.any([options.signal, letGo.signal]),
     folders: [...new Set([...options.folders, ...checkouts])],
     ...(options.capacity !== undefined && { capacity: options.capacity }),
     models: () => models,
@@ -627,6 +637,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   );
 
   await Promise.all([...stopping.values(), ...removing.values()]);
+
+  if (letGo.signal.aborted) {
+    throw new Error("the server let this runner go");
+  }
 }
 
 async function claimProfiles(dir: string, server: string): Promise<boolean> {

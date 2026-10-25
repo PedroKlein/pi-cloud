@@ -133,6 +133,7 @@ export function terminalBroker(
       caller === undefined ||
       (caller.sessionId !== null && caller.sessionId !== sessionId) ||
       sessions.get(sessionId)?.runner !== caller.runner ||
+      sessions.get(sessionId)?.provider !== caller.environment ||
       !sessions.isCurrent(sessionId, generation)
     ) {
       return Response.json({ error: "not_found" }, { status: 404 });

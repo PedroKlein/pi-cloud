@@ -370,6 +370,13 @@ test("lets a runner join only with its Environment's key", async () => {
 
 test("lets go of runners that joined with an Environment's earlier key", async () => {
   const token = await runners.token("mac-1", "laptops");
+  const id = await startSession("/srv/a");
+
+  const work = await json<Work>(
+    asRunner(token, "/agent/work", { ...emptyPoll, folders: ["/srv/a"] }),
+  );
+
+  const sessionToken = work.start[0]?.token;
 
   const [environment] = await json<Environment[]>(
     fetch(new URL("/api/environments", server.url), {
@@ -384,6 +391,10 @@ test("lets go of runners that joined with an Environment's earlier key", async (
 
   expect(replaced.status).toBe(200);
   expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(401);
+
+  expect(
+    (await asRunner(sessionToken, `/agent/sessions/${id}/transcript`)).status,
+  ).toBe(401);
 });
 
 test("gives each Session a token that reaches only that Session", async () => {

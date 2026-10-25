@@ -74,7 +74,6 @@ export class Auth {
   readonly #store: AuthStore;
   readonly #failures = new Map<string, { count: number; since: number }>();
   readonly #ownTokens = new Map<string, Agent>();
-  #ownRunner: Omit<Agent, "sessionId"> | undefined;
   #setupToken: string | undefined;
 
   constructor(store: AuthStore) {
@@ -203,13 +202,15 @@ export class Auth {
   // the server, so their tokens live only in memory. A new key for its
   // Environment leaves them be.
   ownRunnerToken(environment: string, runner: string): string {
-    this.#ownRunner = { environment, runner };
-
-    return this.#agentToken({ environment, runner, sessionId: null });
+    return this.#agentToken({ environment, runner, sessionId: null }, true);
   }
 
-  sessionToken(environment: string, runner: string, sessionId: string): string {
-    return this.#agentToken({ environment, runner, sessionId });
+  // The token a Session of the calling runner uses for its current attempt.
+  sessionToken(runner: Agent, sessionId: string): string {
+    return this.#agentToken(
+      { ...runner, sessionId },
+      [...this.#ownTokens.values()].includes(runner),
+    );
   }
 
   agentOf(request: Request): Agent | undefined {
@@ -226,15 +227,11 @@ export class Auth {
     return this.#ownTokens.get(hashed) ?? this.#store.agentToken(hashed);
   }
 
-  #agentToken(holder: Agent): string {
+  #agentToken(holder: Agent, own = false): string {
     const token = `pct_${randomBytes(32).toString("base64url")}`;
     const hashed = hash(token);
-    const own = this.#ownRunner;
 
-    if (
-      own?.environment !== holder.environment ||
-      own.runner !== holder.runner
-    ) {
+    if (!own) {
       this.#store.insertAgentToken(hashed, holder);
 
       return token;
