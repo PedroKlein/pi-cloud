@@ -749,11 +749,13 @@ export function previewPort(url: string): number | undefined {
 const loopbackNames = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
 
 // A browser's request as the server sends it to the Session host over a
-// preview socket. The body follows as one binary frame.
+// preview socket. The body follows as one binary frame. A WebSocket's frames
+// follow its answer's head instead, both ways.
 export interface PreviewRequest {
   readonly method: string;
   readonly path: string;
   readonly headers: readonly (readonly [string, string])[];
+  readonly websocket?: boolean;
 }
 
 // The answer's head, which the Session host sends first. Binary frames with

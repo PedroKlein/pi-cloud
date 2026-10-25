@@ -37,7 +37,7 @@ On a laptop runner this opens a tab on the laptop, which doesn't help from a pho
 - Each request travels like a terminal ([ADR 0006](0006-provider-protocol.md)): the server sends the Session a `preview` command, and the Session host opens a socket back to the server for that one request. The request goes over it, and the answer streams back. Slow streams, such as server-sent events, stay open.
 - The Session host sends the request with the `Host`, `Origin` and `Referer` the app would see from its own origin. Plannotator and dev servers refuse other hosts and cross-origin writes, against DNS rebinding. Redirects to the app's own origin become paths.
 - Bun matches routes before `fetch` and on every host, so the web UI moves from the `/` route to an internal path. `/` on Pi Cloud's own host still serves it.
-- Only HTTP is proxied for now. WebSockets, which dev servers use for live reload, come next.
+- A WebSocket, such as a dev server's live reload, gets its own socket the same way and carries frames both ways. The server accepts the browser's first subprotocol right away, since the browser refuses an upgrade that names none of its own.
 - Previews need Pi Cloud opened under a name. Browsers resolve `*.localhost` to the loopback address, which covers a laptop and an SSH tunnel; Chromium was checked. An IP address can't have subdomains, so Open explains that instead. A public host needs a wildcard DNS name, which isn't set up yet.
 
 ### Compared with Claude Code

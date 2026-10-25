@@ -124,6 +124,10 @@ export function serve(options: ServeOptions): {
     routes: { [webPath]: web },
     fetch: async (request, bunServer) => {
       const preview = await previews.visit(request, bunServer);
+      if (preview === "upgraded") {
+        return undefined;
+      }
+
       if (preview !== undefined) {
         return preview;
       }

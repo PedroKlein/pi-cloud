@@ -30,6 +30,10 @@ interface Exchange {
   readonly timeout: ReturnType<typeof setTimeout>;
   host?: ServerWebSocket<PreviewData>;
   response?: ReadableStreamDefaultController<Uint8Array>;
+  // A WebSocket's browser end, and its frames until the app's end is open.
+  browser?: ServerWebSocket<PreviewData>;
+  relaying?: boolean;
+  readonly pending?: (string | Buffer)[];
 }
 
 const hostTimeoutMs = 10_000;
@@ -74,7 +78,7 @@ export function previewBroker(options: {
   readonly visit: (
     request: Request,
     server: SocketServer,
-  ) => Promise<Response | undefined>;
+  ) => Promise<Response | "upgraded" | undefined>;
   readonly open: (request: Request) => Response | undefined;
   readonly upgrade: (
     request: Request,
@@ -182,6 +186,70 @@ export function previewBroker(options: {
     });
   };
 
+  const tunnel = (
+    request: Request,
+    server: SocketServer,
+    target: Target,
+    userId: string,
+  ): Response | "upgraded" => {
+    const connectionId = randomUUID();
+
+    const sent = sessions.send(target.sessionId, {
+      actor: `user:${userId}`,
+      type: "preview",
+      connectionId,
+      port: target.port,
+    });
+
+    if (!sent.ok) {
+      return new Response("This Session isn't running.", { status: 502 });
+    }
+
+    const url = new URL(request.url);
+
+    exchanges.set(connectionId, {
+      sessionId: target.sessionId,
+      head: {
+        method: "GET",
+        path: `${url.pathname}${url.search}`,
+        headers: requestHeaders(request.headers),
+        websocket: true,
+      },
+      requestBody: new ArrayBuffer(0),
+      answer: () => undefined,
+      pending: [],
+      timeout: setTimeout(() => {
+        const exchange = exchanges.get(connectionId);
+        exchanges.delete(connectionId);
+        log("preview not answered", { ...target, connectionId });
+        exchange?.browser?.close(1011, "the Session didn't answer");
+      }, hostTimeoutMs),
+    });
+
+    // The browser refuses a WebSocket that doesn't agree to one of its
+    // protocols, before the app's own answer can arrive.
+    const protocol = request.headers
+      .get("sec-websocket-protocol")
+      ?.split(",")[0]
+      ?.trim();
+
+    const upgraded = server.upgrade(request, {
+      data: { kind: "preview", role: "browser", connectionId },
+      ...(protocol !== undefined && {
+        headers: { "sec-websocket-protocol": protocol },
+      }),
+    });
+
+    if (!upgraded) {
+      clearTimeout(exchanges.get(connectionId)?.timeout);
+      exchanges.delete(connectionId);
+
+      return new Response("expected a websocket", { status: 400 });
+    }
+
+    return "upgraded";
+  };
+
   return {
     visit: async (request, server) => {
       const target = targetOf(request);
@@ -202,6 +270,10 @@ export function previewBroker(options: {
         !same(visit, target)
       ) {
         return refused();
+      }
+
+      if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        return tunnel(request, server, target, visit.userId);
       }
 
       // A previewed app may hold a request open, as server-sent events do.
@@ -286,7 +358,7 @@ export function previewBroker(options: {
       }
 
       return server.upgrade(request, {
-        data: { kind: "preview", connectionId },
+        data: { kind: "preview", role: "host", connectionId },
       })
         ? "upgraded"
         : Response.json({ error: "expected a websocket" }, { status: 400 });
@@ -300,13 +372,49 @@ export function previewBroker(options: {
           return;
         }
 
+        if (ws.data.role === "browser") {
+          exchange.browser = ws;
+
+          return;
+        }
+
         exchange.host = ws;
         ws.send(JSON.stringify(exchange.head));
         ws.send(exchange.requestBody);
       },
       message: (ws, message) => {
         const exchange = exchanges.get(ws.data.connectionId);
-        if (exchange?.host !== ws) {
+        if (exchange === undefined) {
+          return;
+        }
+
+        if (ws.data.role === "browser") {
+          if (exchange.relaying === true) {
+            exchange.host?.send(message);
+          } else {
+            exchange.pending?.push(message);
+          }
+
+          return;
+        }
+
+        if (exchange.host !== ws) {
+          return;
+        }
+
+        if (exchange.head.websocket === true) {
+          if (exchange.relaying === true) {
+            exchange.browser?.send(message);
+
+            return;
+          }
+
+          clearTimeout(exchange.timeout);
+          exchange.relaying = true;
+          for (const frame of exchange.pending?.splice(0) ?? []) {
+            ws.send(frame);
+          }
+
           return;
         }
 
@@ -345,12 +453,33 @@ export function previewBroker(options: {
       },
       close: (ws, code, reason) => {
         const exchange = exchanges.get(ws.data.connectionId);
-        if (exchange?.host !== ws) {
+        if (exchange === undefined) {
+          return;
+        }
+
+        if (ws.data.role === "browser") {
+          exchanges.delete(ws.data.connectionId);
+          clearTimeout(exchange.timeout);
+          exchange.host?.close(1000, "browser went away");
+
+          return;
+        }
+
+        if (exchange.host !== ws) {
           return;
         }
 
         exchanges.delete(ws.data.connectionId);
         clearTimeout(exchange.timeout);
+
+        if (exchange.head.websocket === true) {
+          exchange.browser?.close(
+            code === 1000 ? 1000 : 1011,
+            reason || "The preview failed.",
+          );
+
+          return;
+        }
 
         if (exchange.response === undefined) {
           exchange.answer(
