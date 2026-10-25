@@ -163,6 +163,12 @@ export interface PluginHost {
     name: string,
     on: boolean,
   ) => Promise<PluginInfo | string | undefined>;
+  // Installs a plugin from a git repository or a tarball, turned off.
+  readonly install: (url: string) => Promise<PluginInfo | string>;
+  // Fetches an installed plugin's newest version for the next start.
+  readonly update: (name: string) => Promise<PluginInfo | string | undefined>;
+  // Removes an installed plugin that isn't running.
+  readonly remove: (name: string) => Promise<boolean | string>;
   // The file of a running installed plugin's web part, by its name.
   readonly webPart: (name: string, file: string) => string | undefined;
   // The file of a running installed plugin's Session part, by its hash.
@@ -257,6 +263,18 @@ export function startPlugins(
     deps.installed?.plugins.map(({ manifest: { id } }) => id),
   );
 
+  // What is in the plugins folder now, which installs and updates change
+  // before the server restarts.
+  let manifests = [...deps.manifests];
+
+  const sources = new Map(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, source }) =>
+      source === undefined ? [] : [[id, source] as const],
+    ),
+  );
+
+  const updated = new Set<string>();
+
   const webParts = new Map(
     deps.installed?.plugins.flatMap(({ manifest: { id }, web }) =>
       web === undefined ? [] : [[id, web] as const],
@@ -278,8 +296,14 @@ export function startPlugins(
   const profiles = new Map<string, PluginProfile>();
   const loaded = new Map<string, readonly string[]>();
 
+  const listed = (name: string): PluginManifest | undefined =>
+    manifests.find(({ id }) => id === name);
+
+  // The version running, whose settings and parts an update changes only
+  // when the server restarts.
   const manifest = (name: string): PluginManifest | undefined =>
-    deps.manifests.find(({ id }) => id === name);
+    listed(name) &&
+    (deps.manifests.find(({ id }) => id === name) ?? listed(name));
 
   const values = (name: string): PluginSettings =>
     settingValues(manifest(name)?.settings, deps.settings.get(name));
@@ -473,14 +497,18 @@ export function startPlugins(
   const info = (found: PluginManifest): PluginInfo => {
     const error = failures.get(found.id);
     const installed = installedIds.has(found.id);
+    const source = sources.get(found.id);
 
+    // What is in its folder now, which may wait for a restart to run.
     const base = {
-      ...found,
+      ...(listed(found.id) ?? found),
       source: installed ? "installed" : "built-in",
       turnedOn: installed
         ? switchedOn.has(found.id)
         : enabled.includes(found.id),
       values: values(found.id),
+      ...(source !== undefined && { installedFrom: source }),
+      ...(updated.has(found.id) && { updated: true }),
     } as const;
 
     if (error !== undefined) {
@@ -502,7 +530,7 @@ export function startPlugins(
 
   return {
     names: running,
-    list: () => deps.manifests.map(info),
+    list: () => manifests.map(info),
     saveSettings: (name, settings) => {
       const found = manifest(name);
       if (found === undefined) {
@@ -545,6 +573,99 @@ export function startPlugins(
       deps.log("plugin turned on or off", { plugin: name, on });
 
       return info(found);
+    },
+    install: async (url) => {
+      if (deps.installed === undefined) {
+        return "this server has no plugins folder";
+      }
+
+      try {
+        const { manifest: found, source } = await deps.installed.install(
+          url,
+          (id) => manifest(id) !== undefined,
+        );
+
+        manifests = [...manifests, found];
+        installedIds.add(found.id);
+
+        if (source !== undefined) {
+          sources.set(found.id, source);
+        }
+
+        deps.log("plugin installed", { plugin: found.id, ...source });
+
+        return info(found);
+      } catch (error) {
+        return messageOf(error);
+      }
+    },
+    update: async (name) => {
+      const found = manifest(name);
+      if (found === undefined) {
+        return undefined;
+      }
+
+      if (deps.installed === undefined || !installedIds.has(name)) {
+        return "only an installed plugin can update";
+      }
+
+      try {
+        const fetched = await deps.installed.update(name);
+
+        if (fetched === undefined) {
+          return info(found);
+        }
+
+        manifests = manifests.map((each) =>
+          each.id === name ? fetched.manifest : each,
+        );
+
+        if (fetched.source !== undefined) {
+          sources.set(name, fetched.source);
+        }
+
+        updated.add(name);
+
+        if (!fetched.on) {
+          switchedOn.delete(name);
+        }
+
+        deps.log("plugin updated", {
+          plugin: name,
+          ...fetched.source,
+          on: fetched.on,
+        });
+
+        return info(fetched.manifest);
+      } catch (error) {
+        return messageOf(error);
+      }
+    },
+    remove: async (name) => {
+      if (manifest(name) === undefined) {
+        return false;
+      }
+
+      if (deps.installed === undefined || !installedIds.has(name)) {
+        return "only an installed plugin can be removed";
+      }
+
+      if (running.includes(name)) {
+        return "it is running, so turn it off and restart the server first";
+      }
+
+      await deps.installed.remove(name);
+
+      manifests = manifests.filter(({ id }) => id !== name);
+      installedIds.delete(name);
+      switchedOn.delete(name);
+      failures.delete(name);
+      sources.delete(name);
+      updated.delete(name);
+
+      deps.log("plugin removed", { plugin: name });
+
+      return true;
     },
     webPart: (name, file) => {
       const web = webParts.get(name);
@@ -967,8 +1088,21 @@ export interface InstalledPlugins {
     readonly web?: string;
     readonly session?: { readonly path: string; readonly hash: string };
     readonly error?: string;
+    readonly source?: { readonly url: string; readonly pinned: string };
   }[];
   readonly turnOn: (id: string, on: boolean) => Promise<void>;
+  readonly install: (
+    url: string,
+    taken: (id: string) => boolean,
+  ) => Promise<InstalledPlugins["plugins"][number]>;
+  readonly update: (
+    id: string,
+  ) => Promise<InstalledPlugins["plugins"][number] | undefined>;
+  readonly remove: (id: string) => Promise<void>;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // An installed plugin reaches only the parts of its context it declared, so a

@@ -1,7 +1,7 @@
 import type { PluginInfo, SettingSpec, SettingValue } from "@pi-cloud/protocol";
 import { Badge, Button, cn, Field, fieldClass, PageTitle } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
-import { send } from "./api";
+import { api, send } from "./api";
 import { usePlugins } from "./hooks";
 import { settingsOf } from "./plugin-settings";
 import { webPartError } from "./plugins";
@@ -24,6 +24,7 @@ export function PluginsPage(): ReactElement {
         Plugins
       </PageTitle>
       {plugins.some(waitsForRestart) && <Restart />}
+      <Install onInstalled={reload} />
       <ul className="flex flex-col gap-3">
         {plugins.map((plugin) => (
           <li
@@ -53,8 +54,14 @@ export function PluginsPage(): ReactElement {
                 Its web part didn't load: {webPartError(plugin.id)}
               </p>
             )}
+            {plugin.installedFrom !== undefined && (
+              <p className="break-all font-mono text-mono-sm text-fg-dim">
+                {plugin.installedFrom.url} at{" "}
+                {shortPin(plugin.installedFrom.pinned)}
+              </p>
+            )}
             {plugin.source === "installed" && (
-              <Switch plugin={plugin} onChange={reload} />
+              <Controls plugin={plugin} onChange={reload} />
             )}
             {plugin.settings !== undefined &&
               Object.keys(plugin.settings).length > 0 && (
@@ -75,9 +82,100 @@ export function PluginsPage(): ReactElement {
 function waitsForRestart(plugin: PluginInfo): boolean {
   return (
     plugin.source === "installed" &&
-    plugin.state !== "failed" &&
-    plugin.turnedOn !== (plugin.state === "on")
+    ((plugin.updated === true && plugin.turnedOn) ||
+      (plugin.state !== "failed" &&
+        plugin.turnedOn !== (plugin.state === "on")))
   );
+}
+
+function shortPin(pinned: string): string {
+  return pinned.startsWith("sha256:")
+    ? pinned.slice(0, "sha256:".length + 12)
+    : pinned.slice(0, 12);
+}
+
+// Installing only fetches the plugin; none of its code runs until it is
+// turned on (ADR 0022).
+function Install({
+  onInstalled,
+}: {
+  readonly onInstalled: () => void;
+}): ReactElement {
+  const [error, setError] = useState<string>();
+  const [installing, setInstalling] = useState(false);
+
+  const submit = (event: SubmitEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+    const url = new FormData(form).get("url");
+
+    setInstalling(true);
+
+    api("/api/plugins", { url: typeof url === "string" ? url.trim() : "" })
+      .then(
+        () => {
+          setError(undefined);
+          form.reset();
+          onInstalled();
+        },
+        (reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        },
+      )
+      .finally(() => {
+        setInstalling(false);
+      });
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      aria-label="Install a plugin"
+      className="mb-4 flex flex-col gap-2 rounded-lg border border-line bg-panel p-4"
+    >
+      <Field label="Install from a git repository or a .tgz URL. A branch, tag or commit after # pins it. It installs turned off.">
+        <input
+          name="url"
+          required
+          placeholder="https://github.com/you/plugin.git#v1.0.0"
+          className={cn(fieldClass, "font-mono text-mono-sm")}
+        />
+      </Field>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" type="submit" disabled={installing}>
+          {installing ? "Installing…" : "Install"}
+        </Button>
+        {error !== undefined && (
+          <p role="alert" className="text-caption text-failed">
+            {error}
+          </p>
+        )}
+      </div>
+    </form>
+  );
+}
+
+// What turning a plugin on lets it do, since its code runs unsandboxed.
+function trustQuestion(plugin: PluginInfo): string {
+  const declared = plugin.capabilities ?? [];
+  const parts = plugin.parts ?? {};
+
+  return [
+    `Turn on ${plugin.title}?`,
+    `Its code runs inside the Pi Cloud server, with the server's access. It asks for ${declared.length > 0 ? declared.join(", ") : "nothing more"}.`,
+    ...(parts.web === undefined
+      ? []
+      : ["Its web part runs in the page of everyone who opens Pi Cloud."]),
+    ...(parts.session === undefined
+      ? []
+      : [
+          plugin.ownSessionsOnly === true
+            ? "Its Session part runs in its own Sessions, on the machines that run them."
+            : "Its Session part runs in every Session, on every machine that runs one, laptops included.",
+        ]),
+    "Turn on only plugins you trust.",
+  ].join("\n\n");
 }
 
 // Sessions on the server's own runner stop with it, so a restart asks first
@@ -174,7 +272,7 @@ async function startedAt(): Promise<string | undefined> {
 
 // An installed plugin starts turned off, and turning it on is the user's call
 // (ADR 0022). Either way it takes effect when the server restarts.
-function Switch({
+function Controls({
   plugin,
   onChange,
 }: {
@@ -182,15 +280,13 @@ function Switch({
   readonly onChange: () => void;
 }): ReactElement {
   const [error, setError] = useState<string>();
+  const [note, setNote] = useState<string>();
 
-  const pending = waitsForRestart(plugin);
-
-  const turn = (): void => {
-    send(`/api/plugins/${plugin.id}`, "PATCH", {
-      enabled: !plugin.turnedOn,
-    }).then(
-      () => {
+  const run = (change: () => Promise<string | undefined>): void => {
+    change().then(
+      (said) => {
         setError(undefined);
+        setNote(said);
         onChange();
       },
       (reason: unknown) => {
@@ -199,16 +295,58 @@ function Switch({
     );
   };
 
+  const turn = (): void => {
+    if (!plugin.turnedOn && !confirm(trustQuestion(plugin))) {
+      return;
+    }
+
+    run(async () => {
+      await send(`/api/plugins/${plugin.id}`, "PATCH", {
+        enabled: !plugin.turnedOn,
+      });
+
+      return undefined;
+    });
+  };
+
+  const update = (): void => {
+    run(async () => {
+      const response = await send(`/api/plugins/${plugin.id}`, "PATCH", {
+        update: true,
+      });
+
+      const next = (await response.json()) as PluginInfo;
+
+      if (next.installedFrom?.pinned === plugin.installedFrom?.pinned) {
+        return "It already has the newest version.";
+      }
+
+      return plugin.turnedOn && !next.turnedOn
+        ? "Its newest version asks for more, so it stays off until you turn it on again."
+        : undefined;
+    });
+  };
+
+  const remove = (): void => {
+    if (!confirm(`Remove ${plugin.title} from this server?`)) {
+      return;
+    }
+
+    run(async () => {
+      await send(`/api/plugins/${plugin.id}`, "DELETE");
+
+      return undefined;
+    });
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-3 text-ui">
       <Button onClick={turn}>{plugin.turnedOn ? "Turn off" : "Turn on"}</Button>
-      {pending && (
-        <span className="text-fg-dim">
-          {plugin.turnedOn
-            ? "It turns on when the server restarts."
-            : "It turns off when the server restarts."}
-        </span>
+      {plugin.installedFrom !== undefined && (
+        <Button onClick={update}>Update</Button>
       )}
+      {plugin.state !== "on" && <Button onClick={remove}>Remove</Button>}
+      <span className="text-fg-dim">{pendingNote(plugin) ?? note}</span>
       {error !== undefined && (
         <p role="alert" className="text-caption text-failed">
           {error}
@@ -216,6 +354,22 @@ function Switch({
       )}
     </div>
   );
+}
+
+function pendingNote(plugin: PluginInfo): string | undefined {
+  if (
+    plugin.source === "installed" &&
+    plugin.state !== "failed" &&
+    plugin.turnedOn !== (plugin.state === "on")
+  ) {
+    return plugin.turnedOn
+      ? "It turns on when the server restarts."
+      : "It turns off when the server restarts.";
+  }
+
+  return plugin.updated === true && plugin.turnedOn
+    ? "Its newest version runs when the server restarts."
+    : undefined;
 }
 
 function SettingsForm({

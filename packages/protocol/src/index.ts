@@ -252,12 +252,18 @@ export interface PluginInfo extends PluginManifest {
   readonly values: PluginSettings;
   // Where the shell loads an installed plugin's web part from.
   readonly webPart?: string;
+  // The git repository or tarball it was installed from, and the commit or
+  // SHA-256 of the version fetched.
+  readonly installedFrom?: { readonly url: string; readonly pinned: string };
+  // A newer version was fetched, which runs when the server restarts.
+  readonly updated?: boolean;
 }
 
 export interface PluginUpdate {
   readonly settings?: PluginSettings;
-  // Only an installed plugin can be turned on or off here.
+  // Only an installed plugin can be turned on or off, or updated, here.
   readonly enabled?: boolean;
+  readonly update?: true;
 }
 
 // A Session runs as a process on its runner's machine, or as a process in a
