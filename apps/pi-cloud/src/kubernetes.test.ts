@@ -330,6 +330,7 @@ test("refuses Kubernetes settings it can't use", async () => {
   expect(responses.map(({ status }) => status)).toEqual([
     400, 400, 400, 400, 404, 404,
   ]);
+
   expect(inContainers.status).toBe(409);
 });
 
