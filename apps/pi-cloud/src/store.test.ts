@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -367,4 +368,80 @@ test("gives Sessions from before Profiles the default Profile, from before pools
   expect(ran?.profileId).toBe(defaultProfileId);
   expect(ran?.runner).toBe("vm");
   expect(queued?.runner).toBeNull();
+});
+
+function rawSecrets(path: string): string[] {
+  const db = new DatabaseSync(path);
+
+  const rows = db.prepare("select secrets from environments").all() as {
+    secrets: string;
+  }[];
+
+  db.close();
+
+  return rows.map(({ secrets }) => secrets);
+}
+
+test("stores Environment secrets encrypted and reads them back after a restart", () => {
+  const path = join(root, "server.db");
+  const store = openStore(path);
+  store.ensureEnvironment("vm");
+  const [environment] = store.environments();
+
+  if (environment === undefined) {
+    throw new Error("no Environment");
+  }
+
+  store.updateEnvironment({ ...environment, secrets: { GH_TOKEN: "ghp_1" } });
+  store.close();
+
+  expect(rawSecrets(path).join()).not.toContain("ghp_1");
+
+  const again = openStore(path);
+
+  expect(again.environments()[0]?.secrets).toEqual({ GH_TOKEN: "ghp_1" });
+
+  again.close();
+});
+
+test("encrypts secrets a database stored before they were encrypted", () => {
+  const path = join(root, "server.db");
+  const store = openStore(path);
+  store.ensureEnvironment("vm");
+  store.close();
+
+  const old = new DatabaseSync(path);
+  old.exec(`update environments set secrets = '{"GH_TOKEN":"ghp_1"}'`);
+  old.close();
+
+  const again = openStore(path);
+  const [environment] = again.environments();
+  again.close();
+
+  expect(environment?.secrets).toEqual({ GH_TOKEN: "ghp_1" });
+  expect(rawSecrets(path).join()).not.toContain("ghp_1");
+});
+
+test("refuses to open a database's secrets with another key", () => {
+  const path = join(root, "server.db");
+  const store = openStore(path, randomBytes(32));
+  store.ensureEnvironment("vm");
+  const [environment] = store.environments();
+
+  if (environment === undefined) {
+    throw new Error("no Environment");
+  }
+
+  store.updateEnvironment({ ...environment, secrets: { GH_TOKEN: "ghp_1" } });
+  store.close();
+
+  expect(() => openStore(path, randomBytes(32))).toThrow(
+    "the secret key doesn't open this database's secrets",
+  );
+});
+
+test("refuses a secret key of the wrong length", () => {
+  expect(() => openStore(":memory:", randomBytes(16))).toThrow(
+    "the secret key must be 32 bytes",
+  );
 });

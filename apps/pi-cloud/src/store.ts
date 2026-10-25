@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -15,6 +15,7 @@ import {
 import type { PluginStore } from "@pi-cloud/plugins";
 import type { ProfileStore, StoredProfile } from "@pi-cloud/profiles";
 import type { AuthStore, User } from "./auth";
+import { fileSecretKey, SecretBox } from "./secret-box";
 import {
   owner,
   type SessionStore,
@@ -302,6 +303,27 @@ function insertEnvironment(db: DatabaseSync, provider: string): void {
   ).run(randomUUID(), provider, provider, owner, new Date().toISOString());
 }
 
+// Seals secrets stored before they were encrypted, and fails the start when
+// the key doesn't open the ones already sealed.
+function sealSecrets(db: DatabaseSync, box: SecretBox): void {
+  const rows = db.prepare("select id, secrets from environments").all() as {
+    id: string;
+    secrets: string;
+  }[];
+
+  const seal = db.prepare("update environments set secrets = ? where id = ?");
+
+  transaction(db, () => {
+    for (const { id, secrets } of rows) {
+      if (SecretBox.isSealed(secrets)) {
+        box.open(secrets, id);
+      } else {
+        seal.run(box.seal(secrets, id), id);
+      }
+    }
+  });
+}
+
 function transaction(db: DatabaseSync, run: () => void): void {
   db.exec("begin");
   try {
@@ -313,7 +335,10 @@ function transaction(db: DatabaseSync, run: () => void): void {
   }
 }
 
-export function openStore(path: string): SessionStore &
+export function openStore(
+  path: string,
+  secretKey?: Buffer,
+): SessionStore &
   ProfileStore & {
     auth: AuthStore;
     check: () => void;
@@ -324,9 +349,15 @@ export function openStore(path: string): SessionStore &
     mkdirSync(dirname(path), { recursive: true });
   }
 
+  const box = new SecretBox(
+    secretKey ??
+      (path === ":memory:" ? randomBytes(32) : fileSecretKey(`${path}.key`)),
+  );
+
   const db = new DatabaseSync(path);
   db.exec("pragma journal_mode = wal");
   migrate(db);
+  sealSecrets(db, box);
 
   const toSession = (row: SessionRow): StoredSession => ({
     id: row.id,
@@ -412,7 +443,11 @@ export function openStore(path: string): SessionStore &
     image: row.image,
     setupScript: row.setup_script,
     variables: JSON.parse(row.variables) as Record<string, string>,
-    secrets: JSON.parse(row.secrets) as Record<string, string>,
+    secrets: JSON.parse(
+      SecretBox.isSealed(row.secrets)
+        ? box.open(row.secrets, row.id)
+        : row.secrets,
+    ) as Record<string, string>,
     hasKey: row.key_hash !== null,
   });
 
@@ -592,7 +627,7 @@ export function openStore(path: string): SessionStore &
         environment.image,
         environment.setupScript,
         JSON.stringify(environment.variables),
-        JSON.stringify(environment.secrets),
+        box.seal(JSON.stringify(environment.secrets), environment.id),
         environment.id,
       );
     },

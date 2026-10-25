@@ -52,6 +52,13 @@ loginctl enable-linger "$USER"
 journalctl --user -u pi-cloud -f
 ```
 
+To keep the key that encrypts Environment secrets away from the database and its backups, write it to its own file and add `EnvironmentFile=%h/.config/pi-cloud/secret.env` under `[Service]`:
+
+```sh
+mkdir -p ~/.config/pi-cloud
+(umask 077; echo "PI_CLOUD_SECRET_KEY=$(openssl rand -base64 32)" > ~/.config/pi-cloud/secret.env)
+```
+
 The server listens on `127.0.0.1:7420`. Its database is `~/.pi-cloud/server.db`, and clones and Pi transcripts live under `~/.pi-cloud/server`. `curl -s 127.0.0.1:7420/healthz` returns the running version and the Pi version it bundles, or a 503 when the database can't be read.
 
 To update, copy the new binary next to the old one and move it into place, because the running server keeps the old file busy and `scp` can't overwrite it. Then restart the service:

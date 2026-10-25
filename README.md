@@ -53,6 +53,7 @@ Archive hides a session from the list and stops it on its machine; its transcrip
 Options:
 
 ```text
+[PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \
 pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                 [--database ~/.pi-cloud/server.db]
                 [--provider <name> [--data-dir ~/.pi-cloud/server]
@@ -68,7 +69,7 @@ pi-cloud agent --name <runner> [--capacity <n>]
 
 An agent joins the pool of the Environment whose key it holds, under its `--name`, and gets a token of its own for everything else ([ADR 0033](docs/adr/0033-v2-authentication-and-order.md)). Each session it starts gets a token too, which reaches only that session. Replace key on the Environments page lets go of every agent that joined with the old key; start them again with the new one. The agent reads the key from `PI_CLOUD_KEY` and removes it from what its sessions inherit.
 
-An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only. A `GH_TOKEN` secret also signs git in to GitHub over https, both for cloning a session's repositories and for the session's own pushes.
+An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only. The server encrypts secrets with AES-GCM before it stores them, using the key in `PI_CLOUD_SECRET_KEY` (`openssl rand -base64 32`), or else one it makes in `server.db.key` next to the database. Losing the key loses every stored secret. A `GH_TOKEN` secret also signs git in to GitHub over https, both for cloning a session's repositories and for the session's own pushes.
 
 With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pi-cloud binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.
 
