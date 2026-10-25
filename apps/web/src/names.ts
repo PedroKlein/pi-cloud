@@ -28,6 +28,10 @@ export function workspaceName(workspace: Workspace): string {
     case "clone":
       return `${workspace.repository} (${workspace.branch})`;
     case "repositories":
+      if (workspace.repositories.length === 0) {
+        return "no repositories";
+      }
+
       return `${workspace.repositories.map((r) => r.repository).join(", ")} (${workspace.branch})`;
   }
 }

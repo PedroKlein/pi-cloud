@@ -563,7 +563,6 @@ function UiActionNotice({
     <div role="status" className="mx-auto w-full max-w-chat px-4">
       {offered && (
         <div className="flex items-center gap-3 pb-2 text-label text-fg-dim">
-          <Icon name="chevron-right" />
           <span className="min-w-0 flex-1 truncate">Open {offered.label}?</span>
           <a
             href={`#${offered.route}`}

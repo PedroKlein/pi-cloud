@@ -352,5 +352,5 @@ function profileView(profile: Profile): Record<string, unknown> {
 }
 
 function titleOf({ title }: Session): string {
-  return title === null || title === "" ? "the Session" : title;
+  return title === null || title === "" ? "the Session" : `“${title}”`;
 }
