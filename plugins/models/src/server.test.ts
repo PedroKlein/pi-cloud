@@ -86,6 +86,7 @@ function registered(signal: AbortSignal): PluginRoute {
       transcriptLength: unused,
     },
     profiles: { provide: unused },
+    toolsets: { register: unused, loadInOwnSessions: unused },
     routes: {
       handle: (route) => {
         routes.push(route);

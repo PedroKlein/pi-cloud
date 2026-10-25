@@ -25,12 +25,14 @@ import {
   type OfferedModels,
   type PluginRoute,
   type PluginStore,
+  type RouteTool,
   type ServerPlugin,
   type ServerPluginContext,
   type ServerTool,
   type SessionPlugin,
   settingValues,
   type ToolCaller,
+  type Toolset,
 } from "@pi-cloud/plugins";
 import type {
   Actor,
@@ -41,6 +43,8 @@ import type {
   PluginSettings,
   Session,
   ToolCall,
+  ToolNamespace,
+  ToolResult,
   ToolSpec,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
@@ -192,11 +196,17 @@ export function startPlugins(
     readonly events: EventBus;
     readonly store: (name: string) => PluginStore;
     readonly settings: PluginSettingsStore;
+    // The kernel's own toolsets (ADR 0035).
+    readonly toolsets: readonly Toolset[];
+    // Handles a toolset tool's request as the user.
+    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
     readonly signal: AbortSignal;
     readonly log: Log;
   },
 ): PluginHost {
   const tools = new Map<string, { plugin: string; tool: ServerTool }>();
+  const routeTools = new Map<string, ToolsetTool>();
+  const toolsetUsers = new Set<string>();
   const routes = new Map<string, PluginRoute>();
   const offers: ModelOffer[] = [];
   const failures = new Map<string, string>();
@@ -209,6 +219,20 @@ export function startPlugins(
   const values = (name: string): PluginSettings =>
     settingValues(manifest(name)?.settings, deps.settings.get(name));
 
+  const taken = (name: string): boolean =>
+    tools.has(name) || routeTools.has(name);
+
+  for (const tool of deps.toolsets.flatMap((each) => toolsetTools(each))) {
+    if (taken(tool.spec.name)) {
+      throw new Error(`tool ${tool.spec.name} is already registered`);
+    }
+
+    routeTools.set(tool.spec.name, tool);
+  }
+
+  const loadsToolsets = (session: Session): boolean =>
+    session.owner !== null && toolsetUsers.has(session.owner.plugin);
+
   for (const plugin of plugins.filter(({ name }) => enabled.includes(name))) {
     const log: Log = (message, fields) => {
       deps.log(message, { plugin: plugin.name, ...fields });
@@ -218,6 +242,8 @@ export function startPlugins(
     // plugin that throws leaves nothing behind in the host (ADR 0036).
     const staged = {
       tools: new Map<string, ServerTool>(),
+      routeTools: new Map<string, ToolsetTool>(),
+      loadsToolsets: false,
       route: undefined as PluginRoute | undefined,
       offers: [] as ModelOffer[],
       profiles: new Map<string, PluginProfile>(),
@@ -227,16 +253,33 @@ export function startPlugins(
 
     const failed = new AbortController();
 
+    const stagedTaken = (name: string): boolean =>
+      taken(name) || staged.tools.has(name) || staged.routeTools.has(name);
+
     try {
       plugin.register({
         owner,
         tools: {
           register: (tool) => {
-            if (tools.has(tool.name) || staged.tools.has(tool.name)) {
+            if (stagedTaken(tool.name)) {
               throw new Error(`tool ${tool.name} is already registered`);
             }
 
             staged.tools.set(tool.name, tool);
+          },
+        },
+        toolsets: {
+          register: (toolset) => {
+            for (const tool of toolsetTools(toolset, plugin.name)) {
+              if (stagedTaken(tool.spec.name)) {
+                throw new Error(`tool ${tool.spec.name} is already registered`);
+              }
+
+              staged.routeTools.set(tool.spec.name, tool);
+            }
+          },
+          loadInOwnSessions: () => {
+            staged.loadsToolsets = true;
           },
         },
         events: {
@@ -295,6 +338,14 @@ export function startPlugins(
 
     for (const [name, tool] of staged.tools) {
       tools.set(name, { plugin: plugin.name, tool });
+    }
+
+    for (const [name, tool] of staged.routeTools) {
+      routeTools.set(name, tool);
+    }
+
+    if (staged.loadsToolsets) {
+      toolsetUsers.add(plugin.name);
     }
 
     if (staged.route !== undefined) {
@@ -360,13 +411,16 @@ export function startPlugins(
     },
     profile: (id) => profiles.get(id),
     profileIds: () => [...profiles.keys()],
-    tools: (session) =>
-      [...tools.values()]
+    tools: (session) => [
+      ...[...tools.values()]
         .filter(({ tool }) => tool.appliesTo(session))
         .map(({ tool: { appliesTo: _appliesTo, run: _run, ...spec } }) => spec),
+      ...(loadsToolsets(session)
+        ? [...routeTools.values()].map(({ spec }) => spec)
+        : []),
+    ],
     call: (session, call) => {
       const actor: Actor = `session:${session.id}`;
-      const found = tools.get(call.name);
 
       deps.events.publish({
         type: "ToolCalled",
@@ -375,19 +429,37 @@ export function startPlugins(
         actor,
       });
 
-      const result =
-        found?.tool.appliesTo(session) === true
+      const routed = loadsToolsets(session)
+        ? routeTools.get(call.name)
+        : undefined;
+
+      const found = tools.get(call.name);
+
+      const result = async (): Promise<ToolResult> => {
+        if (routed !== undefined) {
+          return runRouteTool(
+            routed,
+            call.input,
+            `user:${session.ownerId}`,
+            deps,
+          );
+        }
+
+        return found?.tool.appliesTo(session) === true
           ? found.tool.run(call.input, { session, actor })
           : Promise.resolve({
               text: `no tool named ${call.name}`,
               isError: true,
             });
+      };
 
-      void result
+      const plugin = routed === undefined ? found?.plugin : routed.plugin;
+
+      void result()
         .catch((error: unknown) => ({ text: String(error), isError: true }))
         .then((reply) => {
           sendResult(deps, session.id, call, {
-            actor: `plugin:${found?.plugin ?? "kernel"}`,
+            actor: `plugin:${plugin ?? "kernel"}`,
             type: "tool_result",
             id: call.id,
             result: reply,
@@ -405,6 +477,91 @@ export function startPlugins(
     },
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
+  };
+}
+
+type UserActor = `user:${string}`;
+
+interface ToolsetTool {
+  // Undefined for the kernel's own toolsets.
+  readonly plugin: string | undefined;
+  readonly spec: ToolSpec;
+  readonly tool: RouteTool;
+}
+
+function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
+  const namespace: ToolNamespace = toolset.namespace;
+
+  return toolset.tools.map((tool) => {
+    const { request: _request, result: _result, ...spec } = tool;
+
+    return {
+      plugin,
+      tool,
+      spec: {
+        ...spec,
+        name: `${namespace.name}_${tool.name}`,
+        exposure: tool.exposure ?? "deferred",
+        namespace,
+      },
+    };
+  });
+}
+
+// Never sent anywhere: the request goes straight to the server's handler.
+const internalOrigin = "http://pi-cloud.internal";
+
+async function runRouteTool(
+  found: ToolsetTool,
+  input: unknown,
+  actor: UserActor,
+  deps: {
+    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+  },
+): Promise<ToolResult> {
+  const { method, path, body } = found.tool.request(
+    typeof input === "object" && input !== null && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {},
+  );
+
+  const base =
+    found.plugin === undefined ? "" : `/api/plugins/${found.plugin}/`;
+
+  const response = await deps.api(
+    actor,
+    new Request(
+      new URL(base + path, internalOrigin).href,
+      body === undefined
+        ? { method }
+        : {
+            method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+    ),
+  );
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    return {
+      text: text || `failed with ${String(response.status)}`,
+      isError: true,
+    };
+  }
+
+  if (text === "") {
+    return { text: "Done.", isError: false };
+  }
+
+  const parsed: unknown = JSON.parse(text);
+
+  return {
+    text: JSON.stringify(
+      found.tool.result ? found.tool.result(parsed) : parsed,
+    ),
+    isError: false,
   };
 }
 

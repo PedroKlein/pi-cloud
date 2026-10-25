@@ -13,6 +13,8 @@ export const meta: ServerPlugin = {
     // as subagents, whose own sessions don't load it.
     context.sessions.loadOnly(["ask", "models", "meta"]);
 
+    context.toolsets.loadInOwnSessions();
+
     const profile = context.profiles.provide("assistant", {
       name: "Pi Cloud assistant",
       packages: [],

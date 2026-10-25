@@ -33,10 +33,12 @@ The kernel already has most of the pieces. Server tools pick their Sessions with
 
 ### Plugins contribute meta toolsets
 
-- A plugin can register a toolset for meta-sessions: server tools whose `appliesTo` picks meta-sessions. A toolset is a Pi namespace with a name, a one-line description and optional longer instructions.
+- A plugin can register a toolset for meta-sessions. A toolset is a Pi namespace with a name, a one-line description and optional longer instructions. Its tools are named `<namespace>_<tool>`, since Pi tool names are global. The kernel registers the Sessions, Environments and Profiles toolsets the same way.
+- The plugin that owns meta-sessions says its Sessions load every toolset. Other Sessions load none.
 - Server tools gain three fields that the session host passes to Pi: `exposure`, `namespace` and `annotations` (read-only, destructive, idempotent, open world).
 - Tools are `deferred` by default, so the agent finds them through Pi's `tool_search` and then calls them directly. Important tools, such as starting and opening a Session, are `direct`. A plugin may mark read-only bulk tools `codemode`. Calls from a codemode script don't appear in the transcript, so they get no tool cards in the chat.
-- Tools call the same domain functions as the plugin's HTTP routes, so validation and defaults are identical. A meta-session never edits config files or the database directly.
+- Each tool is a request to one of Pi Cloud's HTTP routes, made as the user who owns the Session, so validation and defaults are identical to the web UI's. A tool can trim the reply before the model sees it. A meta-session never edits config files or the database directly. (Amended 2026-10-25: tools were first described as calling the routes' domain functions; requests to the routes themselves keep them identical by construction, and MCP serves the same requests.)
+- Secret values never go through a tool, since tool calls stay in the transcript and go to the model's provider. A meta-session asks the user to set them on the Environments page, and creating an Environment through a tool doesn't show its runner key.
 - Meta toolsets are optional for plugins, like views the agent can use.
 
 ### Risky tools ask first
