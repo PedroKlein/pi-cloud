@@ -46,7 +46,7 @@ The kernel already has most of the pieces. Server tools pick their Sessions with
 - A meta-session asks the user before a risky call and runs everything else straight away.
 - Risky means deleting or archiving something, reading or writing secrets, editing a Profile or Environment, and installing or enabling a plugin. A tool without annotations counts as risky.
 - The meta Profile's `tool_call` hook decides from the annotations and raises a confirm card in the chat. It is the same mechanism Pi documents for permission extensions.
-- Starting and opening a Session is not risky.
+- Opening a Session is not risky. Starting a Session or a Project, or creating a Profile, is. The agent they start runs without a confirm of its own, and a Profile's packages run in every Session that uses it. So text injected into a meta-session could otherwise do anything without the user seeing it. (Amended 2026-10-25: this first said starting a Session is not risky.)
 - A meta-session acts as the user who owns it and can never do more than that user. Tool handlers already get the caller's actor. When v3 adds roles, a tool can be hidden or refused per user without changing this design.
 
 ### Meta-sessions drive the UI
