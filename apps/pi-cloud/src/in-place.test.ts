@@ -166,6 +166,15 @@ test("builds a plugin turned off without running it, and says why one doesn't bu
   );
 });
 
+test("won't build a plugin with no parts, since it would do nothing", async () => {
+  await start();
+  await write("hello", "package.json", manifest({}));
+
+  expect(await errorOf(api("POST", "/api/plugin-builds/hello"))).toContain(
+    "no parts",
+  );
+});
+
 test("builds without running a macro, which would run the plugin's code", async () => {
   const mark = join(root, "macro-ran");
 

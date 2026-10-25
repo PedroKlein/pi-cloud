@@ -2797,6 +2797,56 @@ test("declares a deferred server tool once tool_search finds it", async () => {
   expect(fake.toolCalls.map(({ name }) => name)).toEqual(["lookup"]);
 });
 
+test("tells the model a server tool's namespace instructions once the tool is declared", async () => {
+  const { faux, models } = await fauxModels(root);
+  const instructions = "Keys are lowercase, so lowercase them first.";
+  const seen: boolean[] = [];
+
+  const sees = (context: unknown): boolean =>
+    JSON.stringify(context).includes(instructions);
+
+  faux.setResponses([
+    (context) => {
+      seen.push(sees(context));
+
+      return fauxAssistantMessage(
+        [fauxToolCall("tool_search", { query: "look up a key" })],
+        { stopReason: "toolUse" },
+      );
+    },
+    (context) => {
+      seen.push(sees(context));
+
+      return fauxAssistantMessage([fauxText("done")]);
+    },
+  ]);
+
+  const fake = fakeStream({
+    tools: [
+      {
+        name: "keys_lookup",
+        description: "Looks a key up on the server",
+        parameters: { type: "object", properties: { key: { type: "string" } } },
+        exposure: "deferred",
+        namespace: { name: "keys", instructions },
+      },
+    ],
+  });
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  fake.send({ actor: "user:local", type: "message", text: "look it up" });
+  await fake.waitFor(() => fake.lines.join().includes('"done"'));
+  await hosted.stop();
+
+  expect(seen).toEqual([false, true]);
+});
+
 test("gives extensions a server tool's namespace and hints", async () => {
   const { models } = await fauxModels(root);
   const seen: { namespace?: unknown; annotations?: unknown }[] = [];

@@ -36,6 +36,11 @@ export function serverTools(
       parameters: Type.Unsafe<unknown>(spec.parameters),
       ...(spec.exposure && { exposure: spec.exposure }),
       ...(spec.namespace && { namespace: spec.namespace }),
+      // Pi shows a namespace's instructions only to codemode scripts, so
+      // they go in the rules the prompt lists for declared tools.
+      ...(spec.namespace?.instructions !== undefined && {
+        promptGuidelines: [spec.namespace.instructions],
+      }),
       ...(spec.annotations && { annotations: spec.annotations }),
       async execute(_toolCallId, input, signal) {
         const id = randomUUID();
