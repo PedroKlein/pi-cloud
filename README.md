@@ -84,7 +84,14 @@ helm install pi-cloud deploy/helm/pi-cloud --set url=https://pi.example.com
 kubectl logs deploy/pi-cloud | grep setup
 ```
 
-Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
+On Kyma, `apiRule.enabled` puts the server behind Kyma's gateway at `apiRule.host`, and `url` defaults to that host:
+
+```sh
+helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespace \
+  --set apiRule.enabled=true --set apiRule.host=pi-cloud.<cluster domain>
+```
+
+Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
 ## Roadmap
 

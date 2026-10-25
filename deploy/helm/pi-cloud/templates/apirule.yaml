@@ -1,0 +1,20 @@
+{{- if .Values.apiRule.enabled }}
+apiVersion: gateway.kyma-project.io/v2
+kind: APIRule
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "pi-cloud.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ .Values.apiRule.host }}
+  gateway: {{ .Values.apiRule.gateway }}
+  service:
+    name: {{ .Release.Name }}
+    port: {{ .Values.service.port }}
+  rules:
+    # The server signs people and runners in itself.
+    - path: /*
+      methods: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS]
+      noAuth: true
+{{- end }}
