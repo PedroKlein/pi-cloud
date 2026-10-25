@@ -104,12 +104,22 @@ test("refuses a setup link with the wrong token or a short password", async () =
 test("refuses the API and terminals without a signed-in browser", async () => {
   const sessions = await get("/api/sessions");
 
+  const others = [
+    (await get("/api/sessions/any/events")).status,
+    (await get("/api/profiles")).status,
+    (await get("/api/plugins/projects/projects")).status,
+    (await post("/api/sessions", {})).status,
+  ];
+
   const terminal = await fetch(
     new URL("/api/sessions/any/terminal", server?.url),
     { headers: { upgrade: "websocket", connection: "Upgrade" } },
   );
 
-  expect([sessions.status, terminal.status]).toEqual([401, 401]);
+  expect([sessions.status, terminal.status, ...others]).toEqual([
+    401, 401, 401, 401, 401, 401,
+  ]);
+
   expect(await sessions.json()).toEqual({ error: "signed_out" });
   expect((await get("/healthz")).status).toBe(200);
   expect((await get("/")).status).toBe(200);
@@ -145,6 +155,32 @@ test("locks a name after repeated failed sign-ins", async () => {
   expect((await post("/api/auth/login", pedro)).status).toBe(429);
 });
 
+test("locks a name after failed sign-ins sent all at once", async () => {
+  await setUp();
+
+  const guesses = await Promise.all(
+    Array.from({ length: 30 }, async (_, attempt) =>
+      post(
+        "/api/auth/login",
+        attempt < 29 ? { ...pedro, password: "nope" } : pedro,
+      ),
+    ),
+  );
+
+  expect(guesses.filter(({ status }) => status === 401)).toHaveLength(10);
+  expect(guesses.at(-1)?.status).toBe(429);
+});
+
+test("doesn't lock a user over failed sign-ins for other names", async () => {
+  await setUp();
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await post("/api/auth/login", { ...pedro, name: "ana" });
+  }
+
+  expect((await post("/api/auth/login", pedro)).status).toBe(200);
+});
+
 test("marks the cookie Secure behind an HTTPS gateway", async () => {
   await setUp();
 
@@ -153,6 +189,22 @@ test("marks the cookie Secure behind an HTTPS gateway", async () => {
   });
 
   expect(signedIn.headers.get("set-cookie")).toContain("; Secure");
+});
+
+test("logs a new setup link after a restart while there are no users", async () => {
+  await server?.stop();
+  const database = join(root, "server.db");
+  server = start(database);
+  const first = setupTokenOf(logs);
+
+  await server.stop();
+  server = start(database);
+
+  expect(setupTokenOf(logs)).not.toBe(first);
+
+  const stale = await post("/api/auth/setup", { ...pedro, token: first });
+
+  expect(stale.status).toBe(403);
 });
 
 test("keeps users and browser sessions across a restart, with no new setup link", async () => {

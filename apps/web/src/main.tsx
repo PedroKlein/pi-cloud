@@ -11,16 +11,23 @@ if (!root) {
 
 applyTheme();
 
-const status = (await (await fetch("/api/auth")).json()) as {
-  readonly user: unknown;
-  readonly setup: boolean;
-};
+const status = await fetch("/api/auth")
+  .then(
+    async (response) =>
+      (await response.json()) as {
+        readonly user: unknown;
+        readonly setup: boolean;
+      },
+  )
+  .catch(() => undefined);
 
 const setupToken = /^#setup\/(.+)$/.exec(location.hash)?.[1];
 
-if (status.user === null) {
+if (status === undefined) {
+  root.textContent = "The server can't be reached. Reload to try again.";
+} else if (status.user === null) {
   createRoot(root).render(
-    <SignInPage setupToken={status.setup ? setupToken : undefined} />,
+    <SignInPage setup={status.setup} setupToken={setupToken} />,
   );
 } else {
   await loadPlugins().catch(() => undefined);

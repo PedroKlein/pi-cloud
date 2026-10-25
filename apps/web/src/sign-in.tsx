@@ -5,16 +5,31 @@ import { api } from "./api";
 const messages: Record<string, string> = {
   wrong_password: "Wrong name or password.",
   locked: "Too many failed sign-ins. Try again in 15 minutes.",
-  invalid_token: "This setup link was already used. Sign in instead.",
+  invalid_token:
+    "This setup link is not the server's current one. Open the link from its latest log.",
 };
 
 // The first user comes from the one-time link in the server's log (ADR 0034).
 export function SignInPage({
-  setupToken,
+  setup,
+  setupToken: linkToken,
 }: {
+  // No user exists yet.
+  readonly setup: boolean;
   readonly setupToken: string | undefined;
 }): ReactElement {
   const [error, setError] = useState<string>();
+  const setupToken = setup ? linkToken : undefined;
+
+  if (setup && setupToken === undefined) {
+    return (
+      <main className="mx-auto flex w-full max-w-sm flex-col px-4 py-16">
+        <PageTitle description="Open the setup link from the server's log to create the first user.">
+          No users yet
+        </PageTitle>
+      </main>
+    );
+  }
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
