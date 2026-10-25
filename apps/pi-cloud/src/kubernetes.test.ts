@@ -363,6 +363,17 @@ test("keeps a pod patch from giving runner pods a service account token", async 
   expect(pod?.spec["serviceAccountName"]).toBeUndefined();
 });
 
+test("gives runner pods a home their user can write and leaves the mesh sidecar to the namespace", async () => {
+  const environment = await kubernetesEnvironment({ workspace: "claim" });
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [pod] = api.pods.values();
+
+  expect(pod?.spec["securityContext"]).toEqual({ fsGroup: 1000 });
+  expect(pod?.metadata.labels).not.toHaveProperty("sidecar.istio.io/inject");
+});
+
 test("removes a runner pod that never starts, and starts another", async () => {
   const environment = await kubernetesEnvironment({});
   await startSession(environment);

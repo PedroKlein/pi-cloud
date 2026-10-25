@@ -23,7 +23,9 @@ const home = "/home/pi";
 
 // A runner pod: an init container copies the pi-cloud binary in, and the
 // agent joins with its token from the pod's Secret of the same name. Sessions
-// in it use process isolation (ADR 0032).
+// in it use process isolation (ADR 0032). The pod joins the namespace's
+// Istio mesh, if any, as the server does: a mesh with strict mTLS turns away
+// a pod without the sidecar, and Istio's native sidecar stops with the agent.
 export function runnerPod(options: PodOptions): object {
   const { name, settings } = options;
 
@@ -38,13 +40,14 @@ export function runnerPod(options: PodOptions): object {
         ...(options.sessionId !== undefined && {
           [sessionLabel]: options.sessionId,
         }),
-        // A sidecar would keep the pod running after the agent exits.
-        "sidecar.istio.io/inject": "false",
       },
     },
     spec: {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
+      // A new volume is root's. The Pi Cloud image and most images built on
+      // node run as uid and gid 1000, as the server does.
+      securityContext: { fsGroup: 1000 },
       volumes: [
         { name: "pi-cloud", emptyDir: {} },
         options.sessionId === undefined
