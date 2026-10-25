@@ -57,7 +57,7 @@ const profileFields = {
   settings: { type: "object", description: "Pi settings" },
 };
 
-const pluginInstructions = `An in-place plugin is a folder in the server's plugins folder, named by its id (lowercase letters, digits and dashes). Write its files with plugins_write_file, then plugins_build to check it builds. You never turn a plugin on: tell the user to turn it on on the Plugins page and restart the server, since its code then runs in the server and on runners. A plugin that is turned on can't be changed until the user turns it off.
+const pluginInstructions = `An in-place plugin is a folder in the server's plugins folder, named by its id (lowercase letters, digits and dashes). Write its files with plugins_write_file, then plugins_build to check it builds. You never turn a plugin on: tell the user to turn it on on the Plugins page and restart the server, since its code then runs in the server and on runners. A plugin that is turned on can't be changed until the user turns it off. After writing, always build, then tell the user in a sentence what you wrote, whether it builds, and that they turn it on on the Plugins page; if a tool refuses, say why.
 
 Its package.json has "type": "module", any npm "dependencies" its parts import, and a "piCloud" field:
 - id (the folder's name), title, description, engine: 1;
@@ -66,7 +66,7 @@ Its package.json has "type": "module", any npm "dependencies" its parts import, 
 - ownSessionsOnly: true to load its Session part only in the Sessions its server part owns;
 - settings: optional, by name, each { type: "string" | "number" | "boolean" | "choice" | "strings", title, description?, default, options? for choice, min?/max? for number }.
 
-The server part's default export is { name: <id>, register(context) }. context.routes.handle(async (request, path) => Response) answers /api/plugins/<id>/<path>; context.settings.get() returns its settings; context.tools, context.toolsets and context.events register tools, meta toolsets and event listeners.
+The server part's default export is { name: <id>, register(context) }. context.routes.handle(async (request, path) => Response) answers /api/plugins/<id>/<path>, so it needs no web framework such as Express; context.settings.get() returns its settings; context.tools, context.toolsets and context.events register tools, meta toolsets and event listeners.
 The web part's default export is a WebPlugin { name: <id>, nav?: { label, Page } , SessionPanel?, SessionHeader?, tools?, widgets? }. It imports react, react-dom, @pi-cloud/ui and @pi-cloud/plugins/web from the page, can't import CSS or other files, and styles itself with @pi-cloud/ui components.
 The Session part's default export is a SessionPlugin { name: <id>, extension?: (cloud) => Pi extension factory, packages?: Pi packages, tools?: (cloud) => Pi tool definitions }. It can't import files other than code.`;
 

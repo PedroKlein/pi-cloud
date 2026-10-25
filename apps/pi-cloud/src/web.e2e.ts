@@ -464,6 +464,7 @@ test("turns an installed plugin on for the next start", async () => {
 
   await hello.getByRole("button", { name: "Turn on" }).click();
   await hello.getByText("It turns on when the server restarts.").waitFor();
+  await hello.getByText("Off until restart").waitFor();
 
   await page.getByRole("button", { name: "Restart now" }).click();
   await page.getByText(/restart it yourself/).waitFor();
@@ -509,6 +510,8 @@ test("installs a plugin from a git repository, asks before turning it on, and re
 
   await page.getByRole("button", { name: "Install" }).click();
 
+  await page.getByText("Installed Weather, turned off.").waitFor();
+
   const weather = page.getByRole("listitem", { name: "Weather" });
   await weather.getByText(`file://${source} at`).waitFor();
 
@@ -533,6 +536,15 @@ test("installs a plugin from a git repository, asks before turning it on, and re
 
 test("shows an installed plugin's page with the app's React and components", async () => {
   await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  expect(
+    await page
+      .getByRole("listitem", { name: "Greeter" })
+      .getByRole("button", { name: "Remove" })
+      .isDisabled(),
+  ).toBe(true);
+
   await page.getByRole("link", { name: "Greeter" }).click();
 
   const button = page.getByRole("button", { name: "Hellos: 0" });
