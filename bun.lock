@@ -50,6 +50,7 @@
       "name": "@pi-cloud/web",
       "dependencies": {
         "@pi-cloud/changes": "workspace:*",
+        "@pi-cloud/kubernetes": "workspace:*",
         "@pi-cloud/library": "workspace:*",
         "@pi-cloud/models": "workspace:*",
         "@pi-cloud/plugins": "workspace:*",
@@ -159,6 +160,11 @@
       "dependencies": {
         "@pi-cloud/plugins": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
+        "@pi-cloud/ui": "workspace:*",
+        "react": "19.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
       },
     },
     "plugins/library": {

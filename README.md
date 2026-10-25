@@ -93,13 +93,15 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
 
 Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
-The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, save its settings:
+The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, turn on runner pods in its Kubernetes section on the Environments page, or save its settings:
 
 ```sh
-curl -X PUT <server>/api/plugins/kubernetes/environments/<environment id> \
+curl <server>/api/plugins/kubernetes/environments/<environment id> \
   -H 'content-type: application/json' --cookie <session cookie> \
-  -d '{"workspace": "pod", "capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}'
+  -d '{"settings": {"workspace": "pod", "capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}}'
 ```
+
+`{"settings": null}` turns them off again.
 
 When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pi Cloud image when it names none, with the `pi-cloud` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Pods run Sessions as processes, so the Environment's isolation must be `process`. With `"workspace": "pod"`, the default, a workspace lives only as long as its pod, so use clone or repositories workspaces there. With `"workspace": "claim"`, each Session gets a pod of its own, named after it, whose home is a claim of `claimSize` (with `storageClass`, or the cluster's default). If that pod stops or is deleted, the plugin starts it again with the same claim, and the claim goes once the Session is archived.
 

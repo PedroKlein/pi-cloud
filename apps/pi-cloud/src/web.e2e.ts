@@ -331,6 +331,63 @@ test("edits an Environment's variables and secrets without showing secret values
   );
 }, 30_000);
 
+test("starts and stops runner pods from an Environment's Kubernetes section", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Environments" }).click();
+
+  const section = page.getByLabel("Kubernetes", { exact: true });
+  await section.getByText("isn't running in a cluster").waitFor();
+
+  await section.getByLabel("Workspace").selectOption("claim");
+  await section.getByLabel("Claim size").fill("2Gi");
+  await section.getByLabel("Most pods").fill("3");
+  await section.getByRole("button", { name: "Start runner pods" }).click();
+  await section.getByRole("button", { name: "Stop runner pods" }).waitFor();
+
+  const [environment] = (await (
+    await fetch(new URL("/api/environments", server.url), {
+      headers: { cookie },
+    })
+  ).json()) as { readonly id: string }[];
+
+  const settings = async (): Promise<unknown> =>
+    (
+      (await (
+        await fetch(
+          new URL(
+            `/api/plugins/kubernetes/environments/${environment?.id ?? ""}`,
+            server.url,
+          ),
+          { headers: { cookie } },
+        )
+      ).json()) as { readonly settings: unknown }
+    ).settings;
+
+  expect(await settings()).toMatchObject({
+    workspace: "claim",
+    claimSize: "2Gi",
+    maxPods: 3,
+    storageClass: null,
+  });
+
+  await page.reload();
+
+  expect(await section.getByLabel("Claim size").inputValue()).toBe("2Gi");
+
+  await section.getByLabel(/^Pod patch/).fill("{");
+  await section.getByRole("button", { name: "Save" }).click();
+  await section.getByRole("alert").getByText("isn't valid JSON").waitFor();
+
+  await section.getByLabel(/^Pod patch/).fill("{}");
+  await section.getByRole("button", { name: "Save" }).click();
+  await section.getByRole("alert").waitFor({ state: "detached" });
+
+  await section.getByRole("button", { name: "Stop runner pods" }).click();
+  await section.getByRole("button", { name: "Start runner pods" }).waitFor();
+
+  expect(await settings()).toBeNull();
+});
+
 test("makes a Profile and starts a session that follows its instructions", async () => {
   let request = "";
 

@@ -10,6 +10,8 @@ import {
 } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { api, send } from "./api";
+import { PluginBoundary } from "./plugin-boundary";
+import { enabledPlugins, pluginContext } from "./plugins";
 import { variablesOf, variablesText } from "./variables";
 
 export function EnvironmentsPage({
@@ -392,6 +394,17 @@ function Editor({
           </div>
         </form>
       </Section>
+      {enabledPlugins().map(
+        ({ name, EnvironmentSection }) =>
+          EnvironmentSection && (
+            <PluginBoundary key={name} name={name}>
+              <EnvironmentSection
+                context={pluginContext(name)}
+                environment={environment}
+              />
+            </PluginBoundary>
+          ),
+      )}
     </>
   );
 }

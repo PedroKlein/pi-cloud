@@ -160,9 +160,11 @@ test("runs a Session in a runner pod the kubernetes plugin starts, and removes t
   const saved = await fetch(
     new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
     {
-      method: "PUT",
+      method: "POST",
       headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({ capacity: 1, maxPods: 2, idleSeconds: 5 }),
+      body: JSON.stringify({
+        settings: { capacity: 1, maxPods: 2, idleSeconds: 5 },
+      }),
     },
   );
 
@@ -219,12 +221,10 @@ test("brings back a Session's own pod, with its claim, after the pod is deleted"
   const saved = await fetch(
     new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
     {
-      method: "PUT",
+      method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
-        workspace: "claim",
-        claimSize: "1Gi",
-        idleSeconds: 5,
+        settings: { workspace: "claim", claimSize: "1Gi", idleSeconds: 5 },
       }),
     },
   );
