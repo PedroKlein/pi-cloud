@@ -27,7 +27,7 @@ function EnvironmentSection({
   const { value, reload } = useLoaded(
     async () => json<KubernetesEnvironment>(context.request(path)),
     path,
-    10_000,
+    { everyMs: 10_000 },
   );
 
   return (

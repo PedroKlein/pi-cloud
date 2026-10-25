@@ -18,9 +18,6 @@ import {
   useState,
 } from "react";
 
-// A meta-session's title comes from Pi, so the list catches up on its own.
-const refreshMs = 5000;
-
 // Fired when a new meta-session starts, so every list shows it at once.
 const started = new EventTarget();
 
@@ -38,7 +35,9 @@ function useMetaSessions(
   load = async (): Promise<Session[]> =>
     json<Session[]>(context.request("sessions")),
 ): readonly Session[] {
-  const { value, reload } = useLoaded(load, "sessions", refreshMs);
+  const { value, reload } = useLoaded(load, "sessions", {
+    topics: ["sessions"],
+  });
 
   useEffect(() => {
     started.addEventListener("started", reload);

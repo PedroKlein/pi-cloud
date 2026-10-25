@@ -66,6 +66,7 @@ function registered(signal: AbortSignal): PluginRoute {
     owner: "owner",
     tools: { register: unused },
     events: eventBus(unused),
+    changes: { publish: () => undefined },
     environments: {
       list: unused,
       unplaced: unused,

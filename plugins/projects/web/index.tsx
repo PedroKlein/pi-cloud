@@ -43,8 +43,8 @@ import {
   workStates,
 } from "../src/model";
 
-// Thread states change on their own, so an open Project refreshes.
-const refreshMs = 3000;
+// Thread states follow their Sessions.
+const watched = { topics: ["sessions", "projects.projects"] };
 
 export const projects: WebPlugin = {
   name: "projects",
@@ -71,7 +71,7 @@ function useThread(
             context.request(`threads/${encodeURIComponent(id)}`),
           ),
     id ?? "",
-    refreshMs,
+    watched,
   ).value;
 }
 
@@ -325,7 +325,7 @@ function Items({ context, path }: NavItemsProps): ReactElement {
   const list = useLoaded(
     async () => json<ProjectSummary[]>(context.request("projects")),
     "projects",
-    refreshMs,
+    watched,
   ).value;
 
   return (
@@ -702,7 +702,7 @@ function ProjectPage({
       return json<ProjectView>(response);
     },
     path,
-    refreshMs,
+    watched,
   );
 
   if (project === undefined) {

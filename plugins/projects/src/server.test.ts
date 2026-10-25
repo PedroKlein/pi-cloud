@@ -102,6 +102,7 @@ function fakeKernel(): {
       },
     },
     events,
+    changes: { publish: () => undefined },
     sessions: {
       loadOnly: () => undefined,
       start: (request, ownerKey) => {

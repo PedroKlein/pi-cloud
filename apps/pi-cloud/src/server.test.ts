@@ -16,6 +16,7 @@ import type { Log } from "@pi-cloud/providers";
 import { Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions } from "@pi-cloud/sessions";
 import { Auth } from "./auth";
+import { changeFeed } from "./changes";
 import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { readSse } from "./sse";
@@ -35,6 +36,7 @@ test("reports unhealthy when the database can't be read", async () => {
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
+      changes: () => undefined,
       manifests: [],
       store: store.plugin,
       settings: store.pluginSettings,
@@ -51,6 +53,7 @@ test("reports unhealthy when the database can't be read", async () => {
       signal: new AbortController().signal,
       log: () => undefined,
     }),
+    changeFeed(),
     store.check,
     () => undefined,
   );
@@ -105,6 +108,7 @@ function startServer(
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
+      changes: () => undefined,
       manifests: [],
       store: store.plugin,
       settings: store.pluginSettings,
@@ -121,6 +125,7 @@ function startServer(
       signal: stopped.signal,
       log,
     }),
+    changeFeed(),
     store.check,
     () => undefined,
   );
@@ -373,6 +378,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
         sessions,
         runners: { token: () => "pct_test", revoke: () => undefined },
         events: eventBus(() => undefined),
+        changes: () => undefined,
         manifests: [],
         store: store.plugin,
         settings: store.pluginSettings,
@@ -389,6 +395,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
         signal: new AbortController().signal,
         log: () => undefined,
       }),
+      changeFeed(),
       store.check,
       () => undefined,
     );

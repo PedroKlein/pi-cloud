@@ -70,6 +70,7 @@ function registered(
     owner: "owner",
     tools: { register: unused },
     events,
+    changes: { publish: () => undefined },
     environments: {
       list: unused,
       unplaced: unused,

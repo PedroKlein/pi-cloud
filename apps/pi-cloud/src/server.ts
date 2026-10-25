@@ -48,6 +48,7 @@ import {
   type McpToken,
   type User,
 } from "./auth";
+import { type Changes, changedBy } from "./changes";
 import { mcpHandler } from "./mcp";
 import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
@@ -110,6 +111,7 @@ export function createHandler(
   sessions: Sessions,
   profiles: Profiles,
   plugins: PluginHost,
+  changes: Changes,
   checkStore: () => void,
   log: Log,
   restart?: ServerRestart,
@@ -159,9 +161,17 @@ export function createHandler(
         onBehalf.get(request) ??
         (user === undefined ? undefined : (`user:${user.id}` as const));
 
-      return actor === undefined
-        ? Response.json({ error: "signed_out" }, { status: 401 })
-        : await route(request, params, actor);
+      if (actor === undefined) {
+        return Response.json({ error: "signed_out" }, { status: 401 });
+      }
+
+      const response = await route(request, params, actor);
+      const topic = changedBy(request, response);
+      if (topic !== undefined) {
+        changes.publish(topic);
+      }
+
+      return response;
     };
   };
 
@@ -251,6 +261,7 @@ export function createHandler(
   ];
 
   const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
+    ["GET", /^\/api\/changes$/, () => changes.stream()],
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
     [
       "POST",

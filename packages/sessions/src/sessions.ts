@@ -124,6 +124,8 @@ export interface SessionsOptions {
   readonly offlineAfterMs?: number;
   readonly leaseMs?: number;
   readonly events?: (event: KernelEvent) => void;
+  // Called whenever a Session starts or its view changes (ADR 0038).
+  readonly changed?: () => void;
   // The plugins whose Session parts a Session gets when it starts, and their
   // settings.
   readonly sessionPlugins?: () => SessionPlugins;
@@ -154,6 +156,7 @@ export class Sessions {
   readonly #store: SessionStore;
   readonly #polls: RunnerPolls;
   readonly #events: (event: KernelEvent) => void;
+  readonly #changed: () => void;
   readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
   readonly #pluginProfile: (id: string) => PluginProfile | undefined;
@@ -181,6 +184,7 @@ export class Sessions {
     });
 
     this.#events = options.events ?? (() => undefined);
+    this.#changed = options.changed ?? (() => undefined);
 
     this.#sessionPlugins =
       options.sessionPlugins ?? (() => ({ plugins: [], pluginSettings: {} }));
@@ -247,6 +251,7 @@ export class Sessions {
     this.#store.insert(session);
     this.#polls.wake(session.provider);
     const view = this.#view(session);
+    this.#changed();
 
     this.#events({
       type: "SessionCreated",
@@ -1234,6 +1239,10 @@ export class Sessions {
   }
 
   #emit(id: string, event: SessionEvent): void {
+    if (event.type === "session") {
+      this.#changed();
+    }
+
     for (const listener of this.#watchers.get(id) ?? []) {
       listener(event);
     }
