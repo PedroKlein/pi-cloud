@@ -6,10 +6,12 @@ import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
 import { stderrLog } from "./log";
+import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
 import { runSessionProcess } from "./session-process";
 
 const usage = `usage:
+  [PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \\
   pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                   [--database ~/.pi-cloud/server.db]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
@@ -67,11 +69,16 @@ switch (command) {
 
     await checkFolders(values.folder);
 
+    // Sessions of the built-in runner inherit the environment.
+    const secretKey = process.env["PI_CLOUD_SECRET_KEY"];
+    delete process.env["PI_CLOUD_SECRET_KEY"];
+
     const server = serve({
       hostname: values.host,
       ...(values.url !== undefined && { url: new URL(values.url) }),
       port: Number(values.port),
       database: values.database,
+      ...(secretKey !== undefined && { secretKey: parseSecretKey(secretKey) }),
       ...(values.provider !== undefined && {
         agent: {
           provider: values.provider,

@@ -18,6 +18,8 @@ export interface ServeOptions {
   // it listens, such as behind a gateway.
   readonly url?: URL;
   readonly database: string;
+  // Encrypts Environment secrets; a file next to the database when unset.
+  readonly secretKey?: Buffer;
   readonly sessions?: SessionsOptions;
   readonly agent?: Omit<
     AgentOptions,
@@ -32,7 +34,7 @@ export function serve(options: ServeOptions): {
   readonly url: URL;
   readonly stop: () => Promise<void>;
 } {
-  const store = openStore(options.database);
+  const store = openStore(options.database, options.secretKey);
   const plugins = options.plugins ?? serverPlugins;
   const disabled = options.disabledPlugins ?? [];
 
