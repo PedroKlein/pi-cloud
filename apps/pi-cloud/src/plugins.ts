@@ -486,6 +486,11 @@ export function startPlugins(
         return "only an installed plugin can be turned on or off here";
       }
 
+      const error = failures.get(name);
+      if (on && error !== undefined && !switchedOn.has(name)) {
+        return `fix its manifest first: ${error}`;
+      }
+
       await deps.installed.turnOn(name, on);
 
       if (on) {

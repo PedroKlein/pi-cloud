@@ -3,8 +3,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -204,4 +206,83 @@ test("turns built-in plugins on or off only through the server's options", async
 
   expect(refused.status).toBe(400);
   expect((await listed("projects"))?.turnedOn).toBe(true);
+});
+
+test("keeps a built-in plugin when a folder takes its id", async () => {
+  await writePlugin("projects");
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["projects"]));
+  await start();
+
+  const all = (await (await api("GET", "/api/plugins")).json()) as PluginInfo[];
+
+  expect(all.filter(({ id }) => id === "projects")).toMatchObject([
+    { source: "built-in", state: "on" },
+  ]);
+
+  expect(await exists(join(plugins, "projects", "imported"))).toBe(false);
+});
+
+test("keeps every switch when several are turned at once", async () => {
+  const ids = ["a", "b", "c", "d"];
+
+  for (const id of ids) {
+    await writePlugin(id);
+  }
+
+  await start();
+
+  const turned = await Promise.all(
+    ids.map(async (id) =>
+      api("PATCH", `/api/plugins/${id}`, { enabled: true }),
+    ),
+  );
+
+  expect(turned.map(({ status }) => status)).toEqual([200, 200, 200, 200]);
+
+  expect(
+    JSON.parse(await readFile(join(plugins, "enabled.json"), "utf8")),
+  ).toEqual(ids);
+});
+
+test("won't turn on a plugin whose manifest is broken", async () => {
+  await writePlugin("future", { engine: 2 });
+  await start();
+
+  const refused = await api("PATCH", "/api/plugins/future", { enabled: true });
+
+  expect(refused.status).toBe(400);
+  expect(await exists(join(plugins, "enabled.json"))).toBe(false);
+});
+
+test("loads a plugin whose folder is a link to one elsewhere", async () => {
+  await writePlugin("linked");
+  await rename(join(plugins, "linked"), join(root, "linked"));
+  await symlink(join(root, "linked"), join(plugins, "linked"));
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["linked"]));
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/linked/")).text()).toBe(
+    "hi from linked",
+  );
+});
+
+test("won't import a server part that links outside the plugin", async () => {
+  const elsewhere = join(root, "elsewhere");
+  await mkdir(elsewhere);
+  await writeFile(join(elsewhere, "server.ts"), "export default {};");
+
+  await writePlugin("sneaky", { parts: { server: "outside/server.ts" } });
+  await symlink(elsewhere, join(plugins, "sneaky", "outside"));
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["sneaky"]));
+  await start();
+
+  expect((await listed("sneaky"))?.error).toContain("outside the plugin");
+});
+
+test("starts with every installed plugin off when enabled.json is broken", async () => {
+  await writePlugin("hello");
+  await writeFile(join(plugins, "enabled.json"), "[");
+  await start();
+
+  expect(await listed("hello")).toMatchObject({ state: "off" });
 });

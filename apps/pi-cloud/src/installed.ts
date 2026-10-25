@@ -1,5 +1,13 @@
-import { readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ServerPlugin } from "@pi-cloud/plugins";
 import {
   type Capability,
@@ -8,6 +16,7 @@ import {
   pluginEngine,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
+import { builtInPlugins } from "./plugins";
 
 // A plugin installed into the plugins folder, one folder each, named by its
 // id (ADR 0022). Only the ones turned on are imported, since importing runs
@@ -16,7 +25,7 @@ export interface InstalledPlugin {
   readonly manifest: PluginManifest;
   readonly on: boolean;
   readonly server?: ServerPlugin;
-  // Why it couldn't load, when it is on.
+  // Why its manifest or, when it is on, its code couldn't load.
   readonly error?: string;
 }
 
@@ -27,25 +36,42 @@ export async function installedPlugins(
   root: string,
   log: Log,
 ): Promise<InstalledPlugin[]> {
+  const builtIn = new Set(builtInPlugins.map(({ id }) => id));
   const on = await turnedOn(root);
 
-  const folders = await readdir(root, { withFileTypes: true }).catch(
-    (error: unknown) => {
-      if (isMissing(error)) {
-        return [];
-      }
+  const folders = await readdir(root).catch((error: unknown) => {
+    if (isMissing(error)) {
+      return [];
+    }
 
-      throw error;
-    },
-  );
+    throw error;
+  });
+
+  const named = folders.filter((name) => {
+    if (name.startsWith(".")) {
+      return false;
+    }
+
+    const error = skipReason(name, builtIn);
+
+    if (error !== undefined) {
+      log("installed plugin skipped", { folder: name, error });
+    }
+
+    return error === undefined;
+  });
 
   const plugins = await Promise.all(
-    folders
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-      .map(async ({ name }) => load(join(root, name), name, on.includes(name))),
+    named.map(async (name) => {
+      const folder = join(root, name);
+
+      return (await isFolder(folder))
+        ? [await load(folder, name, on.includes(name))]
+        : [];
+    }),
   );
 
-  for (const plugin of plugins) {
+  for (const plugin of plugins.flat()) {
     log("installed plugin found", {
       plugin: plugin.manifest.id,
       on: plugin.on,
@@ -53,21 +79,30 @@ export async function installedPlugins(
     });
   }
 
-  return plugins;
+  return plugins.flat();
 }
 
-// Takes effect when the server next starts.
+let switching = Promise.resolve();
+
+// Takes effect when the server next starts. Writes go one at a time, so two
+// switches at once both land.
 export async function turnOn(
   root: string,
   id: string,
   on: boolean,
 ): Promise<void> {
-  const others = (await turnedOn(root)).filter((each) => each !== id);
-  const next = on ? [...others, id].sort() : others;
-  const temporary = join(root, `.${switchesFile}.${String(process.pid)}`);
+  const write = switching.then(async () => {
+    const others = (await turnedOn(root)).filter((each) => each !== id);
+    const next = on ? [...others, id].sort() : others;
+    const temporary = join(root, `.${switchesFile}.${randomUUID()}`);
 
-  await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`);
-  await rename(temporary, join(root, switchesFile));
+    await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`);
+    await rename(temporary, join(root, switchesFile));
+  });
+
+  switching = write.catch(() => undefined);
+
+  return write;
 }
 
 export async function turnedOn(root: string): Promise<string[]> {
@@ -80,7 +115,9 @@ export async function turnedOn(root: string): Promise<string[]> {
       ? ids.filter((id): id is string => typeof id === "string")
       : [];
   } catch (error) {
-    if (isMissing(error)) {
+    // A file broken by hand turns every installed plugin off rather than
+    // keeping the server from starting.
+    if (isMissing(error) || error instanceof SyntaxError) {
       return [];
     }
 
@@ -110,8 +147,10 @@ async function load(
   }
 
   try {
-    const entry = resolve(folder, manifest.parts.server);
-    if (relative(folder, entry).startsWith("..")) {
+    const entry = await realpath(resolve(folder, manifest.parts.server));
+    const path = relative(await realpath(folder), entry);
+
+    if (isAbsolute(path) || path.split(sep)[0] === "..") {
       throw new Error(`parts.server is outside the plugin's folder`);
     }
 
@@ -135,10 +174,8 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
   const field = fields(fields(packageJson)["piCloud"]);
   const { id, title, description, version, engine, parts } = field;
 
-  if (id !== folder || !idPattern.test(folder)) {
-    throw new Error(
-      `piCloud.id must be the folder's name, ${folder}, in lowercase letters, digits and dashes`,
-    );
+  if (id !== folder) {
+    throw new Error(`piCloud.id must be the folder's name, ${folder}`);
   }
 
   if (typeof title !== "string" || typeof description !== "string") {
@@ -183,6 +220,29 @@ function fields(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function skipReason(
+  name: string,
+  builtIn: ReadonlySet<string>,
+): string | undefined {
+  if (!idPattern.test(name)) {
+    return "a plugin's folder is its id, in lowercase letters, digits and dashes";
+  }
+
+  if (builtIn.has(name)) {
+    return "a built-in plugin has this id";
+  }
+
+  return undefined;
+}
+
+// A folder or a link to one, as when a plugin is developed elsewhere.
+async function isFolder(path: string): Promise<boolean> {
+  return stat(path).then(
+    (found) => found.isDirectory(),
+    () => false,
+  );
 }
 
 function isMissing(error: unknown): boolean {
