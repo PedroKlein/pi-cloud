@@ -16,11 +16,12 @@ import {
   pluginEngine,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
+import { bundleServerPart } from "./bundle";
 import { builtInPlugins } from "./plugins";
 
 // A plugin installed into the plugins folder, one folder each, named by its
-// id (ADR 0022). Only the ones turned on are imported, since importing runs
-// the plugin's code.
+// id (ADR 0022). Only the ones turned on are built and imported, since that
+// runs the plugin's code.
 export interface InstalledPlugin {
   readonly manifest: PluginManifest;
   readonly on: boolean;
@@ -154,7 +155,9 @@ async function load(
       throw new Error(`parts.server is outside the plugin's folder`);
     }
 
-    const { default: server } = (await import(entry)) as {
+    const { default: server } = (await import(
+      await bundleServerPart(folder, entry)
+    )) as {
       default?: ServerPlugin;
     };
 

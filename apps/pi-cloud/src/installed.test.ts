@@ -286,3 +286,82 @@ test("starts with every installed plugin off when enabled.json is broken", async
 
   expect(await listed("hello")).toMatchObject({ state: "off" });
 });
+
+test("builds a plugin with its dependencies, without its scripts, before running it", async () => {
+  await writePlugin("greeter");
+
+  const folder = join(plugins, "greeter");
+  await mkdir(join(folder, "vendor", "greeting"), { recursive: true });
+
+  await writeFile(
+    join(folder, "vendor", "greeting", "package.json"),
+    JSON.stringify({ name: "greeting", version: "1.0.0", main: "index.ts" }),
+  );
+
+  await writeFile(
+    join(folder, "vendor", "greeting", "index.ts"),
+    `export const greeting = "hi from a dependency";\n`,
+  );
+
+  const manifest = JSON.parse(
+    await readFile(join(folder, "package.json"), "utf8"),
+  ) as Record<string, unknown>;
+
+  await writeFile(
+    join(folder, "package.json"),
+    JSON.stringify({
+      ...manifest,
+      dependencies: { greeting: "file:./vendor/greeting" },
+      scripts: { prepare: "exit 3" },
+    }),
+  );
+
+  await writeFile(
+    join(folder, "server.ts"),
+    `import { greeting } from "greeting";
+
+export default {
+  name: "greeter",
+  register: (context) => {
+    context.routes.handle(async () => new Response(greeting));
+  },
+};
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["greeter"]));
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/greeter/")).text()).toBe(
+    "hi from a dependency",
+  );
+});
+
+test("runs a plugin's source as it is at each start", async () => {
+  await writePlugin("hello");
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["hello"]));
+  await start();
+
+  const part = join(plugins, "hello", "server.ts");
+  const source = await readFile(part, "utf8");
+
+  await writeFile(part, source.replace("hi from hello", "hello again"));
+  await start();
+
+  expect(await (await api("GET", "/api/plugins/hello/")).text()).toBe(
+    "hello again",
+  );
+});
+
+test("shows why a plugin doesn't build", async () => {
+  await writePlugin("broken");
+  await writeFile(join(plugins, "broken", "server.ts"), "export default {");
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["broken"]));
+  await start();
+
+  const broken = await listed("broken");
+
+  expect(broken?.state).toBe("failed");
+  expect(broken?.error).toContain("server.ts doesn't build");
+  expect(broken?.error).toMatch(/broken\/server\.ts:1:\d+: /);
+});
