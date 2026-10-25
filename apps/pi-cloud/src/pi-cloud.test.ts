@@ -265,6 +265,7 @@ test("reports itself healthy", async () => {
     status: "ok",
     version: expect.any(String) as unknown,
     pi: expect.any(String) as unknown,
+    started: expect.any(String) as unknown,
   });
 });
 
