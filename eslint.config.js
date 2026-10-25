@@ -94,6 +94,28 @@ export default tseslint.config(
     },
   },
   {
+    // Built-in plugins use only what a third-party plugin gets (ADR 0038).
+    files: ["plugins/**/*.ts", "plugins/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^@pi-cloud/(?!(plugins|plugins/web|protocol|ui)$)",
+              message:
+                "Plugins import only @pi-cloud/plugins, @pi-cloud/protocol and @pi-cloud/ui.",
+            },
+            {
+              regex: "^\\.\\./\\.\\./",
+              message: "Plugins don't import files outside their own folder.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.js"],
     extends: [tseslint.configs.disableTypeChecked],
   },
