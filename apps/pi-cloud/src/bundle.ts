@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 export interface PluginParts {
   readonly server?: string;
   readonly web?: string;
+  readonly session?: string;
 }
 
 // The modules a web part shares with the shell, so there is one React and one
@@ -38,6 +39,9 @@ export async function bundleParts(
     ...(entries.web !== undefined && {
       web: await bundle(entries.web, outdir, "web"),
     }),
+    ...(entries.session !== undefined && {
+      session: await bundle(entries.session, outdir, "session"),
+    }),
   };
 }
 
@@ -45,7 +49,7 @@ export async function bundleParts(
 async function bundle(
   entry: string,
   outdir: string,
-  part: "server" | "web",
+  part: "server" | "web" | "session",
 ): Promise<string> {
   const result = await Bun.build({
     entrypoints: [entry],

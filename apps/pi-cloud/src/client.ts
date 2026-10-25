@@ -185,6 +185,23 @@ export async function fetchTranscript(
   return ((await response.json()) as { entries: readonly string[] }).entries;
 }
 
+// An installed plugin's Session part, asked for by its bundle's hash (ADR
+// 0022).
+export async function fetchSessionPart(
+  server: string,
+  assignment: SessionStart,
+  name: string,
+  hash: string,
+): Promise<Uint8Array> {
+  const response = await call(
+    { server, token: assignment.token },
+    `/agent/sessions/${assignment.sessionId}/plugin-parts/${name}/${hash}`,
+    { signal: AbortSignal.timeout(requestTimeoutMs) },
+  );
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 export async function reportRemoval(
   agent: Agent,
   sessionId: string,

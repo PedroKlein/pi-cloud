@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rename,
   rm,
@@ -11,9 +12,16 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PluginInfo } from "@pi-cloud/protocol";
+import {
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxText,
+} from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { PluginInfo, Session, SessionEvent } from "@pi-cloud/protocol";
 import { installedPlugins } from "./installed";
-import { serve } from "./serve";
+import { serve, type ServeOptions } from "./serve";
+import { readSse } from "./sse";
 import { firstUser } from "./testdata/sign-in";
 
 let root: string;
@@ -77,7 +85,7 @@ export default {
 }
 
 // Starts the server the way the CLI does, so a restart reads the folder again.
-async function start(): Promise<void> {
+async function start(agent?: ServeOptions["agent"]): Promise<void> {
   await server?.stop();
 
   const logs: string[] = [];
@@ -85,7 +93,8 @@ async function start(): Promise<void> {
   server = serve({
     port: 0,
     database: join(root, "server.db"),
-    sessions: { pollWaitMs: 0 },
+    sessions: { pollWaitMs: agent ? 100 : 0 },
+    ...(agent && { agent }),
     installed: {
       root: plugins,
       plugins: await installedPlugins(plugins, noLog),
@@ -421,4 +430,77 @@ test("fails a web part that imports CSS the page would never load", async () => 
   await start();
 
   expect((await listed("styled"))?.error).toContain("imports CSS");
+});
+
+test("runs an installed plugin's Session part in a Session, fetched by its hash", async () => {
+  await writePlugin("slash", { parts: { session: "session.ts" } });
+
+  await writeFile(
+    join(plugins, "slash", "session.ts"),
+    `export default {
+  name: "slash",
+  extension: () => (pi) => {
+    pi.registerCommand("installed-hello", {
+      description: "Says hi from an installed plugin",
+      handler: async () => undefined,
+    });
+  },
+};
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["slash"]));
+
+  const faux = fauxProvider();
+
+  const runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+
+  runtime.registerNativeProvider(faux.provider);
+  faux.setResponses([fauxAssistantMessage([fauxText("hi")])]);
+
+  await start({
+    provider: "local",
+    dataDir: join(root, "local"),
+    extensionPaths: [],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+  });
+
+  while (
+    ((await (await api("GET", "/api/environments")).json()) as unknown[])
+      .length === 0
+  ) {
+    await Bun.sleep(10);
+  }
+
+  const session = (await (
+    await api("POST", "/api/sessions", {
+      workspace: { kind: "folder", path: root },
+    })
+  ).json()) as Session;
+
+  const events = await api("GET", `/api/sessions/${session.id}/events`);
+  let commands: readonly { readonly name: string }[] = [];
+
+  for await (const event of readSse(events)) {
+    const sent = event as SessionEvent;
+
+    if (sent.type === "live" && sent.event.type === "commands") {
+      commands = sent.event.commands;
+      break;
+    }
+  }
+
+  expect(commands.map(({ name }) => name)).toContain("installed-hello");
+
+  const cached = await readdir(
+    join(root, "local", "sessions", session.id, "plugin-parts"),
+  );
+
+  expect(cached).toHaveLength(1);
+  expect(cached[0]).toMatch(/^slash-[0-9a-f]{64}\.js$/);
 });

@@ -28,6 +28,8 @@ export interface InstalledPlugin {
   readonly server?: ServerPlugin;
   // The web part's bundle.
   readonly web?: string;
+  // The Session part's bundle, and its SHA-256 that runners ask for it by.
+  readonly session?: { readonly path: string; readonly hash: string };
   // Why its manifest or, when it is on, its code couldn't load.
   readonly error?: string;
 }
@@ -145,9 +147,12 @@ async function load(
     return { manifest: fallback, on, error: messageOf(error) };
   }
 
-  const { server, web } = manifest.parts ?? {};
+  const { server, web, session } = manifest.parts ?? {};
 
-  if (!on || (server === undefined && web === undefined)) {
+  if (
+    !on ||
+    (server === undefined && web === undefined && session === undefined)
+  ) {
     return { manifest, on };
   }
 
@@ -155,6 +160,9 @@ async function load(
     const bundles = await bundleParts(folder, {
       ...(server !== undefined && { server: await inside(folder, server) }),
       ...(web !== undefined && { web: await inside(folder, web) }),
+      ...(session !== undefined && {
+        session: await inside(folder, session),
+      }),
     });
 
     const part =
@@ -174,6 +182,14 @@ async function load(
       on,
       ...(part && { server: part }),
       ...(bundles.web !== undefined && { web: bundles.web }),
+      ...(bundles.session !== undefined && {
+        session: {
+          path: bundles.session,
+          hash: new Bun.CryptoHasher("sha256")
+            .update(await readFile(bundles.session))
+            .digest("hex"),
+        },
+      }),
     };
   } catch (error) {
     return { manifest, on, error: messageOf(error) };
@@ -211,7 +227,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     );
   }
 
-  const { server, web } = fields(parts);
+  const { server, web, session } = fields(parts);
   const declared = field["capabilities"] ?? [];
 
   if (
@@ -237,6 +253,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     parts: {
       ...(typeof server === "string" && { server }),
       ...(typeof web === "string" && { web }),
+      ...(typeof session === "string" && { session }),
     },
     ...(settings !== undefined && { settings }),
   };

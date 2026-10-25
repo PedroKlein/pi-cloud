@@ -115,6 +115,8 @@ export type SessionPlugins = Required<
   // The Session plugins that load in a plugin's own Sessions, for plugins
   // that limit them.
   readonly loadOnly?: Readonly<Record<string, readonly string[]>>;
+  // The installed plugins' Session parts, by name, with their bundles' hash.
+  readonly installedParts?: Readonly<Record<string, string>>;
 };
 
 export interface SessionsOptions {
@@ -1044,9 +1046,15 @@ export class Sessions {
     session: StoredSession,
   ): Required<
     Pick<Assignment, "plugins" | "pluginSettings" | "requiredPlugins">
-  > {
-    const { plugins, pluginSettings, ownSessionsOnly, loadOnly } =
-      this.#sessionPlugins();
+  > &
+    Pick<Assignment, "installedParts"> {
+    const {
+      plugins,
+      pluginSettings,
+      ownSessionsOnly,
+      loadOnly,
+      installedParts,
+    } = this.#sessionPlugins();
 
     const ownedBy = session.owner?.plugin;
     const limit = ownedBy === undefined ? undefined : loadOnly?.[ownedBy];
@@ -1057,11 +1065,20 @@ export class Sessions {
         (ownSessionsOnly?.includes(name) !== true || ownedBy === name),
     );
 
+    const installed = Object.entries(installedParts ?? {}).filter(([name]) =>
+      loaded.includes(name),
+    );
+
     return {
       plugins: loaded,
       requiredPlugins: loaded.filter(
-        (name) => ownSessionsOnly?.includes(name) === true,
+        (name) =>
+          ownSessionsOnly?.includes(name) === true ||
+          installed.some(([each]) => each === name),
       ),
+      ...(installed.length > 0 && {
+        installedParts: Object.fromEntries(installed),
+      }),
       pluginSettings: Object.fromEntries(
         Object.entries(pluginSettings).filter(([name]) =>
           loaded.includes(name),

@@ -746,8 +746,33 @@ test("stops a runner started to exit when idle once it runs no Session", async (
   expect(pod.logs).toContain("no sessions for a while; stopping");
 });
 
+test("hosts an installed plugin's Session part the assignment names by hash", async () => {
+  const asked: string[] = [];
+
+  const { plugins, pluginSettings } = await sessionParts(
+    {
+      plugins: ["ask", "extra"],
+      requiredPlugins: ["extra"],
+      installedParts: { extra: "abc", unused: "def" },
+      pluginSettings: { extra: { greeting: "hi" } },
+    },
+    async (name, hash) => {
+      asked.push(`${name}@${hash}`);
+
+      return Promise.resolve({ name });
+    },
+  );
+
+  expect(asked).toEqual(["extra@abc"]);
+  expect(plugins.map(({ name }) => name)).toEqual(["ask", "extra"]);
+  expect(pluginSettings["extra"]).toEqual({ greeting: "hi" });
+});
+
 test("refuses to host a Session part this runner doesn't have", () => {
-  expect(() =>
-    sessionParts({ plugins: ["ask", "newer"], requiredPlugins: ["newer"] }),
-  ).toThrow("this runner has no newer plugin");
+  const parts = sessionParts(
+    { plugins: ["ask", "newer"], requiredPlugins: ["newer"] },
+    async () => Promise.reject(new Error("no installed parts here")),
+  );
+
+  expect(parts).rejects.toThrow("this runner has no newer plugin");
 });
