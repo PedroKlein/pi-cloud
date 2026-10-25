@@ -38,6 +38,7 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 - **Durable sleeps.** pi-durable stores a sleep with its wake time, so a sleeping task holds no process and survives restarts. A host that can be evicted gets an `onWake` callback with the next time it needs to run.
 - **Triggers as a separate client.** OpenHands keeps automations in their own service. It decides when to run and creates conversations through the public API. The server has no special path for them.
 - **Webhooks on events.** OpenHands' Agent Server can POST batched events to configured URLs with retries. It's a simple first integration point.
+- **Deliver each result once.** A run's report carries an id derived from the run, the run is done only once its report is stored, and unstored reports are delivered again after a restart ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md#later-delivering-results-exactly-once)).
 
 ## Extensions
 
@@ -50,6 +51,8 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 - **Declared backups and migrations.** OpenClaw's manifest names the state a plugin keeps and how to migrate it, so backups and upgrades don't need the plugin's code.
 - **A plugin host process.** Hermes can run plugins in a separate process, so a crash or a hostile plugin can't take the server down.
 - **Tell the agent where it is.** OpenHands appends the URLs of the services around the agent to its context, so it doesn't guess ports. Our cloud-bridge extension could do the same for preview URLs.
+- **A skill for outside agents.** LearnHarness ships a skill that explains its data to any agent and draws a read-only line. A `pi-cloud` skill could explain Sessions, Projects, Environments, Profiles and the risky tools to Claude Code or a local Pi using the MCP endpoint ([ADR 0035](adr/0035-meta-sessions.md#mcp)).
+- **Agents that look at their own pages.** LearnHarness's sub-agents load what they built in headless Chrome and read its errors before delivering it. A Pi package in a Profile could give a Session a tool that screenshots a preview and returns its console ([ADR 0037](adr/0037-previews-and-opened-pages.md)).
 
 ## Extension UI
 
@@ -61,6 +64,7 @@ Pi extensions can draw their own terminal UI with `ctx.ui.custom()`, editor comp
 ## Observability
 
 - **Content-free telemetry.** pi-durable's telemetry schema carries IDs and control metadata only, never messages, arguments or results. OpenHands' telemetry is off by default, has an operator kill switch, and drops queued events when consent is revoked.
+- **Record raw provider events.** pi-ai's `onProviderStreamEvent` sees each provider event before Pi normalizes it. LearnHarness writes them to a capped JSONL file per conversation when an environment variable is set, and found truncated tool-call JSON and reset tool-call ids that way. The session host could do the same for a Session.
 
 ## Streaming
 
