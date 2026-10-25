@@ -35,16 +35,20 @@ interface Labelled {
   readonly metadata: { readonly labels: Record<string, string> };
 }
 
+interface FakeSecret extends Labelled {
+  readonly stringData: Record<string, string>;
+}
+
 // The pod, Secret and claim calls of the Kubernetes API, in memory.
 function fakeApi(): {
   readonly url: string;
   readonly pods: Map<string, FakePod>;
-  readonly secrets: Map<string, Record<string, string>>;
+  readonly secrets: Map<string, FakeSecret>;
   readonly claims: Map<string, Labelled>;
   readonly stop: () => Promise<void>;
 } {
   const pods = new Map<string, FakePod>();
-  const secrets = new Map<string, Record<string, string>>();
+  const secrets = new Map<string, FakeSecret>();
   const claims = new Map<string, Labelled>();
   const prefix = "/api/v1/namespaces/pi";
 
@@ -85,17 +89,13 @@ function fakeApi(): {
       if (request.method === "POST") {
         const body = (await request.json()) as {
           metadata: { name: string };
-          stringData?: Record<string, string>;
         };
 
         if (store.has(body.metadata.name)) {
           return Response.json({}, { status: 409 });
         }
 
-        store.set(
-          body.metadata.name,
-          kind === "secrets" ? (body.stringData ?? {}) : body,
-        );
+        store.set(body.metadata.name, body);
 
         return Response.json(body, { status: 201 });
       }
@@ -249,6 +249,12 @@ test("starts one runner pod per Session no runner can take, up to the most allow
   expect([...api.secrets.keys()].sort()).toEqual([...api.pods.keys()].sort());
   expect(pod?.metadata.labels["pi-cloud.dev/environment"]).toBe(environment.id);
 
+  expect(
+    api.secrets.get(pod?.metadata.name ?? "")?.metadata.labels[
+      "pi-cloud.dev/environment"
+    ],
+  ).toBe(environment.id);
+
   expect(pod?.spec.containers[0]).toMatchObject({
     image: "pi-cloud:test",
     command: [
@@ -282,7 +288,7 @@ test("lets the runner in a started pod run the Session, and forgets an earlier f
   );
 
   const [name = ""] = api.pods.keys();
-  const token = api.secrets.get(name)?.["token"] ?? "";
+  const token = api.secrets.get(name)?.stringData["token"] ?? "";
   const faux = fauxProvider();
   faux.setResponses([fauxAssistantMessage([fauxText("hi from a pod")])]);
 
@@ -640,7 +646,7 @@ async function startRunner(
     await runAgent({
       server: server.url.href,
       provider: name,
-      credential: { token: api.secrets.get(name)?.["token"] ?? "" },
+      credential: { token: api.secrets.get(name)?.stringData["token"] ?? "" },
       session,
       dataDir: join(root, name),
       extensionPaths: [],
@@ -668,7 +674,7 @@ test("gives each Session a pod of its own that mounts its claim, and brings it b
 
   const name = `pi-session-${second.id}`;
   const pod = api.pods.get(name);
-  const token = api.secrets.get(name)?.["token"];
+  const token = api.secrets.get(name)?.stringData["token"];
   const stop = new AbortController();
   const runner = startRunner(name, second.id, stop.signal);
 
@@ -690,8 +696,8 @@ test("gives each Session a pod of its own that mounts its claim, and brings it b
   await eventually(
     () =>
       api.pods.has(name) &&
-      api.secrets.get(name)?.["token"] !== undefined &&
-      api.secrets.get(name)?.["token"] !== token,
+      api.secrets.get(name)?.stringData["token"] !== undefined &&
+      api.secrets.get(name)?.stringData["token"] !== token,
   );
 
   expect([...api.claims.keys()].sort()).toEqual(

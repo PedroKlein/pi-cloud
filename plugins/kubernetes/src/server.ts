@@ -396,7 +396,7 @@ async function startPod(
   // A pod deleted from outside leaves its Secret behind.
   await cluster.deleteSecret(name);
 
-  await cluster.createSecret(name, {
+  await cluster.createSecret(name, environment.id, {
     token: context.environments.runnerToken(environment.id, name),
   });
 
