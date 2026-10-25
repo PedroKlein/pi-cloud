@@ -1,0 +1,12 @@
+{
+  "name": "@pi-cloud/kubernetes",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./server": "./src/server.ts"
+  },
+  "dependencies": {
+    "@pi-cloud/plugins": "workspace:*",
+    "@pi-cloud/protocol": "workspace:*"
+  }
+}

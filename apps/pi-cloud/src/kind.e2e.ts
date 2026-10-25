@@ -152,6 +152,65 @@ test("runs a Session from an agent pod that joined with its Environment's key", 
   );
 }, 60_000);
 
+test("runs a Session in a runner pod the kubernetes plugin starts, and removes the pod once idle", async () => {
+  const { environment } = (await (
+    await api("/api/environments", { name: "pods" })
+  ).json()) as { environment: Environment };
+
+  const saved = await fetch(
+    new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ capacity: 1, maxPods: 2, idleSeconds: 5 }),
+    },
+  );
+
+  expect(saved.status).toBe(200);
+
+  const session = (await (
+    await api("/api/sessions", {
+      environment: environment.id,
+      workspace: {
+        kind: "clone",
+        repository: "https://github.com/octocat/Hello-World.git",
+      },
+    })
+  ).json()) as Session;
+
+  await until(session.id, (events) =>
+    events.some(
+      (event) => event.type === "session" && event.session.status === "idle",
+    ),
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await until(session.id, (events) =>
+    events.some(
+      (event) =>
+        event.type === "entry" &&
+        JSON.stringify(event.entry).includes("hello from kind"),
+    ),
+  );
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const selector = `pi-cloud.dev/environment=${environment.id}`;
+  for (let attempt = 0; attempt < 120; attempt++) {
+    if (kubectl("get", "pods", "-l", selector, "-o", "name").trim() === "") {
+      return;
+    }
+
+    await Bun.sleep(1000);
+  }
+
+  throw new Error("the runner pod was never removed");
+}, 240_000);
+
 test("keeps users and Environment secrets when the pod restarts", async () => {
   const [environment] = (await (
     await api("/api/environments")

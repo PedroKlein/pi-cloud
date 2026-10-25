@@ -39,8 +39,11 @@ jobs:
           helm install pi-cloud deploy/helm/pi-cloud --wait --timeout 3m
           --set image.repository=pi-cloud --set image.tag=ci
           --set image.pullPolicy=Never
+          --set extraEnv[0].name=PI_CLOUD_FAUX_REPLY
+          --set "extraEnv[0].value=hello from kind"
       - run: bun test ./apps/pi-cloud/src/kind.e2e.ts
       - if: failure()
         run: >-
-          kubectl describe pods && kubectl logs deploy/pi-cloud --all-containers
-          && kubectl logs kind-agent
+          kubectl describe pods; kubectl logs deploy/pi-cloud --all-containers;
+          kubectl logs kind-agent;
+          kubectl logs -l app.kubernetes.io/managed-by=pi-cloud --all-containers --prefix

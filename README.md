@@ -93,6 +93,16 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
 
 Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
+The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, save its settings:
+
+```sh
+curl -X PUT <server>/api/plugins/kubernetes/environments/<environment id> \
+  -H 'content-type: application/json' --cookie <session cookie> \
+  -d '{"capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}'
+```
+
+When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pi Cloud image when it names none, with the `pi-cloud` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`. A workspace in a pod lives only as long as the pod, so use clone or repositories workspaces there.
+
 ## Roadmap
 
 - **v1:** independent sessions and Projects (a coordinator session plus thread sessions) on a laptop and one VM.

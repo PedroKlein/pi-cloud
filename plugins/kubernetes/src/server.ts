@@ -1,0 +1,220 @@
+import { randomBytes } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
+import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
+import {
+  type ApiAccess,
+  type Cluster,
+  clusterAt,
+  inClusterApi,
+} from "./cluster";
+import { runnerPod } from "./pods";
+import {
+  type KubernetesSettings,
+  settingsFrom,
+  settingsStore,
+} from "./settings";
+
+export interface KubernetesOptions {
+  readonly api: ApiAccess | undefined;
+  // The Pi Cloud image, and the image of an Environment that names none.
+  readonly image: string | undefined;
+  // The server's in-cluster address, which runner pods poll.
+  readonly server: string | undefined;
+  readonly variables?: Readonly<Record<string, string>>;
+  readonly intervalMs?: number;
+}
+
+interface Pods {
+  readonly cluster: Cluster;
+  readonly image: string;
+  readonly server: string;
+  readonly variables: Readonly<Record<string, string>>;
+}
+
+const finished = new Set(["Succeeded", "Failed"]);
+
+// Starts runner pods for the Sessions of a Kubernetes Environment that no
+// runner can take, and removes the pods that stopped (ADR 0032).
+export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
+  return {
+    name: "kubernetes",
+    register: (context) => {
+      const store = settingsStore(context.store);
+
+      context.routes.handle(async (request, path, caller) => {
+        const [resource, environmentId] = path.split("/");
+        if (
+          caller !== undefined ||
+          resource !== "environments" ||
+          environmentId === undefined ||
+          !context.environments.list().some(({ id }) => id === environmentId)
+        ) {
+          return Response.json({ error: "not_found" }, { status: 404 });
+        }
+
+        switch (request.method) {
+          case "GET": {
+            const settings = store.get(environmentId);
+
+            return settings === undefined
+              ? Response.json({ error: "not_found" }, { status: 404 })
+              : Response.json(settings);
+          }
+
+          case "PUT": {
+            const settings = settingsFrom(
+              await request.json().catch(() => null),
+            );
+
+            if (typeof settings === "string") {
+              return Response.json({ error: settings }, { status: 400 });
+            }
+
+            store.set(environmentId, settings);
+            context.log("kubernetes settings saved", { environmentId });
+
+            return Response.json(settings);
+          }
+
+          case "DELETE":
+            store.remove(environmentId);
+            context.log("kubernetes settings removed", { environmentId });
+
+            return new Response(null, { status: 204 });
+
+          default:
+            return Response.json({ error: "not_found" }, { status: 404 });
+        }
+      });
+
+      const {
+        api,
+        image,
+        server,
+        variables = {},
+        intervalMs = 2000,
+      } = options();
+
+      if (api === undefined || image === undefined || server === undefined) {
+        context.log("kubernetes runner pods off", {
+          inCluster: api !== undefined,
+          image: image !== undefined,
+          server: server !== undefined,
+        });
+
+        return;
+      }
+
+      const pods: Pods = {
+        cluster: clusterAt(api),
+        image,
+        server,
+        variables,
+      };
+
+      void (async () => {
+        while (!context.signal.aborted) {
+          for (const [environmentId, settings] of store.all()) {
+            await reconcile(context, pods, environmentId, settings).catch(
+              (error: unknown) => {
+                context.log("kubernetes runner pods not reconciled", {
+                  environmentId,
+                  error: String(error),
+                });
+              },
+            );
+          }
+
+          await sleep(intervalMs, undefined, { signal: context.signal }).catch(
+            () => undefined,
+          );
+        }
+      })();
+    },
+  };
+}
+
+export const kubernetesPlugin = kubernetes(() => {
+  const faux = process.env["PI_CLOUD_FAUX_REPLY"];
+
+  return {
+    api: inClusterApi(),
+    image: process.env["PI_CLOUD_IMAGE"],
+    server: process.env["PI_CLOUD_RUNNER_URL"],
+    // Tests run the binary on Pi's faux model, in pods too.
+    variables: faux === undefined ? {} : { PI_CLOUD_FAUX_REPLY: faux },
+  };
+});
+
+async function reconcile(
+  context: ServerPluginContext,
+  { cluster, image, server, variables }: Pods,
+  environmentId: string,
+  settings: KubernetesSettings,
+): Promise<void> {
+  const environment = context.environments
+    .list()
+    .find(({ id }) => id === environmentId);
+
+  if (environment === undefined) {
+    return;
+  }
+
+  const pods = await cluster.runnerPods(environmentId);
+
+  for (const pod of pods.filter(({ phase }) => finished.has(phase))) {
+    context.environments.revokeRunner(environmentId, pod.name);
+    await cluster.deletePod(pod.name);
+    await cluster.deleteSecret(pod.name);
+
+    context.log("runner pod removed", {
+      environmentId,
+      pod: pod.name,
+      phase: pod.phase,
+    });
+  }
+
+  const active = pods.filter(({ phase }) => !finished.has(phase));
+
+  const online = new Set(
+    environment.runners.filter((r) => r.online).map(({ name }) => name),
+  );
+
+  // A pod that hasn't polled yet takes Sessions once it does.
+  const joining = active.filter(({ name }) => !online.has(name)).length;
+  const unplaced = context.environments.unplaced(environmentId).length;
+
+  const wanted = Math.ceil(
+    Math.max(0, unplaced - joining * settings.capacity) / settings.capacity,
+  );
+
+  const starting = Math.min(wanted, settings.maxPods - active.length);
+
+  for (let i = 0; i < starting; i++) {
+    const name = `pi-runner-${randomBytes(4).toString("hex")}`;
+
+    await cluster.createSecret(name, {
+      token: context.environments.runnerToken(environmentId, name),
+    });
+
+    try {
+      await cluster.createPod(
+        runnerPod({
+          name,
+          environmentId,
+          image: environment.image ?? image,
+          binaryImage: image,
+          server,
+          variables,
+          settings,
+        }),
+      );
+    } catch (error) {
+      context.environments.revokeRunner(environmentId, name);
+      await cluster.deleteSecret(name);
+      throw error;
+    }
+
+    context.log("runner pod started", { environmentId, pod: name, unplaced });
+  }
+}
