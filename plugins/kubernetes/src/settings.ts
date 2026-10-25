@@ -22,6 +22,16 @@ export interface KubernetesSettings {
 export interface KubernetesEnvironment {
   readonly settings: KubernetesSettings | null;
   readonly startsPods: boolean;
+  readonly lastFailure: PodFailure | null;
+}
+
+// The last runner pod of an Environment that failed, while no pod since has
+// joined. The next pod waits until retryAt.
+export interface PodFailure {
+  readonly pod: string;
+  readonly problem: string;
+  readonly at: string;
+  readonly retryAt: string;
 }
 
 export const defaultSettings: KubernetesSettings = {
