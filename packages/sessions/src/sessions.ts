@@ -141,6 +141,9 @@ export class Sessions {
     { readonly send: Listener<Command>; readonly end: () => void }
   >();
   readonly #requestIds = new Map<string, Set<string>>();
+  // Sessions a plugin keeps for a runner it starts for them, such as a pod
+  // that mounts the Session's own volume (ADR 0032).
+  readonly #reserved = new Map<string, string>();
   readonly #surfaces = new Map<
     string,
     { readonly generation: number; readonly events: Map<string, LiveEvent> }
@@ -325,6 +328,7 @@ export class Sessions {
 
     this.#hosts.get(id)?.end();
     this.#requestIds.delete(id);
+    this.#reserved.delete(id);
     this.#update(archived);
     this.#polls.wake(session.provider);
     this.#events({ type: "SessionArchived", session: this.#view(archived) });
@@ -537,7 +541,7 @@ export class Sessions {
     const takesSlot = (session: StoredSession): boolean => {
       const runner = online.find(
         ({ name }) =>
-          (room.get(name) ?? 0) > 0 && placesOn(session, name, pool),
+          (room.get(name) ?? 0) > 0 && this.#mayTake(session, name, pool),
       );
 
       if (runner !== undefined) {
@@ -547,20 +551,50 @@ export class Sessions {
       return runner !== undefined;
     };
 
+    const unclaimed = (session: StoredSession): boolean =>
+      !online.some(({ name }) => name === session.runner) &&
+      !takesSlot(session) &&
+      (session.runner === null
+        ? placesOnNewRunner(session, pool)
+        : !movable(session.workspace) || pool.leaseLapsed(session.runner));
+
+    // A reserved Session waits for its runner while that one is online.
     return this.#store
       .byEnvironment(environment.provider, [
         ...claimableStatuses,
         ...attempting,
       ])
-      .filter(
-        (session) =>
-          !online.some(({ name }) => name === session.runner) &&
-          !takesSlot(session) &&
-          (session.runner === null
-            ? placesOnNewRunner(session, pool)
-            : !movable(session.workspace) || pool.leaseLapsed(session.runner)),
-      )
+      .filter((session) => {
+        const reserved = this.#reserved.get(session.id);
+
+        return reserved === undefined
+          ? unclaimed(session)
+          : !online.some(({ name }) => name === reserved);
+      })
       .map((session) => this.#view(session));
+  }
+
+  // Only the runner may take the Session from now on, until it is archived.
+  reserve(sessionId: string, runner: string): void {
+    this.#reserved.set(sessionId, runner);
+    this.#polls.wake(this.#store.get(sessionId)?.provider ?? "");
+  }
+
+  // A runner some Session is reserved for takes only its reserved Sessions.
+  #mayTake(
+    session: StoredSession,
+    runner: string,
+    pool: Parameters<typeof placesOn>[2],
+  ): boolean {
+    const reserved = this.#reserved.get(session.id);
+    if (reserved !== undefined) {
+      return reserved === runner;
+    }
+
+    return (
+      ![...this.#reserved.values()].includes(runner) &&
+      placesOn(session, runner, pool)
+    );
   }
 
   // A runner polls for the Environment whose pool it joins (ADR 0032).
@@ -929,7 +963,7 @@ export class Sessions {
         (session) =>
           (claimableStatuses.includes(session.status) ||
             session.runner !== runner.name) &&
-          placesOn(session, runner.name, pool),
+          this.#mayTake(session, runner.name, pool),
       )
       .slice(0, Math.max(free, 0));
 

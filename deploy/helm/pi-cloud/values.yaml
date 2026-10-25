@@ -31,7 +31,7 @@ service:
 resources: {}
 
 # Lets the kubernetes plugin start runner pods in this namespace, with a
-# service account allowed to manage pods and Secrets here (ADR 0032).
+# service account allowed to manage pods, Secrets and claims here (ADR 0032).
 runnerPods:
   enabled: true
 

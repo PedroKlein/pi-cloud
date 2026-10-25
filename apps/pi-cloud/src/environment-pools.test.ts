@@ -537,3 +537,39 @@ test("gives no work to a runner revoked while it waited for some", async () => {
 
   expect((await waited).status).toBe(401);
 });
+
+test("gives a reserved Session only to its runner, which takes no other", async () => {
+  await claimed("mac-1");
+
+  const reserved = await startSession({
+    kind: "clone",
+    repository: "https://example.com/a.git",
+  });
+
+  const other = await startSession({
+    kind: "clone",
+    repository: "https://example.com/b.git",
+  });
+
+  machines?.reserve(reserved, "pod-b");
+  const waiting = await unplaced();
+  const onMac = await claimed("mac-1");
+  const onPod = await claimed("pod-b");
+
+  await startSession({
+    kind: "clone",
+    repository: "https://example.com/c.git",
+  });
+
+  const [attempt] = onPod;
+
+  const later = await claimed("pod-b", {
+    running: attempt === undefined ? [] : [attempt],
+  });
+
+  expect(waiting).toEqual([reserved]);
+  expect(ids(onMac)).toEqual([other]);
+  expect(ids(onPod)).toEqual([reserved]);
+  expect(later).toEqual([]);
+  expect(await unplaced()).toEqual([]);
+});

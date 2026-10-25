@@ -9,7 +9,7 @@ import {
   type RunnerPod,
   inClusterApi,
 } from "./cluster";
-import { runnerPod } from "./pods";
+import { runnerPod, sessionClaim, sessionPodName } from "./pods";
 import {
   type KubernetesSettings,
   type SettingsStore,
@@ -174,6 +174,8 @@ async function reconcile(
   // Pods of an Environment without settings run until their agent stops.
   // Pods of an Environment this server doesn't know belong to another server
   // in the namespace.
+  const removed = new Set<string>();
+
   for (const pod of all) {
     const known = environments.some(({ id }) => id === pod.environmentId);
     const reason = removalReason(pod, now);
@@ -181,6 +183,7 @@ async function reconcile(
       continue;
     }
 
+    removed.add(pod.name);
     context.environments.revokeRunner(pod.environmentId, pod.name);
 
     await pods.cluster.deletePod(pod.name);
@@ -192,6 +195,24 @@ async function reconcile(
       phase: pod.phase,
       reason,
     });
+  }
+
+  // An archived Session's workspace is removed, as on any runner, so its
+  // claim goes once no pod mounts it.
+  for (const claim of await pods.cluster.sessionClaims()) {
+    const mounted = all.some(
+      ({ name }) => name === claim.name && !removed.has(name),
+    );
+
+    const session = context.sessions.get(claim.sessionId);
+    if (!mounted && session !== undefined && session.archivedAt !== null) {
+      await pods.cluster.deleteClaim(claim.name);
+
+      context.log("session claim removed", {
+        sessionId: claim.sessionId,
+        claim: claim.name,
+      });
+    }
   }
 
   for (const [environmentId, settings] of store.all()) {
@@ -217,7 +238,7 @@ async function reconcile(
 
 async function scale(
   context: ServerPluginContext,
-  { cluster, image, server, variables }: Pods,
+  pods: Pods,
   environment: Environment,
   settings: KubernetesSettings,
   active: readonly RunnerPod[],
@@ -226,6 +247,12 @@ async function scale(
 
   // The agent in a pod runs Sessions as processes; it has no Docker.
   if (environment.isolation !== "process") {
+    return;
+  }
+
+  if (settings.workspace === "claim") {
+    await scaleSessions(context, pods, environment, settings, active);
+
     return;
   }
 
@@ -252,30 +279,91 @@ async function scale(
 
   for (let i = 0; i < starting; i++) {
     const name = `pi-runner-${randomBytes(4).toString("hex")}`;
-
-    await cluster.createSecret(name, {
-      token: context.environments.runnerToken(environmentId, name),
-    });
-
-    try {
-      await cluster.createPod(
-        runnerPod({
-          name,
-          environmentId,
-          image: environment.image ?? image,
-          binaryImage: image,
-          server,
-          variables,
-          settings,
-        }),
-      );
-    } catch (error) {
-      context.environments.revokeRunner(environmentId, name);
-      await cluster.deleteSecret(name);
-      throw error;
-    }
-
+    await startPod(context, pods, environment, settings, name);
     context.log("runner pod started", { environmentId, pod: name, unplaced });
+  }
+}
+
+// A Session reserved for its own pod goes back to a pod of that name, which
+// mounts the same claim, after the pod stops or is deleted (ADR 0032).
+async function scaleSessions(
+  context: ServerPluginContext,
+  pods: Pods,
+  environment: Environment,
+  settings: KubernetesSettings,
+  active: readonly RunnerPod[],
+): Promise<void> {
+  const running = new Set(active.map(({ name }) => name));
+
+  const owned = active.flatMap(({ name, sessionId }) =>
+    sessionId === undefined ? [] : [{ name, sessionId }],
+  );
+
+  let room = settings.maxPods - active.length;
+
+  try {
+    for (const session of context.environments.unplaced(environment.id)) {
+      const name = sessionPodName(session.id);
+      if (running.has(name) || room <= 0) {
+        continue;
+      }
+
+      await pods.cluster.createClaim(
+        sessionClaim(session.id, environment.id, settings),
+      );
+
+      await startPod(context, pods, environment, settings, name, session.id);
+      owned.push({ name, sessionId: session.id });
+      room--;
+
+      context.log("session pod started", {
+        environmentId: environment.id,
+        sessionId: session.id,
+        pod: name,
+      });
+    }
+  } finally {
+    // Again on every pass, since the server forgets reservations on restart.
+    for (const { name, sessionId } of owned) {
+      if (context.sessions.get(sessionId)?.archivedAt === null) {
+        context.environments.reserve(sessionId, name);
+      }
+    }
+  }
+}
+
+async function startPod(
+  context: ServerPluginContext,
+  { cluster, image, server, variables }: Pods,
+  environment: Environment,
+  settings: KubernetesSettings,
+  name: string,
+  sessionId?: string,
+): Promise<void> {
+  // A pod deleted from outside leaves its Secret behind.
+  await cluster.deleteSecret(name);
+
+  await cluster.createSecret(name, {
+    token: context.environments.runnerToken(environment.id, name),
+  });
+
+  try {
+    await cluster.createPod(
+      runnerPod({
+        name,
+        environmentId: environment.id,
+        image: environment.image ?? image,
+        binaryImage: image,
+        server,
+        variables,
+        settings,
+        ...(sessionId !== undefined && { sessionId }),
+      }),
+    );
+  } catch (error) {
+    context.environments.revokeRunner(environment.id, name);
+    await cluster.deleteSecret(name);
+    throw error;
   }
 }
 

@@ -158,6 +158,9 @@ export interface ServerPluginContext {
     // and a new Environment key leaves it be.
     readonly runnerToken: (environmentId: string, runner: string) => string;
     readonly revokeRunner: (environmentId: string, runner: string) => void;
+    // Only that runner takes the Session from now on, and it takes no other,
+    // until the Session is archived. For a runner started for one Session.
+    readonly reserve: (sessionId: string, runner: string) => void;
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly models: { readonly offer: (offer: ModelOffer) => void };

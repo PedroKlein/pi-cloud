@@ -103,6 +103,9 @@ function pluginEnvironments(
     revokeRunner: (environmentId, runner) => {
       runners.revoke(provider(environmentId), runner);
     },
+    reserve: (sessionId, runner) => {
+      sessions.reserve(sessionId, runner);
+    },
   };
 }
 

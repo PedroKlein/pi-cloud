@@ -4,6 +4,8 @@ import { join } from "node:path";
 export interface RunnerPod {
   readonly name: string;
   readonly environmentId: string;
+  // Set on a pod started for one Session, which mounts its claim.
+  readonly sessionId: string | undefined;
   readonly phase: string;
   readonly createdAt: number;
 }
@@ -19,6 +21,13 @@ export interface Cluster {
   readonly createPod: (pod: object) => Promise<void>;
   readonly deletePod: (name: string) => Promise<void>;
   readonly deleteSecret: (name: string) => Promise<void>;
+  // The claims of Sessions' own workspaces, by Session.
+  readonly sessionClaims: () => Promise<
+    readonly { readonly name: string; readonly sessionId: string }[]
+  >;
+  // A claim that already exists is kept.
+  readonly createClaim: (claim: object) => Promise<void>;
+  readonly deleteClaim: (name: string) => Promise<void>;
 }
 
 export interface ApiAccess {
@@ -29,6 +38,7 @@ export interface ApiAccess {
 }
 
 export const environmentLabel = "pi-cloud.dev/environment";
+export const sessionLabel = "pi-cloud.dev/session";
 
 const serviceAccount = "/var/run/secrets/kubernetes.io/serviceaccount";
 
@@ -78,7 +88,10 @@ export function clusterAt(options: ApiAccess): Cluster {
       ...(options.ca !== undefined && { tls: { ca: options.ca } }),
     });
 
-    if (method === "DELETE" && response.status === 404) {
+    if (
+      (method === "DELETE" && response.status === 404) ||
+      (path === "persistentvolumeclaims" && response.status === 409)
+    ) {
       return undefined;
     }
 
@@ -111,6 +124,7 @@ export function clusterAt(options: ApiAccess): Cluster {
       return list.items.map(({ metadata, status }) => ({
         name: metadata.name,
         environmentId: metadata.labels?.[environmentLabel] ?? "",
+        sessionId: metadata.labels?.[sessionLabel],
         phase: status?.phase ?? "Pending",
         createdAt: Date.parse(metadata.creationTimestamp ?? "") || Date.now(),
       }));
@@ -134,6 +148,30 @@ export function clusterAt(options: ApiAccess): Cluster {
     },
     deleteSecret: async (name) => {
       await call("DELETE", `secrets/${name}`);
+    },
+    sessionClaims: async () => {
+      const list = (await call(
+        "GET",
+        `persistentvolumeclaims?labelSelector=${encodeURIComponent(sessionLabel)}`,
+      )) as {
+        readonly items: readonly {
+          readonly metadata: {
+            readonly name: string;
+            readonly labels?: Readonly<Record<string, string>>;
+          };
+        }[];
+      };
+
+      return list.items.map(({ metadata }) => ({
+        name: metadata.name,
+        sessionId: metadata.labels?.[sessionLabel] ?? "",
+      }));
+    },
+    createClaim: async (claim) => {
+      await call("POST", "persistentvolumeclaims", claim);
+    },
+    deleteClaim: async (name) => {
+      await call("DELETE", `persistentvolumeclaims/${name}`);
     },
   };
 }
