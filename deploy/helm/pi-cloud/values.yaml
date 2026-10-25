@@ -1,12 +1,18 @@
 image:
   repository: ghcr.io/pedroklein/pi-cloud
-  # Defaults to the chart's appVersion.
-  tag: ""
+  # main follows the main branch; pin a sha-<commit> tag for a steady install.
+  tag: main
   pullPolicy: IfNotPresent
 
 # Where people open the server, such as https://pi.example.com. The setup link
-# in the log points here.
+# in the log points here. Defaults to https://<apiRule.host> on Kyma.
 url: ""
+
+# Kyma's gateway, which ends HTTPS in front of the server (ADR 0034).
+apiRule:
+  enabled: false
+  host: ""
+  gateway: kyma-system/kyma-gateway
 
 # Runs a runner inside the server too, in the Environment of this name.
 builtInRunner: ""

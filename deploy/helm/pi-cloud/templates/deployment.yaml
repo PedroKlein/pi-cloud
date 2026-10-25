@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         {{- include "pi-cloud.labels" . | nindent 8 }}
+        {{- if .Values.apiRule.enabled }}
+        # APIRules reach only workloads in the Istio mesh.
+        sidecar.istio.io/inject: "true"
+        {{- end }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -23,12 +27,12 @@ spec:
         fsGroup: 1000
       containers:
         - name: server
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --port
             - "7420"
-            {{- with .Values.url }}
+            {{- with include "pi-cloud.url" . }}
             - --url
             - {{ . | quote }}
             {{- end }}
