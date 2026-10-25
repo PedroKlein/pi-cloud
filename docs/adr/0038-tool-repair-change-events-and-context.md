@@ -32,7 +32,7 @@ Two more ideas fit later work: how LearnHarness delivers a background job's resu
 
 - The server serves `GET /api/changes`, a server-sent event stream for signed-in users. Each event names a topic and carries nothing else: `sessions`, `profiles`, `environments`, `plugins` or `mcp-tokens`, or `<plugin>.<name>` for a plugin's own.
 - The server publishes a topic after the change is stored. `sessions` is published whenever a Session starts or its view changes, at the same point that tells its watchers. The other kernel topics are published after a write request to their routes succeeds, which covers the web, meta-session tools and MCP alike.
-- A plugin's server part publishes its own topics with `ctx.changes.publish(name)`. Its web part listens with `context.changes(topic, listener)`.
+- A plugin's server part publishes its own topics with `ctx.changes.publish(name)`. Its web part names the topics it follows in `useLoaded(load, key, { topics })`, which keeps `everyMs` for data that changes outside Pi Cloud, such as a cluster's state.
 - The web keeps one connection per page. A view fetches when it mounts, again when one of its topics arrives (bursts within a quarter of a second become one fetch), and again when the stream reconnects, since events sent while it was away are not replayed.
 - The web's lists, Projects and the meta-session list use topics instead of their timers. Polls that follow a running process, such as a subagent's inspect view, stay.
 - A topic tells every signed-in user only that something of that kind changed. What changed, and whether they may see it, comes from the normal fetch.
