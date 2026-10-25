@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { Session } from "@pi-cloud/protocol";
+import { supervised } from "./restart";
 import { serve, type ServeOptions } from "./serve";
 import { firstUser } from "./testdata/sign-in";
 
@@ -144,4 +145,12 @@ test("asks first while a Session on the server's own runner is mid-turn", async 
   await Bun.sleep(200);
   expect(restarted).toBe(1);
   finish();
+});
+
+test("leaves no supervisor mark for a server started inside a Session", () => {
+  const env: NodeJS.ProcessEnv = { INVOCATION_ID: "abc", PATH: "/bin" };
+
+  expect(supervised(env)).toBe(true);
+  expect(env).toEqual({ PATH: "/bin" });
+  expect(supervised(env)).toBe(false);
 });

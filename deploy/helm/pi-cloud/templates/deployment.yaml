@@ -46,6 +46,9 @@ spec:
             - {{ . | quote }}
             {{- end }}
           env:
+            # The pod starts the server again when it exits for a restart.
+            - name: PI_CLOUD_SUPERVISED
+              value: "1"
             - name: PI_CLOUD_SECRET_KEY
               valueFrom:
                 secretKeyRef:

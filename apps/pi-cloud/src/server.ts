@@ -94,6 +94,10 @@ type BrowserRoute = (
   actor: UserActor,
 ) => Response | Promise<Response>;
 
+// Tells one run of the server from the next, so a page waiting out a restart
+// knows when the new one answers.
+const started = new Date().toISOString();
+
 export interface ServerRestart {
   // Sessions on the server's own runner that are mid-turn.
   readonly busy: () => number;
@@ -189,6 +193,7 @@ export function createHandler(
           status: "ok",
           version: serverVersion,
           pi: piVersion,
+          started,
         });
       },
     ],

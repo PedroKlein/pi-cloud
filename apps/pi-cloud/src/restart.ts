@@ -3,13 +3,17 @@
 // loop (ADR 0022).
 export const restartExitCode = 75;
 
-// Whether something starts the server again when it exits. systemd sets
-// INVOCATION_ID, Kubernetes sets KUBERNETES_SERVICE_HOST, and the dev loop
-// sets PI_CLOUD_SUPERVISED.
+// Whether something starts the server again when it exits: systemd sets
+// INVOCATION_ID, and the helm chart and the dev loop set PI_CLOUD_SUPERVISED.
+// Both are taken out of the environment, so a server started inside a
+// Session doesn't think it is supervised too.
 export function supervised(env: NodeJS.ProcessEnv): boolean {
-  return [
-    "INVOCATION_ID",
-    "KUBERNETES_SERVICE_HOST",
-    "PI_CLOUD_SUPERVISED",
-  ].some((name) => env[name] !== undefined);
+  const found =
+    env["INVOCATION_ID"] !== undefined ||
+    env["PI_CLOUD_SUPERVISED"] !== undefined;
+
+  delete env["INVOCATION_ID"];
+  delete env["PI_CLOUD_SUPERVISED"];
+
+  return found;
 }

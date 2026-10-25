@@ -88,6 +88,8 @@ function Restart(): ReactElement {
   const [error, setError] = useState<string>();
 
   const restart = async (force: boolean): Promise<void> => {
+    const before = await startedAt();
+
     const response = await fetch("/api/restart", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -115,7 +117,7 @@ function Restart(): ReactElement {
     }
 
     setState("restarting");
-    await back();
+    await back(before);
     location.reload();
   };
 
@@ -146,20 +148,28 @@ function Restart(): ReactElement {
   );
 }
 
-// Waits for the server to go away and answer again.
-async function back(): Promise<void> {
+// The old server keeps answering while it stops its Sessions, so this waits
+// for one that started later.
+async function back(before: string | undefined): Promise<void> {
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const ok = await fetch("/healthz").then(
-      (response) => response.ok,
-      () => false,
-    );
+    const now = await startedAt();
 
-    if (ok) {
+    if (now !== undefined && now !== before) {
       return;
     }
   }
+}
+
+async function startedAt(): Promise<string | undefined> {
+  return fetch("/healthz").then(
+    async (response) =>
+      response.ok
+        ? ((await response.json()) as { started: string }).started
+        : undefined,
+    () => undefined,
+  );
 }
 
 // An installed plugin starts turned off, and turning it on is the user's call

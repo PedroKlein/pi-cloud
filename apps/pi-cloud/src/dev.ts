@@ -35,6 +35,8 @@ let children: ChildProcess[] = [];
 let restart: ReturnType<typeof setTimeout> | undefined;
 let restarting: Promise<void> = Promise.resolve();
 let exiting = false;
+// A restart the server asked for waits while the watcher restarts everything.
+let stopping = false;
 
 function start(): void {
   children = commands.map(run);
@@ -49,7 +51,7 @@ function run(args: readonly string[]): ChildProcess {
   });
 
   child.once("exit", (code) => {
-    if (code === restartExitCode && !exiting) {
+    if (code === restartExitCode && !exiting && !stopping) {
       log("restarting", { asked: args[0] });
       children = children.map((each) => (each === child ? run(args) : each));
     }
@@ -59,6 +61,8 @@ function run(args: readonly string[]): ChildProcess {
 }
 
 async function stop(): Promise<void> {
+  stopping = true;
+
   await Promise.all(
     children.map(async (child) => {
       if (child.exitCode !== null || child.signalCode !== null) {
@@ -70,6 +74,8 @@ async function stop(): Promise<void> {
       await exited;
     }),
   );
+
+  stopping = false;
 }
 
 // Restart child processes instead of using bun --watch, which does not

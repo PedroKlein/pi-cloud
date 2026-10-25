@@ -84,6 +84,8 @@ switch (command) {
       values.plugins ?? join(dirname(values.database), "plugins"),
     );
 
+    let restarting: Promise<never> | undefined;
+
     const server = serve({
       hostname: values.host,
       ...(values.url !== undefined && { url: new URL(values.url) }),
@@ -104,7 +106,9 @@ switch (command) {
       },
       ...(supervised(process.env) && {
         restart: () => {
-          void server.stop().then(() => process.exit(restartExitCode));
+          restarting ??= server
+            .stop()
+            .then(() => process.exit(restartExitCode));
         },
       }),
       log,
