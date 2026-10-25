@@ -13,6 +13,7 @@ import type {
   Question,
   QuestionsAnswer,
   Session,
+  ToolNamespace,
   ToolResult,
   ToolSpec,
 } from "@pi-cloud/protocol";
@@ -67,6 +68,30 @@ export interface ServerTool extends ToolSpec {
   readonly run: (input: unknown, caller: ToolCaller) => Promise<ToolResult>;
 }
 
+// A group of tools for meta-sessions and MCP clients (ADR 0035). Each tool
+// is a request to one of Pi Cloud's HTTP routes, made as the calling user, so
+// it is checked exactly as the same change in the web UI is.
+export interface Toolset {
+  readonly namespace: ToolNamespace;
+  readonly tools: readonly RouteTool[];
+}
+
+// Its full name is <namespace>_<name>, since Pi tool names are global.
+export interface RouteTool extends Omit<ToolSpec, "namespace"> {
+  readonly request: (input: Readonly<Record<string, unknown>>) => RouteRequest;
+  // What the model sees of a successful reply's body, such as a list without
+  // the fields it doesn't need.
+  readonly result?: (body: unknown) => unknown;
+}
+
+// A plugin's tool paths are relative to its own routes; the kernel's start
+// at /api/.
+export interface RouteRequest {
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  readonly path: string;
+  readonly body?: unknown;
+}
+
 // caller is set when a Session's own plugin part sent the request.
 export type PluginRoute = (
   request: Request,
@@ -116,6 +141,12 @@ export interface ServerPluginContext {
   // The user this installation belongs to. v1 has exactly one.
   readonly owner: string;
   readonly tools: { readonly register: (tool: ServerTool) => void };
+  readonly toolsets: {
+    readonly register: (toolset: Toolset) => void;
+    // Every plugin's toolsets load in the Sessions this plugin owns, as the
+    // meta plugin's do.
+    readonly loadInOwnSessions: () => void;
+  };
   readonly events: {
     readonly publish: (event: PluginEvent) => void;
     readonly subscribe: EventBus["subscribe"];

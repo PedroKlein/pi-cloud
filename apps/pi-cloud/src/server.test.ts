@@ -38,6 +38,10 @@ test("reports unhealthy when the database can't be read", async () => {
       manifests: [],
       store: store.plugin,
       settings: store.pluginSettings,
+      toolsets: [],
+      api: () => {
+        throw new Error("no toolsets here");
+      },
       signal: new AbortController().signal,
       log: () => undefined,
     }),
@@ -98,6 +102,10 @@ function startServer(
       manifests: [],
       store: store.plugin,
       settings: store.pluginSettings,
+      toolsets: [],
+      api: () => {
+        throw new Error("no toolsets here");
+      },
       signal: stopped.signal,
       log,
     }),
@@ -356,6 +364,10 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
         manifests: [],
         store: store.plugin,
         settings: store.pluginSettings,
+        toolsets: [],
+        api: () => {
+          throw new Error("no toolsets here");
+        },
         signal: new AbortController().signal,
         log: () => undefined,
       }),

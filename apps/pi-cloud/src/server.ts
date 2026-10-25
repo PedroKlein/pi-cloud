@@ -70,6 +70,16 @@ type RouteTable = readonly (readonly [string, RegExp, Route])[];
 
 type UserActor = `user:${string}`;
 
+// Requests a toolset tool makes as a user (ADR 0035). They never come from
+// the network, so they carry no sign-in cookie.
+const onBehalf = new WeakMap<Request, UserActor>();
+
+export function onBehalfOf(actor: UserActor, request: Request): Request {
+  onBehalf.set(request, actor);
+
+  return request;
+}
+
 type AgentRoute = (
   request: Request,
   params: readonly string[],
@@ -131,9 +141,13 @@ export function createHandler(
     return async (request, params) => {
       const user = auth.userOf(request);
 
-      return user === undefined
+      const actor =
+        onBehalf.get(request) ??
+        (user === undefined ? undefined : (`user:${user.id}` as const));
+
+      return actor === undefined
         ? Response.json({ error: "signed_out" }, { status: 401 })
-        : await route(request, params, `user:${user.id}`);
+        : await route(request, params, actor);
     };
   };
 

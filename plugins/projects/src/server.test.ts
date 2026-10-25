@@ -209,6 +209,7 @@ function fakeKernel(): {
         throw new Error("not used by the projects plugin");
       },
     },
+    toolsets: { register: () => undefined, loadInOwnSessions: () => undefined },
     routes: {
       handle: (handler) => {
         route = handler;

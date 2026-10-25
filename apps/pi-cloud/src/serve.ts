@@ -9,7 +9,8 @@ import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { previewBroker } from "./previews";
-import { createHandler } from "./server";
+import { createHandler, onBehalfOf } from "./server";
+import { kernelToolsets } from "./toolsets";
 import type { PreviewData, SocketData, TerminalData } from "./sockets";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
@@ -86,6 +87,8 @@ export function serve(options: ServeOptions): {
     events,
     store: store.plugin,
     settings: store.pluginSettings,
+    toolsets: kernelToolsets,
+    api: async (actor, request) => handler(onBehalfOf(actor, request)),
     signal: pluginsStop.signal,
     log: options.log,
   });

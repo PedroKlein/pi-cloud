@@ -11,6 +11,8 @@ export type {
   PluginNotice,
   PluginRoute,
   PluginStore,
+  RouteRequest,
+  RouteTool,
   SendOutcome,
   ServerPlugin,
   ServerPluginContext,
@@ -19,4 +21,5 @@ export type {
   SessionPlugin,
   StartRequest,
   ToolCaller,
+  Toolset,
 } from "./plugin";

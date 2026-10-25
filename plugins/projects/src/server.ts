@@ -21,6 +21,7 @@ import {
   type Queued,
 } from "./projects";
 import { modelRef, projectTools, workState } from "./tools";
+import { projectsToolset } from "./toolset";
 import { lastReply, messagedCoordinator, turnError } from "./transcript";
 
 const deliveryMs = 1000;
@@ -53,6 +54,8 @@ export const projects: ServerPlugin = {
     for (const tool of projectTools(store, context)) {
       context.tools.register(tool);
     }
+
+    context.toolsets.register(projectsToolset);
 
     for (const type of ["TurnStarted", "TurnEnded"] as const) {
       context.events.subscribe(type, ({ session }) => {
