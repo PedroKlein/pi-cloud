@@ -37,11 +37,12 @@ import { sessionOptions } from "./testdata/options";
 
 let root: string;
 
-// What the composer's menus list, published at every start.
+// What the composer's menus and the header show, published at every start.
 const listings: readonly LiveEvent["type"][] = [
   "commands",
   "files",
   "settings",
+  "context",
 ];
 
 const noTerminal = (): void => undefined;
@@ -207,6 +208,36 @@ test("streams a turn as live events and transcript lines", async () => {
   ]);
 
   expect(roles(fake.lines).slice(-2)).toEqual(["user", "assistant"]);
+});
+
+test("publishes how full the context is at start and after each turn", async () => {
+  const { faux, models } = await fauxModels(root, {
+    models: [{ id: "small", contextWindow: 1000 }],
+  });
+
+  faux.setResponses([fauxAssistantMessage([fauxText("hello back")])]);
+  const fake = fakeStream();
+
+  const hosted = await hostSession(
+    sessionOptions(root, { models }),
+    fake.stream,
+    () => undefined,
+    noTerminal,
+  );
+
+  const contexts = (): Extract<LiveEvent, { type: "context" }>[] =>
+    fake.events.flatMap((event) => (event.type === "context" ? event : []));
+
+  await fake.waitFor(() => contexts().length > 0);
+
+  expect(contexts()[0]).toEqual({ type: "context", tokens: 0, window: 1000 });
+
+  fake.send({ actor: "user:local", type: "message", text: "hello" });
+  await fake.waitFor(() => contexts().length > 1);
+  await hosted.stop();
+
+  expect(contexts()[1]?.window).toBe(1000);
+  expect(contexts()[1]?.tokens).toBeGreaterThan(0);
 });
 
 test("tells the server how many transcript lines each turn ended with", async () => {
