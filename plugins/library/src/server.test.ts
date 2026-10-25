@@ -88,6 +88,7 @@ function registered(
       transcript: unused,
       transcriptLength: unused,
     },
+    profiles: { provide: unused },
     routes: {
       handle: (route) => {
         routes.push(route);

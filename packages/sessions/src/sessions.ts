@@ -120,6 +120,13 @@ export interface SessionsOptions {
   // settings.
   readonly sessionPlugins?: () => SessionPlugins;
   readonly offeredModels?: ModelOffer;
+  // A Profile a plugin provides, which only the plugin's own Sessions run on.
+  readonly pluginProfile?: (id: string) => PluginProfile | undefined;
+}
+
+export interface PluginProfile {
+  readonly plugin: string;
+  readonly profile: ProfileContent & { readonly id: string };
 }
 
 // The server adds the Profiles, which Sessions don't hold.
@@ -141,6 +148,7 @@ export class Sessions {
   readonly #events: (event: KernelEvent) => void;
   readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
+  readonly #pluginProfile: (id: string) => PluginProfile | undefined;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
@@ -170,6 +178,7 @@ export class Sessions {
       options.sessionPlugins ?? (() => ({ plugins: [], pluginSettings: {} }));
 
     this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
+    this.#pluginProfile = options.pluginProfile ?? (() => undefined);
   }
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
@@ -186,7 +195,14 @@ export class Sessions {
     }
 
     const profileId = request.profile ?? this.#store.defaultProfileId(owner);
-    if (this.#store.profile(profileId)?.ownerId !== owner) {
+    const provided = this.#pluginProfile(profileId);
+
+    const usable =
+      provided === undefined
+        ? this.#store.profile(profileId)?.ownerId === owner
+        : provided.plugin === ownedBy?.plugin;
+
+    if (!usable) {
       return { ok: false, reason: "unknown_profile" };
     }
 
@@ -252,9 +268,12 @@ export class Sessions {
       return { ok: false, reason: "not_movable" };
     }
 
+    // A fork belongs to no plugin, so it can't keep a plugin's Profile.
     const forked = this.start({
       environment,
-      profile: source.profileId,
+      ...(this.#pluginProfile(source.profileId) === undefined && {
+        profile: source.profileId,
+      }),
       workspace: forkedWorkspace(source),
       ...(source.model && { model: source.model }),
       ...(source.thinking && { thinking: source.thinking }),
@@ -353,7 +372,7 @@ export class Sessions {
 
     // A Session's Profile is fixed, so once it is deleted the Session can't
     // run again (ADR 0031).
-    if (!this.#store.profile(session.profileId)) {
+    if (!this.#profile(session.profileId)) {
       return { ok: false, reason: "unknown_profile" };
     }
 
@@ -970,7 +989,7 @@ export class Sessions {
     return claimable
       .map((session) => this.#moveOff(session))
       .flatMap((next) => {
-        const profile = this.#store.profile(next.profileId);
+        const profile = this.#profile(next.profileId);
         if (!profile) {
           this.#update({
             ...next,
@@ -1013,6 +1032,10 @@ export class Sessions {
           environment: this.#sessionEnvironment(session.environmentId),
         };
       });
+  }
+
+  #profile(id: string): (ProfileContent & { readonly id: string }) | undefined {
+    return this.#pluginProfile(id)?.profile ?? this.#store.profile(id);
   }
 
   #sessionEnvironment(id: string): SessionEnvironment {

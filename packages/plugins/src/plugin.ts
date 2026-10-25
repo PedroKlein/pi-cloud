@@ -9,6 +9,7 @@ import type {
   Environment,
   ModelRef,
   PluginSettings,
+  ProfileContent,
   Question,
   QuestionsAnswer,
   Session,
@@ -80,6 +81,12 @@ export interface PluginStore {
   readonly exec: (sql: string) => void;
   readonly all: (sql: string, ...params: readonly SqlValue[]) => unknown[];
   readonly run: (sql: string, ...params: readonly SqlValue[]) => void;
+}
+
+// A read-only Profile a plugin ships for the Sessions it owns, such as the
+// meta Profile (ADR 0035). Users don't list or edit it.
+export interface PluginProfile extends ProfileContent {
+  readonly name: string;
 }
 
 // Models a plugin offers for an Environment: listed before the machine's own
@@ -159,6 +166,10 @@ export interface ServerPluginContext {
     // and a new Environment key leaves it be.
     readonly runnerToken: (environmentId: string, runner: string) => string;
     readonly revokeRunner: (environmentId: string, runner: string) => void;
+  };
+  readonly profiles: {
+    // Returns the id the plugin starts its Sessions with.
+    readonly provide: (key: string, profile: PluginProfile) => string;
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   readonly models: { readonly offer: (offer: ModelOffer) => void };

@@ -1,5 +1,6 @@
 export {
   owner,
+  type PluginProfile,
   Sessions,
   type Rejection,
   type Result,

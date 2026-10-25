@@ -519,7 +519,10 @@ export function createHandler(
           })),
           unload,
           remove,
-          profiles: profiles.list().map(({ id }) => id),
+          profiles: [
+            ...profiles.list().map(({ id }) => id),
+            ...plugins.profileIds(),
+          ],
         };
 
         return Response.json(work);
