@@ -73,6 +73,7 @@ function registered(signal: AbortSignal): PluginRoute {
       revokeRunner: unused,
     },
     sessions: {
+      loadOnly: unused,
       start: unused,
       get: unused,
       owned: unused,

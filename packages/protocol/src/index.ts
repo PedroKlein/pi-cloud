@@ -1,4 +1,4 @@
-export const protocolVersion = 2;
+export const protocolVersion = 3;
 export const versionHeader = "pi-cloud-protocol";
 
 // A runner joins the pool of the Environment whose key it holds, under a name
@@ -166,6 +166,9 @@ export interface Assignment {
   // Each plugin's settings when the Session started (ADR 0036). Older
   // servers leave it out, and Session parts get their defaults.
   readonly pluginSettings?: Readonly<Record<string, PluginSettings>>;
+  // Session parts the Session must not run without, such as the meta
+  // plugin's confirm. A runner that lacks one doesn't start it.
+  readonly requiredPlugins?: readonly string[];
   readonly environment: SessionEnvironment;
 }
 

@@ -7,6 +7,9 @@ import { kubernetesPlugin } from "@pi-cloud/kubernetes/server";
 import libraryPackage from "@pi-cloud/library/package.json";
 import { library } from "@pi-cloud/library/server";
 import { library as librarySession } from "@pi-cloud/library/session";
+import metaPackage from "@pi-cloud/meta/package.json";
+import { meta } from "@pi-cloud/meta/server";
+import { metaSession } from "@pi-cloud/meta/session";
 import modelsPackage from "@pi-cloud/models/package.json";
 import { models } from "@pi-cloud/models/server";
 import { models as modelsSession } from "@pi-cloud/models/session";
@@ -62,6 +65,7 @@ export const builtInPlugins: readonly PluginManifest[] = [
   modelsPackage,
   subagentsPackage,
   kubernetesPackage,
+  metaPackage,
 ].map(({ piCloud }) => piCloud as PluginManifest);
 
 export const serverPlugins: readonly ServerPlugin[] = [
@@ -69,6 +73,7 @@ export const serverPlugins: readonly ServerPlugin[] = [
   library,
   models,
   kubernetesPlugin,
+  meta,
 ];
 
 const sessionPlugins: readonly SessionPlugin[] = [
@@ -77,16 +82,30 @@ const sessionPlugins: readonly SessionPlugin[] = [
   librarySession,
   modelsSession,
   subagents,
+  metaSession,
 ];
 
 // The Session parts an assignment names, each with its settings. A server
 // from before settings sends none, so they take their defaults.
 export function sessionParts(
-  assignment: Pick<Assignment, "plugins" | "pluginSettings">,
+  assignment: Pick<
+    Assignment,
+    "plugins" | "pluginSettings" | "requiredPlugins"
+  >,
 ): {
   readonly plugins: readonly SessionPlugin[];
   readonly pluginSettings: Readonly<Record<string, PluginSettings>>;
 } {
+  const unknown = (assignment.requiredPlugins ?? []).filter(
+    (name) => !sessionPlugins.some((plugin) => plugin.name === name),
+  );
+
+  if (unknown.length > 0) {
+    throw new Error(
+      `this runner has no ${unknown.join(", ")} plugin, so it needs an update`,
+    );
+  }
+
   const plugins = sessionPlugins.filter(({ name }) =>
     assignment.plugins.includes(name),
   );
@@ -182,6 +201,7 @@ export function startPlugins(
   const offers: ModelOffer[] = [];
   const failures = new Map<string, string>();
   const profiles = new Map<string, PluginProfile>();
+  const loaded = new Map<string, readonly string[]>();
 
   const manifest = (name: string): PluginManifest | undefined =>
     deps.manifests.find(({ id }) => id === name);
@@ -201,6 +221,7 @@ export function startPlugins(
       route: undefined as PluginRoute | undefined,
       offers: [] as ModelOffer[],
       profiles: new Map<string, PluginProfile>(),
+      loadOnly: undefined as readonly string[] | undefined,
       unsubscribes: [] as (() => void)[],
     };
 
@@ -227,7 +248,9 @@ export function startPlugins(
             return unsubscribe;
           },
         },
-        sessions: pluginSessions(deps.sessions, plugin.name),
+        sessions: pluginSessions(deps.sessions, plugin.name, (names) => {
+          staged.loadOnly = names;
+        }),
         environments: pluginEnvironments(deps.sessions, deps.runners),
         profiles: {
           provide: (key, { name: _name, ...content }) => {
@@ -284,6 +307,10 @@ export function startPlugins(
       profiles.set(id, profile);
     }
 
+    if (staged.loadOnly !== undefined) {
+      loaded.set(plugin.name, staged.loadOnly);
+    }
+
     deps.log("plugin registered", { plugin: plugin.name });
   }
 
@@ -319,12 +346,18 @@ export function startPlugins(
 
       return info(found);
     },
-    sessionPlugins: () => ({
-      plugins: running,
-      pluginSettings: Object.fromEntries(
-        running.map((name) => [name, values(name)]),
-      ),
-    }),
+    sessionPlugins: () => {
+      return {
+        plugins: running,
+        pluginSettings: Object.fromEntries(
+          running.map((name) => [name, values(name)]),
+        ),
+        ownSessionsOnly: sessionPlugins
+          .filter(({ ownSessionsOnly: own }) => own === true)
+          .map(({ name }) => name),
+        loadOnly: Object.fromEntries(loaded),
+      };
+    },
     profile: (id) => profiles.get(id),
     profileIds: () => [...profiles.keys()],
     tools: (session) =>
@@ -378,6 +411,7 @@ export function startPlugins(
 function pluginSessions(
   sessions: Sessions,
   plugin: string,
+  loadOnly: (plugins: readonly string[]) => void,
 ): ServerPluginContext["sessions"] {
   const ownedHere = (id: string): string => {
     if (sessions.get(id)?.owner?.plugin !== plugin) {
@@ -398,6 +432,7 @@ function pluginSessions(
   };
 
   return {
+    loadOnly,
     start: (request, ownerKey) => {
       const started = sessions.start(
         request,

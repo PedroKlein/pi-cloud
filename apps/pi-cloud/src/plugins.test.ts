@@ -16,6 +16,7 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
+import { sessionParts } from "./plugins";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
@@ -197,7 +198,7 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
     new URL(`/agent/sessions/${toolless.id}/tools?generation=1`, server?.url),
     {
       headers: {
-        "pi-cloud-protocol": "2",
+        "pi-cloud-protocol": "3",
         authorization: `Bearer ${await runners.token("local")}`,
       },
     },
@@ -237,7 +238,7 @@ test("serves a tool's exposure, namespace and hints to its sessions", async () =
     new URL(`/agent/sessions/${session.id}/tools?generation=1`, server?.url),
     {
       headers: {
-        "pi-cloud-protocol": "2",
+        "pi-cloud-protocol": "3",
         authorization: `Bearer ${await runners.token("local")}`,
       },
     },
@@ -743,4 +744,10 @@ test("stops a runner started to exit when idle once it runs no Session", async (
   await pod.done;
 
   expect(pod.logs).toContain("no sessions for a while; stopping");
+});
+
+test("refuses to host a Session part this runner doesn't have", () => {
+  expect(() =>
+    sessionParts({ plugins: ["ask", "newer"], requiredPlugins: ["newer"] }),
+  ).toThrow("this runner has no newer plugin");
 });

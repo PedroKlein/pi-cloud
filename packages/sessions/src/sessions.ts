@@ -109,7 +109,13 @@ export type Result<T, R extends Rejection = Rejection> =
 
 export type SessionPlugins = Required<
   Pick<Assignment, "plugins" | "pluginSettings">
->;
+> & {
+  // Session plugins that load only in the Sessions their plugin owns.
+  readonly ownSessionsOnly?: readonly string[];
+  // The Session plugins that load in a plugin's own Sessions, for plugins
+  // that limit them.
+  readonly loadOnly?: Readonly<Record<string, readonly string[]>>;
+};
 
 export interface SessionsOptions {
   readonly pollWaitMs?: number;
@@ -1028,10 +1034,40 @@ export class Sessions {
           thinking: session.thinking,
           systemPrompt: session.systemPrompt,
           firstMessage: session.firstMessage,
-          ...this.#sessionPlugins(),
+          ...this.#pluginsOf(session),
           environment: this.#sessionEnvironment(session.environmentId),
         };
       });
+  }
+
+  #pluginsOf(
+    session: StoredSession,
+  ): Required<
+    Pick<Assignment, "plugins" | "pluginSettings" | "requiredPlugins">
+  > {
+    const { plugins, pluginSettings, ownSessionsOnly, loadOnly } =
+      this.#sessionPlugins();
+
+    const ownedBy = session.owner?.plugin;
+    const limit = ownedBy === undefined ? undefined : loadOnly?.[ownedBy];
+
+    const loaded = plugins.filter(
+      (name) =>
+        (limit?.includes(name) ?? true) &&
+        (ownSessionsOnly?.includes(name) !== true || ownedBy === name),
+    );
+
+    return {
+      plugins: loaded,
+      requiredPlugins: loaded.filter(
+        (name) => ownSessionsOnly?.includes(name) === true,
+      ),
+      pluginSettings: Object.fromEntries(
+        Object.entries(pluginSettings).filter(([name]) =>
+          loaded.includes(name),
+        ),
+      ),
+    };
   }
 
   #profile(id: string): (ProfileContent & { readonly id: string }) | undefined {
