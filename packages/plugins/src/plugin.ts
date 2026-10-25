@@ -82,6 +82,11 @@ export interface RouteTool extends Omit<ToolSpec, "namespace"> {
   // What the model sees of a successful reply's body, such as a list without
   // the fields it doesn't need.
   readonly result?: (body: unknown) => unknown;
+  // What to open for the user after a successful call, such as the Session
+  // it started. A plugin's routes are relative to its own pages.
+  readonly opens?: (
+    body: unknown,
+  ) => { readonly route: string; readonly label: string } | undefined;
 }
 
 // A plugin's tool paths are relative to its own routes; the kernel's start

@@ -1,4 +1,5 @@
 import type { Toolset } from "@pi-cloud/plugins";
+import type { ProjectView } from "./model";
 
 const settingsFields = {
   name: { type: "string" },
@@ -66,6 +67,10 @@ export const projectsToolset: Toolset = {
       // runs without a confirm of its own.
       annotations: { destructiveHint: false, openWorldHint: true },
       request: (input) => ({ method: "POST", path: "projects", body: input }),
+      opens: (body) => ({
+        route: (body as ProjectView).id,
+        label: (body as ProjectView).name,
+      }),
     },
     {
       name: "update",

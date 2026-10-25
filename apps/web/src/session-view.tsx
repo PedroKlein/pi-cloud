@@ -295,6 +295,7 @@ export function SessionView({
               report={reportError}
             />
           )}
+          {!archived && <UiActionNotice uiAction={feed.uiAction} />}
           {!archived && (
             <PiViewNotice
               piView={feed.piView}
@@ -519,6 +520,55 @@ function PagesNotice({
         </li>
       ))}
     </ul>
+  );
+}
+
+// What a meta-session's tool opened (ADR 0035). A wide screen goes there at
+// once; a phone offers it instead, so the chat stays where it is.
+function UiActionNotice({
+  uiAction,
+}: {
+  readonly uiAction: Feed["uiAction"];
+}): ReactElement | null {
+  const [dismissed, setDismissed] = useState<number>();
+  const wide = matchMedia("(width >= 48rem)").matches;
+
+  useEffect(() => {
+    if (uiAction !== undefined && matchMedia("(width >= 48rem)").matches) {
+      location.hash = `#${uiAction.action.route}`;
+    }
+  }, [uiAction]);
+
+  if (uiAction === undefined || wide || uiAction.key === dismissed) {
+    return null;
+  }
+
+  return (
+    <div
+      role="status"
+      className="mx-auto flex w-full max-w-chat items-center gap-3 px-4 pb-2 text-label text-fg-dim"
+    >
+      <Icon name="chevron-right" />
+      <span className="min-w-0 flex-1 truncate">
+        The assistant opened {uiAction.action.label}
+      </span>
+      <a
+        href={`#${uiAction.action.route}`}
+        className="inline-flex h-control items-center rounded-md border border-line bg-elevated px-3 text-ui font-medium text-fg hover:border-line-strong hover:bg-hover pointer-coarse:min-h-touch"
+      >
+        Open
+      </a>
+      <Button
+        variant="ghost"
+        iconOnly
+        aria-label="Dismiss"
+        onClick={() => {
+          setDismissed(uiAction.key);
+        }}
+      >
+        <Icon name="x" />
+      </Button>
+    </div>
   );
 }
 

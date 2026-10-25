@@ -58,7 +58,7 @@ export const kernelToolsets: readonly Toolset[] = [
   {
     namespace: {
       name: "sessions",
-      description: "List, start and archive Pi Cloud Sessions.",
+      description: "List, start, open and archive Pi Cloud Sessions.",
     },
     tools: [
       {
@@ -124,6 +124,26 @@ export const kernelToolsets: readonly Toolset[] = [
           ]),
         }),
         result: (body) => summary(body as Session),
+        opens: (body) => ({
+          route: (body as Session).id,
+          label: "the new Session",
+        }),
+      },
+      {
+        name: "open",
+        description: "Open a Session for the user to watch or take over.",
+        parameters: object({ id: { type: "string" } }, ["id"]),
+        exposure: "direct",
+        annotations: { readOnlyHint: true },
+        request: (input) => ({
+          method: "GET",
+          path: `/api/sessions/${idOf(input)}`,
+        }),
+        result: () => "Opened it for the user.",
+        opens: (body) => ({
+          route: (body as Session).id,
+          label: (body as Session).title ?? "the Session",
+        }),
       },
       {
         name: "archive",

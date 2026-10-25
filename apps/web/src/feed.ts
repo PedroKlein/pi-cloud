@@ -8,6 +8,7 @@ import {
   type SessionStatus,
   type SlashCommand,
   type TerminalTab,
+  type UiAction,
 } from "@pi-cloud/protocol";
 import { chatItems, type ChatItem } from "./chat";
 
@@ -53,6 +54,10 @@ export interface Feed {
   readonly settings: Settings | undefined;
   readonly terminals: readonly TerminalTab[];
   readonly pages: readonly OpenedPage[];
+  // The last thing a tool asked to open (ADR 0035), keyed so the same route
+  // asked for twice is acted on twice.
+  readonly uiAction:
+    { readonly key: number; readonly action: UiAction } | undefined;
   readonly piView: {
     readonly attached: boolean;
     readonly dialog: string | null;
@@ -79,6 +84,7 @@ export const emptyFeed: Feed = {
   settings: undefined,
   terminals: [],
   pages: [],
+  uiAction: undefined,
   piView: { attached: false, dialog: null },
 };
 
@@ -283,6 +289,10 @@ export function feedReader({
         return;
       case "pages":
         update({ pages: event.pages });
+
+        return;
+      case "ui_action":
+        update({ uiAction: { key: nextKey++, action: event.action } });
 
         return;
       case "pi_view":

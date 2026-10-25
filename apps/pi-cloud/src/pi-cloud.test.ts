@@ -1060,6 +1060,15 @@ test("rejects agent bodies outside the protocol with 400", async () => {
         events: [{ type: "status", status: "bogus" }],
       }),
       asAgent("vm", `${base}/live`, { generation, events: [null] }),
+      asAgent("vm", `${base}/live`, {
+        generation,
+        events: [
+          {
+            type: "ui_action",
+            action: { kind: "open", route: "plugins", label: "Plugins" },
+          },
+        ],
+      }),
       asAgent("vm", `${base}/live`, { events: [] }),
       asAgent("vm", `${base}/live`, {
         generation,
@@ -1088,7 +1097,7 @@ test("rejects agent bodies outside the protocol with 400", async () => {
     await api(`/api/sessions/${session.id}`)
   ).json()) as Session;
 
-  expect(statuses).toEqual(Array.from({ length: 13 }, () => 400));
+  expect(statuses).toEqual(Array.from({ length: 14 }, () => 400));
   expect(after.status).toBe(claimed.status);
 });
 

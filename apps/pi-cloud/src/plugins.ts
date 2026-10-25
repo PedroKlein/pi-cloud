@@ -46,6 +46,7 @@ import type {
   ToolNamespace,
   ToolResult,
   ToolSpec,
+  UiAction,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import {
@@ -472,6 +473,12 @@ export function startPlugins(
             call.input,
             `user:${session.ownerId}`,
             deps,
+            (action) => {
+              deps.sessions.publish(session.id, {
+                generation: call.generation,
+                events: [{ type: "ui_action", action }],
+              });
+            },
           );
         }
 
@@ -548,6 +555,7 @@ async function runRouteTool(
   deps: {
     readonly api: (actor: UserActor, request: Request) => Promise<Response>;
   },
+  open: (action: UiAction) => void,
 ): Promise<ToolResult> {
   const { method, path, body } = found.tool.request(
     typeof input === "object" && input !== null && !Array.isArray(input)
@@ -601,6 +609,19 @@ async function runRouteTool(
   }
 
   try {
+    const opened = found.tool.opens?.(parsed);
+
+    if (opened !== undefined) {
+      open({
+        kind: "open",
+        route:
+          found.plugin === undefined
+            ? opened.route
+            : `plugin/${found.plugin}/${opened.route}`,
+        label: opened.label,
+      });
+    }
+
     return {
       text: JSON.stringify(
         found.tool.result ? found.tool.result(parsed) : parsed,
