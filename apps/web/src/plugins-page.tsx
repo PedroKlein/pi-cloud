@@ -4,6 +4,7 @@ import { type ReactElement, type SubmitEvent, useState } from "react";
 import { send } from "./api";
 import { usePlugins } from "./hooks";
 import { settingsOf } from "./plugin-settings";
+import { webPartError } from "./plugins";
 
 const states = {
   on: { badge: "done", label: "On" },
@@ -44,6 +45,11 @@ export function PluginsPage(): ReactElement {
             {plugin.error !== undefined && (
               <p className="text-ui text-failed">
                 It failed to start: {plugin.error}
+              </p>
+            )}
+            {webPartError(plugin.id) !== undefined && (
+              <p className="text-ui text-failed">
+                Its web part didn't load: {webPartError(plugin.id)}
               </p>
             )}
             {plugin.source === "installed" && (

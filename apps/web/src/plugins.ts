@@ -14,7 +14,12 @@ import type { PluginInfo, PluginSettings, Session } from "@pi-cloud/protocol";
 import { projects } from "@pi-cloud/projects/web";
 import { subagents } from "@pi-cloud/subagents/web";
 import { usage } from "@pi-cloud/usage/web";
+import * as plugins from "@pi-cloud/plugins/web";
+import * as ui from "@pi-cloud/ui";
+import * as react from "react";
 import type { ComponentType } from "react";
+import * as reactDom from "react-dom";
+import * as jsxRuntime from "react/jsx-runtime";
 import { EmbeddedSession } from "./embedded-session";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
@@ -30,15 +35,64 @@ const webPlugins: readonly WebPlugin[] = [
 ];
 
 let enabled: readonly WebPlugin[] = [];
+const webErrors = new Map<string, string>();
 let settings: ReadonlyMap<string, PluginSettings> = new Map();
+
+// An installed plugin's web part is bundled with these left out, and reads
+// them from here, so the page has one React and one design system (ADR 0022).
+Object.assign(globalThis, {
+  piCloudShared: {
+    react,
+    "react/jsx-runtime": jsxRuntime,
+    "react-dom": reactDom,
+    "@pi-cloud/ui": ui,
+    "@pi-cloud/plugins/web": plugins,
+  },
+});
 
 export async function loadPlugins(): Promise<void> {
   const response = await fetch("/api/plugins");
   const listed = (await response.json()) as PluginInfo[];
   const on = listed.filter(({ state }) => state === "on");
 
-  enabled = webPlugins.filter(({ name }) => on.some(({ id }) => id === name));
+  const installed = await Promise.all(
+    on.flatMap(({ id, webPart }) =>
+      webPart === undefined ? [] : [importWebPart(id, webPart)],
+    ),
+  );
+
+  enabled = [
+    ...webPlugins.filter(({ name }) => on.some(({ id }) => id === name)),
+    ...installed.flatMap((plugin) => (plugin ? [plugin] : [])),
+  ];
+
   settings = new Map(on.map(({ id, values }) => [id, values]));
+}
+
+async function importWebPart(
+  id: string,
+  url: string,
+): Promise<WebPlugin | undefined> {
+  try {
+    const { default: plugin } = (await import(url)) as {
+      default?: WebPlugin;
+    };
+
+    if (plugin?.name !== id) {
+      throw new Error(`its default export must be a web part named ${id}`);
+    }
+
+    return plugin;
+  } catch (error) {
+    webErrors.set(id, error instanceof Error ? error.message : String(error));
+
+    return undefined;
+  }
+}
+
+// Why an installed plugin's web part didn't load in this page.
+export function webPartError(id: string): string | undefined {
+  return webErrors.get(id);
 }
 
 export function enabledPlugins(): readonly WebPlugin[] {

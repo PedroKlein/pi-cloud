@@ -365,3 +365,29 @@ test("shows why a plugin doesn't build", async () => {
   expect(broken?.error).toContain("server.ts doesn't build");
   expect(broken?.error).toMatch(/broken\/server\.ts:1:\d+: /);
 });
+
+test("serves a running plugin's web part, built against the page's modules", async () => {
+  await writePlugin("pages", { parts: { web: "web.tsx" } });
+
+  await writeFile(
+    join(plugins, "pages", "web.tsx"),
+    `import { useState } from "react";
+
+export default { name: "pages", hook: useState };
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["pages"]));
+  await start();
+
+  const webPart = (await listed("pages"))?.webPart ?? "";
+  const served = await api("GET", webPart);
+
+  expect(webPart).toMatch(/^\/api\/plugin-parts\/pages\/web-\w+\.js$/);
+  expect(served.headers.get("content-type")).toContain("javascript");
+  expect(await served.text()).toContain('globalThis.piCloudShared["react"]');
+
+  expect((await api("GET", "/api/plugin-parts/pages/server.ts")).status).toBe(
+    404,
+  );
+});

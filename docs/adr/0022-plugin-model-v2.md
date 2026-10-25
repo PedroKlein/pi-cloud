@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx` and the binary's `import()` was checked, step 6)
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx`, the binary's `import()` was checked, and web parts get shared modules from a global, step 6)
 - Date: 2026-10-22
 
 ## Context
@@ -102,7 +102,7 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 - A plugin can also live in a local plugins folder in the data directory, written in place by a meta-session or by hand, like Pi's local extensions ([ADR 0035](0035-meta-sessions.md#in-place-plugins)). It isn't pinned and starts turned off like the others.
 - Install and enable are separate steps. A third-party plugin starts turned off, and only the user turns it on, like Obsidian's Restricted mode. A Session may propose a plugin but can't enable one.
 - Server parts are loaded with a dynamic `import()` from the data directory, and only for plugins turned on, since importing runs their code. A compiled Bun binary can import files from outside itself, but bare imports in them resolve from the plugin's folder, so parts are bundled first.
-- Web parts are built as ES modules that leave `react`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` external. The shell serves an import map for them, so every plugin shares the app's React and design system.
+- Web parts are built as ES modules that leave `react`, `react-dom`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` out, so every plugin shares the app's React and design system. The shell hands those modules over on `globalThis.piCloudShared` rather than through an import map, because its own React is inside its bundle and has no URL to map to.
 - The server serves each enabled plugin's Session part to the agent, named by content hash. The agent caches it, so nobody installs anything on a provider by hand.
 - A directory of plugins can come later, and can start as a JSON list.
 

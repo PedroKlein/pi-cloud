@@ -1,24 +1,60 @@
 import { readFile, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-// Installs an installed plugin's dependencies and bundles its server part, so
-// the part's bare imports resolve from the plugin's own node_modules (ADR
-// 0022). Throws with what went wrong.
-export async function bundleServerPart(
+export interface PluginParts {
+  readonly server?: string;
+  readonly web?: string;
+}
+
+// The modules a web part shares with the shell, so there is one React and one
+// design system on the page (ADR 0022). The shell puts them on
+// globalThis.piCloudShared.
+const sharedWebModules = [
+  "react",
+  "react/jsx-runtime",
+  "react-dom",
+  "@pi-cloud/ui",
+  "@pi-cloud/plugins/web",
+];
+
+// Installs an installed plugin's dependencies and bundles its parts into
+// .build in its folder, so their bare imports resolve from the plugin's own
+// node_modules (ADR 0022). Returns the bundles' paths, and throws with what
+// went wrong.
+export async function bundleParts(
   folder: string,
-  entry: string,
-): Promise<string> {
+  entries: PluginParts,
+): Promise<PluginParts> {
   await installDependencies(folder);
 
   const outdir = join(folder, ".build");
   await rm(outdir, { recursive: true, force: true });
 
+  return {
+    ...(entries.server !== undefined && {
+      server: await bundle(entries.server, outdir, "bun"),
+    }),
+    ...(entries.web !== undefined && {
+      web: await bundle(entries.web, outdir, "browser"),
+    }),
+  };
+}
+
+async function bundle(
+  entry: string,
+  outdir: string,
+  target: "bun" | "browser",
+): Promise<string> {
   const result = await Bun.build({
     entrypoints: [entry],
     outdir,
-    target: "bun",
+    target,
     naming: "[name]-[hash].[ext]",
     throw: false,
+    ...(target === "browser" && {
+      plugins: [sharedWithShell],
+      jsx: { development: false },
+    }),
   });
 
   const [output] = result.outputs.filter(({ kind }) => kind === "entry-point");
@@ -31,6 +67,25 @@ export async function bundleServerPart(
 
   return output.path;
 }
+
+const sharedWithShell: Bun.BunPlugin = {
+  name: "shared-with-shell",
+  setup: (build) => {
+    build.onResolve({ filter: /^[@a-z]/ }, ({ path }) =>
+      sharedWebModules.includes(path)
+        ? { path, namespace: "pi-cloud-shared" }
+        : undefined,
+    );
+
+    build.onLoad(
+      { filter: /.*/, namespace: "pi-cloud-shared" },
+      ({ path }) => ({
+        contents: `module.exports = globalThis.piCloudShared[${JSON.stringify(path)}];`,
+        loader: "js",
+      }),
+    );
+  },
+};
 
 function described(log: BuildMessage | ResolveMessage): string {
   const { position, message } = log;
