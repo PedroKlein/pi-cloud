@@ -21,6 +21,15 @@ builtInRunner: ""
 # makes one on install and keeps it on upgrades.
 existingSecret: ""
 
+# Single sign-on through an OpenID Connect provider (ADR 0038). The issuer,
+# client ID and groups are set on the Plugins page.
+oidc:
+  # A Secret with a `clientSecret` entry, for a provider that needs one.
+  existingSecret: ""
+  # Turns the password login off, once your user signs in through the
+  # provider. The setup link still works.
+  ssoOnly: false
+
 persistence:
   size: 5Gi
   storageClass: ""
