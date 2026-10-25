@@ -219,6 +219,7 @@ function fakeKernel(): {
         db.prepare(sql).run(...(params as SQLInputValue[]));
       },
     },
+    settings: { get: () => ({}) },
     signal: stop.signal,
     log: (message, fields) => {
       logged.push({ message, fields });

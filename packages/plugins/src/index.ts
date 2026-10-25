@@ -1,4 +1,5 @@
 export { type EventBus, eventBus } from "./events";
+export { checkedSettings, settingValues } from "./settings";
 export type {
   AskQuestions,
   Checkout,

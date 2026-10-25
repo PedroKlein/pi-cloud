@@ -6,6 +6,7 @@ import {
   type PluginStore,
   type ToolCaller,
 } from "@pi-cloud/plugins";
+import type { PluginSettings } from "@pi-cloud/protocol";
 import { library } from "./server";
 
 const member: ToolCaller = {
@@ -52,7 +53,9 @@ function memoryStore(): PluginStore {
   };
 }
 
-function registered(): PluginRoute {
+function registered(
+  settings: () => PluginSettings = () => ({ fileLimitMb: 10 }),
+): PluginRoute {
   const routes: PluginRoute[] = [];
 
   const events = eventBus((_type, error) => {
@@ -92,6 +95,7 @@ function registered(): PluginRoute {
     },
     models: { offer: unused },
     store: memoryStore(),
+    settings: { get: settings },
     signal: new AbortController().signal,
     log: () => undefined,
   });
@@ -240,4 +244,32 @@ test("treats the composed and decomposed spellings of a name as one file", async
   expect(
     await (await get(route, `projects/p1/files/${decomposed}`)).text(),
   ).toBe("from linux");
+});
+
+test("refuses a file over the size limit in the settings as they are now", async () => {
+  let settings: PluginSettings = { fileLimitMb: 1 };
+  const route = registered(() => settings);
+  const path = "projects/p1/files/big.bin";
+
+  const putBig = async (): Promise<Response> =>
+    route(
+      new Request(`http://library/${path}`, {
+        method: "PUT",
+        body: new Uint8Array(1024 * 1024 + 1),
+      }),
+      path,
+      undefined,
+    );
+
+  const refused = await putBig();
+
+  expect(refused.status).toBe(413);
+
+  expect(await refused.json()).toEqual({
+    error: "library files are limited to 1 MB",
+  });
+
+  settings = { fileLimitMb: 2 };
+
+  expect((await putBig()).status).toBe(200);
 });

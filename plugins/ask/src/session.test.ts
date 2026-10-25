@@ -20,6 +20,7 @@ async function askUser(
       return Promise.resolve(null);
     },
     checkouts: [],
+    settings: {},
     request: unused,
     log: () => undefined,
   };

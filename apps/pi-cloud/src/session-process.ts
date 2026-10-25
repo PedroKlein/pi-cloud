@@ -13,7 +13,7 @@ import {
 import { httpSessionStream } from "./client";
 import { type ContainerSession, serverInContainer } from "./container";
 import { stderrLog } from "./log";
-import { sessionPluginsNamed } from "./plugins";
+import { sessionParts } from "./plugins";
 
 export interface SessionSpec {
   readonly server: string;
@@ -152,7 +152,7 @@ export async function runSessionProcess(): Promise<void> {
       {
         ...spec.options,
         firstMessage: spec.assignment.firstMessage,
-        plugins: sessionPluginsNamed(spec.assignment.plugins),
+        ...sessionParts(spec.assignment),
       },
       httpSessionStream(spec.server, spec.assignment, log, () => {
         void stop();

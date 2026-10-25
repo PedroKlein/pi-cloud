@@ -107,12 +107,18 @@ export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly reason: R };
 
+export type SessionPlugins = Required<
+  Pick<Assignment, "plugins" | "pluginSettings">
+>;
+
 export interface SessionsOptions {
   readonly pollWaitMs?: number;
   readonly offlineAfterMs?: number;
   readonly leaseMs?: number;
   readonly events?: (event: KernelEvent) => void;
-  readonly sessionPlugins?: readonly string[];
+  // The plugins whose Session parts a Session gets when it starts, and their
+  // settings.
+  readonly sessionPlugins?: () => SessionPlugins;
   readonly offeredModels?: ModelOffer;
 }
 
@@ -133,7 +139,7 @@ export class Sessions {
   readonly #store: SessionStore;
   readonly #polls: RunnerPolls;
   readonly #events: (event: KernelEvent) => void;
-  readonly #sessionPlugins: readonly string[];
+  readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
@@ -159,7 +165,10 @@ export class Sessions {
     });
 
     this.#events = options.events ?? (() => undefined);
-    this.#sessionPlugins = options.sessionPlugins ?? [];
+
+    this.#sessionPlugins =
+      options.sessionPlugins ?? (() => ({ plugins: [], pluginSettings: {} }));
+
     this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
   }
 
@@ -1000,7 +1009,7 @@ export class Sessions {
           thinking: session.thinking,
           systemPrompt: session.systemPrompt,
           firstMessage: session.firstMessage,
-          plugins: this.#sessionPlugins,
+          ...this.#sessionPlugins(),
           environment: this.#sessionEnvironment(session.environmentId),
         };
       });

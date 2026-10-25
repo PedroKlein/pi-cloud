@@ -91,6 +91,7 @@ function registered(signal: AbortSignal): PluginRoute {
     },
     models: { offer: () => undefined },
     store: memoryStore(),
+    settings: { get: () => ({}) },
     signal,
     log: () => undefined,
   });

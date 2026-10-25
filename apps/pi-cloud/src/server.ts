@@ -204,7 +204,23 @@ export function createHandler(
   ];
 
   const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
-    ["GET", /^\/api\/plugins$/, () => Response.json(plugins.names)],
+    ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
+    [
+      "PATCH",
+      /^\/api\/plugins\/([^/]+)$/,
+      async (request, [name = ""]) => {
+        const saved = plugins.saveSettings(
+          name,
+          fieldsOf(await readJson(request))["settings"],
+        );
+
+        if (typeof saved === "string") {
+          throw new BadRequest(saved);
+        }
+
+        return saved === undefined ? notFound() : Response.json(saved);
+      },
+    ],
     [
       "ANY",
       /^\/api\/plugins\/([^/]+)\/(.*)$/,

@@ -40,7 +40,7 @@ import {
   reportRemoval,
   reportStartFailure,
 } from "./client";
-import { sessionPluginsNamed } from "./plugins";
+import { sessionParts } from "./plugins";
 import { containerSession } from "./container";
 import { environmentSetup } from "./setup";
 import { spawnSession } from "./session-process";
@@ -361,7 +361,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
             ...sessionOptions,
             models: options.models,
             firstMessage: assignment.firstMessage,
-            plugins: sessionPluginsNamed(assignment.plugins),
+            ...sessionParts(assignment),
           },
           stream,
           sessionLog,

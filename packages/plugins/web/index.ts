@@ -1,4 +1,9 @@
-import type { Environment, Session, SessionEvent } from "@pi-cloud/protocol";
+import type {
+  Environment,
+  PluginSettings,
+  Session,
+  SessionEvent,
+} from "@pi-cloud/protocol";
 import {
   type ComponentType,
   type ReactNode,
@@ -26,6 +31,8 @@ export interface WebContext {
   readonly openSession: (sessionId: string) => void;
   // The link to a path inside the plugin's own page.
   readonly href: (path: string) => string;
+  // The plugin's settings when the page loaded (ADR 0036).
+  readonly settings: PluginSettings;
   readonly SessionView: ComponentType<EmbeddedSessionProps>;
 }
 

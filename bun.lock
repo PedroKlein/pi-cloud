@@ -38,6 +38,7 @@
         "@pi-cloud/sessionhost": "workspace:*",
         "@pi-cloud/sessions": "workspace:*",
         "@pi-cloud/subagents": "workspace:*",
+        "@pi-cloud/usage": "workspace:*",
         "@pi-cloud/web": "workspace:*",
         "@pi-cloud/workspaces": "workspace:*",
       },

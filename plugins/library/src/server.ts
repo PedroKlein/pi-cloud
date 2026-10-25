@@ -37,6 +37,7 @@ export const library: ServerPlugin = {
         target,
         caller?.actor ?? user,
         store,
+        fileLimit(context.settings.get()),
       );
 
       if (request.method === "PUT" && response.ok) {
@@ -94,6 +95,7 @@ async function serve(
   { projectId, resource, name }: Target,
   actor: Actor,
   store: LibraryStore,
+  limit: number,
 ): Promise<Response> {
   if (resource === "member" && request.method === "GET") {
     return Response.json({ projectId });
@@ -135,8 +137,8 @@ async function serve(
   }
 
   const content = new Uint8Array(await request.arrayBuffer());
-  if (content.length > fileLimit) {
-    return Response.json({ error: sizeRule }, { status: 413 });
+  if (content.length > limit) {
+    return Response.json({ error: sizeRule(limit) }, { status: 413 });
   }
 
   store.write(projectId, name, content, actor);

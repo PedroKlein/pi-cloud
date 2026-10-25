@@ -1,4 +1,5 @@
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
+import type { PluginManifest } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
 import { Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
@@ -25,7 +26,10 @@ export interface ServeOptions {
     AgentOptions,
     "server" | "credential" | "log" | "signal"
   >;
+  // Replaces the built-in plugins. A plugin without a manifest gets one with
+  // just its name.
   readonly plugins?: readonly ServerPlugin[];
+  readonly manifests?: readonly PluginManifest[];
   readonly disabledPlugins?: readonly string[];
   readonly log: Log;
 }
@@ -38,9 +42,19 @@ export function serve(options: ServeOptions): {
   const plugins = options.plugins ?? serverPlugins;
   const disabled = options.disabledPlugins ?? [];
 
-  const enabled = (
-    options.plugins?.map(({ name }) => name) ?? builtInPlugins
-  ).filter((name) => !disabled.includes(name));
+  const known =
+    options.plugins?.map(
+      ({ name }) =>
+        options.manifests?.find(({ id }) => id === name) ?? {
+          id: name,
+          title: name,
+          description: "",
+        },
+    ) ?? builtInPlugins;
+
+  const enabled = known
+    .map(({ id }) => id)
+    .filter((name) => !disabled.includes(name));
 
   const events = eventBus((type, error) => {
     options.log("event listener failed", { type, error: String(error) });
@@ -49,7 +63,7 @@ export function serve(options: ServeOptions): {
   const sessions = new Sessions(store, {
     ...options.sessions,
     events: events.publish,
-    sessionPlugins: enabled,
+    sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
   });
 
@@ -57,6 +71,7 @@ export function serve(options: ServeOptions): {
   const auth = new Auth(store.auth);
 
   const pluginHost = startPlugins(plugins, enabled, {
+    manifests: known,
     sessions,
     runners: {
       token: (environment, runner) => auth.runnerToken(environment, runner),
@@ -66,6 +81,7 @@ export function serve(options: ServeOptions): {
     },
     events,
     store: store.plugin,
+    settings: store.pluginSettings,
     signal: pluginsStop.signal,
     log: options.log,
   });

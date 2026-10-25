@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud } from "@pi-cloud/plugins";
-import { fileLimit } from "./model";
 import { library } from "./session";
+
+const megabyte = 1024 * 1024;
 
 let cwd: string;
 
@@ -28,13 +29,14 @@ async function publisher(
     publish: unused,
     askQuestions: unused,
     checkouts: [],
+    settings: { fileLimitMb: 1 },
     request: async (path, init) => {
       requests.push(`${init?.method ?? "GET"} ${path}`);
 
       return Promise.resolve(
-        init?.body instanceof Uint8Array && init.body.length > fileLimit
+        init?.body instanceof Uint8Array && init.body.length > megabyte
           ? Response.json(
-              { error: "library files are limited to 10 MB" },
+              { error: "library files are limited to 1 MB" },
               { status: 413 },
             )
           : Response.json({}),
@@ -56,15 +58,15 @@ async function publisher(
 }
 
 test("refuses to publish a file over the size limit without sending it", async () => {
-  await writeFile(join(cwd, "limit.bin"), new Uint8Array(fileLimit));
-  await writeFile(join(cwd, "over.bin"), new Uint8Array(fileLimit + 1));
+  await writeFile(join(cwd, "limit.bin"), new Uint8Array(megabyte));
+  await writeFile(join(cwd, "over.bin"), new Uint8Array(megabyte + 1));
   const requests: string[] = [];
   const publish = await publisher(requests);
 
   await publish("limit.bin");
 
   expect(publish("over.bin")).rejects.toThrow(
-    "library files are limited to 10 MB",
+    "library files are limited to 1 MB",
   );
 
   expect(requests).toEqual(["GET member", "PUT files/limit.bin"]);

@@ -3,12 +3,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./session": "./src/session.ts"
+    "./session": "./src/session.ts",
+    "./package.json": "./package.json"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.3.0",
     "@earendil-works/pi-coding-agent": "1.3.0",
     "@pi-cloud/plugins": "workspace:*",
     "@pi-cloud/protocol": "workspace:*"
+  },
+  "piCloud": {
+    "id": "ask",
+    "title": "Ask",
+    "description": "Lets the agent ask you structured questions in a form."
   }
 }
