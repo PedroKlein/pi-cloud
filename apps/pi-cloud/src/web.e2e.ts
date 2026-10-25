@@ -82,7 +82,31 @@ export default { name: "greeter", nav: { label: "Greeter", Page } };
 `,
   );
 
-  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["greeter"]));
+  await mkdir(join(plugins, "faulty"));
+
+  await writeFile(
+    join(plugins, "faulty", "package.json"),
+    JSON.stringify({
+      piCloud: {
+        id: "faulty",
+        title: "Faulty",
+        description: "Throws when it loads.",
+        engine: 1,
+        parts: { web: "web.ts" },
+      },
+    }),
+  );
+
+  await writeFile(
+    join(plugins, "faulty", "web.ts"),
+    `throw new Error("faulty on purpose");
+`,
+  );
+
+  await writeFile(
+    join(plugins, "enabled.json"),
+    JSON.stringify(["faulty", "greeter"]),
+  );
 
   const logs: string[] = [];
 
@@ -451,6 +475,16 @@ test("shows an installed plugin's page with the app's React and components", asy
   const button = page.getByRole("button", { name: "Hellos: 0" });
   await button.click();
   await page.getByRole("button", { name: "Hellos: 1" }).waitFor();
+});
+
+test("says why an installed plugin's web part didn't load, and draws the rest", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("link", { name: "Plugins" }).click();
+
+  await page
+    .getByRole("listitem", { name: "Faulty" })
+    .getByText("Its web part didn't load: faulty on purpose")
+    .waitFor();
 });
 
 test("makes an MCP token that works once shown, and revokes it", async () => {

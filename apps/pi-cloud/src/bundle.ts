@@ -13,6 +13,7 @@ const sharedWebModules = [
   "react",
   "react/jsx-runtime",
   "react-dom",
+  "react-dom/client",
   "@pi-cloud/ui",
   "@pi-cloud/plugins/web",
 ];
@@ -32,36 +33,45 @@ export async function bundleParts(
 
   return {
     ...(entries.server !== undefined && {
-      server: await bundle(entries.server, outdir, "bun"),
+      server: await bundle(entries.server, outdir, "server"),
     }),
     ...(entries.web !== undefined && {
-      web: await bundle(entries.web, outdir, "browser"),
+      web: await bundle(entries.web, outdir, "web"),
     }),
   };
 }
 
+// Each bundle is named after its part, so its URL needs no escaping.
 async function bundle(
   entry: string,
   outdir: string,
-  target: "bun" | "browser",
+  part: "server" | "web",
 ): Promise<string> {
   const result = await Bun.build({
     entrypoints: [entry],
     outdir,
-    target,
-    naming: "[name]-[hash].[ext]",
+    target: part === "web" ? "browser" : "bun",
+    naming: `${part}-[hash].[ext]`,
     throw: false,
-    ...(target === "browser" && {
+    ...(part === "web" && {
       plugins: [sharedWithShell],
       jsx: { development: false },
     }),
   });
 
-  const [output] = result.outputs.filter(({ kind }) => kind === "entry-point");
+  const [output, ...others] = result.outputs;
 
   if (!result.success || output === undefined) {
     throw new Error(
       `${basename(entry)} doesn't build: ${result.logs.map(described).join("\n")}`,
+    );
+  }
+
+  // Only the bundle itself is served, so a stylesheet or file it imports
+  // would be missing on the page.
+  if (part === "web" && others.length > 0) {
+    throw new Error(
+      `${basename(entry)} imports CSS or other files, which a web part can't have yet; style it with @pi-cloud/ui`,
     );
   }
 

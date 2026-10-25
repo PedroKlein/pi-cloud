@@ -19,6 +19,7 @@ import * as ui from "@pi-cloud/ui";
 import * as react from "react";
 import type { ComponentType } from "react";
 import * as reactDom from "react-dom";
+import * as reactDomClient from "react-dom/client";
 import * as jsxRuntime from "react/jsx-runtime";
 import { EmbeddedSession } from "./embedded-session";
 
@@ -45,6 +46,7 @@ Object.assign(globalThis, {
     react,
     "react/jsx-runtime": jsxRuntime,
     "react-dom": reactDom,
+    "react-dom/client": reactDomClient,
     "@pi-cloud/ui": ui,
     "@pi-cloud/plugins/web": plugins,
   },
@@ -74,12 +76,27 @@ async function importWebPart(
   url: string,
 ): Promise<WebPlugin | undefined> {
   try {
-    const { default: plugin } = (await import(url)) as {
-      default?: WebPlugin;
-    };
+    // The page waits for every web part before it draws, so one that never
+    // finishes loading can't keep it blank.
+    const { default: plugin } = (await Promise.race([
+      import(url),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => {
+          reject(new Error("it took longer than 10 seconds to load"));
+        }, 10_000);
+      }),
+    ])) as { default?: WebPlugin };
 
     if (plugin?.name !== id) {
       throw new Error(`its default export must be a web part named ${id}`);
+    }
+
+    if (
+      plugin.nav !== undefined &&
+      (typeof plugin.nav.label !== "string" ||
+        typeof plugin.nav.Page !== "function")
+    ) {
+      throw new Error("its nav needs a label and a Page component");
     }
 
     return plugin;
@@ -187,7 +204,7 @@ export function pluginRoute(
 // A Session a plugin owns opens in that plugin's page (ADR 0028).
 export function sessionHref(session: Session): string {
   const plugin = enabled.find(({ name }) => name === session.owner?.plugin);
-  const path = plugin?.sessionPath?.(session);
+  const path = guarded(() => plugin?.sessionPath?.(session));
 
   return plugin && path !== undefined
     ? `#plugin/${plugin.name}/${path}`
@@ -196,6 +213,18 @@ export function sessionHref(session: Session): string {
 
 export function pageFills(name: string, path: string): boolean {
   return (
-    enabled.find((plugin) => plugin.name === name)?.nav?.fills?.(path) === true
+    guarded(() =>
+      enabled.find((plugin) => plugin.name === name)?.nav?.fills?.(path),
+    ) === true
   );
+}
+
+// A plugin's function the shell calls while it draws, outside any plugin's
+// error boundary, so a throw counts as no answer instead of breaking the app.
+function guarded<T>(call: () => T): T | undefined {
+  try {
+    return call();
+  } catch {
+    return undefined;
+  }
 }
