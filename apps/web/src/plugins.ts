@@ -1,6 +1,7 @@
 import { changes } from "@pi-cloud/changes/web";
 import { kubernetes } from "@pi-cloud/kubernetes/web";
 import { library } from "@pi-cloud/library/web";
+import { meta } from "@pi-cloud/meta/web";
 import { models } from "@pi-cloud/models/web";
 import type {
   NavItemsProps,
@@ -18,6 +19,7 @@ import { EmbeddedSession } from "./embedded-session";
 
 // The web parts of the plugins built into this bundle (ADR 0015).
 const webPlugins: readonly WebPlugin[] = [
+  meta,
   usage,
   changes,
   projects,
