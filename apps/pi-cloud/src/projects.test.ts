@@ -16,6 +16,7 @@ import type { ProjectView } from "@pi-cloud/projects/model";
 import type { Environment, Session, ToolSpec } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 
 const run = promisify(execFile);
 
@@ -23,6 +24,7 @@ let root: string;
 let faux: ReturnType<typeof fauxProvider>;
 let runtime: ModelRuntime;
 let server: ReturnType<typeof serve> | undefined;
+let signedIn: () => Promise<string>;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-projects-")));
@@ -36,6 +38,8 @@ beforeEach(async () => {
 
   runtime.registerNativeProvider(faux.provider);
 
+  const logs: string[] = [];
+
   server = serve({
     port: 0,
     database: ":memory:",
@@ -47,8 +51,12 @@ beforeEach(async () => {
       folders: [],
       models: { runtime, model: faux.getModel() },
     },
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
+
+  signedIn = firstUser(server, logs);
 });
 
 afterEach(async () => {
@@ -60,10 +68,11 @@ afterEach(async () => {
 async function api(path: string, body?: unknown): Promise<Response> {
   return fetch(new URL(path, server?.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 }
 
@@ -802,6 +811,7 @@ test("shares files between the user and Project sessions through the library", a
 
   const uploaded = await fetch(new URL(`${files}/brief.txt`, server?.url), {
     method: "PUT",
+    headers: { cookie: await signedIn() },
     body: "the brief\n",
   });
 
@@ -868,11 +878,13 @@ test("refuses library file names made only of dots", async () => {
 
   const dot = await fetch(new URL(`${files}/.`, server?.url), {
     method: "PUT",
+    headers: { cookie: await signedIn() },
     body: "x",
   });
 
   const dots = await fetch(new URL(`${files}/...`, server?.url), {
     method: "PUT",
+    headers: { cookie: await signedIn() },
     body: "x",
   });
 
@@ -936,7 +948,7 @@ test("accepts library file names with letters from any script", async () => {
     (
       await fetch(
         new URL(`${files}/${encodeURIComponent(name)}`, server?.url),
-        { method: "PUT", body: "x" },
+        { method: "PUT", headers: { cookie: await signedIn() }, body: "x" },
       )
     ).status;
 

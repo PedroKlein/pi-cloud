@@ -13,10 +13,12 @@ import {
   type WorkPoll,
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 
 const leaseMs = 200;
 
 let server: ReturnType<typeof serve>;
+let signedIn: () => Promise<string>;
 let logged: string[];
 
 beforeEach(() => {
@@ -30,6 +32,8 @@ beforeEach(() => {
       logged.push(`${message} ${JSON.stringify(fields)}`);
     },
   });
+
+  signedIn = firstUser(server, logged);
 });
 
 afterEach(async () => {
@@ -91,7 +95,7 @@ async function startSession(
   const session = await json<{ readonly id: string }>(
     fetch(new URL("/api/sessions", server.url), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: await signedIn() },
       body: JSON.stringify({
         workspace:
           typeof workspace === "string"
@@ -113,7 +117,9 @@ test("lists every runner that joined an Environment's pool", async () => {
   await claimed("mac-2", { folders: ["/srv/b"] });
 
   const environments = await json<Environment[]>(
-    fetch(new URL("/api/environments", server.url)),
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
   );
 
   expect(environments).toMatchObject([
@@ -199,7 +205,9 @@ test("moves a Session whose Workspace can be cloned again once its runner's leas
   const back = await poll("mac-1", { running: [...first] });
 
   const session = await json<Session>(
-    fetch(new URL(`/api/sessions/${clone}`, server.url)),
+    fetch(new URL(`/api/sessions/${clone}`, server.url), {
+      headers: { cookie: await signedIn() },
+    }),
   );
 
   expect(ids(first)).toEqual([clone, folder]);
@@ -218,7 +226,9 @@ test("shows a Session offline once its runner joins another Environment", async 
   await poll("mac-1", { environment: "elsewhere" });
 
   const session = await json<Session>(
-    fetch(new URL(`/api/sessions/${id}`, server.url)),
+    fetch(new URL(`/api/sessions/${id}`, server.url), {
+      headers: { cookie: await signedIn() },
+    }),
   );
 
   expect(session).toMatchObject({ runner: "mac-1", online: false });
@@ -244,14 +254,16 @@ test("gives a runner an Environment's secrets without logging them", async () =>
   await claimed("mac-1");
 
   const [environment] = await json<Environment[]>(
-    fetch(new URL("/api/environments", server.url)),
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
   );
 
   await fetch(
     new URL(`/api/environments/${environment?.id ?? ""}`, server.url),
     {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: await signedIn() },
       body: JSON.stringify({ secrets: { TOKEN: "s3cret" } }),
     },
   );
@@ -269,7 +281,9 @@ test("forks a Session that never started from where it would have, and keeps fol
   await claimed("vm-1", { environment: "elsewhere" });
 
   const environments = await json<Environment[]>(
-    fetch(new URL("/api/environments", server.url)),
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
   );
 
   const elsewhere = environments.find(
@@ -279,7 +293,7 @@ test("forks a Session that never started from where it would have, and keeps fol
   const fork = async (id: string): Promise<Response> =>
     fetch(new URL(`/api/sessions/${id}/fork`, server.url), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: await signedIn() },
       body: JSON.stringify({ environment: elsewhere?.id }),
     });
 

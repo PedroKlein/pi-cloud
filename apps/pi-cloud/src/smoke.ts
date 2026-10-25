@@ -36,11 +36,30 @@ const root = await mkdtemp(join(tmpdir(), "pi-cloud-smoke-"));
 const cwd = join(root, "work");
 await mkdir(cwd);
 
+let setupLink = "";
+
 const server = serve({
   port: 0,
   database: ":memory:",
-  log: () => undefined,
+  log: (_message, fields) => {
+    const link = fields?.["link"];
+    if (typeof link === "string") {
+      setupLink = link;
+    }
+  },
 });
+
+const setUp = await fetch(new URL("/api/auth/setup", server.url), {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    token: new URL(setupLink).hash.replace("#setup/", ""),
+    name: "smoke",
+    password: crypto.randomUUID(),
+  }),
+});
+
+const cookie = setUp.headers.get("set-cookie")?.split(";")[0] ?? "";
 
 const agentOutput: string[] = [];
 
@@ -116,10 +135,11 @@ async function step(
 async function api(path: string, body?: unknown): Promise<Response> {
   const response = await fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie,
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 
   if (!response.ok) {
@@ -141,6 +161,7 @@ function follow(sessionId: string): {
 
   void fetch(new URL(`/api/sessions/${sessionId}/events`, server.url), {
     signal: controller.signal,
+    headers: { cookie },
   })
     .then(async (response) => {
       for await (const event of readSse(response)) {
@@ -203,7 +224,7 @@ async function terminalPrints(
   );
 
   url.protocol = "ws:";
-  const socket = new WebSocket(url);
+  const socket = new WebSocket(url, { headers: { cookie } });
   socket.binaryType = "arraybuffer";
   const decoder = new TextDecoder();
   let text = "";

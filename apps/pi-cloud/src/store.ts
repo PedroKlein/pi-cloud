@@ -14,6 +14,7 @@ import {
 } from "@pi-cloud/protocol";
 import type { PluginStore } from "@pi-cloud/plugins";
 import type { ProfileStore, StoredProfile } from "@pi-cloud/profiles";
+import type { AuthStore, User } from "./auth";
 import {
   owner,
   type SessionStore,
@@ -102,6 +103,20 @@ create table if not exists profile_defaults (
 );
 `;
 
+const authTables = `
+create table if not exists users (
+  id text primary key,
+  name text not null unique,
+  password_hash text not null,
+  created_at text not null
+);
+create table if not exists browser_sessions (
+  token_hash text primary key,
+  user_id text not null references users (id),
+  expires_at text not null
+);
+`;
+
 const sessionTables = `
 create table if not exists sessions (
   id text primary key,
@@ -139,6 +154,7 @@ create table if not exists transcript (
 function migrate(db: DatabaseSync): void {
   db.exec(environmentsTable);
   db.exec(profileTables);
+  db.exec(authTables);
 
   const environmentColumns = db
     .prepare("select name from pragma_table_info('environments')")
@@ -290,6 +306,7 @@ function transaction(db: DatabaseSync, run: () => void): void {
 
 export function openStore(path: string): SessionStore &
   ProfileStore & {
+    auth: AuthStore;
     check: () => void;
     close: () => void;
     plugin: (name: string) => PluginStore;
@@ -626,9 +643,73 @@ export function openStore(path: string): SessionStore &
       upsertTrust.run(ownerId, repository, trusted ? 1 : 0);
     },
     profileInUse: (id) => selectProfileUse.get(id) !== undefined,
+    auth: authStore(db),
     plugin: (name) => pluginStore(db, name),
     close: () => {
       db.close();
+    },
+  };
+}
+
+function authStore(db: DatabaseSync): AuthStore {
+  const countUsers = db.prepare("select count(*) as n from users");
+
+  const selectUser = db.prepare(
+    "select id, name, password_hash, created_at from users where name = ?",
+  );
+
+  const insertUser = db.prepare(
+    "insert into users (id, name, password_hash, created_at) values (?, ?, ?, ?)",
+  );
+
+  const insertBrowserSession = db.prepare(
+    "insert into browser_sessions (token_hash, user_id, expires_at) values (?, ?, ?)",
+  );
+
+  const selectBrowserSessionUser = db.prepare(
+    "select users.id, users.name from browser_sessions join users on users.id = browser_sessions.user_id where token_hash = ? and expires_at > ?",
+  );
+
+  const deleteBrowserSession = db.prepare(
+    "delete from browser_sessions where token_hash = ?",
+  );
+
+  const deleteExpired = db.prepare(
+    "delete from browser_sessions where expires_at <= ?",
+  );
+
+  return {
+    userCount: () => (countUsers.get() as { n: number }).n,
+    userByName: (name) => {
+      const row = selectUser.get(name) as
+        | {
+            id: string;
+            name: string;
+            password_hash: string;
+            created_at: string;
+          }
+        | undefined;
+
+      return (
+        row && {
+          id: row.id,
+          name: row.name,
+          passwordHash: row.password_hash,
+          createdAt: row.created_at,
+        }
+      );
+    },
+    insertUser: (user) => {
+      insertUser.run(user.id, user.name, user.passwordHash, user.createdAt);
+    },
+    insertBrowserSession: (tokenHash, userId, expiresAt) => {
+      deleteExpired.run(new Date().toISOString());
+      insertBrowserSession.run(tokenHash, userId, expiresAt);
+    },
+    browserSessionUser: (tokenHash, now) =>
+      selectBrowserSessionUser.get(tokenHash, now) as User | undefined,
+    deleteBrowserSession: (tokenHash) => {
+      deleteBrowserSession.run(tokenHash);
     },
   };
 }

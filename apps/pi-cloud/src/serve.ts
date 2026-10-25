@@ -4,6 +4,7 @@ import { Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
+import { Auth } from "./auth";
 import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { openStore } from "./store";
@@ -52,7 +53,10 @@ export function serve(options: ServeOptions): {
     log: options.log,
   });
 
+  const auth = new Auth(store.auth);
+
   const handler = createHandler(
+    auth,
     sessions,
     new Profiles(store, owner),
     pluginHost,
@@ -60,7 +64,7 @@ export function serve(options: ServeOptions): {
     options.log,
   );
 
-  const terminals = terminalBroker(sessions, options.log);
+  const terminals = terminalBroker(sessions, auth, options.log);
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -84,6 +88,13 @@ export function serve(options: ServeOptions): {
   });
 
   options.log("server listening", { url: server.url.href });
+
+  if (auth.setupToken !== undefined) {
+    options.log("open the setup link to create the first user", {
+      link: new URL(`/#setup/${auth.setupToken}`, server.url).href,
+    });
+  }
+
   const agentStop = new AbortController();
 
   // The built-in provider is the same agent a laptop runs, talking to this

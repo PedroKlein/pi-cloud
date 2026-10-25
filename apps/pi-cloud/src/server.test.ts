@@ -16,10 +16,12 @@ import {
 import type { Log } from "@pi-cloud/providers";
 import { Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions } from "@pi-cloud/sessions";
+import { Auth } from "./auth";
 import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { readSse } from "./sse";
 import { openStore } from "./store";
+import { firstUserCookie } from "./testdata/sign-in";
 
 test("reports unhealthy when the database can't be read", async () => {
   const store = openStore(":memory:");
@@ -27,6 +29,7 @@ test("reports unhealthy when the database can't be read", async () => {
   const sessions = new Sessions(store);
 
   const handler = createHandler(
+    new Auth(store.auth),
     sessions,
     new Profiles(store, owner),
     startPlugins([], [], {
@@ -80,8 +83,10 @@ function startServer(
   const store = openStore(":memory:");
   const sessions = new Sessions(store, { pollWaitMs: 0, offlineAfterMs });
   const stopped = new AbortController();
+  const auth = new Auth(store.auth);
 
   const handler = createHandler(
+    auth,
     sessions,
     new Profiles(store, owner),
     startPlugins([plugin], [plugin.name], {
@@ -95,6 +100,12 @@ function startServer(
     () => undefined,
   );
 
+  const cookie = firstUserCookie(
+    handler,
+    "http://127.0.0.1",
+    auth.setupToken ?? "",
+  );
+
   const call = async (path: string, body?: unknown): Promise<Response> =>
     handler(
       new Request(`http://127.0.0.1${path}`, {
@@ -103,6 +114,7 @@ function startServer(
           [versionHeader]: String(protocolVersion),
           [providerHeader]: "local",
           "content-type": "application/json",
+          cookie: await cookie,
         },
         ...(body !== undefined && { body: JSON.stringify(body) }),
       }),
@@ -320,10 +332,14 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
     },
   };
 
+  const auth = new Auth(store.auth);
+  let cookie: Promise<string> | undefined;
+
   const handler = (
     enabled: readonly string[],
   ): ((path: string) => Promise<Session[]>) => {
     const handle = createHandler(
+      auth,
       sessions,
       new Profiles(store, owner),
       startPlugins([keeper], enabled, {
@@ -337,9 +353,19 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
       () => undefined,
     );
 
+    const signedIn = (cookie ??= firstUserCookie(
+      handle,
+      "http://127.0.0.1",
+      auth.setupToken ?? "",
+    ));
+
     return async (path) =>
       (await (
-        await handle(new Request(`http://127.0.0.1${path}`))
+        await handle(
+          new Request(`http://127.0.0.1${path}`, {
+            headers: { cookie: await signedIn },
+          }),
+        )
       ).json()) as Session[];
   };
 

@@ -3,6 +3,7 @@ import type { Environment, Session } from "@pi-cloud/protocol";
 import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useState } from "react";
 import { useNow } from "@pi-cloud/plugins/web";
+import { api } from "./api";
 import { matches } from "./notices";
 import {
   ago,
@@ -210,6 +211,19 @@ export function Sidebar({
 
       <NotifyButton />
       <EnvironmentStatus environments={environments} />
+      <div className="border-t border-line px-2 py-2">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            void api("/api/auth/logout", {}).finally(() => {
+              location.replace("/");
+            });
+          }}
+          className="w-full justify-start text-label"
+        >
+          Sign out
+        </Button>
+      </div>
     </nav>
   );
 }

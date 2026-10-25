@@ -45,7 +45,12 @@ function usePolled(path: string): Polled<unknown> {
           setValue(list);
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        // The browser session ended, so the page goes back to signing in.
+        if (error instanceof Error && error.message === "signed_out") {
+          location.reload();
+        }
+      });
   }, [path, order]);
 
   useEffect(() => {

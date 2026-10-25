@@ -73,6 +73,8 @@ ssh -N -L 7420:127.0.0.1:7420 <vm>
 
 If your SSH config uses `ControlMaster`, this command returns right away while the forward stays up on the shared connection. `ssh -O cancel -L 7420:127.0.0.1:7420 <vm>` removes it.
 
+The server logs a one-time setup link the first time it starts (`journalctl --user -u pi-cloud | grep setup`). Open it through the tunnel to create your user, then sign in with it.
+
 Open http://127.0.0.1:7420, choose the `vm` Environment and "Clone repository", enter a repository URL the VM can clone, and start the session. The session's branch starts from the repository's default branch, or from the branch, tag or commit you enter under "start from".
 
 To also run sessions on the laptop, start an agent against the tunnel:

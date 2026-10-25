@@ -16,11 +16,13 @@ import type {
 } from "@pi-cloud/plugins";
 import type { Session, SessionEvent } from "@pi-cloud/protocol";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
 let root: string;
 let faux: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve> | undefined;
+let signedIn: () => Promise<string>;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-plugins-")));
@@ -44,6 +46,7 @@ async function start(
   });
 
   runtime.registerNativeProvider(faux.provider);
+  const logs: string[] = [];
 
   server = serve({
     port: 0,
@@ -58,8 +61,12 @@ async function start(
     },
     plugins,
     disabledPlugins,
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
+
+  signedIn = firstUser(server, logs);
 }
 
 async function api(path: string, body?: unknown): Promise<Response> {
@@ -69,10 +76,11 @@ async function api(path: string, body?: unknown): Promise<Response> {
 
   return fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 }
 

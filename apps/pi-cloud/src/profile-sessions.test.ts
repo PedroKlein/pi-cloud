@@ -25,10 +25,12 @@ import type {
 } from "@pi-cloud/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
+import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
 let root: string;
 let server: ReturnType<typeof serve>;
+let signedIn: () => Promise<string>;
 let faux: ReturnType<typeof fauxProvider>;
 let stopAgent: () => Promise<void>;
 
@@ -44,12 +46,18 @@ beforeEach(async () => {
 
   runtime.registerNativeProvider(faux.provider);
 
+  const logs: string[] = [];
+
   server = serve({
     port: 0,
     database: ":memory:",
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
-    log: () => undefined,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
   });
+
+  signedIn = firstUser(server, logs);
 
   const controller = new AbortController();
 
@@ -79,10 +87,11 @@ afterEach(async () => {
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(new URL(path, server.url), {
     method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    headers: {
+      cookie: await signedIn(),
+      ...(body !== undefined && { "content-type": "application/json" }),
+    },
+    ...(body !== undefined && { body: JSON.stringify(body) }),
   });
 
   return (await response.json()) as T;
@@ -116,7 +125,7 @@ async function until(
 
   const response = await fetch(
     new URL(`/api/sessions/${sessionId}/events`, server.url),
-    { signal: controller.signal },
+    { signal: controller.signal, headers: { cookie: await signedIn() } },
   );
 
   for await (const event of readSse(response)) {
@@ -216,6 +225,7 @@ test("a machine deletes a deleted Profile's folder once its Sessions stop", asyn
 
   await fetch(new URL(`/api/profiles/${session.profileId}`, server.url), {
     method: "DELETE",
+    headers: { cookie: await signedIn() },
   });
 
   const deadline = Date.now() + 5000;
