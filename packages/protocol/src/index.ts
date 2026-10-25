@@ -169,6 +169,10 @@ export interface Assignment {
   // Session parts the Session must not run without, such as the meta
   // plugin's confirm. A runner that lacks one doesn't start it.
   readonly requiredPlugins?: readonly string[];
+  // The installed plugins' Session parts, by name, with the SHA-256 of each
+  // bundle. The runner fetches one it hasn't got (ADR 0022). They are
+  // required too, so a runner from before them doesn't start the Session.
+  readonly installedParts?: Readonly<Record<string, string>>;
   readonly environment: SessionEnvironment;
 }
 
@@ -226,8 +230,15 @@ export interface PluginManifest {
   readonly version?: string;
   readonly engine?: number;
   // Paths inside the plugin's folder.
-  readonly parts?: { readonly server?: string; readonly web?: string };
+  readonly parts?: {
+    readonly server?: string;
+    readonly web?: string;
+    readonly session?: string;
+  };
   readonly capabilities?: readonly Capability[];
+  // An installed plugin's Session part loads only in the Sessions its server
+  // part owns. A built-in says so on its Session part instead.
+  readonly ownSessionsOnly?: boolean;
 }
 
 // A plugin as the Plugins page shows it. A failed plugin's server part threw

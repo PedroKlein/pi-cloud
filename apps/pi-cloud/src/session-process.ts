@@ -14,6 +14,7 @@ import { httpSessionStream } from "./client";
 import { type ContainerSession, serverInContainer } from "./container";
 import { stderrLog } from "./log";
 import { sessionParts } from "./plugins";
+import { installedSessionParts } from "./session-parts";
 
 export interface SessionSpec {
   readonly server: string;
@@ -157,7 +158,14 @@ export async function runSessionProcess(): Promise<void> {
       {
         ...spec.options,
         firstMessage: spec.assignment.firstMessage,
-        ...sessionParts(spec.assignment),
+        ...(await sessionParts(
+          spec.assignment,
+          installedSessionParts(
+            spec.server,
+            spec.assignment,
+            spec.options.sessionDir,
+          ),
+        )),
         opener: pageOpener,
       },
       httpSessionStream(spec.server, spec.assignment, log, () => {
