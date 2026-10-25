@@ -19,7 +19,7 @@
   "piCloud": {
     "id": "oidc",
     "title": "Single sign-on",
-    "description": "Signs people in through an OpenID Connect provider, such as SAP IAS, and lets in the members of one group.",
+    "description": "Signs people in through an OpenID Connect provider, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose.",
     "settings": {
       "issuer": {
         "type": "string",
@@ -37,17 +37,41 @@
         "title": "Button label",
         "default": "Sign in with single sign-on"
       },
+      "groupsClaim": {
+        "type": "string",
+        "title": "Groups claim",
+        "description": "The ID token claim that lists the person's groups.",
+        "default": "groups"
+      },
       "accessGroup": {
         "type": "string",
         "title": "Access group",
-        "description": "Members of this group, from the ID token's groups claim, can sign in. Their first sign-in makes their user.",
+        "description": "Members of this group can sign in. A person's first sign-in makes their user.",
         "default": "pi-cloud-users"
       },
       "adminGroup": {
         "type": "string",
         "title": "Admin group",
-        "description": "Members of this group can install plugins, change their settings and restart the server.",
+        "description": "Members of this group can sign in, install plugins, change their settings and restart the server.",
         "default": "pi-cloud-admins"
+      },
+      "allowedEmails": {
+        "type": "strings",
+        "title": "Allowed emails",
+        "description": "People with these verified emails can sign in too, for a provider that sends no groups, such as Google.",
+        "default": []
+      },
+      "allowedDomains": {
+        "type": "strings",
+        "title": "Allowed domains",
+        "description": "People with a verified email at these domains, such as example.com, can sign in.",
+        "default": []
+      },
+      "adminEmails": {
+        "type": "strings",
+        "title": "Admin emails",
+        "description": "People with these verified emails are admins.",
+        "default": []
       }
     }
   }

@@ -13,7 +13,7 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 
 ### The `oidc` plugin
 
-- A built-in plugin signs people in with the authorization code flow and PKCE. Its settings are the issuer, the client ID, the button's label, an access group and an admin group.
+- A built-in plugin signs people in with the authorization code flow and PKCE. It works with any provider that publishes OpenID Connect discovery. Its settings are the issuer, the client ID, the button's label, the groups claim, an access group, an admin group and lists of allowed emails, allowed domains and admin emails.
 - A client secret, when the provider needs one, comes from `PI_CLOUD_OIDC_CLIENT_SECRET`. The binary takes it out of its environment as it starts, as it does `PI_CLOUD_SECRET_KEY`, since Sessions of the built-in runner inherit the environment. On Kubernetes it comes from a Secret the operator creates.
 - The redirect URI is the server's own `/api/plugins/oidc/callback`, on whichever host the browser used, so the public host and a port-forward both work once both are registered with the provider.
 - The ID token comes straight from the token endpoint over TLS, so the plugin checks its issuer, audience, expiry and nonce but not its signature ([OpenID Connect Core 1.0, 3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)). The issuer and token endpoint must be HTTPS, except on loopback for tests.
@@ -22,7 +22,9 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 ### Who gets in
 
 - Access comes from the provider's groups, in the ID token's `groups` claim. A member of the access group gets a Pi Cloud user on their first sign-in, keyed by issuer and subject, never by email. Anyone else is refused (decided 2026-10-25).
-- A member of the admin group is an admin. The plugin reads the groups again on every sign-in, so a change in the provider applies at the next one.
+- A member of the admin group is an admin, and gets in too. The plugin reads the groups again on every sign-in, so a change in the provider applies at the next one.
+- The groups come from the claim the settings name, `groups` by default, since providers differ.
+- For a provider that sends no groups, such as Google, the email lists let people in by their email or its domain, and make admins by email. An email counts only when the token says `email_verified` (decided 2026-10-25). GitHub has no OpenID Connect sign-in, so it would need its own login plugin on the same seam, which waits until someone needs it.
 - A password user, such as the first one from the setup link, can link their provider account from Settings and then sign in with it as themselves. Their admin flag stays their own.
 - Users the plugin makes have no password.
 
