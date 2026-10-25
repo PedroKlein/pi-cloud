@@ -209,6 +209,65 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
   expect(await tools.json()).toEqual([]);
 });
 
+test("repairs JSON-encoded tool arguments and names the allowed choices", async () => {
+  const inputs: unknown[] = [];
+
+  await start([
+    {
+      name: "states",
+      register: ({ tools }) => {
+        tools.register({
+          name: "set_state",
+          description: "Sets a state",
+          parameters: {
+            type: "object",
+            properties: {
+              state: { type: "string", enum: ["open", "done"] },
+              tags: { type: "array", items: { type: "string" } },
+            },
+            required: ["state"],
+          },
+          appliesTo: () => true,
+          run: async (input) => {
+            inputs.push(input);
+
+            return Promise.resolve({ text: "set", isError: false });
+          },
+        });
+      },
+    },
+  ]);
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("set_state", { state: '"done"', tags: '["a"]' })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxToolCall("set_state", { state: "closed" })], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("finished")]),
+  ]);
+
+  const session = await createSession();
+  await follow(session.id, idle);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "set it",
+  });
+
+  const events = await follow(session.id, entriesInclude('"finished"'));
+
+  expect(inputs).toEqual([{ state: "done", tags: ["a"] }]);
+
+  expect(
+    entriesInclude(
+      String.raw`state must be one of \"open\", \"done\", not \"closed\"`,
+    )(events),
+  ).toBe(true);
+});
+
 test("serves a tool's exposure, namespace and hints to its sessions", async () => {
   const spec = {
     name: "keys_list",

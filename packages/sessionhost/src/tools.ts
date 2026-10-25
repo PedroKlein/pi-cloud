@@ -5,6 +5,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolResult, ToolSpec } from "@pi-cloud/protocol";
+import { repairArguments } from "./arguments";
 
 export interface ServerToolCalls {
   readonly tools: readonly ToolDefinition[];
@@ -34,6 +35,7 @@ export function serverTools(
       label: spec.name,
       description: spec.description,
       parameters: Type.Unsafe<unknown>(spec.parameters),
+      prepareArguments: (args) => repairArguments(args, spec.parameters),
       ...(spec.exposure && { exposure: spec.exposure }),
       ...(spec.namespace && { namespace: spec.namespace }),
       // Pi shows a namespace's instructions only to codemode scripts, so
