@@ -530,7 +530,7 @@ function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
   const namespace: ToolNamespace = toolset.namespace;
 
   return toolset.tools.map((tool) => {
-    const { request: _request, result: _result, ...spec } = tool;
+    const { request: _request, result: _result, opens: _opens, ...spec } = tool;
 
     return {
       plugin,
@@ -544,6 +544,10 @@ function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
     };
   });
 }
+
+// A route of the web app such as a Session id or <project id>/<thread id>,
+// so what a tool opens stays a page of Pi Cloud.
+const appRoute = /^[\w-]+(\/[\w-]+)*$/;
 
 // Never sent anywhere: the request goes straight to the server's handler.
 const internalOrigin = "http://pi-cloud.internal";
@@ -611,7 +615,7 @@ async function runRouteTool(
   try {
     const opened = found.tool.opens?.(parsed);
 
-    if (opened !== undefined) {
+    if (opened !== undefined && appRoute.test(opened.route)) {
       open({
         kind: "open",
         route:

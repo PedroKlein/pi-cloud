@@ -253,7 +253,7 @@ test("goes where the assistant opens on a wide screen, and offers it on a phone"
   await ask("Start another one");
 
   const notice = page.getByRole("status").filter({
-    hasText: "The assistant opened the new Session",
+    hasText: "Open the new Session?",
   });
 
   await notice.waitFor();

@@ -327,3 +327,19 @@ test("shows an extension's footer and header until it removes them or the stream
 
   expect(stream.feeds.at(-1)?.footer).toBeUndefined();
 });
+
+test("an action the assistant opened is dropped once the next turn runs", () => {
+  const { feeds, open, live } = connect();
+  open();
+
+  live({
+    type: "ui_action",
+    action: { kind: "open", route: "s2", label: "the new Session" },
+  });
+
+  const offered = feeds.at(-1)?.uiAction?.action.route;
+  live({ type: "status", status: "running" });
+
+  expect(offered).toBe("s2");
+  expect(feeds.at(-1)?.uiAction).toBeUndefined();
+});

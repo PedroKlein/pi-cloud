@@ -139,10 +139,11 @@ export const kernelToolsets: readonly Toolset[] = [
           method: "GET",
           path: `/api/sessions/${idOf(input)}`,
         }),
-        result: () => "Opened it for the user.",
+        result: () =>
+          "Offered it to the user in the browsers that show this chat.",
         opens: (body) => ({
           route: (body as Session).id,
-          label: (body as Session).title ?? "the Session",
+          label: titleOf(body as Session),
         }),
       },
       {
@@ -348,4 +349,8 @@ function profileView(profile: Profile): Record<string, unknown> {
   const { mcpServers, ...rest } = profile;
 
   return { ...rest, mcpServers: Object.keys(mcpServers) };
+}
+
+function titleOf({ title }: Session): string {
+  return title === null || title === "" ? "the Session" : title;
 }

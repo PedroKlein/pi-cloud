@@ -164,6 +164,12 @@ export function feedReader({
     switch (event.type) {
       case "status":
         echo = "";
+
+        // What the last turn offered to open is stale once a new one runs.
+        if (event.status === "running" && feed.uiAction !== undefined) {
+          update({ uiAction: undefined });
+        }
+
         if (event.status === "idle") {
           // The entry that holds the streamed answer can land after idle.
           const behind = (event.transcriptLength ?? 0) > lines;

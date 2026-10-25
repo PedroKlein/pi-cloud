@@ -295,7 +295,10 @@ export function SessionView({
               report={reportError}
             />
           )}
-          {!archived && <UiActionNotice uiAction={feed.uiAction} />}
+          <UiActionNotice
+            uiAction={archived ? undefined : feed.uiAction}
+            goes={primary && shown === "chat"}
+          />
           {!archived && (
             <PiViewNotice
               piView={feed.piView}
@@ -525,49 +528,61 @@ function PagesNotice({
 
 // What a meta-session's tool opened (ADR 0035). A wide screen goes there at
 // once; a phone offers it instead, so the chat stays where it is.
+// What a meta-session's tool opened (ADR 0035). The main chat on a wide
+// screen goes there at once; anywhere else it is offered instead, so the
+// chat stays where it is. The region stays mounted so readers announce it.
 function UiActionNotice({
   uiAction,
+  goes,
 }: {
   readonly uiAction: Feed["uiAction"];
-}): ReactElement | null {
+  readonly goes: boolean;
+}): ReactElement {
   const [dismissed, setDismissed] = useState<number>();
-  const wide = matchMedia("(width >= 48rem)").matches;
+  const handled = useRef<number>(undefined);
+  const wide = goes && matchMedia("(width >= 48rem)").matches;
 
   useEffect(() => {
-    if (uiAction !== undefined && matchMedia("(width >= 48rem)").matches) {
+    if (uiAction === undefined || handled.current === uiAction.key) {
+      return;
+    }
+
+    handled.current = uiAction.key;
+
+    if (goes && matchMedia("(width >= 48rem)").matches) {
       location.hash = `#${uiAction.action.route}`;
     }
-  }, [uiAction]);
+  }, [uiAction, goes]);
 
-  if (uiAction === undefined || wide || uiAction.key === dismissed) {
-    return null;
-  }
+  const offered =
+    uiAction !== undefined && !wide && uiAction.key !== dismissed
+      ? uiAction.action
+      : undefined;
 
   return (
-    <div
-      role="status"
-      className="mx-auto flex w-full max-w-chat items-center gap-3 px-4 pb-2 text-label text-fg-dim"
-    >
-      <Icon name="chevron-right" />
-      <span className="min-w-0 flex-1 truncate">
-        The assistant opened {uiAction.action.label}
-      </span>
-      <a
-        href={`#${uiAction.action.route}`}
-        className="inline-flex h-control items-center rounded-md border border-line bg-elevated px-3 text-ui font-medium text-fg hover:border-line-strong hover:bg-hover pointer-coarse:min-h-touch"
-      >
-        Open
-      </a>
-      <Button
-        variant="ghost"
-        iconOnly
-        aria-label="Dismiss"
-        onClick={() => {
-          setDismissed(uiAction.key);
-        }}
-      >
-        <Icon name="x" />
-      </Button>
+    <div role="status" className="mx-auto w-full max-w-chat px-4">
+      {offered && (
+        <div className="flex items-center gap-3 pb-2 text-label text-fg-dim">
+          <Icon name="chevron-right" />
+          <span className="min-w-0 flex-1 truncate">Open {offered.label}?</span>
+          <a
+            href={`#${offered.route}`}
+            className="inline-flex h-control items-center rounded-md border border-line bg-elevated px-3 text-ui font-medium text-fg hover:border-line-strong hover:bg-hover pointer-coarse:min-h-touch"
+          >
+            Open
+          </a>
+          <Button
+            variant="ghost"
+            iconOnly
+            aria-label="Dismiss"
+            onClick={() => {
+              setDismissed(uiAction?.key);
+            }}
+          >
+            <Icon name="x" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

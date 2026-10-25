@@ -433,3 +433,50 @@ test("opens what a tool started or asked for in the browsers watching, once", as
 
   expect(uiActions(replayed)).toEqual([]);
 });
+
+test("opens a Session on request without asking, and only routes of the app", async () => {
+  const probe: ServerPlugin = {
+    name: "probe",
+    register: (context) => {
+      context.routes.handle(() => Response.json({}));
+
+      context.toolsets.register({
+        namespace: { name: "probe" },
+        tools: [
+          {
+            name: "escape",
+            description: "Opens a route outside the app",
+            parameters: { type: "object" },
+            exposure: "direct",
+            annotations: { readOnlyHint: true },
+            request: () => ({ method: "GET", path: "x" }),
+            opens: () => ({ route: "../../elsewhere", label: "elsewhere" }),
+          },
+        ],
+      });
+    },
+  };
+
+  await server.stop();
+  start([meta, probe]);
+  await environmentReady();
+
+  const target = await json<Session>(
+    api("/api/sessions", { workspace: { kind: "folder", path: root } }),
+  );
+
+  faux.setResponses([
+    call("probe_escape", {}),
+    call("sessions_open", { id: target.id }),
+    fauxAssistantMessage([fauxText("opened it")]),
+  ]);
+
+  const metaSession = await startMeta("Show me that Session");
+  const events = await follow(metaSession.id, entriesInclude("opened it"));
+
+  expect(prompts(events)).toEqual([]);
+
+  expect(uiActions(events)).toEqual([
+    { kind: "open", route: target.id, label: "the Session" },
+  ]);
+});
