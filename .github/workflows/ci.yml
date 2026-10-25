@@ -21,3 +21,24 @@ jobs:
       - run: bun run build
       - run: bun x playwright-core install --with-deps chromium
       - run: bun run test:e2e
+
+  kind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: pi-cloud
+      - run: docker build -t pi-cloud:ci .
+      - run: kind load docker-image pi-cloud:ci --name pi-cloud
+      - run: >-
+          helm install pi-cloud deploy/helm/pi-cloud --wait --timeout 3m
+          --set image.repository=pi-cloud --set image.tag=ci
+          --set image.pullPolicy=Never
+      - run: bun test ./apps/pi-cloud/src/kind.e2e.ts
+      - if: failure()
+        run: kubectl describe pods && kubectl logs deploy/pi-cloud --all-containers
