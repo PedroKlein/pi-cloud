@@ -7,6 +7,7 @@ import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
 import { fauxModels } from "./faux";
 import { installedPlugins } from "./installed";
+import { restartExitCode, supervised } from "./restart";
 import { stderrLog } from "./log";
 import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
@@ -101,6 +102,11 @@ switch (command) {
         root: pluginsRoot,
         plugins: await installedPlugins(pluginsRoot, log),
       },
+      ...(supervised(process.env) && {
+        restart: () => {
+          void server.stop().then(() => process.exit(restartExitCode));
+        },
+      }),
       log,
     });
 

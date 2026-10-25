@@ -461,6 +461,9 @@ test("turns an installed plugin on for the next start", async () => {
   await hello.getByRole("button", { name: "Turn on" }).click();
   await hello.getByText("It turns on when the server restarts.").waitFor();
 
+  await page.getByRole("button", { name: "Restart now" }).click();
+  await page.getByText(/restart it yourself/).waitFor();
+
   await page.reload();
   await hello.getByRole("button", { name: "Turn off" }).click();
   await hello.getByRole("button", { name: "Turn on" }).waitFor();

@@ -94,6 +94,12 @@ type BrowserRoute = (
   actor: UserActor,
 ) => Response | Promise<Response>;
 
+export interface ServerRestart {
+  // Sessions on the server's own runner that are mid-turn.
+  readonly busy: () => number;
+  readonly now: () => void;
+}
+
 export function createHandler(
   auth: Auth,
   sessions: Sessions,
@@ -101,6 +107,7 @@ export function createHandler(
   plugins: PluginHost,
   checkStore: () => void,
   log: Log,
+  restart?: ServerRestart,
 ): (request: Request) => Promise<Response> {
   const agent = (route: AgentRoute): Route => {
     return async (request, params) => {
@@ -222,6 +229,36 @@ export function createHandler(
 
   const browserRoutes: readonly (readonly [string, RegExp, BrowserRoute])[] = [
     ["GET", /^\/api\/plugins$/, () => Response.json(plugins.list())],
+    [
+      "POST",
+      /^\/api\/restart$/,
+      async (request) => {
+        if (restart === undefined) {
+          throw new BadRequest(
+            "nothing starts this server again when it stops, so restart it yourself",
+          );
+        }
+
+        const { force } = fieldsOf(await readJson(request));
+        const busy = restart.busy();
+
+        // Sessions on the server's own runner stop with it mid-turn
+        // (ADR 0022), so the user decides.
+        if (busy > 0 && force !== true) {
+          return Response.json(
+            { error: "busy", sessions: busy },
+            { status: 409 },
+          );
+        }
+
+        log("server restarting", { interrupted: busy });
+
+        // After the answer is on its way.
+        setTimeout(restart.now, 100);
+
+        return new Response(null, { status: 202 });
+      },
+    ],
     [
       "GET",
       /^\/api\/plugin-parts\/([^/]+)\/([^/]+)$/,
