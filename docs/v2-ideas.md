@@ -43,6 +43,12 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 
 - **Hooks around tool calls.** Both projects have them: pi-durable's `beforeTool` can block a call, and OpenHands has `PreToolUse` and `PostToolUse`. A Pi Cloud policy extension (approvals, audit) would sit there.
 - **Install and enable are separate.** OpenHands installs UI extensions disabled. An agent may install one, but only the user enables it. The backend owns installed extensions, pinned to a resolved revision.
+- **Plugins that extend each other.** OpenClaw plugins contribute to typed capability contracts that other plugins own, and Hermes plugins fill provider slots with a fallback to the built-in. A workflow plugin whose node types come from other plugins would need this ([ADR 0036](adr/0036-plugin-settings.md#later)).
+- **Typed hooks with grants.** OpenClaw gives each hook a typed payload, and a plugin must be granted access before its hooks see conversation content. Hermes separates observer hooks from middleware that can change a request.
+- **Define an operation once.** OpenClaw turns one typed operation into a UI call, an agent tool and a command. Pi Cloud's plugins write a route and a tool for the same thing, which ADR 0035's toolsets make more common.
+- **Inline views from tool results.** OpenClaw lets a tool return a small JSON view that the chat draws.
+- **Declared backups and migrations.** OpenClaw's manifest names the state a plugin keeps and how to migrate it, so backups and upgrades don't need the plugin's code.
+- **A plugin host process.** Hermes can run plugins in a separate process, so a crash or a hostile plugin can't take the server down.
 - **Tell the agent where it is.** OpenHands appends the URLs of the services around the agent to its context, so it doesn't guess ports. Our cloud-bridge extension could do the same for preview URLs.
 
 ## Extension UI
