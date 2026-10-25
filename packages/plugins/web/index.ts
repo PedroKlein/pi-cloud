@@ -50,6 +50,12 @@ export interface PageProps {
   readonly path: string;
 }
 
+// The home screen, at the root of the app (ADR 0035).
+export interface HomeProps {
+  readonly context: WebContext;
+  readonly onNewSession: () => void;
+}
+
 export interface NavItemsProps {
   readonly context: WebContext;
   // The open path inside the plugin's page, undefined when it isn't open.
@@ -114,6 +120,8 @@ export interface WebPlugin {
     // scrolling in the shell's column.
     readonly fills?: (path: string) => boolean;
   };
+  // The first enabled plugin with a home screen draws the app's root.
+  readonly Home?: ComponentType<HomeProps>;
   // Where a Session this plugin owns opens, as a path in its page. Links,
   // search results and notices for it go there (ADR 0028).
   readonly sessionPath?: (session: Session) => string;

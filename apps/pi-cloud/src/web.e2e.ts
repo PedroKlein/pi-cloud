@@ -190,6 +190,36 @@ test("chats from Pi's own TUI and goes back to the chat when Pi quits", async ()
   ).toEqual(["hi from the web tui"]);
 }, 30_000);
 
+test("asks the assistant from the home screen and lists the conversation", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("Happy to help")])]);
+  await page.goto(server.url.href);
+
+  await page
+    .getByRole("heading", { name: "What do you want to build today?" })
+    .waitFor();
+
+  const ask = page.getByLabel("Ask the Pi Cloud assistant");
+  await ask.fill("What can you do?");
+  await ask.press("Enter");
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "Happy to help" })
+    .waitFor();
+
+  expect(new URL(page.url()).hash).toMatch(/^#plugin\/meta\/[\w-]+$/);
+
+  await page
+    .locator('nav a[aria-current="page"]', { hasText: "What can you do?" })
+    .waitFor({ timeout: 2000 });
+
+  await page.goto(server.url.href);
+
+  await page
+    .getByRole("region", { name: "Earlier conversations" })
+    .getByRole("link", { name: "What can you do?" })
+    .waitFor();
+}, 30_000);
+
 test("starts a session with the task from the New session form", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("on it")])]);
   await page.goto(server.url.href);

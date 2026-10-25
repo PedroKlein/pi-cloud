@@ -156,13 +156,26 @@ export function App({
     }
 
     if (route === "") {
-      return (
-        <Empty
-          onNewSession={() => {
-            setCreating(true);
-          }}
-          onMenu={openDrawer}
-        />
+      const home = enabledPlugins().find(({ Home }) => Home !== undefined);
+
+      const newSession = (): void => {
+        setCreating(true);
+      };
+
+      return home?.Home ? (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="p-2 md:hidden">
+            <MenuButton onMenu={openDrawer} />
+          </div>
+          <PluginBoundary name={home.name}>
+            <home.Home
+              context={pluginContext(home.name)}
+              onNewSession={newSession}
+            />
+          </PluginBoundary>
+        </div>
+      ) : (
+        <Empty onNewSession={newSession} onMenu={openDrawer} />
       );
     }
 
