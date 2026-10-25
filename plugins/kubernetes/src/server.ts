@@ -9,12 +9,12 @@ import {
   type RunnerPod,
   inClusterApi,
 } from "./cluster";
+import { type FailedPod, PodFailures } from "./failures";
 import { runnerPod, sessionClaim, sessionPodName } from "./pods";
 import {
   isObject,
   type KubernetesEnvironment,
   type KubernetesSettings,
-  type PodFailure,
   type SettingsStore,
   settingsFrom,
   settingsStore,
@@ -38,14 +38,9 @@ interface Pods {
   readonly image: string;
   readonly server: string;
   readonly variables: Readonly<Record<string, string>>;
-  readonly retryAfterMs: number;
+  // Pods made before the server started may have stopped while it was down.
+  readonly since: number;
 }
-
-// Failures in a row and the last one, by Environment.
-type Failures = Map<
-  string,
-  { readonly count: number; readonly last: PodFailure }
->;
 
 const finished = new Set(["Succeeded", "Failed"]);
 
@@ -69,7 +64,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         retryAfterMs = 10_000,
       } = options();
 
-      const failures: Failures = new Map();
+      const failures = new PodFailures(retryAfterMs);
 
       const startsPods =
         api !== undefined && image !== undefined && server !== undefined;
@@ -81,7 +76,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         Response.json({
           settings,
           startsPods,
-          lastFailure: failures.get(environmentId)?.last ?? null,
+          lastFailure: failures.last(environmentId),
         } satisfies KubernetesEnvironment);
 
       context.routes.handle(async (request, path, caller) => {
@@ -119,6 +114,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
 
         if (body["settings"] === null) {
           store.remove(environmentId);
+          failures.clearEnvironment(environmentId);
           context.log("kubernetes settings removed", { environmentId });
 
           return answer(environmentId, null);
@@ -138,6 +134,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         }
 
         store.set(environmentId, settings);
+        failures.clearEnvironment(environmentId);
         context.log("kubernetes settings saved", { environmentId });
 
         return answer(environmentId, settings);
@@ -158,7 +155,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         image,
         server,
         variables,
-        retryAfterMs,
+        since: Date.now(),
       };
 
       // The first pass waits a tick: the server finishes starting plugins
@@ -199,7 +196,7 @@ async function reconcile(
   context: ServerPluginContext,
   pods: Pods,
   store: SettingsStore,
-  failures: Failures,
+  failures: PodFailures,
 ): Promise<void> {
   const environments = context.environments.list();
   const all = await pods.cluster.runnerPods();
@@ -209,6 +206,7 @@ async function reconcile(
   // Pods of an Environment this server doesn't know belong to another server
   // in the namespace.
   const removed = new Set<string>();
+  const failed: FailedPod[] = [];
 
   for (const pod of all) {
     const environment = environments.find(({ id }) => id === pod.environmentId);
@@ -217,21 +215,18 @@ async function reconcile(
       continue;
     }
 
-    const joined = environment.runners.some(({ name }) => name === pod.name);
+    const joined =
+      pod.createdAt < pods.since ||
+      environment.runners.some(({ name }) => name === pod.name);
+
     const problem = failureOf(pod, reason, joined, pods.server);
 
     if (problem !== undefined) {
-      const count = (failures.get(pod.environmentId)?.count ?? 0) + 1;
-      const waitMs = pods.retryAfterMs * 2 ** Math.min(count - 1, 5);
-
-      failures.set(pod.environmentId, {
-        count,
-        last: {
-          pod: pod.name,
-          problem,
-          at: new Date(now).toISOString(),
-          retryAt: new Date(now + waitMs).toISOString(),
-        },
+      failed.push({
+        key: failureKey(pod),
+        environmentId: pod.environmentId,
+        pod: pod.name,
+        problem,
       });
     }
 
@@ -249,6 +244,8 @@ async function reconcile(
       ...(problem !== undefined && { problem }),
     });
   }
+
+  failures.record(failed, now);
 
   // An archived Session's workspace is removed, as on any runner, so its
   // claim goes once no pod mounts it.
@@ -278,22 +275,19 @@ async function reconcile(
       (pod) => pod.environmentId === environmentId && !finished.has(pod.phase),
     );
 
-    const healthy = active.some(({ name }) =>
-      environment.runners.some(
-        (runner) => runner.online && runner.name === name,
-      ),
-    );
+    for (const pod of active) {
+      const online = environment.runners.some(
+        (runner) => runner.online && runner.name === pod.name,
+      );
 
-    if (healthy) {
-      failures.delete(environmentId);
+      if (online && !removed.has(pod.name)) {
+        failures.clear(failureKey(pod));
+      }
     }
 
-    const retryAt = failures.get(environmentId)?.last.retryAt;
-    if (retryAt !== undefined && Date.parse(retryAt) > now) {
-      continue;
-    }
+    const waiting = (key: string): boolean => failures.waiting(key, now);
 
-    await scale(context, pods, environment, settings, active).catch(
+    await scale(context, pods, environment, settings, active, waiting).catch(
       (error: unknown) => {
         context.log("kubernetes runner pods not started", {
           environmentId,
@@ -310,6 +304,7 @@ async function scale(
   environment: Environment,
   settings: KubernetesSettings,
   active: readonly RunnerPod[],
+  waiting: (key: string) => boolean,
 ): Promise<void> {
   const environmentId = environment.id;
 
@@ -319,8 +314,12 @@ async function scale(
   }
 
   if (settings.workspace === "claim") {
-    await scaleSessions(context, pods, environment, settings, active);
+    await scaleSessions(context, pods, environment, settings, active, waiting);
 
+    return;
+  }
+
+  if (waiting(environmentId)) {
     return;
   }
 
@@ -360,13 +359,14 @@ async function scaleSessions(
   environment: Environment,
   settings: KubernetesSettings,
   active: readonly RunnerPod[],
+  waiting: (key: string) => boolean,
 ): Promise<void> {
   const running = new Set(active.map(({ name }) => name));
   let room = settings.maxPods - active.length;
 
   for (const session of context.environments.unplaced(environment.id)) {
     const name = sessionPodName(session.id);
-    if (running.has(name) || room <= 0) {
+    if (running.has(name) || room <= 0 || waiting(name)) {
       continue;
     }
 
@@ -418,6 +418,11 @@ async function startPod(
     await cluster.deleteSecret(name);
     throw error;
   }
+}
+
+// A Session's own pod backs off alone; an Environment's shared pods together.
+function failureKey(pod: RunnerPod): string {
+  return pod.sessionId === undefined ? pod.environmentId : pod.name;
 }
 
 // A pod that stopped before its agent ever polled failed as surely as one
