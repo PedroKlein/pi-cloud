@@ -1,0 +1,25 @@
+image:
+  repository: ghcr.io/pedroklein/pi-cloud
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Where people open the server, such as https://pi.example.com. The setup link
+# in the log points here.
+url: ""
+
+# Runs a runner inside the server too, in the Environment of this name.
+builtInRunner: ""
+
+# A Secret with a `secretKey` entry: 32 bytes, base64. When empty, the chart
+# makes one on install and keeps it on upgrades.
+existingSecret: ""
+
+persistence:
+  size: 5Gi
+  storageClass: ""
+
+service:
+  port: 7420
+
+resources: {}

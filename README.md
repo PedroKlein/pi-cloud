@@ -75,6 +75,17 @@ With `isolation: "container"`, each session's Pi process runs in a container fro
 
 Several agents can join one Environment's pool with its key ([ADR 0032](docs/adr/0032-environments-and-runners.md)). `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
 
+### In Kubernetes
+
+The `Dockerfile` builds an image that runs the server, and `deploy/helm/pi-cloud` installs it with one replica and its data on a ReadWriteOnce volume ([ADR 0034](docs/adr/0034-v2-deployment-and-credentials.md)). On install the chart makes a Secret holding the secret key, and it keeps that Secret on upgrades and uninstalls. Put HTTPS in front with your gateway, and set `url` to where people open it:
+
+```sh
+helm install pi-cloud deploy/helm/pi-cloud --set url=https://pi.example.com
+kubectl logs deploy/pi-cloud | grep setup
+```
+
+Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
+
 ## Roadmap
 
 - **v1:** independent sessions and Projects (a coordinator session plus thread sessions) on a laptop and one VM.
@@ -103,6 +114,6 @@ bun run typecheck
 bun test
 ```
 
-Tests use Pi's faux model provider, so they need no API key. `bun run test:e2e` drives the web UI in headless Chromium against a server with a faux-model provider. It needs Playwright's browser once: `bun x playwright-core install chromium`. [AGENTS.md](AGENTS.md) has the coding conventions.
+Tests use Pi's faux model provider, so they need no API key. `bun test ./apps/pi-cloud/src/kind.e2e.ts` runs against the chart installed in your current kubectl context, as CI does on kind. `bun run test:e2e` drives the web UI in headless Chromium against a server with a faux-model provider. It needs Playwright's browser once: `bun x playwright-core install chromium`. [AGENTS.md](AGENTS.md) has the coding conventions.
 
 `bun run smoke` checks that Pi Cloud works with your own Pi setup: your default model, your extensions and your shell. It starts a server and an agent, creates a session in a temporary directory, sends one short prompt to your default model, runs a command in the terminal, and fails if the agent printed any errors. The prompt costs a few tokens. Pass `--model provider/id` to use a cheaper model than your default, as in `bun run smoke --model openai/gpt-5-mini`.

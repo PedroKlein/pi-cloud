@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "pi-cloud.labels" . | nindent 4 }}
+spec:
+  # The store is SQLite on a ReadWriteOnce volume (ADR 0034).
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "pi-cloud.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pi-cloud.labels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --port
+            - "7420"
+            {{- with .Values.url }}
+            - --url
+            - {{ . | quote }}
+            {{- end }}
+            {{- with .Values.builtInRunner }}
+            - --provider
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: PI_CLOUD_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pi-cloud.secretName" . }}
+                  key: secretKey
+          ports:
+            - name: http
+              containerPort: 7420
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
