@@ -7,7 +7,7 @@ import {
   type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
-import type { Session } from "@pi-cloud/protocol";
+import type { Environment, ModelRef, Session } from "@pi-cloud/protocol";
 import { Button, cn, Icon, isComposing } from "@pi-cloud/ui";
 import {
   type ReactElement,
@@ -23,6 +23,8 @@ const refreshMs = 5000;
 
 // Fired when a new meta-session starts, so every list shows it at once.
 const started = new EventTarget();
+
+const modelKey = "pi-cloud.meta.model";
 
 export const meta: WebPlugin = {
   name: "meta",
@@ -54,12 +56,27 @@ function titleOf(session: Session): string {
 }
 
 function Home({ context, onNewSession }: HomeProps): ReactElement {
+  const environments = useLoaded(
+    async () => json<Environment[]>(fetch("/api/environments")),
+    "environments",
+  ).value;
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-12 md:py-24">
       <h1 className="text-center text-display font-semibold text-fg-strong">
         What do you want to build today?
       </h1>
-      <Composer context={context} />
+      {environments?.length === 0 ? (
+        <p className="rounded-xl border border-line bg-elevated p-4 text-ui text-fg-dim">
+          The assistant runs on one of your machines, and none has joined yet.{" "}
+          <a href="#environments" className="text-accent">
+            Connect a machine
+          </a>{" "}
+          first.
+        </p>
+      ) : (
+        <Composer context={context} models={modelNames(environments ?? [])} />
+      )}
       <div className="flex justify-center">
         <Button variant="ghost" onClick={onNewSession}>
           <Icon name="plus" />
@@ -103,10 +120,17 @@ function Recent({ context }: { readonly context: WebContext }): ReactElement {
   );
 }
 
-function Composer({ context }: { readonly context: WebContext }): ReactElement {
+function Composer({
+  context,
+  models,
+}: {
+  readonly context: WebContext;
+  readonly models: readonly string[];
+}): ReactElement {
   const textId = useId();
   const textRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState("");
+  const [model, setModel] = useState(remembered);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -118,7 +142,11 @@ function Composer({ context }: { readonly context: WebContext }): ReactElement {
     setSending(true);
     setError(undefined);
 
-    json<Session>(context.request("sessions", { text })).then(
+    const ref = modelRef(model);
+
+    json<Session>(
+      context.request("sessions", { text, ...(ref && { model: ref }) }),
+    ).then(
       (session) => {
         started.dispatchEvent(new Event("started"));
         location.hash = context.href(session.id);
@@ -182,6 +210,24 @@ function Composer({ context }: { readonly context: WebContext }): ReactElement {
             {error}
           </p>
         )}
+        <select
+          aria-label="Model"
+          value={model}
+          onChange={(event) => {
+            setModel(event.target.value);
+            remember(event.target.value);
+          }}
+          className="h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <option value="">Default model</option>
+          {[...new Set([model, ...models])]
+            .filter((name) => name !== "")
+            .map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+        </select>
         <Button
           variant="primary"
           iconOnly
@@ -269,4 +315,39 @@ function Conversations({
       )}
     </div>
   );
+}
+
+function modelNames(environments: readonly Environment[]): string[] {
+  return [
+    ...new Set(
+      environments.flatMap(({ models }) =>
+        models.map(({ provider, id }) => `${provider}/${id}`),
+      ),
+    ),
+  ];
+}
+
+function modelRef(name: string): ModelRef | undefined {
+  const slash = name.indexOf("/");
+
+  return slash > 0 && slash < name.length - 1
+    ? { provider: name.slice(0, slash), id: name.slice(slash + 1) }
+    : undefined;
+}
+
+// The model the user last asked the assistant with, on this browser only.
+function remembered(): string {
+  try {
+    return localStorage.getItem(modelKey) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function remember(model: string): void {
+  try {
+    localStorage.setItem(modelKey, model);
+  } catch {
+    // The choice only lasts this visit.
+  }
 }

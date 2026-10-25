@@ -22,7 +22,8 @@ export const meta: ServerPlugin = {
       systemMd: "",
       appendSystemMd: metaPrompt,
       mcpServers: {},
-      settings: {},
+      // Its workspace is empty, and these would reach the runner's machine.
+      settings: { defaultTools: ["-read", "-bash", "-edit", "-write"] },
     });
 
     context.routes.handle(async (request, path) => {

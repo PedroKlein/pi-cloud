@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { SessionPlugin } from "@pi-cloud/plugins";
 
-// Pi's own tools that only read, which carry no hints.
-const readers = new Set(["read", "grep", "find", "ls", "tool_search"]);
+// tool_search only loads tools, but carries no hints.
+const readers = new Set(["tool_search"]);
 
 // A meta-session asks the user before a risky call and runs the rest straight
 // away (ADR 0035). A tool without hints counts as risky.
