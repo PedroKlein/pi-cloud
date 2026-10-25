@@ -209,6 +209,9 @@ export interface WorkPoll {
   readonly models: readonly ModelRef[];
   // How many Sessions the runner takes at once. Absent means no limit.
   readonly capacity?: number;
+  // A runner started for one Session, such as a pod on that Session's own
+  // volume, takes only that Session, and that Session goes only to it.
+  readonly session?: string;
 }
 
 export interface Removal {

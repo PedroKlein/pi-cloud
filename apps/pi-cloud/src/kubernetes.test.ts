@@ -31,33 +31,53 @@ interface FakePod {
   status?: { phase: string };
 }
 
-// The pod and Secret calls of the Kubernetes API, in memory.
+interface Labelled {
+  readonly metadata: { readonly labels: Record<string, string> };
+}
+
+// The pod, Secret and claim calls of the Kubernetes API, in memory.
 function fakeApi(): {
   readonly url: string;
   readonly pods: Map<string, FakePod>;
   readonly secrets: Map<string, Record<string, string>>;
+  readonly claims: Map<string, Labelled>;
   readonly stop: () => Promise<void>;
 } {
   const pods = new Map<string, FakePod>();
   const secrets = new Map<string, Record<string, string>>();
+  const claims = new Map<string, Labelled>();
   const prefix = "/api/v1/namespaces/pi";
+
+  const stores: Record<string, Map<string, unknown>> = {
+    pods,
+    secrets,
+    persistentvolumeclaims: claims,
+  };
 
   const api = Bun.serve({
     port: 0,
     fetch: async (request) => {
       const url = new URL(request.url);
-      const [kind, name] = url.pathname.slice(prefix.length + 1).split("/");
-      const store = kind === "pods" ? pods : secrets;
 
-      if (request.method === "GET" && kind === "pods") {
+      const [kind = "", name] = url.pathname
+        .slice(prefix.length + 1)
+        .split("/");
+
+      const store = stores[kind];
+      if (store === undefined) {
+        return Response.json({}, { status: 404 });
+      }
+
+      if (request.method === "GET") {
         const selector = url.searchParams.get("labelSelector") ?? "";
         const [label = "", value] = selector.split("=");
 
         return Response.json({
-          items: [...pods.values()].filter((pod) =>
-            value === undefined
-              ? label in pod.metadata.labels
-              : pod.metadata.labels[label] === value,
+          items: [...(store as Map<string, Labelled>).values()].filter(
+            ({ metadata }) =>
+              value === undefined
+                ? label in metadata.labels
+                : metadata.labels[label] === value,
           ),
         });
       }
@@ -68,11 +88,14 @@ function fakeApi(): {
           stringData?: Record<string, string>;
         };
 
-        if (kind === "pods") {
-          pods.set(body.metadata.name, body as unknown as FakePod);
-        } else {
-          secrets.set(body.metadata.name, body.stringData ?? {});
+        if (store.has(body.metadata.name)) {
+          return Response.json({}, { status: 409 });
         }
+
+        store.set(
+          body.metadata.name,
+          kind === "secrets" ? (body.stringData ?? {}) : body,
+        );
 
         return Response.json(body, { status: 201 });
       }
@@ -91,6 +114,7 @@ function fakeApi(): {
     url: api.url.href.replace(/\/$/, ""),
     pods,
     secrets,
+    claims,
     stop: async () => api.stop(true),
   };
 }
@@ -102,7 +126,9 @@ let signedIn: () => Promise<string>;
 let logs: string[];
 
 function startServer(database = ":memory:"): void {
-  logs = [];
+  // A server that stopped may still log to its own lines.
+  const lines: string[] = [];
+  logs = lines;
 
   server = serve({
     port: 0,
@@ -118,7 +144,7 @@ function startServer(database = ":memory:"): void {
       })),
     ],
     log: (message, fields) => {
-      logs.push(`${message} ${JSON.stringify(fields)}`);
+      lines.push(`${message} ${JSON.stringify(fields)}`);
     },
   });
 
@@ -289,6 +315,8 @@ test("refuses Kubernetes settings it can't use", async () => {
   const responses = await Promise.all([
     call("PUT", path, { capacity: 0 }),
     call("PUT", path, { podPatch: [] }),
+    call("PUT", path, { workspace: "disk" }),
+    call("PUT", path, { claimSize: "lots" }),
     call("PUT", "/api/plugins/kubernetes/environments/nope", {}),
     call("GET", path),
   ]);
@@ -299,7 +327,10 @@ test("refuses Kubernetes settings it can't use", async () => {
 
   const inContainers = await call("PUT", path, {});
 
-  expect(responses.map(({ status }) => status)).toEqual([400, 400, 404, 404]);
+  expect(responses.map(({ status }) => status)).toEqual([
+    400, 400, 400, 400, 404, 404,
+  ]);
+
   expect(inContainers.status).toBe(409);
 });
 
@@ -383,3 +414,108 @@ test("reconciles saved settings once the server starts again", async () => {
 
   expect(logs.filter((line) => line.includes("not reconciled"))).toEqual([]);
 });
+
+async function startRunner(
+  name: string,
+  session: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const faux = fauxProvider();
+  faux.setResponses([fauxAssistantMessage([fauxText("hi from a pod")])]);
+
+  return ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  }).then(async (runtime) => {
+    runtime.registerNativeProvider(faux.provider);
+
+    await runAgent({
+      server: server.url.href,
+      provider: name,
+      credential: { token: api.secrets.get(name)?.["token"] ?? "" },
+      session,
+      dataDir: join(root, name),
+      extensionPaths: [],
+      folders: [root],
+      models: { runtime, model: faux.getModel() },
+      log: () => undefined,
+      signal,
+    });
+  });
+}
+
+async function sessionOf(id: string): Promise<Session> {
+  return (await (await call("GET", `/api/sessions/${id}`)).json()) as Session;
+}
+
+test("gives each Session a pod of its own that mounts its claim, and brings it back once deleted", async () => {
+  const environment = await kubernetesEnvironment({
+    workspace: "claim",
+    claimSize: "1Gi",
+  });
+
+  const first = await startSession(environment);
+  const second = await startSession(environment);
+  await eventually(() => api.pods.size === 2);
+
+  const name = `pi-session-${second.id}`;
+  const pod = api.pods.get(name);
+  const token = api.secrets.get(name)?.["token"];
+  const stop = new AbortController();
+  const runner = startRunner(name, second.id, stop.signal);
+
+  for (let attempt = 0; attempt < 250; attempt++) {
+    const current = await sessionOf(second.id);
+    if (current.runner === name && current.status === "idle") {
+      break;
+    }
+
+    await sleep(20);
+  }
+
+  const heldFirst = await sessionOf(first.id);
+
+  api.pods.delete(name);
+  stop.abort();
+  await runner.catch(() => undefined);
+
+  await eventually(
+    () =>
+      api.pods.has(name) &&
+      api.secrets.get(name)?.["token"] !== undefined &&
+      api.secrets.get(name)?.["token"] !== token,
+  );
+
+  expect([...api.claims.keys()].sort()).toEqual(
+    [`pi-session-${first.id}`, name].sort(),
+  );
+
+  expect(pod?.spec["volumes"]).toContainEqual({
+    name: "home",
+    persistentVolumeClaim: { claimName: name },
+  });
+
+  expect(pod?.spec.containers[0]?.command.slice(-6)).toEqual([
+    "--capacity",
+    "1",
+    "--exit-when-idle",
+    "300",
+    "--session",
+    second.id,
+  ]);
+
+  expect(heldFirst).toMatchObject({ runner: null, status: "queued" });
+  expect(await sessionOf(second.id)).toMatchObject({ runner: name });
+
+  await call("POST", `/api/sessions/${second.id}/archive`, {});
+
+  const back = api.pods.get(name);
+  if (back) {
+    back.status = { phase: "Succeeded" };
+  }
+
+  await eventually(() => !api.claims.has(name) && !api.pods.has(name));
+
+  expect(api.claims.has(`pi-session-${first.id}`)).toBe(true);
+}, 30_000);

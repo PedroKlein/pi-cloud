@@ -211,6 +211,99 @@ test("runs a Session in a runner pod the kubernetes plugin starts, and removes t
   throw new Error("the runner pod was never removed");
 }, 240_000);
 
+test("brings back a Session's own pod, with its claim, after the pod is deleted", async () => {
+  const { environment } = (await (
+    await api("/api/environments", { name: "claims" })
+  ).json()) as { environment: Environment };
+
+  const saved = await fetch(
+    new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        workspace: "claim",
+        claimSize: "1Gi",
+        idleSeconds: 5,
+      }),
+    },
+  );
+
+  expect(saved.status).toBe(200);
+
+  const session = (await (
+    await api("/api/sessions", {
+      environment: environment.id,
+      workspace: {
+        kind: "clone",
+        repository: "https://github.com/octocat/Hello-World.git",
+      },
+    })
+  ).json()) as Session;
+
+  const pod = `pi-session-${session.id}`;
+
+  const current = async (): Promise<Session> =>
+    (await (await api(`/api/sessions/${session.id}`)).json()) as Session;
+
+  const runningAgain = async (generation: number): Promise<Session> => {
+    for (let attempt = 0; attempt < 180; attempt++) {
+      const now = await current();
+      if (now.online && now.status === "idle" && now.generation > generation) {
+        return now;
+      }
+
+      await Bun.sleep(1000);
+    }
+
+    throw new Error("the Session never ran again");
+  };
+
+  const first = await runningAgain(0);
+  kubectl("delete", "pod", pod, "--wait=true");
+  const second = await runningAgain(first.generation);
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "message",
+    text: "hi",
+  });
+
+  await until(session.id, (events) =>
+    events.some(
+      (event) =>
+        event.type === "entry" &&
+        JSON.stringify(event.entry).includes("hello from kind"),
+    ),
+  );
+
+  expect(second.runner).toBe(pod);
+
+  expect(kubectl("get", "pvc", pod, "-o", "name").trim()).toBe(
+    `persistentvolumeclaim/${pod}`,
+  );
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const left = kubectl(
+      "get",
+      "pods,pvc",
+      "-l",
+      `pi-cloud.dev/session=${session.id}`,
+      "-o",
+      "name",
+    ).trim();
+
+    if (left === "") {
+      return;
+    }
+
+    await Bun.sleep(1000);
+  }
+
+  throw new Error("the Session's pod and claim were never removed");
+}, 360_000);
+
 test("keeps users and Environment secrets when the pod restarts", async () => {
   const [environment] = (await (
     await api("/api/environments")

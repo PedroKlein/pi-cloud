@@ -30,6 +30,7 @@ export interface ProviderOptions {
   readonly running: () => readonly Attempt[];
   readonly folders: readonly string[];
   readonly capacity?: number;
+  readonly session?: string;
   readonly models: () => readonly ModelRef[];
   readonly log: Log;
   readonly signal: AbortSignal;
@@ -87,6 +88,7 @@ export async function runProvider(options: ProviderOptions): Promise<void> {
           ...(options.capacity !== undefined && {
             capacity: options.capacity,
           }),
+          ...(options.session !== undefined && { session: options.session }),
         },
         signal,
       );

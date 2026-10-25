@@ -537,7 +537,7 @@ export class Sessions {
     const takesSlot = (session: StoredSession): boolean => {
       const runner = online.find(
         ({ name }) =>
-          (room.get(name) ?? 0) > 0 && placesOn(session, name, pool),
+          (room.get(name) ?? 0) > 0 && this.#mayTake(session, name, pool),
       );
 
       if (runner !== undefined) {
@@ -547,26 +547,51 @@ export class Sessions {
       return runner !== undefined;
     };
 
+    const unclaimed = (session: StoredSession): boolean =>
+      !online.some(({ name }) => name === session.runner) &&
+      !takesSlot(session) &&
+      (session.runner === null
+        ? placesOnNewRunner(session, pool)
+        : !movable(session.workspace) || pool.leaseLapsed(session.runner));
+
+    // A Session with a runner of its own waits for it while it is online.
     return this.#store
       .byEnvironment(environment.provider, [
         ...claimableStatuses,
         ...attempting,
       ])
-      .filter(
-        (session) =>
-          !online.some(({ name }) => name === session.runner) &&
-          !takesSlot(session) &&
-          (session.runner === null
-            ? placesOnNewRunner(session, pool)
-            : !movable(session.workspace) || pool.leaseLapsed(session.runner)),
+      .filter((session) =>
+        runners.some(({ inventory }) => inventory.session === session.id)
+          ? !online.some(({ inventory }) => inventory.session === session.id)
+          : unclaimed(session),
       )
       .map((session) => this.#view(session));
+  }
+
+  // A runner started for one Session takes only that Session, and that
+  // Session goes only to such a runner while one is known.
+  #mayTake(
+    session: StoredSession,
+    runner: string,
+    pool: Parameters<typeof placesOn>[2],
+  ): boolean {
+    const dedicated = pool.runners.find(({ name }) => name === runner)
+      ?.inventory.session;
+
+    if (dedicated !== undefined) {
+      return dedicated === session.id;
+    }
+
+    return (
+      !pool.runners.some(({ inventory }) => inventory.session === session.id) &&
+      placesOn(session, runner, pool)
+    );
   }
 
   // A runner polls for the Environment whose pool it joins (ADR 0032).
   async claim(
     runner: { readonly name: string; readonly environment: string },
-    { running, folders, models, capacity }: WorkPoll,
+    { running, folders, models, capacity, session }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
     this.#store.ensureEnvironment(runner.environment);
@@ -574,7 +599,7 @@ export class Sessions {
     const endPoll = this.#polls.begin(runner.name, {
       environment: runner.environment,
       capacity: capacity ?? null,
-      inventory: { folders, models },
+      inventory: { folders, models, ...(session !== undefined && { session }) },
     });
 
     const work = (): Omit<Claim, "interrupted"> => ({
@@ -929,7 +954,7 @@ export class Sessions {
         (session) =>
           (claimableStatuses.includes(session.status) ||
             session.runner !== runner.name) &&
-          placesOn(session, runner.name, pool),
+          this.#mayTake(session, runner.name, pool),
       )
       .slice(0, Math.max(free, 0));
 

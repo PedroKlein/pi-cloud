@@ -1,4 +1,4 @@
-import { environmentLabel } from "./cluster";
+import { environmentLabel, sessionLabel } from "./cluster";
 import { isObject, type KubernetesSettings } from "./settings";
 
 export interface PodOptions {
@@ -13,6 +13,9 @@ export interface PodOptions {
   // Added to the agent's own environment.
   readonly variables: Readonly<Record<string, string>>;
   readonly settings: KubernetesSettings;
+  // A pod started for one Session keeps its home, and so the Session's
+  // workspace, on the Session's claim.
+  readonly sessionId?: string;
 }
 
 const binaryDir = "/pi-cloud";
@@ -32,6 +35,9 @@ export function runnerPod(options: PodOptions): object {
       labels: {
         "app.kubernetes.io/managed-by": "pi-cloud",
         [environmentLabel]: options.environmentId,
+        ...(options.sessionId !== undefined && {
+          [sessionLabel]: options.sessionId,
+        }),
         // A sidecar would keep the pod running after the agent exits.
         "sidecar.istio.io/inject": "false",
       },
@@ -41,7 +47,9 @@ export function runnerPod(options: PodOptions): object {
       automountServiceAccountToken: false,
       volumes: [
         { name: "pi-cloud", emptyDir: {} },
-        { name: "home", emptyDir: {} },
+        options.sessionId === undefined
+          ? { name: "home", emptyDir: {} }
+          : { name: "home", persistentVolumeClaim: { claimName: name } },
       ],
       initContainers: [
         {
@@ -63,9 +71,12 @@ export function runnerPod(options: PodOptions): object {
             "--server",
             options.server,
             "--capacity",
-            String(settings.capacity),
+            options.sessionId === undefined ? String(settings.capacity) : "1",
             "--exit-when-idle",
             String(settings.idleSeconds),
+            ...(options.sessionId === undefined
+              ? []
+              : ["--session", options.sessionId]),
           ],
           env: [
             { name: "HOME", value: home },
@@ -96,6 +107,35 @@ export function runnerPod(options: PodOptions): object {
       serviceAccount: null,
     },
   }) as object;
+}
+
+// The pod named after a Session, so a replacement takes the Session back.
+export function sessionPodName(sessionId: string): string {
+  return `pi-session-${sessionId}`;
+}
+
+export function sessionClaim(
+  sessionId: string,
+  environmentId: string,
+  { claimSize, storageClass }: KubernetesSettings,
+): object {
+  return {
+    apiVersion: "v1",
+    kind: "PersistentVolumeClaim",
+    metadata: {
+      name: sessionPodName(sessionId),
+      labels: {
+        "app.kubernetes.io/managed-by": "pi-cloud",
+        [environmentLabel]: environmentId,
+        [sessionLabel]: sessionId,
+      },
+    },
+    spec: {
+      accessModes: ["ReadWriteOnce"],
+      resources: { requests: { storage: claimSize } },
+      ...(storageClass !== null && { storageClassName: storageClass }),
+    },
+  };
 }
 
 // RFC 7386.

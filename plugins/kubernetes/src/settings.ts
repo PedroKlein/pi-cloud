@@ -1,19 +1,29 @@
 import type { PluginStore } from "@pi-cloud/plugins";
 
-// A Kubernetes Environment's runner pods (ADR 0032). The patch is a JSON
+// A Kubernetes Environment's runner pods (ADR 0032). With "claim", each
+// Session gets a pod of its own that mounts a claim of claimSize, so its
+// workspace outlives the pod; capacity doesn't apply. The patch is a JSON
 // merge patch on the pod, so a list in it, such as containers, replaces the
 // whole list.
+const workspaces = ["pod", "claim"] as const;
+
 export interface KubernetesSettings {
+  readonly workspace: (typeof workspaces)[number];
   readonly capacity: number;
   readonly maxPods: number;
   readonly idleSeconds: number;
+  readonly claimSize: string;
+  readonly storageClass: string | null;
   readonly podPatch: Readonly<Record<string, unknown>>;
 }
 
 export const defaultSettings: KubernetesSettings = {
+  workspace: "pod",
   capacity: 1,
   maxPods: 5,
   idleSeconds: 300,
+  claimSize: "10Gi",
+  storageClass: null,
   podPatch: {},
 };
 
@@ -35,10 +45,31 @@ export function settingsFrom(body: unknown): KubernetesSettings | string {
     return "podPatch must be an object";
   }
 
+  if (!workspaces.some((workspace) => workspace === settings.workspace)) {
+    return 'workspace must be "pod" or "claim"';
+  }
+
+  if (
+    typeof settings.claimSize !== "string" ||
+    !/^\d+(Ki|Mi|Gi|Ti)$/.test(settings.claimSize)
+  ) {
+    return "claimSize must be a size such as 10Gi";
+  }
+
+  if (
+    settings.storageClass !== null &&
+    typeof settings.storageClass !== "string"
+  ) {
+    return "storageClass must be a name or null";
+  }
+
   return {
+    workspace: settings.workspace,
     capacity: settings.capacity,
     maxPods: settings.maxPods,
     idleSeconds: settings.idleSeconds,
+    claimSize: settings.claimSize,
+    storageClass: settings.storageClass,
     podPatch: settings.podPatch,
   };
 }

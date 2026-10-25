@@ -98,10 +98,10 @@ The kubernetes plugin can start runner pods for an Environment in the server's n
 ```sh
 curl -X PUT <server>/api/plugins/kubernetes/environments/<environment id> \
   -H 'content-type: application/json' --cookie <session cookie> \
-  -d '{"capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}'
+  -d '{"workspace": "pod", "capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}'
 ```
 
-When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pi Cloud image when it names none, with the `pi-cloud` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Pods run Sessions as processes, so the Environment's isolation must be `process`. A workspace in a pod lives only as long as the pod, so use clone or repositories workspaces there.
+When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pi Cloud image when it names none, with the `pi-cloud` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Pods run Sessions as processes, so the Environment's isolation must be `process`. With `"workspace": "pod"`, the default, a workspace lives only as long as its pod, so use clone or repositories workspaces there. With `"workspace": "claim"`, each Session gets a pod of its own, named after it, whose home is a claim of `claimSize` (with `storageClass`, or the cluster's default). If that pod stops or is deleted, the plugin starts it again with the same claim, and the claim goes once the Session is archived.
 
 ## Roadmap
 
