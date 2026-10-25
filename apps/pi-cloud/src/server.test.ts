@@ -42,6 +42,12 @@ test("reports unhealthy when the database can't be read", async () => {
       api: () => {
         throw new Error("no toolsets here");
       },
+      auth: {
+        userOf: () => undefined,
+        createUser: () => undefined,
+        setAdmin: () => undefined,
+        startSession: () => undefined,
+      },
       signal: new AbortController().signal,
       log: () => undefined,
     }),
@@ -105,6 +111,12 @@ function startServer(
       toolsets: [],
       api: () => {
         throw new Error("no toolsets here");
+      },
+      auth: {
+        userOf: () => undefined,
+        createUser: () => undefined,
+        setAdmin: () => undefined,
+        startSession: () => undefined,
       },
       signal: stopped.signal,
       log,
@@ -367,6 +379,12 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
         toolsets: [],
         api: () => {
           throw new Error("no toolsets here");
+        },
+        auth: {
+          userOf: () => undefined,
+          createUser: () => undefined,
+          setAdmin: () => undefined,
+          startSession: () => undefined,
         },
         signal: new AbortController().signal,
         log: () => undefined,

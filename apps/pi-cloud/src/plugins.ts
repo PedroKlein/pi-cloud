@@ -14,6 +14,8 @@ import { metaSession } from "@pi-cloud/meta/session";
 import modelsPackage from "@pi-cloud/models/package.json";
 import { models } from "@pi-cloud/models/server";
 import { models as modelsSession } from "@pi-cloud/models/session";
+import oidcPackage from "@pi-cloud/oidc/package.json";
+import { oidc } from "@pi-cloud/oidc/server";
 import projectsPackage from "@pi-cloud/projects/package.json";
 import { projects } from "@pi-cloud/projects/server";
 import subagentsPackage from "@pi-cloud/subagents/package.json";
@@ -22,10 +24,12 @@ import usagePackage from "@pi-cloud/usage/package.json";
 import {
   checkedSettings,
   type EventBus,
+  type Login,
   type ModelOffer,
   type OfferedModels,
   type PluginRoute,
   type PluginStore,
+  type PublicRoute,
   type RouteTool,
   type ServerPlugin,
   type ServerPluginContext,
@@ -74,6 +78,7 @@ export const builtInPlugins: readonly PluginManifest[] = [
   subagentsPackage,
   kubernetesPackage,
   metaPackage,
+  oidcPackage,
 ].map(({ piCloud }) => piCloud as PluginManifest);
 
 export const serverPlugins: readonly ServerPlugin[] = [
@@ -82,6 +87,7 @@ export const serverPlugins: readonly ServerPlugin[] = [
   models,
   kubernetesPlugin,
   meta,
+  oidc,
 ];
 
 const sessionPlugins: readonly SessionPlugin[] = [
@@ -207,6 +213,14 @@ export interface PluginHost {
     path: string,
     caller?: ToolCaller,
   ) => Promise<Response | undefined>;
+  readonly publicRoute: (
+    request: Request,
+    name: string,
+    path: string,
+  ) => Promise<Response | undefined>;
+  // The links the sign-in page shows besides the password form, each with
+  // its path from the server's root.
+  readonly logins: () => readonly Login[];
 }
 
 function pluginEnvironments(
@@ -257,6 +271,10 @@ export function startPlugins(
     readonly toolsets: readonly Toolset[];
     // Handles a toolset tool's request as the user.
     readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+    readonly auth: Pick<
+      ServerPluginContext["auth"],
+      "userOf" | "createUser" | "setAdmin" | "startSession"
+    >;
     readonly installed?: InstalledPlugins;
     readonly signal: AbortSignal;
     readonly log: Log;
@@ -266,6 +284,8 @@ export function startPlugins(
   const routeTools = new Map<string, ToolsetTool>();
   const toolsetUsers = new Set<string>();
   const routes = new Map<string, PluginRoute>();
+  const publicRoutes = new Map<string, PublicRoute>();
+  const logins: { plugin: string; login: () => Login | undefined }[] = [];
   const offers: ModelOffer[] = [];
 
   const failures = new Map<string, string>(
@@ -444,6 +464,8 @@ export function startPlugins(
       namespaces: new Set<string>(),
       loadsToolsets: false,
       route: undefined as PluginRoute | undefined,
+      publicRoute: undefined as PublicRoute | undefined,
+      logins: [] as (() => Login | undefined)[],
       offers: [] as ModelOffer[],
       profiles: new Map<string, PluginProfile>(),
       loadOnly: undefined as readonly string[] | undefined,
@@ -461,7 +483,7 @@ export function startPlugins(
 
     try {
       plugin.register(
-        limited(plugin.name, declared, {
+        limited(plugin.name, declared, installedIds.has(plugin.name), {
           owner,
           tools: {
             register: (tool) => {
@@ -527,6 +549,18 @@ export function startPlugins(
               staged.route = route;
             },
           },
+          auth: {
+            offer: (login) => {
+              staged.logins.push(login);
+            },
+            handlePublic: (route) => {
+              staged.publicRoute = route;
+            },
+            userOf: deps.auth.userOf,
+            createUser: deps.auth.createUser,
+            setAdmin: deps.auth.setAdmin,
+            startSession: deps.auth.startSession,
+          },
           models: {
             offer: (offer) => {
               staged.offers.push(offer);
@@ -571,6 +605,14 @@ export function startPlugins(
     if (staged.route !== undefined) {
       routes.set(plugin.name, staged.route);
     }
+
+    if (staged.publicRoute !== undefined) {
+      publicRoutes.set(plugin.name, staged.publicRoute);
+    }
+
+    logins.push(
+      ...staged.logins.map((login) => ({ plugin: plugin.name, login })),
+    );
 
     offers.push(...staged.offers);
 
@@ -905,6 +947,16 @@ export function startPlugins(
     },
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
+    publicRoute: async (request, name, path) =>
+      publicRoutes.get(name)?.(request, path),
+    logins: () =>
+      logins.flatMap(({ plugin, login }) => {
+        const offered = login();
+
+        return offered === undefined
+          ? []
+          : [{ ...offered, path: `/api/plugins/${plugin}/${offered.path}` }];
+      }),
   };
 }
 
@@ -1232,10 +1284,15 @@ function messageOf(error: unknown): string {
 function limited(
   plugin: string,
   declared: readonly Capability[],
+  installed: boolean,
   context: ServerPluginContext,
 ): ServerPluginContext {
   return new Proxy(context, {
     get: (target, key, receiver) => {
+      if (installed && key === "auth") {
+        throw new Error(`${plugin} uses auth, which only built-in plugins get`);
+      }
+
       const capability = capabilities.find((each) => each === key);
 
       if (capability !== undefined && !declared.includes(capability)) {

@@ -120,6 +120,18 @@ export function serve(options: ServeOptions): {
     settings: store.pluginSettings,
     toolsets: kernelToolsets,
     api: async (actor, request) => handler(onBehalfOf(actor, request)),
+    auth: {
+      userOf: (request) => auth.userOf(request),
+      createUser: (name, admin) => auth.createUser(name, admin),
+      setAdmin: (userId, admin) => {
+        auth.setAdmin(userId, admin);
+      },
+      startSession: (userId, request) => {
+        const user = auth.userById(userId);
+
+        return user && auth.startSession(user, request);
+      },
+    },
     ...(folder && {
       installed: {
         plugins: installed,

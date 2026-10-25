@@ -215,6 +215,14 @@ function fakeKernel(): {
         route = handler;
       },
     },
+    auth: {
+      offer: () => undefined,
+      handlePublic: () => undefined,
+      userOf: () => undefined,
+      createUser: () => undefined,
+      setAdmin: () => undefined,
+      startSession: () => undefined,
+    },
     models: { offer: () => undefined },
     store: {
       exec: (sql) => {

@@ -15,7 +15,7 @@ v2's other decisions are in [ADR 0022](0022-plugin-model-v2.md) (plugins), [ADR 
 
 - The kernel has users, browser sessions and runner keys. Records already carry `ownerId` ([ADR 0015](0015-plugins.md#actors-and-owners)).
 - The kernel comes with a password login, so a personal install needs nothing outside Pi Cloud.
-- Signing in through an OIDC provider, such as GitHub, Google or a company identity provider, is a first-party plugin.
+- Signing in through an OIDC provider, such as GitHub, Google or a company identity provider, is a first-party plugin ([ADR 0038](0038-single-sign-on-and-admins.md)).
 - A browser session is an `HttpOnly; SameSite=Strict` cookie, which also covers WebSocket upgrades. No key is kept in `localStorage` ([v2-ideas.md](../v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
 - A runner joins an Environment's pool with that Environment's key, and gets a token of its own for its polls and streams.
 - A loopback bind needs a login and runner keys too, as in Claude Code. Other local users and DNS-rebinding pages can reach a loopback port, and one code path is tested everywhere (decided 2026-10-25).

@@ -112,7 +112,8 @@ create table if not exists users (
   id text primary key,
   name text not null unique,
   password_hash text not null,
-  created_at text not null
+  created_at text not null,
+  admin integer not null default 0
 );
 create table if not exists agent_tokens (
   token_hash text primary key,
@@ -181,6 +182,18 @@ function migrate(db: DatabaseSync): void {
   db.exec(profileTables);
   db.exec(authTables);
   db.exec(pluginTables);
+
+  const userColumns = db
+    .prepare("select name from pragma_table_info('users')")
+    .all() as { name: string }[];
+
+  // Every user so far was the first one, made from the setup link.
+  if (!userColumns.some(({ name }) => name === "admin")) {
+    db.exec(`
+      alter table users add column admin integer not null default 0;
+      update users set admin = 1;
+    `);
+  }
 
   const tokenColumns = db
     .prepare("select name from pragma_table_info('agent_tokens')")
@@ -725,23 +738,39 @@ export function openStore(
   };
 }
 
+interface UserRow {
+  readonly id: string;
+  readonly name: string;
+  readonly admin: number;
+}
+
+function userOf(row: UserRow | undefined): User | undefined {
+  return row && { id: row.id, name: row.name, admin: row.admin === 1 };
+}
+
 function authStore(db: DatabaseSync): AuthStore {
   const countUsers = db.prepare("select count(*) as n from users");
 
   const selectUser = db.prepare(
-    "select id, name, password_hash, created_at from users where name = ?",
+    "select id, name, password_hash, created_at, admin from users where name = ?",
+  );
+
+  const selectUserById = db.prepare(
+    "select id, name, admin from users where id = ?",
   );
 
   const insertUser = db.prepare(
-    "insert into users (id, name, password_hash, created_at) values (?, ?, ?, ?)",
+    "insert into users (id, name, password_hash, created_at, admin) values (?, ?, ?, ?, ?)",
   );
+
+  const updateAdmin = db.prepare("update users set admin = ? where id = ?");
 
   const insertBrowserSession = db.prepare(
     "insert into browser_sessions (token_hash, user_id, expires_at) values (?, ?, ?)",
   );
 
   const selectBrowserSessionUser = db.prepare(
-    "select users.id, users.name from browser_sessions join users on users.id = browser_sessions.user_id where token_hash = ? and expires_at > ?",
+    "select users.id, users.name, users.admin from browser_sessions join users on users.id = browser_sessions.user_id where token_hash = ? and expires_at > ?",
   );
 
   const deleteBrowserSession = db.prepare(
@@ -789,7 +818,7 @@ function authStore(db: DatabaseSync): AuthStore {
   );
 
   const selectMcpTokenUser = db.prepare(
-    "select users.id, users.name from mcp_tokens join users on users.id = mcp_tokens.user_id where token_hash = ?",
+    "select users.id, users.name, users.admin from mcp_tokens join users on users.id = mcp_tokens.user_id where token_hash = ?",
   );
 
   const deleteMcpToken = db.prepare(
@@ -805,6 +834,7 @@ function authStore(db: DatabaseSync): AuthStore {
             name: string;
             password_hash: string;
             created_at: string;
+            admin: number;
           }
         | undefined;
 
@@ -812,20 +842,33 @@ function authStore(db: DatabaseSync): AuthStore {
         row && {
           id: row.id,
           name: row.name,
+          admin: row.admin === 1,
           passwordHash: row.password_hash,
           createdAt: row.created_at,
         }
       );
     },
+    userById: (id) => userOf(selectUserById.get(id) as UserRow | undefined),
     insertUser: (user) => {
-      insertUser.run(user.id, user.name, user.passwordHash, user.createdAt);
+      insertUser.run(
+        user.id,
+        user.name,
+        user.passwordHash,
+        user.createdAt,
+        user.admin ? 1 : 0,
+      );
+    },
+    setAdmin: (id, admin) => {
+      updateAdmin.run(admin ? 1 : 0, id);
     },
     insertBrowserSession: (tokenHash, userId, expiresAt) => {
       deleteExpired.run(new Date().toISOString());
       insertBrowserSession.run(tokenHash, userId, expiresAt);
     },
     browserSessionUser: (tokenHash, now) =>
-      selectBrowserSessionUser.get(tokenHash, now) as User | undefined,
+      userOf(
+        selectBrowserSessionUser.get(tokenHash, now) as UserRow | undefined,
+      ),
     deleteBrowserSession: (tokenHash) => {
       deleteBrowserSession.run(tokenHash);
     },
@@ -879,7 +922,7 @@ function authStore(db: DatabaseSync): AuthStore {
         createdAt: row.created_at,
       })),
     mcpTokenUser: (tokenHash) =>
-      selectMcpTokenUser.get(tokenHash) as User | undefined,
+      userOf(selectMcpTokenUser.get(tokenHash) as UserRow | undefined),
     deleteMcpToken: (id, userId) =>
       Number(deleteMcpToken.run(id, userId).changes) > 0,
     agentToken: (tokenHash) => {

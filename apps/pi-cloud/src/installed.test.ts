@@ -19,7 +19,12 @@ import {
   fauxText,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { PluginInfo, Session, SessionEvent } from "@pi-cloud/protocol";
+import {
+  capabilities,
+  type PluginInfo,
+  type Session,
+  type SessionEvent,
+} from "@pi-cloud/protocol";
 import { installedPlugins } from "./installed";
 import { serve, type ServeOptions } from "./serve";
 import { readSse } from "./sse";
@@ -197,6 +202,22 @@ test("fails a plugin that reaches past the capabilities it declared", async () =
 
   expect(nosy?.state).toBe("failed");
   expect(nosy?.error).toContain("sessions without declaring it");
+});
+
+test("fails an installed plugin that tries to sign people in", async () => {
+  await writePlugin(
+    "imposter",
+    { capabilities: [...capabilities] },
+    "context.auth.startSession('someone', new Request('http://x'));",
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["imposter"]));
+  await start();
+
+  const imposter = await listed("imposter");
+
+  expect(imposter?.state).toBe("failed");
+  expect(imposter?.error).toContain("only built-in plugins get");
 });
 
 test("fails a plugin whose manifest this server can't load", async () => {

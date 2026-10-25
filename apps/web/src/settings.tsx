@@ -2,6 +2,8 @@ import { Button, cn, fieldClass, PageTitle, Section } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { useMcpTokens } from "./hooks";
+import { PluginBoundary } from "./plugin-boundary";
+import { enabledPlugins, pluginContext } from "./plugins";
 
 export function SettingsPage(): ReactElement {
   const { value: tokens, reload } = useMcpTokens();
@@ -83,6 +85,14 @@ export function SettingsPage(): ReactElement {
           ))}
         </ul>
       </Section>
+      {enabledPlugins().map(
+        ({ name, SettingsSection }) =>
+          SettingsSection && (
+            <PluginBoundary key={name} name={name}>
+              <SettingsSection context={pluginContext(name)} />
+            </PluginBoundary>
+          ),
+      )}
     </div>
   );
 }

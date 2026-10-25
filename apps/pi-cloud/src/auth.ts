@@ -9,9 +9,12 @@ import {
 export interface User {
   readonly id: string;
   readonly name: string;
+  // Installs, updates and turns on plugins, and changes their settings.
+  readonly admin: boolean;
 }
 
 export interface StoredUser extends User {
+  // Empty for a user who signs in only through a plugin, such as OIDC.
   readonly passwordHash: string;
   readonly createdAt: string;
 }
@@ -19,7 +22,9 @@ export interface StoredUser extends User {
 export interface AuthStore {
   readonly userCount: () => number;
   readonly userByName: (name: string) => StoredUser | undefined;
+  readonly userById: (id: string) => User | undefined;
   readonly insertUser: (user: StoredUser) => void;
+  readonly setAdmin: (id: string, admin: boolean) => void;
   readonly insertBrowserSession: (
     tokenHash: string,
     userId: string,
@@ -143,13 +148,14 @@ export class Auth {
       const user: StoredUser = {
         id: randomUUID(),
         name: credentials.name,
+        admin: true,
         passwordHash: await Bun.password.hash(credentials.password),
         createdAt: new Date().toISOString(),
       };
 
       this.#store.insertUser(user);
 
-      return { id: user.id, name: user.name };
+      return { id: user.id, name: user.name, admin: user.admin };
     } catch (error) {
       this.#setupToken = expected;
       throw error;
@@ -167,7 +173,7 @@ export class Auth {
     const user = this.#store.userByName(name);
 
     // An unknown name costs a verify too, so timing doesn't tell names apart.
-    if (user === undefined) {
+    if (user === undefined || user.passwordHash === "") {
       await Bun.password.verify(password, await unknownUserHash);
 
       return "wrong";
@@ -195,7 +201,7 @@ export class Auth {
 
     this.#failures.delete(user.id);
 
-    return { id: user.id, name: user.name };
+    return { id: user.id, name: user.name, admin: user.admin };
   }
 
   // The key runners join the Environment with, shown only now.
@@ -330,6 +336,37 @@ export class Auth {
     return token === undefined
       ? undefined
       : this.#store.mcpTokenUser(hash(token));
+  }
+
+  userById(id: string): User | undefined {
+    return this.#store.userById(id);
+  }
+
+  // A user without a password, or undefined when the name is taken.
+  createUser(name: string, admin: boolean): User | undefined {
+    if (name.trim() === "" || name.length > maxNameLength) {
+      throw new InvalidCredentials(
+        `name must be 1 to ${String(maxNameLength)} characters`,
+      );
+    }
+
+    if (this.#store.userByName(name) !== undefined) {
+      return undefined;
+    }
+
+    const user = { id: randomUUID(), name, admin };
+
+    this.#store.insertUser({
+      ...user,
+      passwordHash: "",
+      createdAt: new Date().toISOString(),
+    });
+
+    return user;
+  }
+
+  setAdmin(id: string, admin: boolean): void {
+    this.#store.setAdmin(id, admin);
   }
 
   // The Set-Cookie value of a new browser session for the user.

@@ -3,6 +3,7 @@ import { kubernetes } from "@pi-cloud/kubernetes/web";
 import { library } from "@pi-cloud/library/web";
 import { meta } from "@pi-cloud/meta/web";
 import { models } from "@pi-cloud/models/web";
+import { oidc } from "@pi-cloud/oidc/web";
 import type {
   NavItemsProps,
   ToolCallProps,
@@ -33,6 +34,7 @@ const webPlugins: readonly WebPlugin[] = [
   models,
   subagents,
   kubernetes,
+  oidc,
 ];
 
 let enabled: readonly WebPlugin[] = [];
