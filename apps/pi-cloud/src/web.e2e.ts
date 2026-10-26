@@ -185,6 +185,17 @@ async function pickWorkspace(
   await search.press("Escape");
 }
 
+// Opens a section of the Settings page from the account menu.
+async function openSettings(section: string): Promise<void> {
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+
+  await page
+    .getByRole("navigation", { name: "Settings" })
+    .getByRole("link", { name: section, exact: true })
+    .click();
+}
+
 // A folder with its own .pi asks before loading it (ADR 0031).
 async function trustRepository(): Promise<void> {
   await page
@@ -506,7 +517,7 @@ test("starts a session with the task from the New session form", async () => {
 
 test("makes an Environment and shows its key once", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Environments" }).click();
+  await openSettings("Environments");
 
   await page.getByLabel("New Environment name").fill("builders");
   await page.getByRole("button", { name: "New Environment" }).click();
@@ -528,7 +539,7 @@ test("makes an Environment and shows its key once", async () => {
 
 test("changes a plugin's setting on the Plugins page", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Plugins" }).click();
+  await openSettings("Plugins");
 
   const library = page.getByRole("listitem", { name: "Library" });
   await library.getByText("On", { exact: true }).waitFor();
@@ -550,7 +561,7 @@ test("changes a plugin's setting on the Plugins page", async () => {
 
 test("turns an installed plugin on for the next start", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Plugins" }).click();
+  await openSettings("Plugins");
 
   const hello = page.getByRole("listitem", { name: "Hello" });
   await hello.getByText("Installed", { exact: true }).waitFor();
@@ -599,7 +610,7 @@ test("installs a plugin from a git repository, asks before turning it on, and re
   }
 
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Plugins" }).click();
+  await openSettings("Plugins");
 
   await page
     .getByLabel(/Install from a git repository/)
@@ -633,7 +644,7 @@ test("installs a plugin from a git repository, asks before turning it on, and re
 
 test("shows an installed plugin's page with the app's React and components", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Plugins" }).click();
+  await openSettings("Plugins");
 
   expect(
     await page
@@ -651,7 +662,7 @@ test("shows an installed plugin's page with the app's React and components", asy
 
 test("says why an installed plugin's web part didn't load, and draws the rest", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Plugins" }).click();
+  await openSettings("Plugins");
 
   await page
     .getByRole("listitem", { name: "Faulty" })
@@ -661,7 +672,7 @@ test("says why an installed plugin's web part didn't load, and draws the rest", 
 
 test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Settings" }).click();
+  await openSettings("MCP clients");
 
   await page.getByLabel("Client name").fill("My laptop");
   await page.getByRole("button", { name: "New token" }).click();
@@ -697,7 +708,7 @@ test("makes an MCP token that works once shown, and revokes it", async () => {
 
 test("edits an Environment's variables and secrets without showing secret values", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Environments" }).click();
+  await openSettings("Environments");
 
   const editor = page.locator("#environments-page form");
 
@@ -789,7 +800,7 @@ test("edits an Environment's variables and secrets without showing secret values
 
 test("starts and stops runner pods from an Environment's Kubernetes section", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Environments" }).click();
+  await openSettings("Environments");
 
   const section = page.getByLabel("Kubernetes", { exact: true });
   await section.getByText("isn't running in a cluster").waitFor();
@@ -861,7 +872,7 @@ test("shows why an Environment's last runner pod failed", async () => {
   );
 
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Environments" }).click();
+  await openSettings("Environments");
 
   const failure = page
     .getByLabel("Kubernetes", { exact: true })
@@ -888,7 +899,7 @@ test("makes a Profile and starts a session that follows its instructions", async
   ]);
 
   await page.goto(server.url.href);
-  await page.getByRole("link", { name: "Profiles" }).click();
+  await openSettings("Profiles");
   await page.getByRole("link", { name: "New Profile" }).click();
 
   const editor = page.locator("#profiles-page form");
@@ -2169,7 +2180,8 @@ export default (pi) => {
 
 test("signs out and back in with the password", async () => {
   await page.goto(server.url.href);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.getByRole("heading", { name: "Sign in" }).waitFor();
 
   await page.getByLabel("Name").fill("pedro");
