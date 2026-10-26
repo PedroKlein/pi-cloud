@@ -250,6 +250,7 @@ export function App({
         open={creating}
         environments={environments.value}
         profiles={profiles.value}
+        sessions={sessions.value}
         onClose={() => {
           setCreating(false);
         }}
