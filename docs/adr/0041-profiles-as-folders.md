@@ -33,8 +33,8 @@ Pi already has a format for all of this: its agent folder, `~/.pi/agent`.
 
 ### On the runner
 
-- The server hashes a Profile folder's contents. When a Session starts, the runner asks for the hash and downloads the folder as a tarball only when it changed (decided 2026-10-26).
-- The runner unpacks it next to its old copy and swaps the new one in, so Sessions already running keep reading whole files. Then it installs the packages `settings.json` lists that it hasn't installed yet, as it does today.
+- The server hashes a Profile folder's contents and sends the hash with each Session it assigns. The runner downloads the folder's files in one response only when the hash differs from its copy's (decided 2026-10-26).
+- The runner replaces each file whole and removes the files the Profile no longer has, so Sessions already running never read half a file and the packages it installed stay. Then it installs the packages `settings.json` lists that it hasn't installed yet, as it does today.
 - A folder over 20 MB is refused, with an error that names the Profile. A local extension that needs dependencies is shipped as a Pi package instead.
 
 ### Editing
