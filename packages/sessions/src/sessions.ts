@@ -156,6 +156,10 @@ const maxRequestIds = 100;
 const claimableStatuses: readonly SessionStatus[] = ["queued", "interrupted"];
 const attempting: readonly SessionStatus[] = ["starting", "idle", "running"];
 
+// A message to a Session whose runner hasn't connected yet waits for it, as
+// the first message does.
+const unhosted: readonly SessionStatus[] = ["queued", "starting"];
+
 export class Sessions {
   readonly #store: SessionStore;
   readonly #polls: RunnerPolls;
@@ -172,6 +176,8 @@ export class Sessions {
     { readonly send: Listener<Command>; readonly end: () => void }
   >();
   readonly #requestIds = new Map<string, Set<string>>();
+  readonly #held = new Map<string, Command[]>();
+  readonly #hostedGeneration = new Map<string, number>();
   readonly #surfaces = new Map<
     string,
     { readonly generation: number; readonly events: Map<string, LiveEvent> }
@@ -861,7 +867,17 @@ export class Sessions {
     }
 
     const host = this.#hosts.get(id);
-    if (!host || !this.#online(session)) {
+    if (!this.#online(session)) {
+      return { ok: false, reason: "offline" };
+    }
+
+    const held =
+      !host &&
+      command.type === "message" &&
+      unhosted.includes(session.status) &&
+      this.#hostedGeneration.get(id) !== session.generation;
+
+    if (!held && !host) {
       return { ok: false, reason: "offline" };
     }
 
@@ -873,7 +889,11 @@ export class Sessions {
       return { ok: true, value: undefined };
     }
 
-    host.send(command);
+    if (held) {
+      this.#held.set(id, [...(this.#held.get(id) ?? []), command]);
+    } else {
+      host?.send(command);
+    }
 
     return { ok: true, value: undefined };
   }
@@ -908,6 +928,13 @@ export class Sessions {
     const host = { send, end };
     this.#hosts.get(id)?.end();
     this.#hosts.set(id, host);
+    this.#hostedGeneration.set(id, generation);
+
+    for (const command of this.#held.get(id) ?? []) {
+      send(command);
+    }
+
+    this.#held.delete(id);
 
     return {
       ok: true,
@@ -1212,6 +1239,11 @@ export class Sessions {
     this.#store.update(session);
     if (!attempting.includes(session.status)) {
       this.#surfaces.delete(session.id);
+    }
+
+    if (![...unhosted, ...attempting].includes(session.status)) {
+      this.#held.delete(session.id);
+      this.#hostedGeneration.delete(session.id);
     }
 
     const view = this.#view(session);

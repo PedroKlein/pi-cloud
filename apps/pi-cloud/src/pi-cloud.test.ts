@@ -547,18 +547,6 @@ test("streams text as it is generated", async () => {
   expect(text).toBe("streamed reply");
 });
 
-test("rejects commands for a session whose provider is not connected", async () => {
-  const session = await createSession("vm");
-
-  const sent = await api(`/api/sessions/${session.id}/commands`, {
-    type: "message",
-    text: "hi",
-  });
-
-  expect(sent.status).toBe(409);
-  expect(await sent.json()).toEqual({ error: "offline" });
-});
-
 test("rejects commands a browser may not send", async () => {
   const session = await createSession("laptop");
   await follow(session.id, status("idle"));

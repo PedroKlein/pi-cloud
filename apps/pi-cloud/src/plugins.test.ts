@@ -607,18 +607,10 @@ test("tells a plugin why a message did not reach a session", async () => {
   const archived = sessions?.send(session.id, "hello", "plugin:sender");
   const unknown = sessions?.send("missing", "hello", "plugin:sender");
 
-  const started = sessions?.start({
-    actor: "plugin:sender",
-    workspace: { kind: "folder", path: root },
-  });
-
-  const offline = sessions?.send(started?.id ?? "", "hello", "plugin:sender");
-
-  expect([reached, archived, unknown, offline]).toEqual([
+  expect([reached, archived, unknown]).toEqual([
     { ok: true },
     { ok: false, reason: "archived" },
     { ok: false, reason: "not_found" },
-    { ok: false, reason: "offline" },
   ]);
 });
 

@@ -862,7 +862,14 @@ export function createHandler(
           throw new BadRequest("generation must be an integer");
         }
 
-        let send: (command: Command) => void = () => undefined;
+        // Commands held for the Session arrive while it attaches, before the
+        // stream opens.
+        const early: Command[] = [];
+
+        let send = (command: Command): void => {
+          early.push(command);
+        };
+
         let end = (): void => undefined;
 
         const attached = sessions.attach(
@@ -883,6 +890,10 @@ export function createHandler(
         return sseResponse((sendEvent, endStream) => {
           send = sendEvent;
           end = endStream;
+
+          early.forEach((command) => {
+            sendEvent(command);
+          });
 
           return attached.value;
         });

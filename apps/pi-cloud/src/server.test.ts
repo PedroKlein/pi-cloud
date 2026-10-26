@@ -261,6 +261,47 @@ test("drops and logs a waiting tool result once its attempt is no longer current
   server.stop();
 });
 
+test("holds a message sent before the session's runner connects and delivers it when it does", async () => {
+  const server = startServer(() => undefined);
+  await server.call("/agent/work", poll);
+
+  const created = (await (
+    await server.call("/api/sessions", {
+      workspace: { kind: "folder", path: "/srv/app" },
+    })
+  ).json()) as Session;
+
+  const sent = await server.call(`/api/sessions/${created.id}/commands`, {
+    type: "message",
+    text: "hi early",
+  });
+
+  const work = (await (await server.call("/agent/work", poll)).json()) as {
+    start: Assignment[];
+  };
+
+  const generation = work.start[0]?.generation ?? 0;
+
+  const stream = await server.call(
+    `/agent/sessions/${created.id}/commands?generation=${String(generation)}`,
+  );
+
+  const commands: unknown[] = [];
+  for await (const command of readSse(stream, 3000)) {
+    commands.push(command);
+    break;
+  }
+
+  await server.call(`/api/sessions/${created.id}/archive`, {});
+  server.stop();
+
+  expect(sent.status).toBe(202);
+
+  expect(commands).toEqual([
+    expect.objectContaining({ type: "message", text: "hi early" }),
+  ]);
+});
+
 const offlineAfterMs = 100;
 
 test("refuses messages from when the provider goes offline until a new command stream replaces one that never closed", async () => {
