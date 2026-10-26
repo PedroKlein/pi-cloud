@@ -82,7 +82,7 @@ If your SSH config uses `ControlMaster`, this command returns right away while t
 
 The server logs a one-time setup link the first time it starts (`journalctl --user -u pi-cloud | grep setup`). Open it through the tunnel to create your user, then sign in with it.
 
-Open http://127.0.0.1:7420, choose the `vm` Environment and "Clone repository", enter a repository URL the VM can clone, and start the session. The session's branch starts from the repository's default branch, or from the branch, tag or commit you enter under "start from".
+Open http://127.0.0.1:7420, open New session, choose the `vm` Environment, paste a repository URL the VM can clone into the folder chip, and start the session. The session's branch starts from the repository's default branch, or from the branch, tag or commit you enter in the "from" chip.
 
 To also run sessions on the laptop, make a `laptop` Environment on the Environments page and start an agent against the tunnel with the key it shows:
 

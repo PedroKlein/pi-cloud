@@ -10,7 +10,12 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { type Browser, chromium, type Page } from "playwright-core";
+import {
+  type Browser,
+  chromium,
+  type Locator,
+  type Page,
+} from "playwright-core";
 import { installedPlugins } from "./installed";
 import { serve } from "./serve";
 import { setupTokenOf } from "./testdata/sign-in";
@@ -145,6 +150,41 @@ export default { name: "greeter", nav: { label: "Greeter", Page } };
   cookie = `${session?.name ?? ""}=${session?.value ?? ""}`;
 });
 
+// Picks the e2e Environment and the folder in the New session composer.
+// A folder is shared unless share is false, which makes a worktree of it.
+async function pickWorkspace(
+  form: Locator,
+  where: string,
+  share = true,
+): Promise<void> {
+  const environment = form.getByRole("button", { name: "Environment" });
+
+  if ((await environment.count()) > 0) {
+    await environment.click();
+    await form.getByRole("option", { name: /^e2e/ }).click();
+  }
+
+  await form.getByRole("button", { name: "Folder or repository" }).click();
+  const search = form.getByRole("combobox", { name: "Folder or repository" });
+  const picked = form.getByRole("option", { selected: true });
+
+  // The composer remembers the last pick.
+  while ((await picked.count()) > 0) {
+    await picked.first().click();
+  }
+
+  await search.fill(where);
+
+  await form
+    .getByRole("option")
+    .filter({ hasText: new RegExp(`${RegExp.escape(where)}(folder|clone)?$`) })
+    .first()
+    .click();
+
+  await form.getByLabel(/^Share the folder/).setChecked(share);
+  await search.press("Escape");
+}
+
 // A folder with its own .pi asks before loading it (ADR 0031).
 async function trustRepository(): Promise<void> {
   await page
@@ -166,10 +206,7 @@ test("chats with a session, replays it after a reload and opens its terminal", a
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -241,9 +278,7 @@ test("chats from Pi's own TUI and goes back to the chat when Pi quits", async ()
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -380,6 +415,70 @@ test("goes where the assistant opens on a wide screen, and offers it on a phone"
   await page.setViewportSize({ width: 1280, height: 720 });
 }, 30_000);
 
+test("infers the workspace from what the New session composer picks and remembers it", async () => {
+  const asked: unknown[] = [];
+
+  await page.route("**/api/sessions", async (route) => {
+    asked.push(route.request().postDataJSON());
+
+    await route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "not this time" }),
+    });
+  });
+
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await pickWorkspace(form, "https://example.com/a.git");
+  await form.getByRole("button", { name: "Start session" }).click();
+  await form.getByRole("alert").filter({ hasText: "not this time" }).waitFor();
+
+  await form.getByRole("button", { name: "Folder or repository" }).click();
+  const search = form.getByRole("combobox", { name: "Folder or repository" });
+
+  await search.fill("https://example.com/b.git");
+  await search.press("Enter");
+  await search.press("Escape");
+  const second = page.waitForResponse("**/api/sessions");
+
+  await form.getByRole("button", { name: "Start session" }).click();
+  await second;
+
+  await page.reload();
+  await page.getByRole("button", { name: "New session" }).click();
+  await form.getByRole("button", { name: "Folder or repository" }).waitFor();
+
+  await page.unroute("**/api/sessions");
+
+  expect(asked).toMatchObject([
+    {
+      workspace: {
+        kind: "clone",
+        repository: "https://example.com/a.git",
+        startPoint: "",
+      },
+    },
+    {
+      workspace: {
+        kind: "repositories",
+        repositories: [
+          { repository: "https://example.com/a.git" },
+          { repository: "https://example.com/b.git" },
+        ],
+      },
+    },
+  ]);
+
+  expect(
+    await form
+      .getByRole("button", { name: "Folder or repository" })
+      .textContent(),
+  ).toBe("a, b");
+}, 30_000);
+
 test("starts a session with the task from the New session form", async () => {
   faux.setResponses([fauxAssistantMessage([fauxText("on it")])]);
   await page.goto(server.url.href);
@@ -387,9 +486,7 @@ test("starts a session with the task from the New session form", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
 
   const task = form.getByLabel("What should Pi do?");
 
@@ -804,10 +901,9 @@ test("makes a Profile and starts a session that follows its instructions", async
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
-  await form.getByLabel("Profile").selectOption({ label: "Pirate" });
+  await pickWorkspace(form, root);
+  await form.getByRole("button", { name: "Profile" }).click();
+  await form.getByRole("option", { name: "Pirate" }).click();
 
   const task = form.getByLabel("What should Pi do?");
 
@@ -827,10 +923,7 @@ test("archives a session, shows it only with archived sessions and unarchives it
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   const id = new URL(page.url()).hash.slice(1);
@@ -861,10 +954,7 @@ test("forks a session into a new one and opens it", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   const id = new URL(page.url()).hash.slice(1);
@@ -914,10 +1004,7 @@ test("finds sessions by search and notifies when one finishes", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   const id = new URL(page.url()).hash.slice(1);
@@ -976,10 +1063,7 @@ test("answers the agent's questions in the prompt card", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1043,10 +1127,7 @@ test("shows the session's changes and usage from their plugins", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1085,9 +1166,7 @@ test("shows a turn as working between steps until Pi finishes it", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1369,10 +1448,7 @@ test("attaches an image to a message and shows it in the chat", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1417,10 +1493,7 @@ test("picks a slash command from the composer's menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   await trustRepository();
@@ -1454,10 +1527,7 @@ test("mentions a workspace file from the composer's menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(project);
+  await pickWorkspace(form, project);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1528,10 +1598,7 @@ test("creates a pull request from the Changes panel", async () => {
     await page.getByRole("button", { name: "New session" }).click();
     const form = page.locator("form#create");
 
-    await form.getByRole("radio", { name: /^e2e/ }).check();
-
-    await form.locator("[name=kind]").selectOption("worktree");
-    await form.locator("[name=location]").fill(project);
+    await pickWorkspace(form, project, false);
     await form.getByRole("button", { name: "Start session" }).click();
     await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1614,10 +1681,7 @@ test("queues a message while Pi works, takes one back and sends one now", async 
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1674,10 +1738,7 @@ test("sends comments on diff lines to Pi as one message", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(project);
+  await pickWorkspace(form, project);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1771,10 +1832,7 @@ test("switches a session's model and reasoning level from the composer", async (
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1814,12 +1872,12 @@ test("starts a session at the reasoning level picked in the New session form", a
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
-  await form.locator("[name=model]").fill("faux/faux-deep");
-  await form.getByLabel("Reasoning").selectOption("high");
+  await pickWorkspace(form, root);
+  await form.getByRole("button", { name: "Model" }).click();
+  await form.getByRole("combobox", { name: "Model" }).fill("faux/faux-deep");
+  await form.getByRole("combobox", { name: "Model" }).press("Enter");
+  await form.getByRole("button", { name: "Model" }).click();
+  await form.getByRole("radio", { name: "high", exact: true }).click();
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1840,10 +1898,7 @@ test("runs Pi's built-in commands from the composer", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1873,10 +1928,7 @@ test("logs in to a provider from the model menu", async () => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(root);
+  await pickWorkspace(form, root);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
@@ -1929,10 +1981,7 @@ test("draws an extension's widget and footer as Pi's TUI does, at the composer's
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(folder);
+  await pickWorkspace(form, folder);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   await trustRepository();
@@ -2078,10 +2127,7 @@ export default (pi) => {
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");
 
-  await form.getByRole("radio", { name: /^e2e/ }).check();
-
-  await form.locator("[name=kind]").selectOption("folder");
-  await form.locator("[name=location]").fill(folder);
+  await pickWorkspace(form, folder);
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
   await trustRepository();
