@@ -122,6 +122,7 @@
       "name": "@pi-cloud/sessions",
       "dependencies": {
         "@pi-cloud/plugins": "workspace:*",
+        "@pi-cloud/profiles": "workspace:*",
         "@pi-cloud/protocol": "workspace:*",
       },
     },

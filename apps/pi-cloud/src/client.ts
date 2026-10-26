@@ -6,6 +6,7 @@ import {
   type Command,
   type LivePost,
   type PreviewRequest,
+  type ProfileFiles,
   type PreviewResponse,
   type RemovalPost,
   type StartFailure,
@@ -200,6 +201,20 @@ export async function fetchSessionPart(
   );
 
   return new Uint8Array(await response.arrayBuffer());
+}
+
+// The files of an assigned Session's Profile (ADR 0041).
+export async function fetchProfile(
+  server: string,
+  assignment: SessionStart,
+): Promise<ProfileFiles> {
+  const response = await call(
+    { server, token: assignment.token },
+    `/agent/sessions/${assignment.sessionId}/profile`,
+    { signal: AbortSignal.timeout(requestTimeoutMs) },
+  );
+
+  return (await response.json()) as ProfileFiles;
 }
 
 export async function reportRemoval(

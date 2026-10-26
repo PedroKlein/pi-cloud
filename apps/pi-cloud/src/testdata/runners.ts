@@ -54,7 +54,7 @@ export function runnerCredentials(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "pi-cloud-protocol": "3",
+        "pi-cloud-protocol": "4",
         authorization: `Bearer ${await key(environment)}`,
       },
       body: JSON.stringify({ name: runner }),

@@ -299,7 +299,7 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
           ),
           {
             headers: {
-              "pi-cloud-protocol": "3",
+              "pi-cloud-protocol": "4",
               authorization: `Bearer ${await runners.token("local")}`,
             },
           },

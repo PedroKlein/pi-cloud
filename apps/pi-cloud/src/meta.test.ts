@@ -367,7 +367,7 @@ test("hands a runner only the allowed Session parts and requires the meta one", 
       fetch(new URL("/agent/work", bare.url), {
         method: "POST",
         headers: {
-          "pi-cloud-protocol": "3",
+          "pi-cloud-protocol": "4",
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
         },

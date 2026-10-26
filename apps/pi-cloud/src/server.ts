@@ -710,6 +710,18 @@ export function createHandler(
         );
       },
     ],
+    // The files of the Session's Profile, which the runner downloads when
+    // its copy's hash differs (ADR 0041).
+    [
+      "GET",
+      /^\/agent\/sessions\/([^/]+)\/profile$/,
+      (_request, [id = ""]) => {
+        const session = sessions.get(id);
+        const files = session && sessions.profileFiles(session.profileId);
+
+        return files ? Response.json(files) : notFound();
+      },
+    ],
     [
       "GET",
       /^\/agent\/sessions\/([^/]+)\/plugin-parts\/([^/]+)\/([^/]+)$/,

@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -10,6 +17,7 @@ import type {
   Environment,
   Profile,
   ProfileExport,
+  ProfileFiles,
   Session,
 } from "@pi-cloud/protocol";
 import { serve } from "./serve";
@@ -70,7 +78,7 @@ async function poll(): Promise<{ readonly start: readonly Assignment[] }> {
     fetch(new URL("/agent/work", server.url), {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "3",
+        "pi-cloud-protocol": "4",
         authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
@@ -192,7 +200,10 @@ test("a new Session runs with the Profile it names, or else the default", async 
   const { start } = await poll();
   const assigned = start.find(({ sessionId }) => sessionId === named.id);
 
-  expect(assigned?.profile).toEqual({ id: work.id, ...content });
+  expect(assigned?.profile).toEqual({
+    id: work.id,
+    hash: expect.any(String) as string,
+  });
 
   const unknown = await api("/api/sessions", {
     body: { environment, workspace, profile: "nope" },
@@ -325,7 +336,7 @@ test("keeps a repository trust answer for the next Session in it", async () => {
     {
       method: "POST",
       headers: {
-        "pi-cloud-protocol": "3",
+        "pi-cloud-protocol": "4",
         authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
@@ -432,4 +443,75 @@ test("only admins create, change or delete shared Profiles", async () => {
   const used = await api(`/api/profiles/${shared.id}/default`, { body: {} });
 
   expect(used.status).toBe(200);
+});
+
+test("hands runners a Profile's whole folder, without what machines keep", async () => {
+  const environment = await vmEnvironment();
+  await api("/api/profiles", { body: { name: "Work", agentsMd: "Be brief." } });
+
+  const folder = join(root, "config", "profiles", "work");
+  await mkdir(join(folder, "skills", "review"), { recursive: true });
+  await mkdir(join(folder, "git"));
+  await writeFile(join(folder, "skills", "review", "SKILL.md"), "# Review");
+  await writeFile(join(folder, "auth.json"), "{}");
+  await writeFile(join(folder, "git", "cached"), "x");
+  await symlink("/etc/hostname", join(folder, "linked"));
+
+  const session = await json<Session>(
+    api("/api/sessions", {
+      body: {
+        environment,
+        workspace: { kind: "folder", path: root },
+        profile: "work",
+      },
+    }),
+  );
+
+  const [assigned] = (await poll()).start;
+
+  const files = await json<ProfileFiles>(
+    fetch(new URL(`/agent/sessions/${session.id}/profile`, server.url), {
+      headers: {
+        "pi-cloud-protocol": "4",
+        authorization: `Bearer ${await runners.token("vm")}`,
+      },
+    }),
+  );
+
+  expect(files.hash).toBe(assigned?.profile.hash ?? "");
+
+  expect(
+    Object.fromEntries(
+      Object.entries(files.files).map(([path, encoded]) => [
+        path,
+        Buffer.from(encoded, "base64").toString("utf8"),
+      ]),
+    ),
+  ).toEqual({ "AGENTS.md": "Be brief.", "skills/review/SKILL.md": "# Review" });
+});
+
+test("fails a Session whose Profile is too big for runners", async () => {
+  const environment = await vmEnvironment();
+  await api("/api/profiles", { body: { name: "Huge" } });
+
+  await writeFile(
+    join(root, "config", "profiles", "huge", "blob"),
+    Buffer.alloc(21 * 1024 * 1024),
+  );
+
+  const session = await json<Session>(
+    api("/api/sessions", {
+      body: {
+        environment,
+        workspace: { kind: "folder", path: root },
+        profile: "huge",
+      },
+    }),
+  );
+
+  expect((await poll()).start).toEqual([]);
+
+  expect(await json<Session>(api(`/api/sessions/${session.id}`))).toMatchObject(
+    { status: "failed", error: "Profile Huge is over 20 MB" },
+  );
 });

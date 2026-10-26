@@ -198,7 +198,7 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
     new URL(`/agent/sessions/${toolless.id}/tools?generation=1`, server?.url),
     {
       headers: {
-        "pi-cloud-protocol": "3",
+        "pi-cloud-protocol": "4",
         authorization: `Bearer ${await runners.token("local")}`,
       },
     },
@@ -337,7 +337,7 @@ test("serves a tool's exposure, namespace and hints to its sessions", async () =
     new URL(`/agent/sessions/${session.id}/tools?generation=1`, server?.url),
     {
       headers: {
-        "pi-cloud-protocol": "3",
+        "pi-cloud-protocol": "4",
         authorization: `Bearer ${await runners.token("local")}`,
       },
     },
