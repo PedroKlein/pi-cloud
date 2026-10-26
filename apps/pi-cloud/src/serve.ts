@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
 import type { PluginManifest } from "@pi-cloud/protocol";
@@ -7,6 +8,7 @@ import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
+import { configFolder } from "./config";
 import {
   buildPlugin,
   pluginFiles,
@@ -38,6 +40,9 @@ export interface ServeOptions {
   // it listens, such as behind a gateway.
   readonly url?: URL;
   readonly database: string;
+  // Holds pi-cloud.json and the plugins' own config files (ADR 0039); a
+  // config folder next to the database when unset.
+  readonly configDir?: string;
   // Encrypts Environment secrets; a file next to the database when unset.
   readonly secretKey?: Buffer;
   // False leaves only the setup link and plugin logins, such as OIDC.
@@ -67,6 +72,11 @@ export function serve(options: ServeOptions): {
   readonly url: URL;
   readonly stop: () => Promise<void>;
 } {
+  const config = configFolder(
+    options.configDir ?? join(dirname(options.database), "config"),
+    options.log,
+  );
+
   const store = openStore(options.database, options.secretKey);
   const disabled = options.disabledPlugins ?? [];
   const folder = options.installed;
@@ -127,6 +137,7 @@ export function serve(options: ServeOptions): {
     changes: changes.publish,
     store: store.plugin,
     settings: store.pluginSettings,
+    config,
     toolsets: kernelToolsets,
     api: async (actor, request) => handler(onBehalfOf(actor, request)),
     auth: {

@@ -138,6 +138,17 @@ export interface PluginStore {
   readonly open: (sealed: string, context: string) => string;
 }
 
+// The plugin's part of the server's config folder (ADR 0039).
+export interface PluginConfig {
+  // The plugin's key in the folder's pi-cloud.json, read again when the file
+  // changes, for the plugin to check.
+  readonly get: () => unknown;
+  // Replaces the plugin's key and leaves the others alone.
+  readonly set: (value: unknown) => void;
+  // A folder of the plugin's own, which may not exist yet.
+  readonly dir: string;
+}
+
 // A read-only Profile a plugin ships for the Sessions it owns, such as the
 // meta Profile (ADR 0035). Users don't list or edit it.
 export interface PluginProfile extends ProfileContent {
@@ -265,6 +276,7 @@ export interface ServerPluginContext {
   // The plugin's settings as they are now, a default for each it declares
   // (ADR 0036).
   readonly settings: { readonly get: () => PluginSettings };
+  readonly config: PluginConfig;
   // Aborted when the server stops, or when the plugin fails to register.
   readonly signal: AbortSignal;
   readonly log: (

@@ -43,6 +43,10 @@ jobs:
           --set image.pullPolicy=Never
           --set extraEnv[0].name=PI_CLOUD_FAUX_REPLY
           --set "extraEnv[0].value=hello from kind"
+          --set config.oidc.providers[0].id=kind
+          --set "config.oidc.providers[0].label=Sign in with kind"
+          --set config.oidc.providers[0].issuer=https://kind.example
+          --set config.oidc.providers[0].clientId=pi-cloud
       - run: bun test ./apps/pi-cloud/src/kind.e2e.ts
       - if: failure()
         run: >-

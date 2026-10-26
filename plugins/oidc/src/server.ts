@@ -35,7 +35,14 @@ export const oidc: ServerPlugin = {
   name: "oidc",
   register: (context) => {
     const identities = identityStore(context.store);
-    const providers = providerStore(context.store);
+
+    const providers = providerStore(
+      context.config,
+      context.store,
+      process.env,
+      context.log,
+    );
+
     const pending = new Map<string, Pending>();
     const discovered = new Map<string, Promise<Provider>>();
 

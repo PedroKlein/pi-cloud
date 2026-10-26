@@ -8,6 +8,7 @@ export type {
   Login,
   ModelOffer,
   OfferedModels,
+  PluginConfig,
   PluginEvent,
   PluginNotice,
   PluginRoute,

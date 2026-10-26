@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { serve } from "./serve";
 import { firstUser } from "./testdata/sign-in";
 
@@ -18,14 +22,18 @@ let server: ReturnType<typeof serve>;
 let provider: ReturnType<typeof fakeProvider>;
 let pedro: () => Promise<string>;
 let providerId: string;
+let configDir: string;
 
 beforeEach(async () => {
   logs = [];
   provider = fakeProvider();
 
+  configDir = mkdtempSync(join(tmpdir(), "pi-cloud-config-"));
+
   server = serve({
     port: 0,
     database: ":memory:",
+    configDir,
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
     },
@@ -210,6 +218,7 @@ test("offers a button for each provider and signs in through any of them", async
 
 test("keeps a client secret out of the page, sends it to the provider, and takes it away", async () => {
   const set = await configure({ clientSecret: "s3cret value" });
+  const file = readFileSync(join(configDir, "pi-cloud.json"), "utf8");
   const listed = await api("GET", "/api/plugins/oidc/providers", await pedro());
 
   await signIn(ana);
@@ -222,6 +231,7 @@ test("keeps a client secret out of the page, sends it to the provider, and takes
 
   expect(await set.json()).toMatchObject({ hasClientSecret: true });
   expect(await listed.text()).not.toContain("s3cret");
+  expect(file).not.toContain("s3cret");
   expect(await kept.json()).toMatchObject({ hasClientSecret: true });
   expect(await removed.json()).toMatchObject({ hasClientSecret: false });
 
@@ -294,6 +304,194 @@ test("stops offering a provider once it is removed", async () => {
   );
 
   expect([removed.status, status.logins, start.status]).toEqual([200, [], 404]);
+});
+
+function configFile(): unknown {
+  return JSON.parse(readFileSync(join(configDir, "pi-cloud.json"), "utf8"));
+}
+
+function writeConfig(settings: unknown): void {
+  writeFileSync(join(configDir, "pi-cloud.json"), JSON.stringify(settings));
+}
+
+// Starts the server again on the same config folder and database.
+async function restart(database = ":memory:"): Promise<void> {
+  await server.stop();
+
+  server = serve({
+    port: 0,
+    database,
+    configDir,
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
+  });
+
+  pedro = firstUser(server, logs);
+}
+
+test("keeps the providers Settings adds in pi-cloud.json", () => {
+  expect(configFile()).toEqual({
+    oidc: {
+      providers: [
+        {
+          id: "ias",
+          label: "Sign in with IAS",
+          issuer: provider.issuer,
+          clientId,
+          accessGroup: "pi-cloud-users",
+          adminGroup: "pi-cloud-admins",
+        },
+      ],
+    },
+  });
+});
+
+test("signs in through a provider written into the file by hand, with its secret from the environment", async () => {
+  process.env["PI_CLOUD_TEST_OIDC_SECRET"] = "from the env";
+
+  const file = configFile() as { oidc: { providers: unknown[] } };
+
+  writeConfig({
+    ...file,
+    oidc: {
+      providers: [
+        ...file.oidc.providers,
+        {
+          ...providerInput(provider.issuer, { label: "Sign in with SAP" }),
+          id: "sap",
+          clientSecretEnv: "PI_CLOUD_TEST_OIDC_SECRET",
+        },
+      ],
+    },
+  });
+
+  const status = (await (
+    await fetch(new URL("/api/auth", server.url))
+  ).json()) as { logins: unknown };
+
+  const { cookie } = await signIn(ana, {
+    start: "/api/plugins/oidc/start/sap",
+  });
+
+  const listed = await api("GET", "/api/plugins/oidc/providers", await pedro());
+
+  expect(status.logins).toEqual([
+    { label: "Sign in with IAS", path: "/api/plugins/oidc/start/ias" },
+    { label: "Sign in with SAP", path: "/api/plugins/oidc/start/sap" },
+  ]);
+
+  expect(await userOf(cookie)).toMatchObject({ name: "ana@example.com" });
+
+  expect(provider.tokenRequests).toEqual([
+    {
+      authorization: `Basic ${Buffer.from(`${clientId}:from+the+env`).toString("base64")}`,
+      clientId: null,
+      verified: true,
+    },
+  ]);
+
+  expect(await listed.json()).toContainEqual(
+    expect.objectContaining({
+      id: "sap",
+      hasClientSecret: true,
+      clientSecretEnv: "PI_CLOUD_TEST_OIDC_SECRET",
+    }),
+  );
+
+  expect(process.env["PI_CLOUD_TEST_OIDC_SECRET"]).toBeUndefined();
+});
+
+test("fails the plugin, with the reason, when the file's providers don't fit at start", async () => {
+  writeConfig({
+    oidc: {
+      providers: [
+        { ...providerInput(provider.issuer), id: "ias", clientSecret: "x" },
+      ],
+    },
+  });
+
+  await restart();
+
+  const listed = (await (
+    await api("GET", "/api/plugins", await pedro())
+  ).json()) as { id: string; state: string; error?: string }[];
+
+  expect(listed.find(({ id }) => id === "oidc")).toMatchObject({
+    state: "failed",
+    error:
+      "oidc.providers[0]: clientSecret must be sealed by Settings; name an environment variable in clientSecretEnv instead",
+  });
+});
+
+test("keeps the last providers that fit while the file is broken, and won't overwrite it", async () => {
+  writeFileSync(join(configDir, "pi-cloud.json"), "{ not json");
+
+  const status = (await (
+    await fetch(new URL("/api/auth", server.url))
+  ).json()) as { logins: unknown[] };
+
+  const added = await api(
+    "POST",
+    "/api/plugins/oidc/providers",
+    await pedro(),
+    providerInput(provider.issuer, { label: "Sign in with Google" }),
+  );
+
+  expect(status.logins).toHaveLength(1);
+  expect(added.status).toBe(400);
+
+  expect(readFileSync(join(configDir, "pi-cloud.json"), "utf8")).toBe(
+    "{ not json",
+  );
+
+  expect(logs.some((line) => line.startsWith("config file unreadable"))).toBe(
+    true,
+  );
+});
+
+test("moves the providers of the table from before the config file into it", async () => {
+  const database = join(configDir, "server.db");
+  const db = new DatabaseSync(database);
+
+  db.exec(
+    "create table oidc_providers (id text primary key, label text not null, issuer text not null, client_id text not null, client_secret text, groups_claim text not null, access_group text not null, admin_group text not null, allowed_emails text not null, allowed_domains text not null, admin_emails text not null, created_at text not null)",
+  );
+
+  db.prepare(
+    "insert into oidc_providers values (?, ?, ?, ?, null, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    "old-id",
+    "Sign in with Okta",
+    provider.issuer,
+    clientId,
+    "groups",
+    "pi-cloud-users",
+    "",
+    "[]",
+    "[]",
+    "[]",
+    new Date().toISOString(),
+  );
+
+  db.close();
+
+  await restart(database);
+
+  const status = (await (
+    await fetch(new URL("/api/auth", server.url))
+  ).json()) as { logins: { label: string }[] };
+
+  expect(status.logins.map(({ label }) => label)).toEqual([
+    "Sign in with IAS",
+    "Sign in with Okta",
+  ]);
+
+  await restart(database);
+
+  expect(
+    (configFile() as { oidc: { providers: unknown[] } }).oidc.providers,
+  ).toHaveLength(2);
 });
 
 test("makes a user for a member of the access group and signs them in", async () => {

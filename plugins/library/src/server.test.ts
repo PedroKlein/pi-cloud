@@ -110,6 +110,7 @@ function registered(
     models: { offer: unused },
     store: memoryStore(),
     settings: { get: settings },
+    config: { get: () => undefined, set: () => undefined, dir: "" },
     signal: new AbortController().signal,
     log: () => undefined,
   });
