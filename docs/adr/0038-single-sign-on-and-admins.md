@@ -32,7 +32,7 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 ### Admins
 
 - The kernel's users get an admin flag. The setup link's user is an admin.
-- Only admins install, update, remove or turn on plugins, change plugin settings and restart the server. Everything else stays open to every signed-in user, since v2 has no per-user isolation ([vision.md](../vision.md#v3-a-teams-control-center)).
+- Only admins install, update, remove or turn on plugins, change plugin settings and restart the server. Only admins change an Environment's Kubernetes settings too, since a pod patch can mount the namespace's Secrets or run a pod privileged (amended 2026-10-26). Everything else stays open to every signed-in user, since v2 has no per-user isolation ([vision.md](../vision.md#v3-a-teams-control-center)).
 
 ### The plugin seam
 

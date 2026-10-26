@@ -103,6 +103,15 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           return Response.json({ error: "not_found" }, { status: 404 });
         }
 
+        // A pod patch can mount the namespace's Secrets or run privileged,
+        // so it is as much as the server's own access (ADR 0038).
+        if (context.auth.userOf(request)?.admin !== true) {
+          return Response.json(
+            { error: "only admins change Kubernetes settings" },
+            { status: 403 },
+          );
+        }
+
         const body: unknown = await request.json().catch(() => null);
 
         if (!isObject(body)) {

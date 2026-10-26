@@ -610,6 +610,27 @@ test("only admins change plugins or restart the server", async () => {
   expect(statuses).toEqual([403, 403, 403, 403]);
 });
 
+test("only admins change an Environment's Kubernetes settings", async () => {
+  const { cookie } = await signIn(ana);
+
+  const { environment } = (await (
+    await api("POST", "/api/environments", cookie, { name: "pods" })
+  ).json()) as { environment: { id: string } };
+
+  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  const patch = { spec: { volumes: [{ name: "key", secret: {} }] } };
+
+  const statuses = [
+    (await api("GET", path, cookie)).status,
+    (await api("POST", path, cookie, { settings: { podPatch: patch } })).status,
+    (await api("POST", path, cookie, { settings: null })).status,
+    (await api("POST", path, await pedro(), { settings: { podPatch: patch } }))
+      .status,
+  ];
+
+  expect(statuses).toEqual([200, 403, 403, 200]);
+});
+
 test("refuses a callback in a browser that didn't start the sign-in", async () => {
   const { response, cookie } = await signIn(ana, { browser: "" });
 
