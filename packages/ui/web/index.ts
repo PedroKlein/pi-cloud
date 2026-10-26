@@ -5,5 +5,6 @@ export { Field, fieldClass } from "./field";
 export { Icon, type IconName } from "./icon";
 export { isComposing } from "./keys";
 export { type KeyValue, KeyValues } from "./key-values";
+export { ListInput } from "./list-input";
 export { PageTitle, Section } from "./page";
 export { Picker, type PickerOption } from "./picker";

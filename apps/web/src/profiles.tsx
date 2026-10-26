@@ -6,6 +6,7 @@ import {
   Field,
   fieldClass,
   Icon,
+  ListInput,
   PageTitle,
   Section,
 } from "@pi-cloud/ui";
@@ -17,22 +18,28 @@ const deleteErrors: Readonly<Record<string, string>> = {
   in_use: "Sessions still use this Profile. Archive them first.",
 };
 
-// One package per line: a source such as npm:name, or a JSON object with
-// Pi's filters.
-export function packagesText(packages: readonly PiPackage[]): string {
-  return packages
-    .map((pkg) => (typeof pkg === "string" ? pkg : JSON.stringify(pkg)))
-    .join("\n");
+// A package is a source such as npm:name, or a JSON object with Pi's
+// filters.
+function packageText(pkg: PiPackage): string {
+  return typeof pkg === "string" ? pkg : JSON.stringify(pkg);
 }
 
-export function packagesOf(text: string): unknown[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) =>
-      line.startsWith("{") ? (JSON.parse(line) as unknown) : line,
-    );
+function packageOf(text: string): unknown {
+  return text.startsWith("{") ? JSON.parse(text) : text;
+}
+
+// How many of the fields folded under Advanced hold something.
+function advancedSet(profile: Profile | undefined): number {
+  if (profile === undefined) {
+    return 0;
+  }
+
+  return [
+    profile.systemMd.trim() !== "",
+    profile.appendSystemMd.trim() !== "",
+    Object.keys(profile.mcpServers).length > 0,
+    Object.keys(profile.settings).length > 0,
+  ].filter(Boolean).length;
 }
 
 function objectText(value: Readonly<Record<string, unknown>>): string {
@@ -110,6 +117,10 @@ function Editor({
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
 
+  const [packages, setPackages] = useState<readonly string[]>(() =>
+    (profile?.packages ?? []).map(packageText),
+  );
+
   const run = (action: () => Promise<void>): void => {
     setSaved(false);
 
@@ -137,7 +148,7 @@ function Editor({
     run(async () => {
       const body = {
         name: text("name"),
-        packages: packagesOf(text("packages")),
+        packages: packages.map(packageOf),
         agentsMd: text("agentsMd"),
         systemMd: text("systemMd"),
         appendSystemMd: text("appendSystemMd"),
@@ -176,15 +187,12 @@ function Editor({
             className={fieldClass}
           />
         </Field>
-        <Field label="Pi packages, one per line (npm:, git: or a path)">
-          <textarea
-            name="packages"
-            rows={4}
-            defaultValue={packagesText(profile?.packages ?? [])}
-            placeholder="npm:pi-subagents"
-            className={area}
-          />
-        </Field>
+        <ListInput
+          label="Pi packages"
+          values={packages}
+          placeholder="npm:pi-subagents, git:… or a path, then Enter"
+          onChange={setPackages}
+        />
         <Field label="AGENTS.md">
           <textarea
             name="agentsMd"
@@ -193,40 +201,49 @@ function Editor({
             className={area}
           />
         </Field>
-        <Field label="SYSTEM.md, which replaces Pi's system prompt">
-          <textarea
-            name="systemMd"
-            rows={3}
-            defaultValue={profile?.systemMd ?? ""}
-            className={area}
-          />
-        </Field>
-        <Field label="APPEND_SYSTEM.md, added to the system prompt">
-          <textarea
-            name="appendSystemMd"
-            rows={3}
-            defaultValue={profile?.appendSystemMd ?? ""}
-            className={area}
-          />
-        </Field>
-        <Field label="MCP servers, as the mcpServers object of mcp.json">
-          <textarea
-            name="mcpServers"
-            rows={4}
-            defaultValue={objectText(profile?.mcpServers ?? {})}
-            placeholder='{ "docs": { "url": "https://example.com/mcp" } }'
-            className={area}
-          />
-        </Field>
-        <Field label="Pi settings, as in settings.json">
-          <textarea
-            name="settings"
-            rows={4}
-            defaultValue={objectText(profile?.settings ?? {})}
-            placeholder='{ "defaultThinkingLevel": "medium" }'
-            className={area}
-          />
-        </Field>
+        <details className="flex flex-col">
+          <summary className="cursor-pointer text-label font-medium text-fg-dim">
+            Advanced: system prompt, MCP servers and Pi settings as files
+            {advancedSet(profile) > 0 &&
+              ` (${String(advancedSet(profile))} set)`}
+          </summary>
+          <div className="mt-4 flex flex-col gap-4">
+            <Field label="SYSTEM.md, which replaces Pi's system prompt">
+              <textarea
+                name="systemMd"
+                rows={3}
+                defaultValue={profile?.systemMd ?? ""}
+                className={area}
+              />
+            </Field>
+            <Field label="APPEND_SYSTEM.md, added to the system prompt">
+              <textarea
+                name="appendSystemMd"
+                rows={3}
+                defaultValue={profile?.appendSystemMd ?? ""}
+                className={area}
+              />
+            </Field>
+            <Field label="MCP servers, the mcpServers object of mcp.json">
+              <textarea
+                name="mcpServers"
+                rows={4}
+                defaultValue={objectText(profile?.mcpServers ?? {})}
+                placeholder='{ "docs": { "url": "https://example.com/mcp" } }'
+                className={area}
+              />
+            </Field>
+            <Field label="Pi settings, as settings.json">
+              <textarea
+                name="settings"
+                rows={4}
+                defaultValue={objectText(profile?.settings ?? {})}
+                placeholder='{ "defaultThinkingLevel": "medium" }'
+                className={area}
+              />
+            </Field>
+          </div>
+        </details>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" type="submit">
             {profile ? "Save" : "Create Profile"}
