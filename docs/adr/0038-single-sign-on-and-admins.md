@@ -13,15 +13,16 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 
 ### The `oidc` plugin
 
-- A built-in plugin signs people in with the authorization code flow and PKCE. It works with any provider that publishes OpenID Connect discovery. Its settings are the issuer, the client ID, the button's label, the groups claim, an access group, an admin group and lists of allowed emails, allowed domains and admin emails.
-- A client secret, when the provider needs one, comes from `PI_CLOUD_OIDC_CLIENT_SECRET`. The binary takes it out of its environment as it starts, as it does `PI_CLOUD_SECRET_KEY`, since Sessions of the built-in runner inherit the environment. On Kubernetes it comes from a Secret the operator creates.
-- The redirect URI is the server's own `/api/plugins/oidc/callback`, on whichever host the browser used, so the public host and a port-forward both work once both are registered with the provider.
+- A built-in plugin signs people in with the authorization code flow and PKCE. It works with any provider that publishes OpenID Connect discovery, and with several at once (decided 2026-10-26). Each gets its own button on the sign-in page.
+- Admins add, change and remove providers in the plugin's section of Settings. Each provider has a label, an issuer, a client ID, an optional client secret, a groups claim, an access group, an admin group and lists of allowed emails, allowed domains and admin emails. They live in the plugin's own table rather than in plugin settings, which hold only flat fields.
+- A client secret is only for providers that require one even with PKCE, such as Google. The plugin seals it with the server's secret key, like Environment secrets ([ADR 0034](0034-v2-deployment-and-credentials.md)), and never sends it back to the browser. Any plugin's store can seal values this way, and only that plugin can open them.
+- Every provider shares one redirect URI, the server's own `/api/plugins/oidc/callback`, on whichever host the browser used. The sign-in's state says which provider it belongs to. The public host and a port-forward both work once both are registered with the provider.
 - The ID token comes straight from the token endpoint over TLS, so the plugin checks its issuer, audience, expiry and nonce but not its signature ([OpenID Connect Core 1.0, 3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation)). The issuer and token endpoint must be HTTPS, except on loopback for tests.
 - A sign-in's state is bound to the browser that started it with a `SameSite=Lax` cookie, so a link to the callback can't sign someone in as another person.
 
 ### Who gets in
 
-- Access comes from the provider's groups, in the ID token's `groups` claim. A member of the access group gets a Pi Cloud user on their first sign-in, keyed by issuer and subject, never by email. Anyone else is refused (decided 2026-10-25).
+- Each provider has its own access rules. Access comes from the provider's groups, in the ID token. A member of the access group gets a Pi Cloud user on their first sign-in, keyed by issuer and subject, never by email. Anyone else is refused (decided 2026-10-25).
 - A member of the admin group is an admin, and gets in too. The plugin reads the groups again on every sign-in, so a change in the provider applies at the next one.
 - The groups come from the claim the settings name, `groups` by default, since providers differ.
 - For a provider that sends no groups, such as Google, the email lists let people in by their email or its domain, and make admins by email. An email counts only when the token says `email_verified` (decided 2026-10-25). GitHub has no OpenID Connect sign-in, so it would need its own login plugin on the same seam, which waits until someone needs it.

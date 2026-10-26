@@ -234,6 +234,8 @@ function fakeKernel(): {
       run: (sql, ...params) => {
         db.prepare(sql).run(...(params as SQLInputValue[]));
       },
+      seal: (text) => text,
+      open: (sealed) => sealed,
     },
     settings: { get: () => ({}) },
     signal: stop.signal,
