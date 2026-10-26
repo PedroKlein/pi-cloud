@@ -116,6 +116,9 @@ export function serve(options: ServeOptions): {
     changed: () => {
       changes.publish("sessions");
     },
+    runnersChanged: () => {
+      changes.publish("environments");
+    },
     sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
     startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),

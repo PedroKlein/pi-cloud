@@ -16,6 +16,7 @@ import {
   type Locator,
   type Page,
 } from "playwright-core";
+import type { Environment } from "@pi-cloud/protocol";
 import { installedPlugins } from "./installed";
 import { serve } from "./serve";
 import { setupTokenOf } from "./testdata/sign-in";
@@ -514,6 +515,70 @@ test("starts a session with the task from the New session form", async () => {
     .locator('#chat li[data-role="assistant"]', { hasText: "on it" })
     .waitFor();
 }, 30_000);
+
+test("walks a new server through connecting a machine and logging in to a model", async () => {
+  let phase: "none" | "no models" = "none";
+  const asked: unknown[] = [];
+
+  await page.route("**/api/environments", async (route) => {
+    const real = (await (await route.fetch()).json()) as Environment[];
+
+    await route.fulfill({
+      json:
+        phase === "none"
+          ? []
+          : real.slice(0, 1).map((each) => ({ ...each, models: [] })),
+    });
+  });
+
+  await page.route("**/api/sessions", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+
+      return;
+    }
+
+    asked.push(route.request().postDataJSON());
+    await route.fulfill({ status: 400, json: { error: "not this time" } });
+  });
+
+  await page.goto(server.url.href);
+  const steps = page.getByRole("region", { name: "Get started" });
+
+  await steps.getByRole("button", { name: "Show the command" }).click();
+
+  const command = steps.getByLabel("Join command");
+  await command.filter({ hasText: "PI_CLOUD_KEY=pck_" }).waitFor();
+
+  expect(await command.textContent()).toEndWith(
+    `pi-cloud agent --server ${server.url.origin}`,
+  );
+
+  phase = "no models";
+  await page.reload();
+
+  await steps
+    .getByRole("heading", { name: "Connect a machine (done)" })
+    .waitFor();
+
+  await steps.getByRole("button", { name: "Log in" }).click();
+  await steps.getByRole("alert").filter({ hasText: "not this time" }).waitFor();
+
+  expect(asked).toMatchObject([
+    { workspace: { kind: "folder" }, firstMessage: "/login" },
+  ]);
+
+  await page.unroute("**/api/sessions");
+  await page.unroute("**/api/environments");
+  await page.reload();
+
+  await page
+    .getByRole("navigation", { name: "Pi Cloud" })
+    .getByText(/^e2e\b.* online$/)
+    .waitFor();
+
+  expect(await steps.count()).toBe(0);
+});
 
 test("makes an Environment and shows its key once", async () => {
   await page.goto(server.url.href);

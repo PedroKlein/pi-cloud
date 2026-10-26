@@ -182,7 +182,7 @@ function JoinKey({
             aria-label="Join command"
             className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm"
           >
-            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --name <runner> --server ${location.origin}`}
+            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --server ${location.origin}`}
           </pre>
         </>
       )}

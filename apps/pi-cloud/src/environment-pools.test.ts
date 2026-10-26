@@ -14,6 +14,7 @@ import {
 } from "@pi-cloud/protocol";
 import type { ServerPluginContext } from "@pi-cloud/plugins";
 import { serve } from "./serve";
+import { readSse } from "./sse";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
@@ -530,6 +531,31 @@ test("makes an Environment named after the first runner that joins with a join k
     { name: "laptops-2", hasKey: true },
     { name: "mac-studio", hasKey: true },
   ]);
+});
+
+test("tells open pages when a runner comes online, so its Environment shows it", async () => {
+  await runners.key("laptops");
+
+  const changes = await fetch(new URL("/api/changes", server.url), {
+    headers: { cookie: await signedIn() },
+  });
+
+  const topics: string[] = [];
+
+  const reading = (async () => {
+    for await (const event of readSse(changes)) {
+      topics.push((event as { topic: string }).topic);
+      if (topics.includes("environments")) {
+        break;
+      }
+    }
+  })();
+
+  const token = await runners.token("mac-1", "laptops");
+  await asRunner(token, "/agent/work", emptyPoll);
+  await reading;
+
+  expect(topics).toEqual(["environments"]);
 });
 
 test("reports the Sessions beyond the room an Environment's online runners have", async () => {

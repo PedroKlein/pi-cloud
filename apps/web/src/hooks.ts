@@ -30,6 +30,8 @@ export function useHash(): string {
 
 interface WatchedList<T> {
   readonly value: readonly T[];
+  // False until the first read comes back, while value is still empty.
+  readonly loaded: boolean;
   readonly reload: () => void;
 }
 
@@ -37,6 +39,7 @@ interface WatchedList<T> {
 // says its topic changed (ADR 0038).
 function useWatchedList(path: string, topic: string): WatchedList<unknown> {
   const [value, setValue] = useState<readonly unknown[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [order] = useState(responseOrder);
 
   const reload = useCallback(() => {
@@ -48,6 +51,7 @@ function useWatchedList(path: string, topic: string): WatchedList<unknown> {
 
         if (order.accept(request)) {
           setValue(list);
+          setLoaded(true);
         }
       })
       .catch((error: unknown) => {
@@ -68,7 +72,7 @@ function useWatchedList(path: string, topic: string): WatchedList<unknown> {
     };
   }, [reload, order, topic]);
 
-  return { value, reload };
+  return { value, loaded, reload };
 }
 
 export function useSessions(archived: boolean): WatchedList<Session> {
