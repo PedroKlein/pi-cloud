@@ -653,6 +653,12 @@ test("shows an installed plugin's page with the app's React and components", asy
       .isDisabled(),
   ).toBe(true);
 
+  // A newly installed plugin's page starts under More (ADR 0040).
+  await page
+    .locator("#plugin-nav")
+    .getByRole("button", { name: "More" })
+    .click();
+
   await page.getByRole("link", { name: "Greeter" }).click();
 
   const button = page.getByRole("button", { name: "Hellos: 0" });
@@ -668,6 +674,28 @@ test("says why an installed plugin's web part didn't load, and draws the rest", 
     .getByRole("listitem", { name: "Faulty" })
     .getByText("Its web part didn't load: faulty on purpose")
     .waitFor();
+});
+
+test("pins a plugin page to the sidebar and keeps the rest under More", async () => {
+  await page.goto(server.url.href);
+  const nav = page.locator("#plugin-nav");
+  const library = nav.getByRole("link", { name: "Library" });
+
+  await nav.getByRole("link", { name: "Projects" }).waitFor();
+  expect(await library.count()).toBe(0);
+
+  await nav.getByRole("button", { name: "More" }).click();
+  await nav.getByRole("button", { name: "Pin Library" }).click();
+  await nav.getByRole("button", { name: "Unpin Library" }).waitFor();
+
+  await page.reload();
+  await library.waitFor();
+  expect(await nav.getByRole("button", { name: "More" }).count()).toBe(1);
+
+  await nav.getByRole("button", { name: "Unpin Library" }).click();
+  await page.reload();
+  await nav.getByRole("link", { name: "Projects" }).waitFor();
+  expect(await library.count()).toBe(0);
 });
 
 test("makes an MCP token that works once shown, and revokes it", async () => {
@@ -1363,10 +1391,10 @@ test("creates a Project and shares a file through its library", async () => {
   await side.waitFor();
   await side.getByRole("button", { name: "Back to threads" }).click();
 
-  await page
-    .locator("#plugin-nav")
-    .getByRole("link", { name: "Library" })
-    .click();
+  const pluginNav = page.locator("#plugin-nav");
+
+  await pluginNav.getByRole("button", { name: "More" }).click();
+  await pluginNav.getByRole("link", { name: "Library" }).click();
 
   await page.getByText("No files yet.").waitFor();
 

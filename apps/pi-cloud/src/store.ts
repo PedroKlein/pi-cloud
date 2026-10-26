@@ -113,7 +113,8 @@ create table if not exists users (
   name text not null unique,
   password_hash text not null,
   created_at text not null,
-  admin integer not null default 0
+  admin integer not null default 0,
+  pinned_pages text
 );
 create table if not exists agent_tokens (
   token_hash text primary key,
@@ -193,6 +194,10 @@ function migrate(db: DatabaseSync): void {
       alter table users add column admin integer not null default 0;
       update users set admin = 1;
     `);
+  }
+
+  if (!userColumns.some(({ name }) => name === "pinned_pages")) {
+    db.exec("alter table users add column pinned_pages text");
   }
 
   const tokenColumns = db
@@ -813,6 +818,14 @@ function authStore(db: DatabaseSync): AuthStore {
     "insert into mcp_tokens (id, token_hash, user_id, name, created_at) values (?, ?, ?, ?, ?)",
   );
 
+  const selectPinnedPages = db.prepare(
+    "select pinned_pages from users where id = ?",
+  );
+
+  const updatePinnedPages = db.prepare(
+    "update users set pinned_pages = ? where id = ?",
+  );
+
   const selectMcpTokens = db.prepare(
     "select id, name, created_at from mcp_tokens where user_id = ? order by created_at",
   );
@@ -925,6 +938,20 @@ function authStore(db: DatabaseSync): AuthStore {
       userOf(selectMcpTokenUser.get(tokenHash) as UserRow | undefined),
     deleteMcpToken: (id, userId) =>
       Number(deleteMcpToken.run(id, userId).changes) > 0,
+    pinnedPages: (userId) => {
+      const row = selectPinnedPages.get(userId) as
+        { pinned_pages: string | null } | undefined;
+
+      return row?.pinned_pages === undefined || row.pinned_pages === null
+        ? null
+        : (JSON.parse(row.pinned_pages) as string[]);
+    },
+    setPinnedPages: (userId, pages) => {
+      updatePinnedPages.run(
+        pages === null ? null : JSON.stringify(pages),
+        userId,
+      );
+    },
     agentToken: (tokenHash) => {
       const row = selectAgentToken.get(tokenHash) as
         | {

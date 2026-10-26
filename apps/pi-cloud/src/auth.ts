@@ -49,6 +49,13 @@ export interface AuthStore {
   readonly mcpTokenUser: (tokenHash: string) => User | undefined;
   // Whether the user had a token with the id.
   readonly deleteMcpToken: (id: string, userId: string) => boolean;
+  // The plugin pages a user pinned in the sidebar, null until they pin or
+  // unpin one (ADR 0040).
+  readonly pinnedPages: (userId: string) => readonly string[] | null;
+  readonly setPinnedPages: (
+    userId: string,
+    pages: readonly string[] | null,
+  ) => void;
 }
 
 // A token an MCP client such as Claude Code uses to act as its user
@@ -335,6 +342,14 @@ export class Auth {
 
   revokeMcpToken(userId: string, id: string): boolean {
     return this.#store.deleteMcpToken(id, userId);
+  }
+
+  pinnedPages(userId: string): readonly string[] | null {
+    return this.#store.pinnedPages(userId);
+  }
+
+  pinPages(userId: string, pages: readonly string[] | null): void {
+    this.#store.setPinnedPages(userId, pages);
   }
 
   mcpUserOf(request: Request): User | undefined {

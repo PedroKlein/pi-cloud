@@ -375,6 +375,26 @@ export function createHandler(
     ],
     [
       "GET",
+      /^\/api\/pinned-pages$/,
+      (_request, _params, actor) =>
+        Response.json({ pages: auth.pinnedPages(userIdOf(actor)) }),
+    ],
+    [
+      "PUT",
+      /^\/api\/pinned-pages$/,
+      async (request, _params, actor) => {
+        const { pages } = fieldsOf(await readJson(request));
+
+        auth.pinPages(
+          userIdOf(actor),
+          listOf("pages", pages, (page) => textOf("page", page)),
+        );
+
+        return new Response(null, { status: 204 });
+      },
+    ],
+    [
+      "GET",
       /^\/api\/mcp-tokens$/,
       (_request, _params, actor) =>
         Response.json(auth.mcpTokens(userIdOf(actor)).map(mcpTokenView)),
