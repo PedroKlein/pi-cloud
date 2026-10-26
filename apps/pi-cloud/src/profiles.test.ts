@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type {
   Assignment,
@@ -29,7 +30,8 @@ beforeEach(async () => {
 
   server = serve({
     port: 0,
-    database: ":memory:",
+    database: join(root, "server.db"),
+    configDir: join(root, "config"),
     sessions: { pollWaitMs: 0 },
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
@@ -94,12 +96,12 @@ const content = {
   settings: { defaultThinkingLevel: "high" },
 };
 
-test("starts with one empty default Profile", async () => {
+test("starts with one empty default Profile, shared by everyone", async () => {
   expect(await json<Profile[]>(api("/api/profiles"))).toEqual([
     {
-      id: expect.any(String) as string,
+      id: "default",
       name: "Default",
-      ownerId: "local",
+      ownerId: null,
       createdAt: expect.any(String) as string,
       isDefault: true,
       packages: [],
@@ -117,7 +119,13 @@ test("creates, edits and makes a Profile the default", async () => {
     api("/api/profiles", { body: { name: "Work", ...content } }),
   );
 
-  expect(created).toMatchObject({ name: "Work", isDefault: false, ...content });
+  expect(created).toMatchObject({
+    id: "work",
+    name: "Work",
+    ownerId: "local",
+    isDefault: false,
+    ...content,
+  });
 
   const edited = await json<Profile>(
     api(`/api/profiles/${created.id}`, {
@@ -336,4 +344,92 @@ test("keeps a repository trust answer for the next Session in it", async () => {
   expect(start.find(({ sessionId }) => sessionId === second.id)?.trusted).toBe(
     true,
   );
+});
+
+test("keeps a Profile as a Pi agent folder people can edit by hand", async () => {
+  await api("/api/profiles", { body: { name: "Work", ...content } });
+
+  const folder = join(root, "config", "profiles", "work");
+
+  expect(await readFile(join(folder, "AGENTS.md"), "utf8")).toBe("Be brief.");
+
+  expect(
+    JSON.parse(await readFile(join(folder, "settings.json"), "utf8")),
+  ).toEqual({
+    defaultThinkingLevel: "high",
+    packages: content.packages,
+  });
+
+  expect(JSON.parse(await readFile(join(folder, "mcp.json"), "utf8"))).toEqual({
+    mcpServers: content.mcpServers,
+  });
+
+  await writeFile(join(folder, "AGENTS.md"), "Edited by hand.");
+  await mkdir(join(root, "config", "profiles", "review"));
+
+  await writeFile(
+    join(root, "config", "profiles", "review", "settings.json"),
+    JSON.stringify({ defaultModel: "gpt-5", theme: "dark" }),
+  );
+
+  const profiles = await json<Profile[]>(api("/api/profiles"));
+
+  expect(
+    profiles.map(({ id, name, ownerId, agentsMd }) => ({
+      id,
+      name,
+      ownerId,
+      agentsMd,
+    })),
+  ).toEqual([
+    { id: "default", name: "Default", ownerId: null, agentsMd: "" },
+    { id: "review", name: "review", ownerId: null, agentsMd: "" },
+    { id: "work", name: "Work", ownerId: "local", agentsMd: "Edited by hand." },
+  ]);
+
+  await api("/api/profiles/review", {
+    method: "PUT",
+    body: { packages: ["npm:pi-review"] },
+  });
+
+  expect(
+    JSON.parse(
+      await readFile(
+        join(root, "config", "profiles", "review", "settings.json"),
+        "utf8",
+      ),
+    ),
+  ).toEqual({
+    defaultModel: "gpt-5",
+    theme: "dark",
+    packages: ["npm:pi-review"],
+  });
+});
+
+test("only admins create, change or delete shared Profiles", async () => {
+  const shared = await json<Profile>(
+    api("/api/profiles", { body: { name: "Team", shared: true } }),
+  );
+
+  expect(shared.ownerId).toBeNull();
+
+  const db = new DatabaseSync(join(root, "server.db"));
+  db.exec("update users set admin = 0");
+  db.close();
+
+  const statuses = await Promise.all([
+    api("/api/profiles", { body: { name: "Mine too", shared: true } }),
+    api("/api/profiles/default", { method: "PUT", body: { agentsMd: "x" } }),
+    api(`/api/profiles/${shared.id}`, { method: "DELETE" }),
+  ]);
+
+  expect(statuses.map(({ status }) => status)).toEqual([403, 403, 403]);
+
+  const mine = await api("/api/profiles", { body: { name: "Mine" } });
+
+  expect(mine.status).toBe(201);
+
+  const used = await api(`/api/profiles/${shared.id}/default`, { body: {} });
+
+  expect(used.status).toBe(200);
 });

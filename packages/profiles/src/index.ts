@@ -1,6 +1,7 @@
 export {
-  InvalidProfile,
-  type ProfileStore,
-  Profiles,
+  defaultProfileId,
+  type Log,
+  ProfileFolders,
   type StoredProfile,
-} from "./profiles";
+} from "./folders";
+export { InvalidProfile, type ProfileStore, Profiles } from "./profiles";

@@ -3,7 +3,7 @@ import type { ServerWebSocket } from "bun";
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
 import type { PluginManifest } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { Profiles } from "@pi-cloud/profiles";
+import { ProfileFolders, Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions, type SessionsOptions } from "@pi-cloud/sessions";
 import web from "@pi-cloud/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
@@ -72,12 +72,14 @@ export function serve(options: ServeOptions): {
   readonly url: URL;
   readonly stop: () => Promise<void>;
 } {
-  const config = configFolder(
-    options.configDir ?? join(dirname(options.database), "config"),
-    options.log,
-  );
+  const configDir =
+    options.configDir ?? join(dirname(options.database), "config");
 
-  const store = openStore(options.database, options.secretKey);
+  const config = configFolder(configDir, options.log);
+
+  const profiles = new ProfileFolders(join(configDir, "profiles"), options.log);
+
+  const store = openStore(options.database, options.secretKey, profiles);
   const disabled = options.disabledPlugins ?? [];
   const folder = options.installed;
   const installed = folder?.plugins ?? [];
@@ -178,7 +180,7 @@ export function serve(options: ServeOptions): {
   const handler = createHandler(
     auth,
     sessions,
-    new Profiles(store, owner),
+    new Profiles(profiles, store, owner),
     pluginHost,
     changes,
     store.check,

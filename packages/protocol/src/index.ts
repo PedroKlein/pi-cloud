@@ -147,10 +147,13 @@ export const emptyProfile: ProfileContent = {
   settings: {},
 };
 
+// A Pi agent folder in the server's config folder, named by its id
+// (ADR 0041).
 export interface Profile extends ProfileContent {
   readonly id: string;
   readonly name: string;
-  readonly ownerId: string;
+  // Null for a Profile shared with every user, which only admins change.
+  readonly ownerId: string | null;
   readonly createdAt: string;
   // New Sessions use the default Profile when nothing else names one.
   readonly isDefault: boolean;

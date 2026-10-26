@@ -551,7 +551,11 @@ export function createHandler(
         return Response.json(updated.value);
       },
     ],
-    ...profileRoutes(profiles, log),
+    ...profileRoutes(
+      profiles,
+      (actor) => auth.userById(userIdOf(actor))?.admin === true,
+      log,
+    ),
     [
       "GET",
       /^\/api\/sessions$/,
@@ -1035,11 +1039,19 @@ const profileRejectionStatus = {
   not_found: 404,
   default: 409,
   in_use: 409,
+  admin_only: 403,
 } as const;
 
-function profileRoutes(profiles: Profiles, log: Log): RouteTable {
+// Shared Profiles are changed only by admins (ADR 0041).
+function profileRoutes(
+  profiles: Profiles,
+  isAdmin: (actor: UserActor) => boolean,
+  log: Log,
+): readonly (readonly [string, RegExp, BrowserRoute])[] {
   const replied = (
-    result: ReturnType<Profiles["update"] | Profiles["remove"]>,
+    result: ReturnType<
+      Profiles["create"] | Profiles["update"] | Profiles["remove"]
+    >,
     status: number,
   ): Response =>
     result.ok
@@ -1054,11 +1066,17 @@ function profileRoutes(profiles: Profiles, log: Log): RouteTable {
     [
       "POST",
       /^\/api\/profiles$/,
-      async (request) => {
-        const profile = profiles.create(await readJson(request));
-        log("profile created", { profileId: profile.id });
+      async (request, _params, actor) => {
+        const created = profiles.create(
+          await readJson(request),
+          isAdmin(actor),
+        );
 
-        return Response.json(profile, { status: 201 });
+        if (created.ok) {
+          log("profile created", { profileId: created.value.id });
+        }
+
+        return replied(created, 201);
       },
     ],
     // A body with a url imports from a git repository, any other body is an
@@ -1097,8 +1115,13 @@ function profileRoutes(profiles: Profiles, log: Log): RouteTable {
     [
       "PUT",
       /^\/api\/profiles\/([^/]+)$/,
-      async (request, [id = ""]) => {
-        const updated = profiles.update(id, await readJson(request));
+      async (request, [id = ""], actor) => {
+        const updated = profiles.update(
+          id,
+          await readJson(request),
+          isAdmin(actor),
+        );
+
         if (updated.ok) {
           log("profile updated", { profileId: id });
         }
@@ -1109,8 +1132,8 @@ function profileRoutes(profiles: Profiles, log: Log): RouteTable {
     [
       "DELETE",
       /^\/api\/profiles\/([^/]+)$/,
-      (_request, [id = ""]) => {
-        const removed = profiles.remove(id);
+      (_request, [id = ""], actor) => {
+        const removed = profiles.remove(id, isAdmin(actor));
         if (removed.ok) {
           log("profile deleted", { profileId: id });
         }
