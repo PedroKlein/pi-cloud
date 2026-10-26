@@ -1,3 +1,5 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
 import { eventBus, type ServerPlugin } from "@pi-cloud/plugins";
@@ -72,8 +74,12 @@ export function serve(options: ServeOptions): {
   readonly url: URL;
   readonly stop: () => Promise<void>;
 } {
+  // A server on an in-memory database keeps nothing, its config included.
   const configDir =
-    options.configDir ?? join(dirname(options.database), "config");
+    options.configDir ??
+    (options.database === ":memory:"
+      ? mkdtempSync(join(tmpdir(), "pi-cloud-config-"))
+      : join(dirname(options.database), "config"));
 
   const config = configFolder(configDir, options.log);
 

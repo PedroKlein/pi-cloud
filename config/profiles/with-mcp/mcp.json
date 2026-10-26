@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "github": {
-      "env": {
-        "GITHUB_TOKEN": "token-in-env"
-      }
-    }
-  }
-}
