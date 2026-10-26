@@ -33,6 +33,8 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           cluster_name: pi-cloud
+      # Releases installed before a values block existed upgrade with --reuse-values.
+      - run: helm template pi-cloud deploy/helm/pi-cloud --set oidc=null > /dev/null
       - run: docker build -t pi-cloud:ci .
       - run: kind load docker-image pi-cloud:ci --name pi-cloud
       - run: >-

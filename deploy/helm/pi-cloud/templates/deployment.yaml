@@ -41,7 +41,7 @@ spec:
             - --url
             - {{ . | quote }}
             {{- end }}
-            {{- if .Values.oidc.ssoOnly }}
+            {{- if (.Values.oidc | default dict).ssoOnly }}
             - --sso-only
             {{- end }}
             {{- with .Values.builtInRunner }}
