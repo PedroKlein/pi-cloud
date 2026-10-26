@@ -14,6 +14,7 @@ import {
   liveSurface,
   type ModelRef,
   type ProfileContent,
+  type ProfileFiles,
   type Removal,
   type RemovalPost,
   type Session,
@@ -30,6 +31,7 @@ import {
   type WorkPoll,
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
+import { contentFiles, ProfileTooBig } from "@pi-cloud/profiles";
 import { placesOn, placesOnNewRunner, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
 
@@ -50,6 +52,8 @@ export interface SessionStore {
         readonly ownerId: string | null;
       })
     | undefined;
+  // Throws ProfileTooBig for a Profile runners shouldn't download.
+  profileFiles: (id: string) => ProfileFiles | undefined;
   defaultProfileId: (ownerId: string) => string;
   repositoryTrust: (ownerId: string, repository: string) => boolean | null;
   setRepositoryTrust: (
@@ -1043,7 +1047,19 @@ export class Sessions {
     return claimable
       .map((session) => this.#moveOff(session))
       .flatMap((next) => {
-        const profile = this.#profile(next.profileId);
+        let profile: ProfileFiles | undefined;
+        try {
+          profile = this.profileFiles(next.profileId);
+        } catch (error) {
+          if (!(error instanceof ProfileTooBig)) {
+            throw error;
+          }
+
+          this.#update({ ...next, status: "failed", error: error.message });
+
+          return [];
+        }
+
         if (!profile) {
           this.#update({
             ...next,
@@ -1068,15 +1084,7 @@ export class Sessions {
           sessionId: session.id,
           generation: session.generation,
           trusted: this.#trusted(session),
-          profile: {
-            id: profile.id,
-            packages: profile.packages,
-            agentsMd: profile.agentsMd,
-            systemMd: profile.systemMd,
-            appendSystemMd: profile.appendSystemMd,
-            mcpServers: profile.mcpServers,
-            settings: profile.settings,
-          },
+          profile: { id: session.profileId, hash: profile.hash },
           workspace: session.workspace,
           model: session.model,
           thinking: session.thinking,
@@ -1131,6 +1139,15 @@ export class Sessions {
         ),
       ),
     };
+  }
+
+  // What a runner downloads for a Profile (ADR 0041).
+  profileFiles(id: string): ProfileFiles | undefined {
+    const provided = this.#pluginProfile(id);
+
+    return provided
+      ? contentFiles(provided.profile)
+      : this.#store.profileFiles(id);
   }
 
   #profile(id: string): (ProfileContent & { readonly id: string }) | undefined {

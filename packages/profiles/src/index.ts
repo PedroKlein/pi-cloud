@@ -1,3 +1,4 @@
+export { contentFiles, maxProfileBytes, ProfileTooBig } from "./files";
 export {
   defaultProfileId,
   type Log,

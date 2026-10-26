@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { type AddressInfo, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { emptyProfile } from "@pi-cloud/protocol";
 import { hostTerminals } from "@pi-cloud/sessionhost";
 import { httpSessionStream } from "./client";
 
@@ -82,7 +81,7 @@ test("closes a terminal socket whose output the server stops reading", async () 
       token: "pct_test",
       sessionId: "s1",
       generation: 1,
-      profile: { id: "profile-1", ...emptyProfile },
+      profile: { id: "profile-1", hash: "h1" },
       trusted: null,
       workspace: { kind: "folder", path: tmpdir() },
       model: null,
@@ -136,7 +135,7 @@ test("stops an attempt the server fenced without failing its live events", async
       token: "pct_test",
       sessionId: "s1",
       generation: 1,
-      profile: { id: "profile-1", ...emptyProfile },
+      profile: { id: "profile-1", hash: "h1" },
       trusted: null,
       workspace: { kind: "folder", path: tmpdir() },
       model: null,

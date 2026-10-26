@@ -9,7 +9,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { PiPackage, Profile, ProfileContent } from "@pi-cloud/protocol";
+import type {
+  PiPackage,
+  Profile,
+  ProfileContent,
+  ProfileFiles,
+} from "@pi-cloud/protocol";
+import { contentFiles, folderFiles } from "./files";
 
 export type StoredProfile = Omit<Profile, "isDefault">;
 
@@ -98,6 +104,21 @@ export class ProfileFolders {
       mcpServers: isRecord(mcpServers) ? mcpServers : {},
       settings,
     };
+  }
+
+  // What runners download: the folder's files, or none for a default Profile
+  // nobody edited. Throws ProfileTooBig for a folder runners shouldn't get.
+  files(id: string): ProfileFiles | undefined {
+    const profile = this.read(id);
+    if (!profile) {
+      return undefined;
+    }
+
+    const dir = join(this.#root, id);
+
+    return statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
+      ? folderFiles(dir, profile.name)
+      : contentFiles(profile);
   }
 
   // A free id made from the name, such as work-2 when work is taken.

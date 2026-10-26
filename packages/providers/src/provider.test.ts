@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import {
-  emptyProfile,
-  type SessionStart,
-  type Attempt,
-  type Removal,
-  type Work,
-  type WorkPoll,
+import type {
+  SessionStart,
+  Attempt,
+  Removal,
+  Work,
+  WorkPoll,
 } from "@pi-cloud/protocol";
 import { runProvider } from "./index";
 
@@ -14,7 +13,7 @@ const assignment: SessionStart = {
   token: "pct_test",
   sessionId: "s1",
   generation: 1,
-  profile: { id: "profile-1", ...emptyProfile },
+  profile: { id: "profile-1", hash: "h1" },
   trusted: null,
   workspace: { kind: "folder", path: "/w" },
   model: null,

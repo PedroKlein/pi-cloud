@@ -10,7 +10,6 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
-  Assignment,
   SessionStart,
   ModelRef,
   Removal,
@@ -33,6 +32,7 @@ import {
   removeWorkspace,
 } from "@pi-cloud/workspaces";
 import {
+  fetchProfile,
   fetchTranscript,
   httpControlPlane,
   httpSessionStream,
@@ -198,14 +198,22 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const profileSyncs = new Map<string, Promise<unknown>>();
 
   const syncProfileOf = async (
-    { profile }: Assignment,
+    assignment: SessionStart,
     sessionLog: Log,
   ): Promise<string> => {
+    const { profile } = assignment;
     const dir = join(profilesDir, profile.id);
 
     const synced = (profileSyncs.get(profile.id) ?? Promise.resolve())
       .catch(() => undefined)
-      .then(async () => syncProfile(dir, profile, sessionLog));
+      .then(async () =>
+        syncProfile(
+          dir,
+          profile.hash,
+          async () => fetchProfile(options.server, assignment),
+          sessionLog,
+        ),
+      );
 
     profileSyncs.set(profile.id, synced);
     await synced;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emptyProfile } from "@pi-cloud/protocol";
+import type { ProfileFiles } from "@pi-cloud/protocol";
 import { syncProfile } from "./profile";
 
 let root: string;
@@ -15,42 +15,87 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("writes a Profile as Pi's agent folder and removes what it dropped", async () => {
+function profileOf(
+  hash: string,
+  files: Record<string, string>,
+): () => Promise<ProfileFiles> {
+  return async () =>
+    Promise.resolve({
+      hash,
+      files: Object.fromEntries(
+        Object.entries(files).map(([path, text]) => [
+          path,
+          Buffer.from(text).toString("base64"),
+        ]),
+      ),
+    });
+}
+
+const quiet = (): void => undefined;
+
+async function failure(sync: Promise<void>): Promise<string> {
+  return sync.then(
+    () => "",
+    (error: unknown) => String(error),
+  );
+}
+
+test("writes a Profile's files and removes what it dropped", async () => {
   const dir = join(root, "profile");
 
   await syncProfile(
     dir,
-    {
-      ...emptyProfile,
-      agentsMd: "Be brief.",
-      systemMd: "You are a reviewer.",
-      mcpServers: { docs: { url: "https://example.com/mcp" } },
-      settings: { defaultThinkingLevel: "high" },
-    },
-    () => undefined,
+    "h1",
+    profileOf("h1", {
+      "AGENTS.md": "Be brief.",
+      "SYSTEM.md": "You are a reviewer.",
+      "skills/review/SKILL.md": "# Review",
+    }),
+    quiet,
   );
 
   expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toBe("Be brief.");
 
-  expect(
-    JSON.parse(await readFile(join(dir, "settings.json"), "utf8")),
-  ).toEqual({ defaultThinkingLevel: "high", packages: [] });
-
-  expect(JSON.parse(await readFile(join(dir, "mcp.json"), "utf8"))).toEqual({
-    mcpServers: { docs: { url: "https://example.com/mcp" } },
-  });
+  expect(await readFile(join(dir, "skills/review/SKILL.md"), "utf8")).toBe(
+    "# Review",
+  );
 
   await syncProfile(
     dir,
-    { ...emptyProfile, agentsMd: "Be brief." },
-    () => undefined,
+    "h2",
+    profileOf("h2", { "AGENTS.md": "Be thorough." }),
+    quiet,
   );
 
-  const files = await readdir(dir);
+  expect(await readdir(dir)).not.toContain("SYSTEM.md");
+  expect(await readdir(join(dir, "skills/review"))).toEqual([]);
+  expect(await readFile(join(dir, "AGENTS.md"), "utf8")).toBe("Be thorough.");
+});
 
-  expect(files).toContain("AGENTS.md");
-  expect(files).not.toContain("SYSTEM.md");
-  expect(files).not.toContain("mcp.json");
+test("downloads a Profile only when its hash changed", async () => {
+  const dir = join(root, "profile");
+  let downloads = 0;
+
+  const download = async (): Promise<ProfileFiles> => {
+    downloads++;
+
+    return profileOf("h1", { "AGENTS.md": "Be brief." })();
+  };
+
+  await syncProfile(dir, "h1", download, quiet);
+  await syncProfile(dir, "h1", download, quiet);
+
+  expect(downloads).toBe(1);
+});
+
+test("refuses a file outside the Profile's folder", async () => {
+  const dir = join(root, "profile");
+
+  expect(
+    await failure(
+      syncProfile(dir, "h1", profileOf("h1", { "../escape": "x" }), quiet),
+    ),
+  ).toContain("outside its folder");
 });
 
 test("installs a Profile's packages once, and again only after a failure", async () => {
@@ -64,15 +109,31 @@ test("installs a Profile's packages once, and again only after a failure", async
     }
   };
 
-  const profile = { ...emptyProfile, packages: [kit] };
+  const settings = JSON.stringify({ packages: [kit] });
 
-  expect(syncProfile(dir, profile, log)).rejects.toThrow(
-    `package ${kit} failed to install`,
-  );
+  expect(
+    await failure(
+      syncProfile(
+        dir,
+        "h1",
+        profileOf("h1", { "settings.json": settings }),
+        log,
+      ),
+    ),
+  ).toContain(`package ${kit} failed to install`);
+
+  expect(await readdir(dir).catch(() => [])).not.toContain("settings.json");
 
   await mkdir(kit);
-  await syncProfile(dir, profile, log);
-  await syncProfile(dir, profile, log);
+
+  for (const hash of ["h1", "h2"]) {
+    await syncProfile(
+      dir,
+      hash,
+      profileOf(hash, { "settings.json": settings }),
+      log,
+    );
+  }
 
   expect(installs).toEqual([kit, kit]);
 

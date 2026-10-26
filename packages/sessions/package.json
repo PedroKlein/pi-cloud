@@ -5,6 +5,7 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@pi-cloud/plugins": "workspace:*",
+    "@pi-cloud/profiles": "workspace:*",
     "@pi-cloud/protocol": "workspace:*"
   }
 }

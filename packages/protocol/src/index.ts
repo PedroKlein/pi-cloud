@@ -1,4 +1,4 @@
-export const protocolVersion = 3;
+export const protocolVersion = 4;
 export const versionHeader = "pi-cloud-protocol";
 
 // A runner joins the pool of the Environment whose key it holds, under a name
@@ -165,10 +165,17 @@ export interface ProfileExport extends ProfileContent {
   readonly name: string;
 }
 
+// A Profile folder's files by their path in it, base64 encoded, and a hash
+// of them all, which runners compare with their copy's (ADR 0041).
+export interface ProfileFiles {
+  readonly hash: string;
+  readonly files: Readonly<Record<string, string>>;
+}
+
 export interface Assignment {
   readonly sessionId: string;
   readonly generation: number;
-  readonly profile: ProfileContent & { readonly id: string };
+  readonly profile: { readonly id: string; readonly hash: string };
   readonly workspace: Workspace;
   // Whether the user trusts the repository's own Pi configuration in .pi, or
   // null when nobody was asked yet (ADR 0031).
