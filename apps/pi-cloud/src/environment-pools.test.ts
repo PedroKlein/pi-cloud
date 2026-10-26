@@ -4,6 +4,7 @@ import {
   type Assignment,
   type Attempt,
   type Environment,
+  type Joined,
   type Session,
   type WorkspaceRequest,
   protocolVersion,
@@ -477,6 +478,58 @@ test("makes an Environment once, with a key, under a name runners can use", asyn
   expect(body.key).toStartWith("pck_");
   expect((await create("builders")).status).toBe(409);
   expect((await create("no spaces")).status).toBe(400);
+});
+
+test("makes an Environment named after the first runner that joins with a join key", async () => {
+  const joinKey = async (): Promise<string> => {
+    const made = await fetch(new URL("/api/join-key", server.url), {
+      method: "POST",
+      headers: { cookie: await signedIn() },
+    });
+
+    expect(made.status).toBe(201);
+
+    return ((await made.json()) as { key: string }).key;
+  };
+
+  const join = async (key: string, name: string): Promise<Joined> =>
+    json<Joined>(
+      fetch(new URL("/agent/join", server.url), {
+        method: "POST",
+        headers: {
+          [versionHeader]: String(protocolVersion),
+          authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ name }),
+      }),
+    );
+
+  await runners.key("laptops");
+  const key = await joinKey();
+
+  expect(key).toStartWith("pck_");
+  expect((await join(key, "mac-studio")).environment).toBe("mac-studio");
+  expect((await join(key, "mac-studio")).environment).toBe("mac-studio");
+
+  expect((await join(await joinKey(), "laptops")).environment).toBe(
+    "laptops-2",
+  );
+
+  const listed = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
+  );
+
+  expect(
+    listed
+      .map(({ name, hasKey }) => ({ name, hasKey }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  ).toEqual([
+    { name: "laptops", hasKey: true },
+    { name: "laptops-2", hasKey: true },
+    { name: "mac-studio", hasKey: true },
+  ]);
 });
 
 test("reports the Sessions beyond the room an Environment's online runners have", async () => {

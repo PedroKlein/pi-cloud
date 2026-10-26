@@ -194,6 +194,29 @@ export function createHandler(
       return reply(result, 200);
     };
 
+  // A runner that joins with a join key gets an Environment of its own name,
+  // numbered when another Environment has it.
+  const environmentFor = (runner: string): string => {
+    const taken = new Set(
+      sessions.environments().map(({ provider }) => provider),
+    );
+
+    let provider = runner;
+    for (let n = 2; taken.has(provider); n++) {
+      provider = `${runner.slice(0, 60)}-${String(n)}`;
+    }
+
+    const created = sessions.createEnvironment(provider);
+    if (!created.ok) {
+      throw new Error(`environment ${provider} was not made`);
+    }
+
+    log("environment created", { environmentId: created.value.id, runner });
+    changes.publish("environments");
+
+    return provider;
+  };
+
   const publicRoutes: RouteTable = [
     [
       "GET",
@@ -244,7 +267,7 @@ export function createHandler(
 
         const joined =
           scheme === "Bearer" && key !== undefined
-            ? auth.join(key, name)
+            ? auth.join(key, name, environmentFor)
             : undefined;
 
         if (joined === undefined) {
@@ -479,6 +502,15 @@ export function createHandler(
           { environment: { ...created.value, hasKey: true }, key },
           { status: 201 },
         );
+      },
+    ],
+    [
+      "POST",
+      /^\/api\/join-key$/,
+      () => {
+        log("join key made", {});
+
+        return Response.json({ key: auth.newJoinKey() }, { status: 201 });
       },
     ],
     [

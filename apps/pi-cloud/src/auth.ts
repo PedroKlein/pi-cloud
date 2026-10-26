@@ -41,6 +41,11 @@ export interface AuthStore {
   // A runner's own token and its Sessions' tokens.
   readonly deleteRunnerTokens: (provider: string, runner: string) => void;
   readonly keyEnvironment: (keyHash: string) => string | undefined;
+  // A join key belongs to no Environment until a runner joins with it, and
+  // then becomes the key of the Environment made for that runner (ADR 0040).
+  readonly insertJoinKey: (keyHash: string) => void;
+  readonly hasJoinKey: (keyHash: string) => boolean;
+  readonly claimJoinKey: (keyHash: string, provider: string) => void;
   // A Session holds one token, for its current attempt.
   readonly insertAgentToken: (tokenHash: string, holder: Agent) => void;
   readonly agentToken: (tokenHash: string) => Agent | undefined;
@@ -228,7 +233,24 @@ export class Auth {
     return key;
   }
 
-  join(key: string, runner: string): Joined | undefined {
+  newJoinKey(): string {
+    const key = `pck_${randomBytes(32).toString("base64url")}`;
+    this.#store.insertJoinKey(hash(key));
+
+    return key;
+  }
+
+  // The first runner to join with a join key gets an Environment that
+  // newEnvironment makes for it, and the key becomes that Environment's.
+  join(
+    key: string,
+    runner: string,
+    newEnvironment: (runner: string) => string,
+  ): Joined | undefined {
+    if (this.#store.hasJoinKey(hash(key))) {
+      this.#store.claimJoinKey(hash(key), newEnvironment(runner));
+    }
+
     const environment = this.#store.keyEnvironment(hash(key));
 
     return environment === undefined
