@@ -118,7 +118,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Resolved: Chromium resolves `*.localhost` for previews, which cover pages a Session opens through `BROWSER` ([ADR 0037](adr/0037-previews-and-opened-pages.md)). Other browsers are checked as they are used.
 - Resolved: server tools repair JSON-encoded arguments before Pi validates them, built-in plugins may import only the SDK packages, lists update from change events instead of polling, and the usage plugin shows how full the context is ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 - Can an in-place plugin's web part be loaded in a sandboxed headless page before the user turns it on, to report runtime errors, without running its code anywhere it can reach something ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md#later-checking-an-in-place-plugin-before-it-is-turned-on))?
-- Resolved: a plugin can read its config from a JSON file in a config folder, from its own key in a shared `pi-cloud.json` or from its own files, and chooses between a file and SQLite; secrets come from environment variables ([ADR 0039](adr/0039-plugin-config-files.md)).
+- Resolved: a plugin can keep its config in a writable config folder, under its own key in a shared `pi-cloud.json` or in its own files, and chooses between a file and SQLite; the UI edits the file, and secrets are sealed in it or named by environment variable ([ADR 0039](adr/0039-plugin-config-files.md)).
 - Can a compiled Bun binary import plugin files from outside itself? It is checked when ADR 0022's third-party install is built.
 
 ## Explicitly postponed
