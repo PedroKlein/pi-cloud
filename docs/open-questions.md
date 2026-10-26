@@ -50,7 +50,7 @@
 
 ### Profiles and personalization
 
-- Resolved for v2: a Profile is a server record built from Pi packages, instructions, MCP servers and settings; a repository's `.pi` loads on top once trusted, and there are no Environment overlays ([ADR 0031](adr/0031-profiles.md)).
+- Resolved for v2: a Profile is a Pi agent folder in the server's config folder, owned by a user or shared by an admin, with a shared `default` Profile that starts as plain Pi; a repository's `.pi` loads on top once trusted, and there are no Environment overlays ([ADR 0031](adr/0031-profiles.md), [ADR 0041](adr/0041-profiles-as-folders.md)).
 - Resolved for model aliases: alias config and backend health live on the server per Environment, through a `models` plugin with its own gateway ([ADR 0019](adr/0019-model-aliases.md)).
 - Resolved: credentials are never in a Profile; each machine keeps provider logins in Pi Cloud's own auth file ([ADR 0031](adr/0031-profiles.md)).
 - How are required packages distinguished from optional packages?
