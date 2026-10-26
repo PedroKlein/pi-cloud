@@ -55,3 +55,26 @@ spec:
       noAuth: true
     {{- end }}
 {{- end }}
+{{- if .Values.apiRule.enabled }}
+---
+# The APIRule's policies let in only the gateway, which would also shut out
+# the runner pods that reach the server through its Service.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Release.Name }}-runners
+  labels:
+    {{- include "pi-cloud.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "pi-cloud.labels" . | nindent 6 }}
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [{{ .Release.Namespace }}]
+      to:
+        - operation:
+            paths: ["/agent/*"]
+{{- end }}

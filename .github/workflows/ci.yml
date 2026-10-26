@@ -41,6 +41,7 @@ jobs:
           ! rule | grep -E 'path: /(agent|api/mcp$|api/auth/setup)'
           rule --set apiRule.exposeAgents=true --set apiRule.exposeMcp=true | grep -E 'path: /agent/'
           rule --set apiRule.exposeMcp=true | grep -E 'path: /api/mcp$'
+          rule | grep -A20 'kind: AuthorizationPolicy' | grep -F '"/agent/*"'
       - run: docker build -t pi-cloud:ci .
       - run: kind load docker-image pi-cloud:ci --name pi-cloud
       - run: >-
