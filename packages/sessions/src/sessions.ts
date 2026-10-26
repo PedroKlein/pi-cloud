@@ -126,6 +126,8 @@ export interface SessionsOptions {
   readonly events?: (event: KernelEvent) => void;
   // Called whenever a Session starts or its view changes (ADR 0038).
   readonly changed?: () => void;
+  // Called whenever a runner comes online or goes offline.
+  readonly runnersChanged?: () => void;
   // The plugins whose Session parts a Session gets when it starts, and their
   // settings.
   readonly sessionPlugins?: () => SessionPlugins;
@@ -159,6 +161,7 @@ export class Sessions {
   readonly #polls: RunnerPolls;
   readonly #events: (event: KernelEvent) => void;
   readonly #changed: () => void;
+  readonly #runnersChanged: () => void;
   readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
   readonly #startsRunners: (environmentId: string) => boolean;
@@ -188,6 +191,7 @@ export class Sessions {
 
     this.#events = options.events ?? (() => undefined);
     this.#changed = options.changed ?? (() => undefined);
+    this.#runnersChanged = options.runnersChanged ?? (() => undefined);
 
     this.#sessionPlugins =
       options.sessionPlugins ?? (() => ({ plugins: [], pluginSettings: {} }));
@@ -1138,6 +1142,7 @@ export class Sessions {
   // offline runner's streams are ended and the agent opens new ones.
   #onlineChanged(runner: string): void {
     const online = this.#polls.online(runner);
+    this.#runnersChanged();
 
     const sessions = this.#store
       .list({ includeArchived: true })

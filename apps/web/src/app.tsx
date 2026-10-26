@@ -11,6 +11,7 @@ import { ShellMenu } from "./embedded-session";
 import { NewSessionDialog } from "./new-session";
 import { PluginBoundary } from "./plugin-boundary";
 import { EnvironmentsPage } from "./environments";
+import { FirstRun } from "./first-run";
 import { PluginsPage } from "./plugins-page";
 import { ProfilesPage } from "./profiles";
 import {
@@ -179,20 +180,25 @@ export function App({
         setCreating(true);
       };
 
-      return home?.Home ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+      return (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div className="p-2 md:hidden">
             <MenuButton onMenu={openDrawer} />
           </div>
-          <PluginBoundary name={home.name}>
-            <home.Home
-              context={pluginContext(home.name)}
-              onNewSession={newSession}
-            />
-          </PluginBoundary>
+          {environments.loaded && (
+            <FirstRun environments={environments.value} />
+          )}
+          {home?.Home ? (
+            <PluginBoundary name={home.name}>
+              <home.Home
+                context={pluginContext(home.name)}
+                onNewSession={newSession}
+              />
+            </PluginBoundary>
+          ) : (
+            <Empty onNewSession={newSession} />
+          )}
         </div>
-      ) : (
-        <Empty onNewSession={newSession} onMenu={openDrawer} />
       );
     }
 
@@ -281,30 +287,23 @@ function MenuButton({ onMenu }: { readonly onMenu: () => void }): ReactElement {
 
 function Empty({
   onNewSession,
-  onMenu,
 }: {
   readonly onNewSession: () => void;
-  readonly onMenu: () => void;
 }): ReactElement {
   return (
-    <>
-      <div className="p-2 md:hidden">
-        <MenuButton onMenu={onMenu} />
-      </div>
-      <div className="m-auto flex max-w-sm flex-col items-center gap-4 p-8 text-center">
-        <span className="grid size-14 place-items-center rounded-xl bg-accent font-mono text-display text-on-accent shadow-card">
-          π
-        </span>
-        <h1 className="text-display font-semibold text-fg-strong">Pi Cloud</h1>
-        <p className="text-fg-dim">
-          Pick a session, or start a new one on one of your machines.
-        </p>
-        <Button variant="primary" onClick={onNewSession}>
-          <Icon name="plus" />
-          Start a session
-        </Button>
-      </div>
-    </>
+    <div className="m-auto flex max-w-sm flex-col items-center gap-4 p-8 text-center">
+      <span className="grid size-14 place-items-center rounded-xl bg-accent font-mono text-display text-on-accent shadow-card">
+        π
+      </span>
+      <h1 className="text-display font-semibold text-fg-strong">Pi Cloud</h1>
+      <p className="text-fg-dim">
+        Pick a session, or start a new one on one of your machines.
+      </p>
+      <Button variant="primary" onClick={onNewSession}>
+        <Icon name="plus" />
+        Start a session
+      </Button>
+    </div>
   );
 }
 

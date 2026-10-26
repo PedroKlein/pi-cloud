@@ -65,16 +65,8 @@ function Home({ context, onNewSession }: HomeProps): ReactElement {
       <h1 className="text-center text-display font-semibold text-fg-strong">
         What do you want to build today?
       </h1>
-      {environments?.length === 0 ? (
-        <p className="rounded-xl border border-line bg-elevated p-4 text-ui text-fg-dim">
-          The assistant runs on one of your machines, and none has joined yet.{" "}
-          <a href="#environments" className="text-accent">
-            Connect a machine
-          </a>{" "}
-          first.
-        </p>
-      ) : (
-        <Composer context={context} models={modelNames(environments ?? [])} />
+      {environments !== undefined && environments.length > 0 && (
+        <Composer context={context} models={modelNames(environments)} />
       )}
       <div className="flex justify-center">
         <Button variant="ghost" onClick={onNewSession}>
