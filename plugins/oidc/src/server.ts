@@ -221,7 +221,7 @@ export const oidc: ServerPlugin = {
         identities.link(identity, linkTo, false);
         context.log("identity linked", { ...fields, userId: linkTo });
 
-        return redirect("/#settings", undefined);
+        return redirect("/#settings/oidc", undefined);
       }
 
       let user: User | undefined;
