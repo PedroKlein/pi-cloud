@@ -12,7 +12,12 @@ import {
   type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
-import type { Environment, Profile } from "@pi-cloud/protocol";
+import {
+  checkoutName,
+  type Environment,
+  type Profile,
+  type Session,
+} from "@pi-cloud/protocol";
 import {
   Badge,
   type BadgeState,
@@ -22,6 +27,8 @@ import {
   fieldClass,
   Icon,
   PageTitle,
+  Picker,
+  type PickerOption,
   Section,
 } from "@pi-cloud/ui";
 import {
@@ -475,13 +482,11 @@ function modelNames(environments: readonly Environment[]): string[] {
 }
 
 function ProfileSelect({
-  name,
   value,
   onChange,
 }: {
-  readonly name?: string;
-  readonly value?: string;
-  readonly onChange?: (event: {
+  readonly value: string;
+  readonly onChange: (event: {
     readonly target: { readonly value: string };
   }) => void;
 }): ReactElement {
@@ -490,12 +495,7 @@ function ProfileSelect({
       .value ?? [];
 
   return (
-    <select
-      name={name}
-      value={value}
-      onChange={onChange}
-      className={fieldClass}
-    >
+    <select value={value} onChange={onChange} className={fieldClass}>
       <option value="">The default Profile</option>
       {profiles.map((profile) => (
         <option key={profile.id} value={profile.id}>
@@ -506,6 +506,34 @@ function ProfileSelect({
   );
 }
 
+function recentRepositories(sessions: readonly Session[]): string[] {
+  const repositories = [...sessions]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .flatMap(({ workspace }) => {
+      switch (workspace.kind) {
+        case "folder":
+        case "worktree":
+          return [workspace.path];
+        case "clone":
+          return [workspace.repository];
+        case "repositories":
+          return workspace.repositories.map(({ repository }) => repository);
+      }
+    });
+
+  return [...new Set(repositories)].slice(0, 8);
+}
+
+function repositoryOption(repository: string): PickerOption {
+  return {
+    value: repository,
+    label: checkoutName(repository) ?? repository,
+    detail: repository,
+  };
+}
+
+// A name, the repositories and a goal; the rest takes its defaults and is
+// changed behind the Project's gear (ADR 0040).
 function CreateForm({
   context,
   environments,
@@ -515,8 +543,18 @@ function CreateForm({
   readonly environments: readonly Environment[];
   readonly onCreated: (id: string) => void;
 }): ReactElement {
-  const models = modelNames(environments);
+  const sessions =
+    useLoaded(async () => json<Session[]>(fetch("/api/sessions")), "sessions")
+      .value ?? [];
+
+  const [repositories, setRepositories] = useState<readonly string[]>([]);
+  const [environment, setEnvironment] = useState("");
   const [creating, setCreating] = useState(false);
+  const chosen = environments.find(({ id }) => id === environment);
+
+  const options = [
+    ...new Set([...recentRepositories(sessions), ...repositories]),
+  ].map(repositoryOption);
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -524,7 +562,6 @@ function CreateForm({
       return;
     }
 
-    setCreating(true);
     const data = new FormData(event.currentTarget);
 
     const field = (name: string): string => {
@@ -533,17 +570,14 @@ function CreateForm({
       return typeof value === "string" ? value : "";
     };
 
+    setCreating(true);
+
     json<ProjectView>(
       context.request("projects", {
         name: field("name"),
-        environment: field("environment"),
-        repositories: field("repositories")
-          .split(/\s+/)
-          .filter((url) => url),
-        model: field("model"),
-        threadModel: field("threadModel"),
-        profile: field("profile"),
-        instructions: field("instructions"),
+        goal: field("goal"),
+        repositories,
+        environment: chosen?.id ?? environments[0]?.id ?? "",
       }),
     ).then(
       (project) => {
@@ -564,63 +598,61 @@ function CreateForm({
       <Field label="Name">
         <input name="name" required className={fieldClass} />
       </Field>
-      <Field label="Environment">
-        <select name="environment" className={fieldClass}>
-          {environments.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.name} ({option.provider})
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Profile">
-        <ProfileSelect name="profile" />
-      </Field>
-      <Field label="Coordinator model">
-        <input
-          name="model"
-          list="project-models"
-          placeholder="Environment default"
-          className={cn(fieldClass, "font-mono text-mono-sm")}
-        />
-      </Field>
-      <Field label="Thread model">
-        <input
-          name="threadModel"
-          list="project-models"
-          placeholder="Environment default"
-          className={cn(fieldClass, "font-mono text-mono-sm")}
-        />
-      </Field>
-      <datalist id="project-models">
-        {models.map((ref) => (
-          <option key={ref} value={ref} />
-        ))}
-      </datalist>
-      <Field label="Repository URLs, one per line">
+      <Field label="Goal">
         <textarea
-          name="repositories"
-          required
+          name="goal"
           rows={2}
+          placeholder="What is this Project for? Every thread sees it."
           className={fieldClass}
         />
       </Field>
-      <Field label="Instructions">
-        <textarea
-          name="instructions"
-          placeholder="Optional"
-          rows={3}
-          className={fieldClass}
-        />
-      </Field>
-      <Button
-        variant="primary"
-        type="submit"
-        disabled={creating}
-        className="justify-self-start"
-      >
-        New Project
-      </Button>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Picker
+          label="Repositories"
+          options={options}
+          selected={repositories}
+          multiple
+          placeholder="Search, or paste a repository URL"
+          create={(query) => ({
+            value: query,
+            label: `Use ${query}`,
+            detail: "clone",
+          })}
+          onChange={setRepositories}
+        >
+          {repositories.length === 0 ? (
+            <span className="text-fg-dim">Pick repositories</span>
+          ) : (
+            repositories
+              .map((repository) => checkoutName(repository) ?? repository)
+              .join(", ")
+          )}
+        </Picker>
+        {environments.length > 1 && (
+          <Picker
+            label="Environment"
+            options={environments.map(({ id, name }) => ({
+              value: id,
+              label: name,
+            }))}
+            selected={[chosen?.id ?? environments[0]?.id ?? ""]}
+            onChange={([id]) => {
+              setEnvironment(id ?? "");
+            }}
+          >
+            <span className="text-fg-dim">on </span>
+            {(chosen ?? environments[0])?.name}
+          </Picker>
+        )}
+        <Button
+          variant="primary"
+          type="submit"
+          disabled={creating || repositories.length === 0}
+          className="ml-auto"
+        >
+          Create Project
+        </Button>
+      </div>
     </form>
   );
 }
@@ -1299,6 +1331,7 @@ function Settings({
 }): ReactElement {
   const saved = {
     name: project.name,
+    goal: project.goal,
     threadModel: project.threadModel ?? "",
     profile: project.profileId ?? "",
     instructions: project.instructions,
@@ -1342,6 +1375,14 @@ function Settings({
           required
           value={draft.name}
           onChange={edit("name")}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label="Goal">
+        <textarea
+          rows={2}
+          value={draft.goal}
+          onChange={edit("goal")}
           className={fieldClass}
         />
       </Field>

@@ -1245,8 +1245,13 @@ test("creates a Project and shares a file through its library", async () => {
 
   const form = page.locator("form.project-create");
   await form.getByLabel("Name").fill("Site");
-  await form.getByLabel("Repository URLs, one per line").fill(repository);
-  await form.getByRole("button", { name: "New Project" }).click();
+  await form.getByLabel("Goal").fill("Publish the docs site.");
+  await form.getByRole("button", { name: "Repositories" }).click();
+  const search = form.getByRole("combobox", { name: "Repositories" });
+  await search.fill(repository);
+  await form.getByRole("option", { name: `Use ${repository}` }).click();
+  await search.press("Escape");
+  await form.getByRole("button", { name: "Create Project" }).click();
   await page.getByRole("heading", { level: 1, name: "Site" }).waitFor();
   const rail = page.getByRole("navigation", { name: "Threads" });
   await rail.getByText("No threads yet.").waitFor();
@@ -1256,6 +1261,10 @@ test("creates a Project and shares a file through its library", async () => {
   const settings = page.getByRole("complementary", {
     name: "Project settings",
   });
+
+  expect(await settings.getByLabel("Goal").inputValue()).toBe(
+    "Publish the docs site.",
+  );
 
   await settings.getByLabel("Name").fill("Site docs");
   await settings.getByLabel("Thread model").fill("faux/faux-1");

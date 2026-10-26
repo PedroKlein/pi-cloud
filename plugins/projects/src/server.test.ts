@@ -955,6 +955,46 @@ test("renames a Project and changes the model new threads start on", async () =>
   expect((await projectView(kernel)).name).toBe("Ship");
 });
 
+test("keeps a Project's goal in the context of the coordinator and its threads without sending it", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+
+  const response = await kernel.route()(
+    new Request("http://pi-cloud/projects", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Release",
+        repositories: ["https://example.com/app.git"],
+        goal: "Ship version 2 by Friday.",
+      }),
+    }),
+    "projects",
+    undefined,
+  );
+
+  const { coordinatorId, goal } = (await response.json()) as ProjectView;
+  const coordinator = kernel.session(coordinatorId);
+
+  expect(goal).toBe("Ship version 2 by Friday.");
+  expect(coordinator.systemPrompt).toContain("Ship version 2 by Friday.");
+  expect(coordinator.firstMessage).toBeNull();
+
+  await editProject(kernel, { goal: "Ship version 3." });
+
+  const started = await kernel
+    .tool("start_thread")
+    .run(
+      { title: "Docs", message: "write docs" },
+      { session: coordinator, actor: user },
+    );
+
+  const threadId = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+
+  expect(kernel.session(threadId).systemPrompt).toContain("Ship version 3.");
+  expect((await projectView(kernel)).goal).toBe("Ship version 3.");
+  expect((await editProject(kernel, { goal: 3 })).status).toBe(400);
+});
+
 test("starts the coordinator and new threads with the Project's Profile", async () => {
   const kernel = fakeKernel();
   projects.register(kernel.context);

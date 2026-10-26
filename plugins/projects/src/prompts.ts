@@ -41,6 +41,7 @@ function projectContext(
 ): string[] {
   return [
     `Repositories: ${project.repositories.join(", ")}`,
+    ...(project.goal === "" ? [] : [`## Project goal\n\n${project.goal}`]),
     ...(project.instructions.trim() === ""
       ? []
       : [`## Project instructions\n\n${project.instructions.trim()}`]),
