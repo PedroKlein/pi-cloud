@@ -5,4 +5,5 @@ export {
   ProfileFolders,
   type StoredProfile,
 } from "./folders";
-export { InvalidProfile, type ProfileStore, Profiles } from "./profiles";
+export { InvalidProfile } from "./invalid";
+export { type ProfileStore, Profiles } from "./profiles";

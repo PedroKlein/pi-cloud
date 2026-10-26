@@ -985,12 +985,12 @@ test("shows why an Environment's last runner pod failed", async () => {
   await page.unroute("**/api/plugins/kubernetes/environments/*");
 });
 
-test("lists a Profile's packages as chips and keeps its JSON under Advanced", async () => {
+test("lists a Profile's packages as chips and edits its folder's files", async () => {
   await page.goto(server.url.href);
   await openSettings("Profiles");
   await page.getByRole("link", { name: "New Profile" }).click();
 
-  const editor = page.locator("#profiles-page form");
+  const editor = page.locator("#profiles-page form").first();
   const add = editor.getByLabel("Add to Pi packages");
 
   await editor.getByLabel("Name").fill("Tools");
@@ -999,12 +999,6 @@ test("lists a Profile's packages as chips and keeps its JSON under Advanced", as
   await add.fill("./tools");
   await add.press("Enter");
   await editor.getByRole("button", { name: "Remove npm:pi-subagents" }).click();
-  await editor.getByText(/^Advanced/).click();
-
-  await editor
-    .getByLabel("Pi settings, as settings.json")
-    .fill('{ "defaultThinkingLevel": "low" }');
-
   await editor.getByRole("button", { name: "Create Profile" }).click();
   await page.getByRole("link", { name: "Tools" }).waitFor();
   await page.reload();
@@ -1014,10 +1008,20 @@ test("lists a Profile's packages as chips and keeps its JSON under Advanced", as
   await packages.getByText("./tools").waitFor();
   expect(await packages.getByRole("listitem").count()).toBe(1);
 
-  await editor
-    .getByText(
-      "Advanced: system prompt, MCP servers and Pi settings as files (1 set)",
-    )
+  const profilesPage = page.locator("#profiles-page");
+
+  await profilesPage.getByRole("button", { name: "settings.json" }).waitFor();
+
+  await profilesPage
+    .getByPlaceholder("skills/review/SKILL.md")
+    .fill("skills/review/SKILL.md");
+
+  await profilesPage.getByRole("button", { name: "New file" }).click();
+  await profilesPage.getByLabel("skills/review/SKILL.md").fill("# Review");
+  await profilesPage.getByRole("button", { name: "Save file" }).click();
+
+  await profilesPage
+    .getByRole("button", { name: "skills/review/SKILL.md" })
     .waitFor();
 
   page.once("dialog", async (dialog) => dialog.accept());

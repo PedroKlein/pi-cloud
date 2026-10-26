@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import type {
-  PiPackage,
-  Profile,
-  ProfileContent,
-  ProfileExport,
+import {
+  type PiPackage,
+  type Profile,
+  type ProfileContent,
+  profilePath,
 } from "@pi-cloud/protocol";
 import {
   defaultProfileId,
@@ -15,6 +16,8 @@ import {
   type ProfileFolders,
   type StoredProfile,
 } from "./folders";
+import { folderEntries } from "./files";
+import { InvalidProfile } from "./invalid";
 
 export interface ProfileStore {
   readonly defaultProfileId: (ownerId: string) => string;
@@ -23,9 +26,12 @@ export interface ProfileStore {
   readonly profileInUse: (id: string) => boolean;
 }
 
-export class InvalidProfile extends Error {}
-
 type Rejection = "not_found" | "default" | "in_use" | "admin_only";
+
+export interface ProfileEntry {
+  readonly path: string;
+  readonly size: number;
+}
 
 type Result<T> =
   | { readonly ok: true; readonly value: T }
@@ -160,25 +166,76 @@ export class Profiles {
     return { ok: true, value: this.#view(profile) };
   }
 
-  exportOf(id: string): ProfileExport | undefined {
-    const profile = this.#visible(id);
-    if (!profile) {
+  // A Profile's files, as a .tar.gz runners would unpack to the same folder
+  // (ADR 0041).
+  async archive(id: string): Promise<Uint8Array | undefined> {
+    const files = this.#visible(id) && this.#folders.files(id);
+    if (!files) {
       return undefined;
     }
 
-    const { name, packages, agentsMd, systemMd, appendSystemMd } = profile;
-    const { mcpServers, settings } = profile;
+    const decoded = Object.fromEntries(
+      Object.entries(files.files).map(([path, content]) => [
+        path,
+        Buffer.from(content, "base64"),
+      ]),
+    );
 
-    return {
-      piCloudProfile: 1,
-      name,
-      packages,
-      agentsMd,
-      systemMd,
-      appendSystemMd,
-      mcpServers,
-      settings,
-    };
+    return new Bun.Archive(decoded, { compress: "gzip" }).bytes();
+  }
+
+  files(id: string): readonly ProfileEntry[] | undefined {
+    return this.#visible(id) && this.#folders.entries(id);
+  }
+
+  file(id: string, path: string): Buffer | undefined {
+    return this.#visible(id) && this.#folders.file(id, path);
+  }
+
+  // Throws InvalidProfile for a path a Profile can't hold, and ProfileTooBig.
+  writeFiles(
+    id: string,
+    files: ReadonlyMap<string, Buffer>,
+    admin: boolean,
+  ): Result<undefined> {
+    const denied = this.#denied(id, admin);
+    if (denied) {
+      return denied;
+    }
+
+    this.#folders.writeFiles(id, files);
+
+    return { ok: true, value: undefined };
+  }
+
+  deleteFile(id: string, path: string, admin: boolean): Result<undefined> {
+    const denied = this.#denied(id, admin);
+    if (denied) {
+      return denied;
+    }
+
+    return this.#folders.deleteFile(id, path)
+      ? { ok: true, value: undefined }
+      : { ok: false, reason: "not_found" };
+  }
+
+  // A .tar.gz of a Pi agent folder, such as an exported Profile or someone's
+  // own ~/.pi/agent. What machines keep for themselves, such as auth.json,
+  // is left out.
+  async importArchive(name: string, archive: Uint8Array): Promise<Profile> {
+    const entries = await new Bun.Archive(archive).files().catch(() => {
+      throw new InvalidProfile("that file isn't a .tar.gz");
+    });
+
+    const files = new Map<string, Buffer>();
+    for (const [path, file] of entries) {
+      const relative = path.replace(/^(\.\/)+/, "");
+      if (profilePath(relative)) {
+        files.set(relative, Buffer.from(await file.arrayBuffer()));
+      }
+    }
+
+    return this.#createWith(name, files);
   }
 
   // An import is a copy the importer owns (ADR 0031).
@@ -233,16 +290,54 @@ export class Profiles {
         throw new InvalidProfile(`could not clone ${url}`);
       });
 
+      // Repositories made before Profiles were folders hold one file.
       const file = join(dir, exportFile);
       const info = await lstat(file).catch(() => undefined);
-      if (info?.isFile() !== true || info.size > maxExportBytes) {
-        throw new InvalidProfile(`${url} has no ${exportFile} to import`);
+      if (info?.isFile() === true && info.size <= maxExportBytes) {
+        return this.import(parsedJson(await readFile(file, "utf8")));
       }
 
-      return this.import(parsedJson(await readFile(file, "utf8")));
+      const files = new Map(
+        folderEntries(dir).map(({ path }) => [
+          path,
+          readFileSync(join(dir, path)),
+        ]),
+      );
+
+      return this.#createWith(basename(url).replace(/\.git$/, ""), files);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  #createWith(name: string, files: ReadonlyMap<string, Buffer>): Profile {
+    const created = this.create({ name }, false);
+    if (!created.ok) {
+      throw new InvalidProfile(created.reason);
+    }
+
+    try {
+      this.#folders.writeFiles(created.value.id, files);
+    } catch (error) {
+      this.#folders.remove(created.value.id);
+      throw error;
+    }
+
+    return this.#view(this.#folders.read(created.value.id) ?? created.value);
+  }
+
+  #denied(
+    id: string,
+    admin: boolean,
+  ): { readonly ok: false; readonly reason: Rejection } | undefined {
+    const profile = this.#visible(id);
+    if (!profile) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    return profile.ownerId === null && !admin
+      ? { ok: false, reason: "admin_only" }
+      : undefined;
   }
 
   #visible(id: string): StoredProfile | undefined {

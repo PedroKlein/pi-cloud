@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProfileContent, ProfileFiles } from "@pi-cloud/protocol";
+import {
+  type ProfileContent,
+  type ProfileFiles,
+  profilePath,
+} from "@pi-cloud/protocol";
 
 // Every runner that starts a Session with a Profile downloads its files, so
 // a folder this big is refused (ADR 0041).
@@ -9,33 +13,35 @@ export const maxProfileBytes = 20 * 1024 * 1024;
 
 export class ProfileTooBig extends Error {}
 
-// Pi Cloud's own file, and what each machine keeps for itself: logins,
-// Session history and installed packages (ADR 0041).
-const machineOwned = new Set([
-  "profile.json",
-  "auth.json",
-  "models.json",
-  "models-store.json",
-  "sessions",
-  "git",
-  "npm",
-  "tmp",
-]);
-
-// A Profile folder's files as runners get them. Only regular files count, so
-// a link can't hand them a file from elsewhere on the server.
+// A Profile folder's files as runners get them.
 export function folderFiles(dir: string, name: string): ProfileFiles {
   const files = new Map<string, Buffer>();
   let bytes = 0;
 
+  for (const { path, size } of folderEntries(dir)) {
+    bytes += size;
+    if (bytes > maxProfileBytes) {
+      throw tooBig(name);
+    }
+
+    files.set(path, readFileSync(join(dir, path)));
+  }
+
+  return encoded(files);
+}
+
+// The paths and sizes of a Profile folder's files, leaving out what machines
+// keep. Only regular files count, so a link can't hand runners a file from
+// elsewhere on the server.
+export function folderEntries(
+  dir: string,
+): readonly { readonly path: string; readonly size: number }[] {
+  const found: { path: string; size: number }[] = [];
+
   const walk = (relative: string): void => {
     for (const entry of readdirSync(join(dir, relative))) {
       const path = relative === "" ? entry : `${relative}/${entry}`;
-      if (
-        (relative === "" && machineOwned.has(entry)) ||
-        entry === "node_modules" ||
-        entry.endsWith(".tmp")
-      ) {
+      if (!profilePath(path)) {
         continue;
       }
 
@@ -43,21 +49,20 @@ export function folderFiles(dir: string, name: string): ProfileFiles {
       if (stats.isDirectory()) {
         walk(path);
       } else if (stats.isFile()) {
-        bytes += stats.size;
-        if (bytes > maxProfileBytes) {
-          throw new ProfileTooBig(
-            `Profile ${name} is over ${String(maxProfileBytes / 1024 / 1024)} MB`,
-          );
-        }
-
-        files.set(path, readFileSync(join(dir, path)));
+        found.push({ path, size: stats.size });
       }
     }
   };
 
   walk("");
 
-  return encoded(files);
+  return found.sort((a, b) => (a.path < b.path ? -1 : 1));
+}
+
+export function tooBig(name: string): ProfileTooBig {
+  return new ProfileTooBig(
+    `Profile ${name} is over ${String(maxProfileBytes / 1024 / 1024)} MB`,
+  );
 }
 
 // The files a Profile given as content stands for, such as a plugin's.
