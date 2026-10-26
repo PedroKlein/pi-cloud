@@ -5,6 +5,8 @@ import {
   cn,
   Field,
   fieldClass,
+  type KeyValue,
+  KeyValues,
   PageTitle,
   Section,
 } from "@pi-cloud/ui";
@@ -12,7 +14,6 @@ import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { api, send } from "./api";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext } from "./plugins";
-import { variablesOf, variablesText } from "./variables";
 
 export function EnvironmentsPage({
   environments,
@@ -217,6 +218,7 @@ function Editor({
   // What the form's fields started from. Only fields edited since are sent,
   // so a save keeps changes made elsewhere meanwhile.
   const shown = useRef<Readonly<Record<string, string>>>(fieldsOf(environment));
+  const [rows, setRows] = useState(() => rowsOf(environment));
 
   const update = (body: unknown, then?: () => void): void => {
     setSaved(false);
@@ -254,6 +256,7 @@ function Editor({
 
     try {
       const image = text("image").trim();
+      const { variables, secrets } = changedValues(environment, rows);
 
       update(
         {
@@ -261,18 +264,19 @@ function Editor({
           ...(edited("isolation") && { isolation: text("isolation") }),
           ...(edited("image") && { image: image === "" ? null : image }),
           ...(edited("setupScript") && { setupScript: text("setupScript") }),
-          ...(edited("variables") && {
-            variables: variablesOf(text("variables")),
-          }),
-          secrets: variablesOf(text("secrets")),
+          ...(variables !== undefined && { variables }),
+          secrets,
         },
         () => {
           shown.current = fields;
 
-          const secrets = formElement.elements.namedItem("secrets");
-          if (secrets instanceof HTMLTextAreaElement) {
-            secrets.value = "";
-          }
+          setRows(
+            rows.map((row) =>
+              row.secret && row.value !== ""
+                ? { ...row, value: "", saved: true }
+                : row,
+            ),
+          );
         },
       );
     } catch (reason) {
@@ -322,24 +326,6 @@ function Editor({
               className={fieldClass}
             />
           </Field>
-          <Field label="Run each Session">
-            <select
-              name="isolation"
-              defaultValue={environment.isolation}
-              className={fieldClass}
-            >
-              <option value="process">As a process on its machine</option>
-              <option value="container">In a container (needs Docker)</option>
-            </select>
-          </Field>
-          <Field label="Container image, empty for the default">
-            <input
-              name="image"
-              defaultValue={environment.image ?? ""}
-              placeholder="node:22-bookworm"
-              className={cn(fieldClass, "font-mono")}
-            />
-          </Field>
           <Field label="Setup script, run once per machine or image before its first Session">
             <textarea
               name="setupScript"
@@ -349,43 +335,38 @@ function Editor({
               className={area}
             />
           </Field>
-          <Field label="Variables, one NAME=value per line">
-            <textarea
-              name="variables"
-              rows={3}
-              defaultValue={variablesText(environment.variables)}
-              className={area}
-            />
-          </Field>
-          <Field label="New or replaced secrets, one NAME=value per line. GH_TOKEN also signs git in to GitHub.">
-            <textarea
-              name="secrets"
-              rows={2}
-              placeholder="GH_TOKEN=…"
-              className={area}
-            />
-          </Field>
-          {environment.secrets.length > 0 && (
-            <ul aria-label="Secrets" className="flex flex-wrap gap-2">
-              {environment.secrets.map((name) => (
-                <li
-                  key={name}
-                  className="flex items-center gap-1 rounded-md border border-line px-2 py-1 font-mono text-mono-sm"
+          <KeyValues
+            label="Variables. A lock keeps one secret; GH_TOKEN also signs git in to GitHub."
+            rows={rows}
+            onChange={setRows}
+          />
+          <details className="group flex flex-col gap-4">
+            <summary className="cursor-pointer text-label font-medium text-fg-dim">
+              Advanced
+            </summary>
+            <div className="mt-4 flex flex-col gap-4">
+              <Field label="Run each Session">
+                <select
+                  name="isolation"
+                  defaultValue={environment.isolation}
+                  className={fieldClass}
                 >
-                  {name}
-                  <Button
-                    variant="ghost"
-                    aria-label={`Remove ${name}`}
-                    onClick={() => {
-                      update({ secrets: { [name]: null } });
-                    }}
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
+                  <option value="process">As a process on its machine</option>
+                  <option value="container">
+                    In a container (needs Docker)
+                  </option>
+                </select>
+              </Field>
+              <Field label="Container image, empty for the default">
+                <input
+                  name="image"
+                  defaultValue={environment.image ?? ""}
+                  placeholder="node:22-bookworm"
+                  className={cn(fieldClass, "font-mono")}
+                />
+              </Field>
+            </div>
+          </details>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" type="submit">
               Save
@@ -415,12 +396,72 @@ function Editor({
   );
 }
 
+function rowsOf(environment: Environment): readonly KeyValue[] {
+  return [
+    ...Object.entries(environment.variables).map(([name, value]) => ({
+      name,
+      value,
+      secret: false,
+    })),
+    ...environment.secrets.map((name) => ({
+      name,
+      value: "",
+      secret: true,
+      saved: true,
+    })),
+  ];
+}
+
+// The variables when they changed, and the secrets to set or, as null, to
+// remove. A saved secret left empty keeps its value.
+function changedValues(
+  environment: Environment,
+  rows: readonly KeyValue[],
+): {
+  readonly variables: Record<string, string> | undefined;
+  readonly secrets: Record<string, string | null>;
+} {
+  const named = rows.filter(({ name }) => name.trim() !== "");
+  const names = named.map(({ name }) => name.trim());
+  const twice = names.find((name, index) => names.indexOf(name) !== index);
+
+  if (twice !== undefined) {
+    throw new Error(`${twice} is set twice.`);
+  }
+
+  const variables = Object.fromEntries(
+    named
+      .filter(({ secret }) => !secret)
+      .map(({ name, value }) => [name.trim(), value]),
+  );
+
+  const secrets = {
+    ...Object.fromEntries(
+      environment.secrets
+        .filter((name) => !named.some((row) => row.secret && row.name === name))
+        .map((name) => [name, null]),
+    ),
+    ...Object.fromEntries(
+      named
+        .filter(({ secret, value }) => secret && value !== "")
+        .map(({ name, value }) => [name.trim(), value]),
+    ),
+  };
+
+  return {
+    variables:
+      JSON.stringify(variables) === JSON.stringify(environment.variables)
+        ? undefined
+        : variables,
+    secrets,
+  };
+}
+
 function fieldsOf(environment: Environment): Record<string, string> {
   return {
     name: environment.name,
     isolation: environment.isolation,
     image: environment.image ?? "",
     setupScript: environment.setupScript,
-    variables: variablesText(environment.variables),
   };
 }
