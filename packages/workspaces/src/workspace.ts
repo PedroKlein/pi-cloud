@@ -137,10 +137,12 @@ async function addWorktree(
     return reused;
   }
 
+  // Like Claude Code, a folder that isn't a git checkout can't have a
+  // worktree, so Pi works in the folder itself.
   if (!(await isCheckout(folder))) {
-    throw new Error(
-      `${workspace.path} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
-    );
+    log("not a git checkout, working in the folder", { folder });
+
+    return { path: folder, base: null };
   }
 
   log("adding worktree", { folder: workspace.path, branch, dir });

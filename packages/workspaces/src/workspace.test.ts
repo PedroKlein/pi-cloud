@@ -225,34 +225,32 @@ test("keeps an existing worktree and its changes on a later attempt", async () =
   );
 });
 
-test("fails a worktree of a folder that is not a checkout", async () => {
+test("works in a folder that is not a checkout when asked for a worktree of it", async () => {
   const dir = join(root, "workspaces", "s1");
   const plain = join(root, "plain");
   await mkdir(plain);
+  await writeFile(join(plain, "notes.txt"), "kept\n");
 
-  const prepared = prepareWorkspace(
-    { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
+  const workspace: Workspace = {
+    kind: "worktree",
+    path: plain,
+    branch: "pi-cloud/s1",
+  };
+
+  const { cwd } = await prepareWorkspace(
+    workspace,
     { dir, folders: [plain] },
     noLog,
   );
 
-  expect(prepared).rejects.toThrow(
-    `${plain} is not a git checkout, so it can't have a worktree: start a folder session to run Pi in it directly`,
-  );
-
-  await prepared.catch(() => undefined);
+  expect(await readFile(join(cwd, "notes.txt"), "utf8")).toBe("kept\n");
   expect(stat(dir)).rejects.toThrow();
 
   expect(
-    await removeWorkspace(
-      { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
-      { dir, force: false },
-      noLog,
-    ),
-  ).toEqual({
-    outcome: "removed",
-    restore: { kind: "worktree", path: plain, branch: "pi-cloud/s1" },
-  });
+    await removeWorkspace(workspace, { dir, force: false }, noLog),
+  ).toEqual({ outcome: "removed", restore: workspace });
+
+  expect(await readFile(join(plain, "notes.txt"), "utf8")).toBe("kept\n");
 });
 
 test("fails a worktree with git's own error when git can't read the checkout", async () => {
