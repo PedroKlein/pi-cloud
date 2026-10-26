@@ -805,34 +805,34 @@ test("edits an Environment's variables and secrets without showing secret values
 
   const editor = page.locator("#environments-page form");
 
-  await editor
-    .getByLabel("Variables, one NAME=value per line")
-    .fill("MODE=test");
+  await editor.getByRole("button", { name: "Add", exact: true }).click();
 
-  const secrets = editor.getByLabel(/^New or replaced secrets/);
-  await secrets.fill("TOKEN=s3cret");
+  // Pasting a .env into a name fills the rows.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: server.url.origin,
+  });
+
+  await page.evaluate(
+    "navigator.clipboard.writeText('export MODE=test\\n# a comment\\nTOKEN=\"s3cret\"\\n')",
+  );
+
+  await editor.getByLabel("Name of row 1").press("ControlOrMeta+V");
+
+  await editor.getByRole("button", { name: "Keep TOKEN secret" }).click();
   await editor.getByRole("button", { name: "Save" }).click();
 
-  await page
-    .getByRole("list", { name: "Secrets" })
-    .getByText("TOKEN")
+  await editor
+    .getByPlaceholder("Saved, type to replace")
+    .and(editor.getByLabel("Value of TOKEN"))
     .waitFor();
-
-  expect(await secrets.inputValue()).toBe("");
 
   await page.reload();
 
-  expect(
-    await editor.getByLabel("Variables, one NAME=value per line").inputValue(),
-  ).toBe("MODE=test");
-
+  expect(await editor.getByLabel("Value of MODE").inputValue()).toBe("test");
+  expect(await editor.getByLabel("Value of TOKEN").inputValue()).toBe("");
   expect(await page.content()).not.toContain("s3cret");
 
-  await page.getByRole("button", { name: "Remove TOKEN" }).click();
-
-  await page
-    .getByRole("list", { name: "Secrets" })
-    .waitFor({ state: "detached" });
+  await editor.getByRole("button", { name: "Remove TOKEN" }).click();
 
   // A change made elsewhere while the page is open survives a save here.
   const [environment] = (await (
