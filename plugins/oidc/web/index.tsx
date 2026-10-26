@@ -118,7 +118,8 @@ function Providers({
   return (
     <div className="flex flex-col gap-2 text-ui">
       <p className="text-fg-dim">
-        Providers people can sign in with. Register{" "}
+        Providers people can sign in with, kept in the server's pi-cloud.json.
+        Register{" "}
         <code className="font-mono text-mono-sm">
           {location.origin}/api/plugins/oidc/callback
         </code>{" "}
@@ -281,13 +282,7 @@ function ProviderForm({
       {textField("label", "Button label", "Sign in with SAP IAS")}
       {textField("issuer", "Issuer", "https://tenant.accounts.ondemand.com")}
       {textField("clientId", "Client ID")}
-      <Field
-        label={
-          provider?.hasClientSecret === true
-            ? "Client secret (set; leave empty to keep it)"
-            : "Client secret (only if the provider requires one)"
-        }
-      >
+      <Field label={secretLabel(provider)}>
         <input
           name="clientSecret"
           type="password"
@@ -320,4 +315,16 @@ function ProviderForm({
       </div>
     </form>
   );
+}
+
+function secretLabel(provider: ProviderView | undefined): string {
+  const env = provider?.clientSecretEnv ?? null;
+
+  if (env !== null) {
+    return `Client secret (from ${env}; leave empty to keep it)`;
+  }
+
+  return provider?.hasClientSecret === true
+    ? "Client secret (set; leave empty to keep it)"
+    : "Client secret (only if the provider requires one)";
 }

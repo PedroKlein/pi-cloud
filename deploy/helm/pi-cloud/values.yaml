@@ -42,5 +42,22 @@ resources: {}
 runnerPods:
   enabled: true
 
-# More environment for the server, such as PI_CLOUD_FAUX_REPLY in tests.
+# More environment for the server, such as PI_CLOUD_FAUX_REPLY in tests, or
+# a secret a plugin's config names, taken from a Secret with valueFrom.
 extraEnv: []
+# Whole Secrets or ConfigMaps as environment, such as client secrets.
+extraEnvFrom: []
+
+# The first pi-cloud.json of the server's config folder, a key per plugin
+# (ADR 0039). It is written to the data volume only when no file is there
+# yet; after that Settings edits the file, and so can you. Secrets don't go
+# here: name an environment variable instead, such as oidc's clientSecretEnv.
+config: {}
+#  oidc:
+#    providers:
+#      - id: ias
+#        label: Sign in with SAP
+#        issuer: https://example.accounts.ondemand.com
+#        clientId: <client id>
+#        accessGroup: pi-cloud-users
+#        adminGroup: pi-cloud-admins

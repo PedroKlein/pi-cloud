@@ -238,6 +238,7 @@ function fakeKernel(): {
       open: (sealed) => sealed,
     },
     settings: { get: () => ({}) },
+    config: { get: () => undefined, set: () => undefined, dir: "" },
     signal: stop.signal,
     log: (message, fields) => {
       logged.push({ message, fields });

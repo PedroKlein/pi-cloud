@@ -1,0 +1,11 @@
+{{- with .Values.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Release.Name }}-config
+  labels:
+    {{- include "pi-cloud.labels" $ | nindent 4 }}
+data:
+  pi-cloud.json: |
+    {{- toPrettyJson . | nindent 4 }}
+{{- end }}

@@ -103,6 +103,16 @@ afterAll(() => {
   forward?.kill();
 });
 
+test("offers the sign-in the chart's config value seeded into pi-cloud.json", async () => {
+  const status = (await (await api("/api/auth")).json()) as {
+    logins: unknown;
+  };
+
+  expect(status.logins).toEqual([
+    { label: "Sign in with kind", path: "/api/plugins/oidc/start/kind" },
+  ]);
+});
+
 test("runs a Session from an agent pod that joined with its Environment's key", async () => {
   const { environment, key } = (await (
     await api("/api/environments", { name: "kind" })

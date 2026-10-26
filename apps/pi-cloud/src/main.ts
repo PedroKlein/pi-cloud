@@ -18,6 +18,7 @@ const usage = `usage:
   pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                   [--database ~/.pi-cloud/server.db] [--sso-only]
                   [--plugins <folder next to the database>/plugins]
+                  [--config-dir <folder next to the database>/config]
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
   PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \\
@@ -65,6 +66,7 @@ switch (command) {
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
         "sso-only": { type: "boolean", default: false },
+        "config-dir": { type: "string" },
         plugins: { type: "string" },
         provider: { type: "string" },
         "data-dir": { type: "string", default: join(dataRoot, "server") },
@@ -92,6 +94,9 @@ switch (command) {
       ...(values.url !== undefined && { url: new URL(values.url) }),
       port: Number(values.port),
       database: values.database,
+      ...(values["config-dir"] !== undefined && {
+        configDir: absolutePath(values["config-dir"]),
+      }),
       passwordLogin: !values["sso-only"],
       ...(secretKey !== undefined && { secretKey: parseSecretKey(secretKey) }),
       ...(values.provider !== undefined && {

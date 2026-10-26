@@ -27,6 +27,7 @@ import {
   type Login,
   type ModelOffer,
   type OfferedModels,
+  type PluginConfig,
   type PluginRoute,
   type PluginStore,
   type PublicRoute,
@@ -268,6 +269,7 @@ export function startPlugins(
     readonly changes: (topic: string) => void;
     readonly store: (name: string) => PluginStore;
     readonly settings: PluginSettingsStore;
+    readonly config: (name: string) => PluginConfig;
     // The kernel's own toolsets (ADR 0035).
     readonly toolsets: readonly Toolset[];
     // Handles a toolset tool's request as the user.
@@ -574,6 +576,7 @@ export function startPlugins(
           },
           store: deps.store(plugin.name),
           settings: { get: () => values(plugin.name) },
+          config: deps.config(plugin.name),
           signal: AbortSignal.any([deps.signal, failed.signal]),
           log,
         }),

@@ -105,6 +105,20 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
 
 To sign in through OpenID Connect providers, such as SAP IAS, Okta or Google ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as the redirect URI with each provider. An admin adds each provider in Settings, under Single sign-on: its issuer, client ID, a client secret only if the provider requires one (the plugin uses PKCE), and who gets in, by groups from the ID token or by verified email and domain. Each provider gets its own button on the sign-in page. Link your own user from Settings first, then `oidc.ssoOnly=true` turns the password login off.
 
+Settings keeps the providers in the server's `pi-cloud.json`, in its config folder next to the database ([ADR 0039](docs/adr/0039-plugin-config-files.md)), and you can edit that file by hand too. To come up with providers already set, put them under the chart's `config` value, each with an `id`. The chart writes `config` to the data volume only when no `pi-cloud.json` is there yet, so after that edit the file or use Settings. A provider that needs a client secret either gets it in Settings, which stores it sealed, or names an environment variable in `clientSecretEnv`, which `extraEnv` or `extraEnvFrom` fills from a Kubernetes Secret:
+
+```yaml
+config:
+  oidc:
+    providers:
+      - id: ias
+        label: Sign in with SAP
+        issuer: https://<tenant>.accounts.ondemand.com
+        clientId: <client id>
+        accessGroup: pi-cloud-users
+        adminGroup: pi-cloud-admins
+```
+
 Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
 The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, turn on runner pods in its Kubernetes section on the Environments page, or save its settings:
