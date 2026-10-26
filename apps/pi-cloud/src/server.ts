@@ -36,7 +36,11 @@ import {
   type WorkspaceRequest,
 } from "@pi-cloud/protocol";
 import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
-import { InvalidProfile, type Profiles } from "@pi-cloud/profiles";
+import {
+  InvalidProfile,
+  ProfileTooBig,
+  type Profiles,
+} from "@pi-cloud/profiles";
 import type { Log } from "@pi-cloud/providers";
 import type { Rejection, Result, Sessions } from "@pi-cloud/sessions";
 import { version as serverVersion } from "../package.json";
@@ -937,6 +941,7 @@ export function createHandler(
           if (
             error instanceof BadRequest ||
             error instanceof InvalidProfile ||
+            error instanceof ProfileTooBig ||
             error instanceof InvalidCredentials
           ) {
             return Response.json({ error: error.message }, { status: 400 });
@@ -1097,6 +1102,19 @@ function profileRoutes(
       "POST",
       /^\/api\/profiles\/import$/,
       async (request) => {
+        if (request.headers.get("content-type") === "application/gzip") {
+          const name = new URL(request.url).searchParams.get("name") ?? "";
+
+          const imported = await profiles.importArchive(
+            name.trim() === "" ? "Imported" : name,
+            await request.bytes(),
+          );
+
+          log("profile imported", { profileId: imported.id });
+
+          return Response.json(imported, { status: 201 });
+        }
+
         const body = await readJson(request);
 
         const { url } = (body ?? {}) as Record<string, unknown>;
@@ -1161,18 +1179,105 @@ function profileRoutes(
     [
       "GET",
       /^\/api\/profiles\/([^/]+)\/export$/,
-      (_request, [id = ""]) => {
-        const file = profiles.exportOf(id);
-        if (!file) {
+      async (_request, [id = ""]) => {
+        const archive = await profiles.archive(id);
+        if (!archive) {
           return notFound();
         }
 
-        return new Response(JSON.stringify(file, null, 2), {
+        return new Response(archive, {
           headers: {
-            "content-type": "application/json",
-            "content-disposition": `attachment; filename="${fileName(file.name)}.json"`,
+            "content-type": "application/gzip",
+            "content-disposition": `attachment; filename="${id}.tar.gz"`,
           },
         });
+      },
+    ],
+    // A Profile's folder, file by file (ADR 0041).
+    [
+      "GET",
+      /^\/api\/profiles\/([^/]+)\/files$/,
+      (_request, [id = ""]) => {
+        const files = profiles.files(id);
+
+        return files ? Response.json(files) : notFound();
+      },
+    ],
+    // Uploads files and folders as { files: { path: base64 } }, the way
+    // runners get them.
+    [
+      "POST",
+      /^\/api\/profiles\/([^/]+)\/files$/,
+      async (request, [id = ""], actor) => {
+        const { files } = fieldsOf(await readJson(request));
+        if (
+          typeof files !== "object" ||
+          files === null ||
+          Object.values(files).some((content) => typeof content !== "string")
+        ) {
+          throw new BadRequest("files must map paths to base64 contents");
+        }
+
+        const decoded = new Map(
+          Object.entries(files as Record<string, string>).map(
+            ([path, content]) => [path, Buffer.from(content, "base64")],
+          ),
+        );
+
+        const written = profiles.writeFiles(id, decoded, isAdmin(actor));
+        if (written.ok) {
+          log("profile files uploaded", {
+            profileId: id,
+            files: decoded.size,
+          });
+        }
+
+        return replied(written, 204);
+      },
+    ],
+    [
+      "GET",
+      /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
+      (_request, [id = "", path = ""]) => {
+        const file = profiles.file(id, decodeURIComponent(path));
+
+        return file ? new Response(file) : notFound();
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
+      async (request, [id = "", path = ""], actor) => {
+        const written = profiles.writeFiles(
+          id,
+          new Map([
+            [decodeURIComponent(path), Buffer.from(await request.bytes())],
+          ]),
+          isAdmin(actor),
+        );
+
+        if (written.ok) {
+          log("profile file written", { profileId: id });
+        }
+
+        return replied(written, 204);
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
+      (_request, [id = "", path = ""], actor) => {
+        const removed = profiles.deleteFile(
+          id,
+          decodeURIComponent(path),
+          isAdmin(actor),
+        );
+
+        if (removed.ok) {
+          log("profile file deleted", { profileId: id });
+        }
+
+        return replied(removed, 204);
       },
     ],
   ];
@@ -1207,10 +1312,6 @@ function mcpTokenView({
   createdAt,
 }: McpToken): Omit<McpToken, "userId"> {
   return { id, name, createdAt };
-}
-
-function fileName(name: string): string {
-  return name.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "profile";
 }
 
 function reply(result: Result<unknown>, status: number): Response {

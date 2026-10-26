@@ -165,6 +165,36 @@ export interface ProfileExport extends ProfileContent {
   readonly name: string;
 }
 
+// Pi Cloud's own file, and what each machine keeps for itself: logins,
+// Session history and installed packages (ADR 0041).
+const machineOwned = new Set([
+  "profile.json",
+  "auth.json",
+  "models.json",
+  "models-store.json",
+  "sessions",
+  "git",
+  "npm",
+  "tmp",
+]);
+
+// Whether a path, with / between its parts, is one a Profile folder holds.
+export function profilePath(path: string): boolean {
+  const parts = path.split("/");
+
+  return (
+    parts.every(
+      (part) =>
+        part !== "" &&
+        part !== "." &&
+        part !== ".." &&
+        part !== "node_modules" &&
+        part !== ".git" &&
+        !part.endsWith(".tmp"),
+    ) && !machineOwned.has(parts[0] ?? "")
+  );
+}
+
 // A Profile folder's files by their path in it, base64 encoded, and a hash
 // of them all, which runners compare with their copy's (ADR 0041).
 export interface ProfileFiles {

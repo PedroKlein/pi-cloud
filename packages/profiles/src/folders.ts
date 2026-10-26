@@ -1,5 +1,6 @@
 import {
   type Dirent,
+  lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -8,14 +9,22 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
-import type {
-  PiPackage,
-  Profile,
-  ProfileContent,
-  ProfileFiles,
+import { dirname, join } from "node:path";
+import {
+  type PiPackage,
+  type Profile,
+  type ProfileContent,
+  type ProfileFiles,
+  profilePath,
 } from "@pi-cloud/protocol";
-import { contentFiles, folderFiles } from "./files";
+import {
+  contentFiles,
+  folderEntries,
+  folderFiles,
+  maxProfileBytes,
+  tooBig,
+} from "./files";
+import { InvalidProfile } from "./invalid";
 
 export type StoredProfile = Omit<Profile, "isDefault">;
 
@@ -69,7 +78,7 @@ export class ProfileFolders {
       return id === defaultProfileId
         ? {
             id,
-            name: "Default",
+            name: nameOf(id),
             ownerId: null,
             createdAt: new Date(0).toISOString(),
             packages: [],
@@ -91,7 +100,7 @@ export class ProfileFolders {
       name:
         typeof meta["name"] === "string" && meta["name"] !== ""
           ? meta["name"]
-          : id,
+          : nameOf(id),
       ownerId: typeof meta["owner"] === "string" ? meta["owner"] : null,
       createdAt:
         typeof meta["createdAt"] === "string"
@@ -119,6 +128,83 @@ export class ProfileFolders {
     return statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
       ? folderFiles(dir, profile.name)
       : contentFiles(profile);
+  }
+
+  entries(
+    id: string,
+  ): readonly { readonly path: string; readonly size: number }[] {
+    return this.#exists(id) ? folderEntries(join(this.#root, id)) : [];
+  }
+
+  // A file's content, or undefined for one the Profile doesn't hold.
+  file(id: string, path: string): Buffer | undefined {
+    return this.entries(id).some((entry) => entry.path === path)
+      ? readFileSync(join(this.#root, id, path))
+      : undefined;
+  }
+
+  // Writes files into the folder, which must stay small enough for runners.
+  // Throws InvalidProfile for a path a Profile can't hold, and ProfileTooBig.
+  writeFiles(id: string, files: ReadonlyMap<string, Buffer>): void {
+    const profile = this.read(id);
+    if (!profile) {
+      return;
+    }
+
+    const dir = join(this.#root, id);
+
+    // Writing through a link could reach outside the folder.
+    for (const path of files.keys()) {
+      const parts = path.split("/");
+
+      const linked = parts.some(
+        (_part, n) =>
+          lstatSync(join(dir, ...parts.slice(0, n + 1)), {
+            throwIfNoEntry: false,
+          })?.isSymbolicLink() === true,
+      );
+
+      if (!profilePath(path) || linked) {
+        throw new InvalidProfile(`a Profile can't hold ${path}`);
+      }
+    }
+
+    const kept = this.entries(id)
+      .filter(({ path }) => !files.has(path))
+      .reduce((total, { size }) => total + size, 0);
+
+    const added = [...files.values()].reduce(
+      (total, content) => total + content.length,
+      0,
+    );
+
+    if (kept + added > maxProfileBytes) {
+      throw tooBig(profile.name);
+    }
+
+    for (const [path, content] of files) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      replace(join(dir, path), content);
+    }
+  }
+
+  deleteFile(id: string, path: string): boolean {
+    if (this.file(id, path) === undefined) {
+      return false;
+    }
+
+    rmSync(join(this.#root, id, path));
+
+    return true;
+  }
+
+  #exists(id: string): boolean {
+    return (
+      ids.test(id) &&
+      statSync(join(this.#root, id), {
+        throwIfNoEntry: false,
+      })?.isDirectory() === true
+    );
   }
 
   // A free id made from the name, such as work-2 when work is taken.
@@ -230,6 +316,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function nameOf(id: string): string {
+  return id === defaultProfileId ? "Default" : id;
+}
+
 function entries(dir: string): readonly Dirent[] {
   try {
     return readdirSync(dir, { withFileTypes: true });
@@ -252,7 +342,7 @@ function json(value: unknown): string {
 
 // An empty text removes the file. Otherwise the new file replaces the old one
 // in one rename, so a reader never sees it half written.
-function replace(path: string, content: string): void {
+function replace(path: string, content: string | Buffer): void {
   if (content === "") {
     rmSync(path, { force: true });
 

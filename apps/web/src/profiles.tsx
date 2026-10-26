@@ -1,4 +1,5 @@
-import type { PiPackage, Profile } from "@pi-cloud/protocol";
+import { json, ok, useLoaded } from "@pi-cloud/plugins/web";
+import { type PiPackage, type Profile, profilePath } from "@pi-cloud/protocol";
 import {
   Badge,
   Button,
@@ -13,10 +14,16 @@ import {
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 
-const deleteErrors: Readonly<Record<string, string>> = {
+const errors: Readonly<Record<string, string>> = {
   default: "Make another Profile the default before deleting this one.",
   in_use: "Sessions still use this Profile. Archive them first.",
+  admin_only: "Only admins change shared Profiles.",
 };
+
+interface ProfileFile {
+  readonly path: string;
+  readonly size: number;
+}
 
 // A package is a source such as npm:name, or a JSON object with Pi's
 // filters.
@@ -28,34 +35,48 @@ function packageOf(text: string): unknown {
   return text.startsWith("{") ? JSON.parse(text) : text;
 }
 
-// How many of the fields folded under Advanced hold something.
-function advancedSet(profile: Profile | undefined): number {
-  if (profile === undefined) {
-    return 0;
-  }
+function messageOf(reason: unknown): string {
+  const code = reason instanceof Error ? reason.message : String(reason);
 
-  return [
-    profile.systemMd.trim() !== "",
-    profile.appendSystemMd.trim() !== "",
-    Object.keys(profile.mcpServers).length > 0,
-    Object.keys(profile.settings).length > 0,
-  ].filter(Boolean).length;
+  return errors[code] ?? code;
 }
 
-function objectText(value: Readonly<Record<string, unknown>>): string {
-  return Object.keys(value).length === 0 ? "" : JSON.stringify(value, null, 2);
+function sizeText(bytes: number): string {
+  return bytes < 1024
+    ? `${String(bytes)} B`
+    : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-function objectOf(label: string, text: string): unknown {
-  if (text.trim() === "") {
-    return {};
+function base64(bytes: Uint8Array): string {
+  let text = "";
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
   }
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`${label} must be JSON.`);
+  return btoa(text);
+}
+
+// Files picked one by one keep their names. A picked folder, such as
+// ~/.pi/agent, leaves its own name out, and what machines keep for
+// themselves, such as auth.json, is never sent (ADR 0041).
+async function upload(
+  id: string,
+  picked: FileList,
+  folder: boolean,
+): Promise<void> {
+  const files: Record<string, string> = {};
+
+  for (const file of picked) {
+    const path = folder
+      ? file.webkitRelativePath.split("/").slice(1).join("/")
+      : file.name;
+
+    if (profilePath(path)) {
+      files[path] = base64(new Uint8Array(await file.arrayBuffer()));
+    }
   }
+
+  await api(`/api/profiles/${id}/files`, { files });
 }
 
 export function ProfilesPage({
@@ -68,13 +89,15 @@ export function ProfilesPage({
   readonly onChange: () => void;
 }): ReactElement {
   const profile = profiles.find(({ id }) => id === selected);
+  // The editor starts again when its files change, so it doesn't keep this.
+  const [savedId, setSavedId] = useState<string>();
 
   return (
     <div
       id="profiles-page"
       className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
     >
-      <PageTitle description="A Profile is your Pi setup: the packages to install, instructions, MCP servers and settings. Every Session runs with one, on any machine. Logins stay on each machine. Edits reach a Session the next time it starts.">
+      <PageTitle description="A Profile is a Pi agent folder, like your ~/.pi/agent: packages, instructions, skills, prompts, MCP servers and settings. Every Session runs with one, on any machine. Logins stay on each machine. Edits reach a Session the next time it starts.">
         Profiles
       </PageTitle>
       <div className="flex flex-wrap gap-2">
@@ -87,6 +110,7 @@ export function ProfilesPage({
           >
             {each.name}
             {each.isDefault && <Badge state="done">Default</Badge>}
+            {each.ownerId === null && <Badge state="offline">Shared</Badge>}
           </a>
         ))}
         <a
@@ -99,7 +123,18 @@ export function ProfilesPage({
         </a>
       </div>
       {profile && (
-        <Editor key={profile.id} profile={profile} onChange={onChange} />
+        <>
+          <Editor
+            key={`${profile.id}:${profile.agentsMd}:${JSON.stringify(profile.packages)}`}
+            profile={profile}
+            saved={savedId === profile.id}
+            onSaved={() => {
+              setSavedId(profile.id);
+            }}
+            onChange={onChange}
+          />
+          <Files key={`${profile.id}-files`} profile={profile} />
+        </>
       )}
       {selected === "new" && <Editor key="new" onChange={onChange} />}
       {selected === "" && <Import onChange={onChange} />}
@@ -109,28 +144,29 @@ export function ProfilesPage({
 
 function Editor({
   profile,
+  saved = false,
+  onSaved,
   onChange,
 }: {
   readonly profile?: Profile;
+  readonly saved?: boolean;
+  readonly onSaved?: () => void;
   readonly onChange: () => void;
 }): ReactElement {
   const [error, setError] = useState<string>();
-  const [saved, setSaved] = useState(false);
 
   const [packages, setPackages] = useState<readonly string[]>(() =>
     (profile?.packages ?? []).map(packageText),
   );
 
   const run = (action: () => Promise<void>): void => {
-    setSaved(false);
-
     action().then(
       () => {
         setError(undefined);
         onChange();
       },
       (reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setError(messageOf(reason));
       },
     );
   };
@@ -150,28 +186,35 @@ function Editor({
         name: text("name"),
         packages: packages.map(packageOf),
         agentsMd: text("agentsMd"),
-        systemMd: text("systemMd"),
-        appendSystemMd: text("appendSystemMd"),
-        mcpServers: objectOf("MCP servers", text("mcpServers")),
-        settings: objectOf("Settings", text("settings")),
       };
 
       if (profile) {
-        await send(`/api/profiles/${profile.id}`, "PUT", body);
-        setSaved(true);
+        // Only what changed here, so a file edited below or by hand since
+        // isn't written back as it was.
+        const changed = Object.fromEntries(
+          Object.entries(body).filter(
+            ([key, value]) =>
+              JSON.stringify(value) !==
+              JSON.stringify(profile[key as keyof typeof body]),
+          ),
+        );
+
+        await send(`/api/profiles/${profile.id}`, "PUT", changed);
+        onSaved?.();
 
         return;
       }
 
       const created = (await (
-        await api("/api/profiles", body)
+        await api("/api/profiles", {
+          ...body,
+          shared: form.get("shared") === "on",
+        })
       ).json()) as Profile;
 
       location.hash = `profiles/${created.id}`;
     });
   };
-
-  const area = cn(fieldClass, "min-h-24 resize-y font-mono text-mono-sm");
 
   return (
     <Section title={profile ? profile.name : "New Profile"}>
@@ -187,6 +230,12 @@ function Editor({
             className={fieldClass}
           />
         </Field>
+        {!profile && (
+          <label className="flex items-center gap-2 text-ui text-fg">
+            <input type="checkbox" name="shared" />
+            Shared with everyone. Only admins can change it.
+          </label>
+        )}
         <ListInput
           label="Pi packages"
           values={packages}
@@ -198,52 +247,12 @@ function Editor({
             name="agentsMd"
             rows={5}
             defaultValue={profile?.agentsMd ?? ""}
-            className={area}
+            className={cn(
+              fieldClass,
+              "min-h-24 resize-y font-mono text-mono-sm",
+            )}
           />
         </Field>
-        <details className="flex flex-col">
-          <summary className="cursor-pointer text-label font-medium text-fg-dim">
-            Advanced: system prompt, MCP servers and Pi settings as files
-            {advancedSet(profile) > 0 &&
-              ` (${String(advancedSet(profile))} set)`}
-          </summary>
-          <div className="mt-4 flex flex-col gap-4">
-            <Field label="SYSTEM.md, which replaces Pi's system prompt">
-              <textarea
-                name="systemMd"
-                rows={3}
-                defaultValue={profile?.systemMd ?? ""}
-                className={area}
-              />
-            </Field>
-            <Field label="APPEND_SYSTEM.md, added to the system prompt">
-              <textarea
-                name="appendSystemMd"
-                rows={3}
-                defaultValue={profile?.appendSystemMd ?? ""}
-                className={area}
-              />
-            </Field>
-            <Field label="MCP servers, the mcpServers object of mcp.json">
-              <textarea
-                name="mcpServers"
-                rows={4}
-                defaultValue={objectText(profile?.mcpServers ?? {})}
-                placeholder='{ "docs": { "url": "https://example.com/mcp" } }'
-                className={area}
-              />
-            </Field>
-            <Field label="Pi settings, as settings.json">
-              <textarea
-                name="settings"
-                rows={4}
-                defaultValue={objectText(profile?.settings ?? {})}
-                placeholder='{ "defaultThinkingLevel": "medium" }'
-                className={area}
-              />
-            </Field>
-          </div>
-        </details>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" type="submit">
             {profile ? "Save" : "Create Profile"}
@@ -277,15 +286,7 @@ function Editor({
                 }
 
                 run(async () => {
-                  await send(`/api/profiles/${profile.id}`, "DELETE").catch(
-                    (reason: unknown) => {
-                      const code =
-                        reason instanceof Error ? reason.message : "";
-
-                      throw new Error(deleteErrors[code] ?? code);
-                    },
-                  );
-
+                  await send(`/api/profiles/${profile.id}`, "DELETE");
                   location.hash = "profiles";
                 });
               }}
@@ -306,41 +307,251 @@ function Editor({
   );
 }
 
+// Every file in the Profile's folder, as Pi reads them from ~/.pi/agent.
+function Files({ profile }: { readonly profile: Profile }): ReactElement {
+  const base = `/api/profiles/${profile.id}/files`;
+
+  const { value: files = [], reload } = useLoaded(
+    async () => json<ProfileFile[]>(fetch(base)),
+    profile.id,
+    { topics: ["profiles"] },
+  );
+
+  const [open, setOpen] = useState<{ path: string; text: string }>();
+  const [error, setError] = useState<string>();
+
+  const run = (action: () => Promise<void>): void => {
+    action().then(
+      () => {
+        setError(undefined);
+        reload();
+      },
+      (reason: unknown) => {
+        setError(messageOf(reason));
+      },
+    );
+  };
+
+  const fileUrl = (path: string): string =>
+    `${base}/${encodeURIComponent(path)}`;
+
+  const show = (path: string): void => {
+    run(async () => {
+      const text = await (await ok(fetch(fileUrl(path)))).text();
+      setOpen({ path, text });
+    });
+  };
+
+  const picker = (folder: boolean): ReactElement => (
+    <label className="inline-flex h-control cursor-pointer items-center rounded-md border border-line px-3 text-ui font-medium text-fg hover:bg-hover">
+      {folder ? "Upload a folder" : "Upload files"}
+      <input
+        type="file"
+        multiple
+        className="sr-only"
+        {...(folder && { webkitdirectory: "" })}
+        onChange={(event) => {
+          const picked = event.target.files;
+          if (picked) {
+            run(async () => upload(profile.id, picked, folder));
+          }
+        }}
+      />
+    </label>
+  );
+
+  return (
+    <Section title="Files">
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5">
+        <ul className="flex flex-col divide-y divide-line">
+          {files.map(({ path, size }) => (
+            <li key={path} className="flex items-center gap-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  show(path);
+                }}
+                className="flex-1 truncate text-left font-mono text-mono-sm text-fg hover:text-accent"
+              >
+                {path}
+              </button>
+              <span className="text-caption text-fg-dim">{sizeText(size)}</span>
+            </li>
+          ))}
+          {files.length === 0 && (
+            <li className="py-1.5 text-caption text-fg-dim">
+              No files yet, so this is plain Pi.
+            </li>
+          )}
+        </ul>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const path = new FormData(event.currentTarget).get("path");
+            if (typeof path === "string" && path.trim() !== "") {
+              setOpen({ path: path.trim(), text: "" });
+              event.currentTarget.reset();
+            }
+          }}
+          className="flex flex-wrap gap-2"
+        >
+          <input
+            name="path"
+            placeholder="skills/review/SKILL.md"
+            className={cn(fieldClass, "min-w-48 flex-1 font-mono")}
+          />
+          <Button type="submit">New file</Button>
+          {picker(false)}
+          {picker(true)}
+        </form>
+        {open && (
+          <FileEditor
+            key={open.path}
+            file={open}
+            onSave={(text) => {
+              run(async () => {
+                await ok(
+                  fetch(fileUrl(open.path), { method: "PUT", body: text }),
+                );
+              });
+            }}
+            onDelete={() => {
+              run(async () => {
+                await send(fileUrl(open.path), "DELETE");
+                setOpen(undefined);
+              });
+            }}
+            onClose={() => {
+              setOpen(undefined);
+            }}
+          />
+        )}
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      </div>
+    </Section>
+  );
+}
+
+function FileEditor({
+  file,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  readonly file: { readonly path: string; readonly text: string };
+  readonly onSave: (text: string) => void;
+  readonly onDelete: () => void;
+  readonly onClose: () => void;
+}): ReactElement {
+  const [text, setText] = useState(file.text);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Field label={file.path}>
+        <textarea
+          value={text}
+          rows={12}
+          onChange={(event) => {
+            setText(event.target.value);
+          }}
+          className={cn(fieldClass, "min-h-48 resize-y font-mono text-mono-sm")}
+        />
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="primary"
+          onClick={() => {
+            onSave(text);
+          }}
+        >
+          Save file
+        </Button>
+        <Button onClick={onClose}>Close</Button>
+        <Button
+          variant="danger"
+          onClick={() => {
+            if (confirm(`Delete ${file.path}?`)) {
+              onDelete();
+            }
+          }}
+        >
+          Delete file
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
   const [error, setError] = useState<string>();
 
-  const importBody = (body: unknown): void => {
-    api("/api/profiles/import", body)
-      .then(async (response) => {
+  const imported = (action: () => Promise<Profile>): void => {
+    action().then(
+      (profile) => {
         setError(undefined);
         onChange();
-        location.hash = `profiles/${((await response.json()) as Profile).id}`;
-      })
-      .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : String(reason));
-      });
+        location.hash = `profiles/${profile.id}`;
+      },
+      (reason: unknown) => {
+        setError(messageOf(reason));
+      },
+    );
+  };
+
+  const fromFile = async (file: File): Promise<Profile> => {
+    if (file.name.endsWith(".json")) {
+      return json<Profile>(
+        api("/api/profiles/import", JSON.parse(await file.text())),
+      );
+    }
+
+    const name = file.name.replace(/\.(tar\.gz|tgz)$/, "");
+
+    return json<Profile>(
+      fetch(`/api/profiles/import?name=${encodeURIComponent(name)}`, {
+        method: "POST",
+        headers: { "content-type": "application/gzip" },
+        body: file,
+      }),
+    );
+  };
+
+  const fromFolder = async (picked: FileList): Promise<Profile> => {
+    const name = picked[0]?.webkitRelativePath.split("/")[0] ?? "Imported";
+    const profile = await json<Profile>(api("/api/profiles", { name }));
+    await upload(profile.id, picked, true);
+
+    return profile;
   };
 
   return (
     <Section title="Import a Profile">
       <div className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5">
-        <Field label="From an exported file">
+        <Field label="From a folder, such as your ~/.pi/agent. Logins and Session history stay behind.">
           <input
             type="file"
-            accept="application/json,.json"
+            multiple
+            {...{ webkitdirectory: "" }}
+            onChange={(event) => {
+              const picked = event.target.files;
+              if (picked && picked.length > 0) {
+                imported(async () => fromFolder(picked));
+              }
+            }}
+            className="text-ui text-fg-dim"
+          />
+        </Field>
+        <Field label="From an exported .tar.gz">
+          <input
+            type="file"
+            accept=".gz,.tgz,.json,application/gzip,application/json"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (!file) {
-                return;
+              if (file) {
+                imported(async () => fromFile(file));
               }
-
-              void file.text().then((text) => {
-                try {
-                  importBody(JSON.parse(text));
-                } catch {
-                  setError("That file isn't JSON.");
-                }
-              });
             }}
             className="text-ui text-fg-dim"
           />
@@ -349,11 +560,18 @@ function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
           onSubmit={(event) => {
             event.preventDefault();
             const url = new FormData(event.currentTarget).get("url");
-            importBody({ url: typeof url === "string" ? url.trim() : "" });
+
+            imported(async () =>
+              json<Profile>(
+                api("/api/profiles/import", {
+                  url: typeof url === "string" ? url.trim() : "",
+                }),
+              ),
+            );
           }}
           className="flex flex-col gap-1.5"
         >
-          <Field label="From a git repository with a pi-cloud-profile.json">
+          <Field label="From a git repository that holds a Profile folder">
             <span className="flex gap-2">
               <input
                 name="url"

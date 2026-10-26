@@ -16,7 +16,6 @@ import type {
   Assignment,
   Environment,
   Profile,
-  ProfileExport,
   ProfileFiles,
   Session,
 } from "@pi-cloud/protocol";
@@ -243,37 +242,161 @@ test("keeps the default Profile and Profiles in use", async () => {
   expect(await deleteProfile(work.id)).toBe(404);
 });
 
-test("exports a Profile and imports the file as a copy", async () => {
-  const work = await json<Profile>(
-    api("/api/profiles", { body: { name: "Work", ...content } }),
+test("exports a Profile's folder and imports it as a copy", async () => {
+  await api("/api/profiles", { body: { name: "Work", ...content } });
+
+  await mkdir(join(root, "config", "profiles", "work", "skills", "review"), {
+    recursive: true,
+  });
+
+  await writeFile(
+    join(root, "config", "profiles", "work", "skills", "review", "SKILL.md"),
+    "# Review",
   );
 
-  const response = await api(`/api/profiles/${work.id}/export`);
-  const file = (await response.json()) as ProfileExport;
+  const response = await api("/api/profiles/work/export");
 
   expect(response.headers.get("content-disposition")).toBe(
-    'attachment; filename="Work.json"',
+    'attachment; filename="work.tar.gz"',
   );
 
-  expect(file).toEqual({ piCloudProfile: 1, name: "Work", ...content });
+  const archive = new Uint8Array(await response.arrayBuffer());
 
   const imported = await json<Profile>(
-    api("/api/profiles/import", { body: file }),
+    fetch(new URL("/api/profiles/import?name=Work", server.url), {
+      method: "POST",
+      headers: { cookie: await signedIn(), "content-type": "application/gzip" },
+      body: archive,
+    }),
   );
 
-  expect(imported.id).not.toBe(work.id);
-
   expect(imported).toMatchObject({
+    id: "work-2",
     name: "Work",
+    ownerId: "local",
     isDefault: false,
     ...content,
   });
+
+  expect(
+    await readFile(
+      join(
+        root,
+        "config",
+        "profiles",
+        "work-2",
+        "skills",
+        "review",
+        "SKILL.md",
+      ),
+      "utf8",
+    ),
+  ).toBe("# Review");
+});
+
+test("imports someone's own Pi folder without their logins or history", async () => {
+  const archive = await new Bun.Archive(
+    {
+      "./AGENTS.md": "Be brief.",
+      "./auth.json": "{}",
+      "./sessions/one.jsonl": "{}",
+      "./prompts/fix.md": "Fix it.",
+    },
+    { compress: "gzip" },
+  ).bytes();
+
+  const imported = await json<Profile>(
+    fetch(new URL("/api/profiles/import?name=Mine", server.url), {
+      method: "POST",
+      headers: { cookie: await signedIn(), "content-type": "application/gzip" },
+      body: archive,
+    }),
+  );
+
+  const files = await json<{ path: string }[]>(
+    api(`/api/profiles/${imported.id}/files`),
+  );
+
+  expect(files.map(({ path }) => path)).toEqual([
+    "AGENTS.md",
+    "prompts/fix.md",
+  ]);
+});
+
+test("still imports a Profile file exported before Profiles were folders", async () => {
+  const imported = await json<Profile>(
+    api("/api/profiles/import", {
+      body: { piCloudProfile: 1, name: "Work", ...content },
+    }),
+  );
+
+  expect(imported).toMatchObject({ name: "Work", ...content });
 
   const notAProfile = await api("/api/profiles/import", {
     body: { name: "x" },
   });
 
   expect(notAProfile.status).toBe(400);
+});
+
+test("reads, writes, uploads and deletes a Profile's files", async () => {
+  await api("/api/profiles", { body: { name: "Work" } });
+
+  const put = async (path: string, text: string): Promise<number> =>
+    (
+      await fetch(new URL(`/api/profiles/work/files/${path}`, server.url), {
+        method: "PUT",
+        headers: { cookie: await signedIn() },
+        body: text,
+      })
+    ).status;
+
+  expect(await put("skills%2Freview%2FSKILL.md", "# Review")).toBe(204);
+  expect(await put("auth.json", "{}")).toBe(400);
+  expect(await put("..%2Fescape", "x")).toBe(400);
+
+  const uploaded = await api("/api/profiles/work/files", {
+    body: {
+      files: {
+        "prompts/fix.md": Buffer.from("Fix it.").toString("base64"),
+        "AGENTS.md": Buffer.from("Be brief.").toString("base64"),
+      },
+    },
+  });
+
+  expect(uploaded.status).toBe(204);
+
+  expect(await json<unknown>(api("/api/profiles/work/files"))).toEqual([
+    { path: "AGENTS.md", size: 9 },
+    { path: "prompts/fix.md", size: 7 },
+    { path: "skills/review/SKILL.md", size: 8 },
+  ]);
+
+  const read = await api("/api/profiles/work/files/skills%2Freview%2FSKILL.md");
+
+  expect(await read.text()).toBe("# Review");
+
+  const deleted = await api("/api/profiles/work/files/AGENTS.md", {
+    method: "DELETE",
+  });
+
+  expect(deleted.status).toBe(204);
+  expect((await json<Profile>(api("/api/profiles/work"))).agentsMd).toBe("");
+  expect((await api("/api/profiles/work/files/AGENTS.md")).status).toBe(404);
+});
+
+test("only admins change a shared Profile's files", async () => {
+  const db = new DatabaseSync(join(root, "server.db"));
+  await signedIn();
+  db.exec("update users set admin = 0");
+  db.close();
+
+  const response = await fetch(
+    new URL("/api/profiles/default/files/AGENTS.md", server.url),
+    { method: "PUT", headers: { cookie: await signedIn() }, body: "x" },
+  );
+
+  expect(response.status).toBe(403);
 });
 
 test("imports from git only over https or ssh", async () => {
