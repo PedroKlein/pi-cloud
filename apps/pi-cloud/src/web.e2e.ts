@@ -600,6 +600,11 @@ test("makes an Environment and shows its key once", async () => {
   expect(await command.count()).toBe(0);
 
   await page.getByRole("link", { name: /^e2e/ }).click();
+
+  await page
+    .getByRole("list", { name: "Folders" })
+    .getByText(root, { exact: true })
+    .waitFor();
 });
 
 test("changes a plugin's setting on the Plugins page", async () => {
