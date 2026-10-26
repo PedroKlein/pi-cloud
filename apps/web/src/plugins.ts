@@ -40,6 +40,7 @@ const webPlugins: readonly WebPlugin[] = [
 let enabled: readonly WebPlugin[] = [];
 const webErrors = new Map<string, string>();
 let settings: ReadonlyMap<string, PluginSettings> = new Map();
+let titles: ReadonlyMap<string, string> = new Map();
 
 // An installed plugin's web part is bundled with these left out, and reads
 // them from here, so the page has one React and one design system (ADR 0022).
@@ -71,6 +72,7 @@ export async function loadPlugins(): Promise<void> {
   ];
 
   settings = new Map(on.map(({ id, values }) => [id, values]));
+  titles = new Map(on.map(({ id, title }) => [id, title]));
 }
 
 async function importWebPart(
@@ -112,6 +114,10 @@ async function importWebPart(
 // Why an installed plugin's web part didn't load in this page.
 export function webPartError(id: string): string | undefined {
   return webErrors.get(id);
+}
+
+export function pluginTitle(name: string): string {
+  return titles.get(name) ?? name;
 }
 
 export function enabledPlugins(): readonly WebPlugin[] {

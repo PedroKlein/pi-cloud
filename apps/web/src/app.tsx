@@ -23,12 +23,15 @@ import {
 } from "./plugins";
 import { SessionView } from "./session-view";
 import { SettingsPage } from "./settings";
+import { isSettingsRoute, SettingsLayout } from "./settings-layout";
 import { Sidebar } from "./sidebar";
 
 export function App({
   nav,
+  user,
 }: {
   readonly nav: readonly NavEntry[];
+  readonly user: string;
 }): ReactElement {
   const route = useHash();
   const [showArchived, setShowArchived] = useState(false);
@@ -97,6 +100,54 @@ export function App({
     setDrawer(true);
   };
 
+  const settingsContent = (): ReactElement => {
+    const profilesRoute = /^profiles\/?(.*)$/.exec(route);
+    if (profilesRoute) {
+      return (
+        <ProfilesPage
+          profiles={profiles.value}
+          selected={profilesRoute[1] ?? ""}
+          onChange={profiles.reload}
+        />
+      );
+    }
+
+    const environmentsRoute = /^environments\/?(.*)$/.exec(route);
+    if (environmentsRoute) {
+      return (
+        <EnvironmentsPage
+          environments={environments.value}
+          selected={environmentsRoute[1] ?? ""}
+          onChange={environments.reload}
+        />
+      );
+    }
+
+    if (route === "plugins") {
+      return <PluginsPage />;
+    }
+
+    const name = /^settings\/(.+)$/.exec(route)?.[1];
+
+    const Section =
+      name === undefined
+        ? undefined
+        : enabledPlugins().find((plugin) => plugin.name === name)
+            ?.SettingsSection;
+
+    if (name !== undefined && Section) {
+      return (
+        <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10">
+          <PluginBoundary name={name}>
+            <Section context={pluginContext(name)} />
+          </PluginBoundary>
+        </div>
+      );
+    }
+
+    return <SettingsPage />;
+  };
+
   const content = (): ReactElement => {
     if (page !== undefined) {
       return (
@@ -113,57 +164,11 @@ export function App({
       return <div className="flex-1" />;
     }
 
-    const profilesRoute = /^profiles\/?(.*)$/.exec(route);
-    if (profilesRoute) {
+    if (isSettingsRoute(route)) {
       return (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="p-2 md:hidden">
-            <MenuButton onMenu={openDrawer} />
-          </div>
-          <ProfilesPage
-            profiles={profiles.value}
-            selected={profilesRoute[1] ?? ""}
-            onChange={profiles.reload}
-          />
-        </div>
-      );
-    }
-
-    if (route === "settings") {
-      return (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="p-2 md:hidden">
-            <MenuButton onMenu={openDrawer} />
-          </div>
-          <SettingsPage />
-        </div>
-      );
-    }
-
-    if (route === "plugins") {
-      return (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="p-2 md:hidden">
-            <MenuButton onMenu={openDrawer} />
-          </div>
-          <PluginsPage />
-        </div>
-      );
-    }
-
-    const environmentsRoute = /^environments\/?(.*)$/.exec(route);
-    if (environmentsRoute) {
-      return (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="p-2 md:hidden">
-            <MenuButton onMenu={openDrawer} />
-          </div>
-          <EnvironmentsPage
-            environments={environments.value}
-            selected={environmentsRoute[1] ?? ""}
-            onChange={environments.reload}
-          />
-        </div>
+        <SettingsLayout route={route} onMenu={openDrawer}>
+          {settingsContent()}
+        </SettingsLayout>
       );
     }
 
@@ -236,6 +241,7 @@ export function App({
           environments={environments.value}
           showArchived={showArchived}
           onShowArchived={setShowArchived}
+          user={user}
           onNewSession={() => {
             setCreating(true);
           }}

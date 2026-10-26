@@ -1,9 +1,7 @@
-import { Button, cn, fieldClass, PageTitle, Section } from "@pi-cloud/ui";
+import { Button, cn, fieldClass, PageTitle } from "@pi-cloud/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { useMcpTokens } from "./hooks";
-import { PluginBoundary } from "./plugin-boundary";
-import { enabledPlugins, pluginContext } from "./plugins";
 
 export function SettingsPage(): ReactElement {
   const { value: tokens, reload } = useMcpTokens();
@@ -30,16 +28,10 @@ export function SettingsPage(): ReactElement {
       id="settings-page"
       className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
     >
-      <PageTitle description="Your settings on this Pi Cloud server.">
-        Settings
+      <PageTitle description="An MCP client, such as Pi or Claude Code on your laptop, can use the assistant's tools to manage Sessions, Environments, Profiles and Projects as you. It asks for a token, and you can revoke one at any time.">
+        MCP clients
       </PageTitle>
-      <Section title="MCP clients">
-        <p className="text-ui text-fg-dim">
-          An MCP client, such as Pi or Claude Code on your laptop, can use the
-          assistant's tools to manage Sessions, Environments, Profiles and
-          Projects as you. It asks for a token, and you can revoke one at any
-          time.
-        </p>
+      <div className="flex flex-col gap-3">
         <NewToken
           onCreated={(name, secret) => {
             setMade({ name, secret });
@@ -84,15 +76,7 @@ export function SettingsPage(): ReactElement {
             </li>
           ))}
         </ul>
-      </Section>
-      {enabledPlugins().map(
-        ({ name, SettingsSection }) =>
-          SettingsSection && (
-            <PluginBoundary key={name} name={name}>
-              <SettingsSection context={pluginContext(name)} />
-            </PluginBoundary>
-          ),
-      )}
+      </div>
     </div>
   );
 }

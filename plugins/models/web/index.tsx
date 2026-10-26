@@ -1,6 +1,5 @@
 import {
   json,
-  type PageProps,
   useLoaded,
   type WebContext,
   type WebPlugin,
@@ -34,10 +33,10 @@ const schedules = ["", "utc-hourly", "utc-midnight", "utc-monthly-1st"];
 
 export const models: WebPlugin = {
   name: "models",
-  nav: { label: "Models", Page },
+  SettingsSection: Page,
 };
 
-function Page({ context }: PageProps): ReactElement {
+function Page({ context }: { readonly context: WebContext }): ReactElement {
   const { value, reload } = useLoaded(
     async () =>
       Promise.all([

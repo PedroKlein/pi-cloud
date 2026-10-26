@@ -13,6 +13,7 @@ import {
   workspaceName,
 } from "./names";
 import { PluginBoundary } from "./plugin-boundary";
+import { isSettingsRoute } from "./settings-layout";
 import {
   enabledPlugins,
   type NavEntry,
@@ -29,6 +30,7 @@ export interface SidebarProps {
   readonly showArchived: boolean;
   readonly onShowArchived: (show: boolean) => void;
   readonly onNewSession: () => void;
+  readonly user: string;
 }
 
 export function Sidebar({
@@ -39,6 +41,7 @@ export function Sidebar({
   showArchived,
   onShowArchived,
   onNewSession,
+  user,
 }: SidebarProps): ReactElement {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -87,61 +90,6 @@ export function Sidebar({
             <Icon name="plus" />
           </Button>
         </span>
-      </div>
-
-      <div className="flex flex-col gap-0.5 px-2 pb-0.5">
-        <a
-          href="#profiles"
-          aria-current={route.startsWith("profiles") ? "page" : undefined}
-          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-        >
-          <span
-            aria-hidden="true"
-            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
-          >
-            P
-          </span>
-          Profiles
-        </a>
-        <a
-          href="#environments"
-          aria-current={route.startsWith("environments") ? "page" : undefined}
-          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-        >
-          <span
-            aria-hidden="true"
-            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
-          >
-            E
-          </span>
-          Environments
-        </a>
-        <a
-          href="#plugins"
-          aria-current={route === "plugins" ? "page" : undefined}
-          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-        >
-          <span
-            aria-hidden="true"
-            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
-          >
-            Pl
-          </span>
-          Plugins
-        </a>
-        <a
-          href="#settings"
-          aria-current={route === "settings" ? "page" : undefined}
-          className="group/nav flex items-center gap-2.5 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:bg-hover aria-[current=page]:text-fg-strong"
-        >
-          <span
-            aria-hidden="true"
-            className="grid size-6 place-items-center rounded-md border border-line bg-elevated text-caption font-semibold text-fg-dim uppercase group-aria-[current=page]/nav:border-accent group-aria-[current=page]/nav:text-accent"
-          >
-            S
-          </span>
-          Settings
-        </a>
       </div>
 
       {nav.length > 0 && (
@@ -237,19 +185,7 @@ export function Sidebar({
 
       <NotifyButton />
       <EnvironmentStatus environments={environments} />
-      <div className="border-t border-line px-2 py-2">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            void api("/api/auth/logout", {}).finally(() => {
-              location.replace("/");
-            });
-          }}
-          className="w-full justify-start text-label"
-        >
-          Sign out
-        </Button>
-      </div>
+      <AccountMenu user={user} current={isSettingsRoute(route)} />
     </nav>
   );
 }
@@ -358,6 +294,86 @@ function NotifyButton(): ReactElement | null {
       >
         <Icon name="bell" />
         Notify me when sessions finish
+      </Button>
+    </div>
+  );
+}
+
+// Settings and signing out, behind the user's name like Claude Code's account
+// menu (ADR 0040).
+function AccountMenu({
+  user,
+  current,
+}: {
+  readonly user: string;
+  readonly current: boolean;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div
+      className="relative border-t border-line px-2 py-2"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      }}
+    >
+      {open && (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-2 bottom-full left-2 mb-1 flex flex-col rounded-lg border border-line bg-elevated p-1 shadow-pop"
+        >
+          <a
+            role="menuitem"
+            href="#settings"
+            onClick={() => {
+              setOpen(false);
+            }}
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-ui text-fg hover:bg-hover"
+          >
+            <Icon name="settings" />
+            Settings
+          </a>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              void api("/api/auth/logout", {}).finally(() => {
+                location.replace("/");
+              });
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui text-fg hover:bg-hover"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+      <Button
+        variant="ghost"
+        aria-label="Account"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-current={current ? "page" : undefined}
+        onClick={() => {
+          setOpen(!open);
+        }}
+        className="w-full justify-start text-label aria-[current=page]:bg-hover"
+      >
+        <span
+          aria-hidden="true"
+          className="grid size-6 place-items-center rounded-full bg-accent-tint text-caption font-semibold text-accent uppercase"
+        >
+          {user.slice(0, 1)}
+        </span>
+        <span className="flex-1 truncate text-left">{user}</span>
+        <Icon name="settings" className="text-fg-dim" />
       </Button>
     </div>
   );
