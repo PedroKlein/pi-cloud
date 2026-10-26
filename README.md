@@ -103,15 +103,7 @@ helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespa
   --set apiRule.enabled=true --set apiRule.host=pi-cloud.<cluster domain>
 ```
 
-To sign in through an OpenID Connect provider, such as SAP IAS ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as a redirect URI with the provider and make the ID token carry the person's groups, or use the email lists for a provider without groups, such as Google. The plugin works with any OpenID Connect provider and needs no client secret, since it uses PKCE. If the provider insists on a client secret, put it in a Secret and set `oidc.existingSecret`:
-
-```sh
-kubectl -n pi-cloud create secret generic pi-cloud-oidc --from-literal=clientSecret=<secret>
-helm upgrade pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --reuse-values \
-  --set oidc.existingSecret=pi-cloud-oidc
-```
-
-Then set the issuer, client ID and groups on the Plugins page, under Single sign-on. Members of the access group get a user on their first sign-in, and members of the admin group can change plugins. Link your own user from Settings first, then `oidc.ssoOnly=true` turns the password login off.
+To sign in through OpenID Connect providers, such as SAP IAS, Okta or Google ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as the redirect URI with each provider. An admin adds each provider in Settings, under Single sign-on: its issuer, client ID, a client secret only if the provider requires one (the plugin uses PKCE), and who gets in, by groups from the ID token or by verified email and domain. Each provider gets its own button on the sign-in page. Link your own user from Settings first, then `oidc.ssoOnly=true` turns the password login off.
 
 Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 

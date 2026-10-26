@@ -19,60 +19,6 @@
   "piCloud": {
     "id": "oidc",
     "title": "Single sign-on",
-    "description": "Signs people in through an OpenID Connect provider, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose.",
-    "settings": {
-      "issuer": {
-        "type": "string",
-        "title": "Issuer",
-        "description": "The provider's issuer URL, such as https://tenant.accounts.ondemand.com. Its redirect URI is this server's /api/plugins/oidc/callback. A client secret, if the provider needs one, comes from PI_CLOUD_OIDC_CLIENT_SECRET.",
-        "default": ""
-      },
-      "clientId": {
-        "type": "string",
-        "title": "Client ID",
-        "default": ""
-      },
-      "label": {
-        "type": "string",
-        "title": "Button label",
-        "default": "Sign in with single sign-on"
-      },
-      "groupsClaim": {
-        "type": "string",
-        "title": "Groups claim",
-        "description": "The ID token claim that lists the person's groups.",
-        "default": "groups"
-      },
-      "accessGroup": {
-        "type": "string",
-        "title": "Access group",
-        "description": "Members of this group can sign in. A person's first sign-in makes their user.",
-        "default": "pi-cloud-users"
-      },
-      "adminGroup": {
-        "type": "string",
-        "title": "Admin group",
-        "description": "Members of this group can sign in, install plugins, change their settings and restart the server.",
-        "default": "pi-cloud-admins"
-      },
-      "allowedEmails": {
-        "type": "strings",
-        "title": "Allowed emails",
-        "description": "People with these verified emails can sign in too, for a provider that sends no groups, such as Google.",
-        "default": []
-      },
-      "allowedDomains": {
-        "type": "strings",
-        "title": "Allowed domains",
-        "description": "People with a verified email at these domains, such as example.com, can sign in.",
-        "default": []
-      },
-      "adminEmails": {
-        "type": "strings",
-        "title": "Admin emails",
-        "description": "People with these verified emails are admins.",
-        "default": []
-      }
-    }
+    "description": "Signs people in through OpenID Connect providers, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose. Admins add providers in Settings."
   }
 }

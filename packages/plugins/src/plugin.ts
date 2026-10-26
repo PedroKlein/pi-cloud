@@ -130,6 +130,12 @@ export interface PluginStore {
   readonly exec: (sql: string) => void;
   readonly all: (sql: string, ...params: readonly SqlValue[]) => unknown[];
   readonly run: (sql: string, ...params: readonly SqlValue[]) => void;
+  // Encrypts a secret to keep in a table, with the server's secret key, like
+  // Environment secrets (ADR 0034). The context, such as the row's id, keeps
+  // a sealed value from being moved to another row, and another plugin can't
+  // open it.
+  readonly seal: (text: string, context: string) => string;
+  readonly open: (sealed: string, context: string) => string;
 }
 
 // A read-only Profile a plugin ships for the Sessions it owns, such as the
@@ -238,7 +244,7 @@ export interface ServerPluginContext {
   readonly auth: {
     // Asked each time the sign-in page loads, so a plugin that isn't set up
     // yet offers nothing.
-    readonly offer: (login: () => Login | undefined) => void;
+    readonly offer: (logins: () => readonly Login[]) => void;
     // Tried before the plugin's own routes, for every browser, signed in or
     // not, such as an identity provider redirecting back.
     readonly handlePublic: (route: PublicRoute) => void;

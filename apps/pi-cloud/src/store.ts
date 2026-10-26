@@ -730,7 +730,7 @@ export function openStore(
     },
     profileInUse: (id) => selectProfileUse.get(id) !== undefined,
     auth: authStore(db),
-    plugin: (name) => pluginStore(db, name),
+    plugin: (name) => pluginStore(db, name, box),
     pluginSettings: pluginSettingsStore(db),
     close: () => {
       db.close();
@@ -981,7 +981,11 @@ function pluginSettingsStore(db: DatabaseSync): PluginSettingsStore {
 const createdTable = /create\s+table\s+(?:if\s+not\s+exists\s+)?["`]?(\w+)/gi;
 
 // Plugins are trusted in v1, so this only keeps their tables apart by name.
-function pluginStore(db: DatabaseSync, name: string): PluginStore {
+function pluginStore(
+  db: DatabaseSync,
+  name: string,
+  box: SecretBox,
+): PluginStore {
   return {
     exec: (sql) => {
       for (const [, table = ""] of sql.matchAll(createdTable)) {
@@ -996,5 +1000,7 @@ function pluginStore(db: DatabaseSync, name: string): PluginStore {
     run: (sql, ...params) => {
       db.prepare(sql).run(...params);
     },
+    seal: (text, context) => box.seal(text, `plugin:${name}:${context}`),
+    open: (sealed, context) => box.open(sealed, `plugin:${name}:${context}`),
   };
 }

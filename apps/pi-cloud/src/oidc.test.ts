@@ -17,6 +17,7 @@ let logs: string[];
 let server: ReturnType<typeof serve>;
 let provider: ReturnType<typeof fakeProvider>;
 let pedro: () => Promise<string>;
+let providerId: string;
 
 beforeEach(async () => {
   logs = [];
@@ -31,12 +32,7 @@ beforeEach(async () => {
   });
 
   pedro = firstUser(server, logs);
-
-  const saved = await api("PATCH", "/api/plugins/oidc", await pedro(), {
-    settings: settings(),
-  });
-
-  expect(saved.status).toBe(200);
+  providerId = await addProvider(provider.issuer);
 });
 
 afterEach(async () => {
@@ -60,21 +56,47 @@ async function api(
   });
 }
 
-function settings(more: Record<string, unknown> = {}): Record<string, unknown> {
+function providerInput(
+  issuer: string,
+  more: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
-    issuer: provider.issuer,
+    issuer,
     clientId,
     label: "Sign in with IAS",
+    accessGroup: "pi-cloud-users",
+    adminGroup: "pi-cloud-admins",
     ...more,
   };
 }
 
-async function configure(more: Record<string, unknown>): Promise<void> {
-  const saved = await api("PATCH", "/api/plugins/oidc", await pedro(), {
-    settings: settings(more),
-  });
+async function addProvider(
+  issuer: string,
+  more: Record<string, unknown> = {},
+): Promise<string> {
+  const added = await api(
+    "POST",
+    "/api/plugins/oidc/providers",
+    await pedro(),
+    providerInput(issuer, more),
+  );
+
+  expect(added.status).toBe(201);
+
+  return ((await added.json()) as { id: string }).id;
+}
+
+async function configure(more: Record<string, unknown>): Promise<Response> {
+  const saved = await api(
+    "POST",
+    `/api/plugins/oidc/providers/${providerId}`,
+    await pedro(),
+    providerInput(provider.issuer, more),
+  );
 
   expect(saved.status).toBe(200);
+
+  return saved;
 }
 
 async function userOf(cookie: string): Promise<unknown> {
@@ -96,7 +118,10 @@ async function signIn(
   options: { start?: string; cookie?: string; browser?: string } = {},
 ): Promise<{ readonly response: Response; readonly cookie: string }> {
   const started = await fetch(
-    new URL(options.start ?? "/api/plugins/oidc/start", server.url),
+    new URL(
+      options.start ?? `/api/plugins/oidc/start/${providerId}`,
+      server.url,
+    ),
     { redirect: "manual", headers: { cookie: options.cookie ?? "" } },
   );
 
@@ -132,8 +157,143 @@ test("offers the provider on the sign-in page once it is set up", async () => {
   };
 
   expect(status.logins).toEqual([
-    { label: "Sign in with IAS", path: "/api/plugins/oidc/start" },
+    {
+      label: "Sign in with IAS",
+      path: `/api/plugins/oidc/start/${providerId}`,
+    },
   ]);
+});
+
+test("offers a button for each provider and signs in through any of them", async () => {
+  const google = fakeProvider();
+
+  try {
+    const googleId = await addProvider(google.issuer, {
+      label: "Sign in with Google",
+      allowedDomains: ["example.com"],
+    });
+
+    const status = (await (
+      await fetch(new URL("/api/auth", server.url))
+    ).json()) as { logins: { label: string }[] };
+
+    google.next = { ...ana, sub: "google-ana", email_verified: true };
+
+    const started = await fetch(
+      new URL(`/api/plugins/oidc/start/${googleId}`, server.url),
+      { redirect: "manual" },
+    );
+
+    const authorized = await fetch(started.headers.get("location") ?? "", {
+      redirect: "manual",
+    });
+
+    const back = await fetch(authorized.headers.get("location") ?? "", {
+      redirect: "manual",
+      headers: { cookie: cookieOf(started) },
+    });
+
+    expect(status.logins.map(({ label }) => label)).toEqual([
+      "Sign in with IAS",
+      "Sign in with Google",
+    ]);
+
+    expect(started.headers.get("location")).toStartWith(google.issuer);
+
+    expect(await userOf(cookieOf(back))).toMatchObject({
+      name: "ana@example.com",
+    });
+  } finally {
+    await google.stop();
+  }
+});
+
+test("keeps a client secret out of the page, sends it to the provider, and takes it away", async () => {
+  const set = await configure({ clientSecret: "s3cret value" });
+  const listed = await api("GET", "/api/plugins/oidc/providers", await pedro());
+
+  await signIn(ana);
+  const kept = await configure({ clientSecret: "" });
+  await signIn(ana);
+  const removed = await configure({ clientSecret: null });
+  await signIn(ana);
+
+  const basic = `Basic ${Buffer.from(`${clientId}:s3cret+value`).toString("base64")}`;
+
+  expect(await set.json()).toMatchObject({ hasClientSecret: true });
+  expect(await listed.text()).not.toContain("s3cret");
+  expect(await kept.json()).toMatchObject({ hasClientSecret: true });
+  expect(await removed.json()).toMatchObject({ hasClientSecret: false });
+
+  expect(provider.tokenRequests).toEqual([
+    { authorization: basic, clientId: null, verified: true },
+    { authorization: basic, clientId: null, verified: true },
+    { authorization: null, clientId, verified: true },
+  ]);
+});
+
+test("lets only admins see and change providers", async () => {
+  const { cookie } = await signIn(ana);
+
+  const statuses = [
+    (await api("GET", "/api/plugins/oidc/providers", cookie)).status,
+    (
+      await api(
+        "POST",
+        "/api/plugins/oidc/providers",
+        cookie,
+        providerInput(provider.issuer),
+      )
+    ).status,
+    (
+      await api(
+        "POST",
+        `/api/plugins/oidc/providers/${providerId}/remove`,
+        cookie,
+        {},
+      )
+    ).status,
+  ];
+
+  expect(statuses).toEqual([403, 403, 403]);
+});
+
+test("refuses a provider without an issuer URL or a client ID", async () => {
+  const statuses = await Promise.all(
+    [{ issuer: "not a url" }, { clientId: "" }].map(
+      async (more) =>
+        (
+          await api(
+            "POST",
+            "/api/plugins/oidc/providers",
+            await pedro(),
+            providerInput(provider.issuer, more),
+          )
+        ).status,
+    ),
+  );
+
+  expect(statuses).toEqual([400, 400]);
+});
+
+test("stops offering a provider once it is removed", async () => {
+  const removed = await api(
+    "POST",
+    `/api/plugins/oidc/providers/${providerId}/remove`,
+    await pedro(),
+    {},
+  );
+
+  const status = (await (
+    await fetch(new URL("/api/auth", server.url))
+  ).json()) as { logins: unknown[] };
+
+  const start = await fetch(
+    new URL(`/api/plugins/oidc/start/${providerId}`, server.url),
+    { redirect: "manual" },
+  );
+
+  expect([removed.status, status.logins, start.status]).toEqual([200, [], 404]);
 });
 
 test("makes a user for a member of the access group and signs them in", async () => {
@@ -228,11 +388,7 @@ test("reads the admin group again on every sign-in", async () => {
   const first = await signIn(account);
 
   const save = async (cookie: string): Promise<number> =>
-    (
-      await api("PATCH", "/api/plugins/oidc", cookie, {
-        settings: settings(),
-      })
-    ).status;
+    (await api("GET", "/api/plugins/oidc/providers", cookie)).status;
 
   const asAdmin = await save(first.cookie);
 
@@ -266,7 +422,7 @@ test("refuses a callback in a browser that didn't start the sign-in", async () =
 test("lets a password user link their account and sign in with it", async () => {
   const linked = await signIn(
     { ...ana, email: "pedro@example.com" },
-    { start: "/api/plugins/oidc/link", cookie: await pedro() },
+    { start: `/api/plugins/oidc/link/${providerId}`, cookie: await pedro() },
   );
 
   expect(await linked.response.text()).toContain("url=/#settings");
@@ -277,24 +433,33 @@ test("lets a password user link their account and sign in with it", async () => 
     user: unknown;
   };
 
-  const identities = await api(
-    "GET",
-    "/api/plugins/oidc/identities",
-    await pedro(),
-  );
+  const account = await api("GET", "/api/plugins/oidc/account", await pedro());
 
   expect(status.user).toMatchObject({ name: "pedro", admin: true });
 
-  expect(await identities.json()).toEqual({
-    configured: true,
+  expect(await account.json()).toEqual({
+    admin: true,
+    providers: [
+      { id: providerId, label: "Sign in with IAS", issuer: provider.issuer },
+    ],
     identities: [
       {
+        issuer: provider.issuer,
         email: "pedro@example.com",
         linkedAt: expect.any(String) as string,
         created: false,
       },
     ],
   });
+
+  const unlinked = await api(
+    "POST",
+    "/api/plugins/oidc/unlink",
+    await pedro(),
+    { issuer: provider.issuer },
+  );
+
+  expect(await unlinked.json()).toMatchObject({ identities: [] });
 });
 
 test("sends no client secret when none is set, and proves the code with PKCE", async () => {

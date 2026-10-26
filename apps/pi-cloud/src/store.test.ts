@@ -445,3 +445,15 @@ test("refuses a secret key of the wrong length", () => {
     "the secret key must be 32 bytes",
   );
 });
+
+test("seals a plugin's secrets so only that plugin opens them, for that row", () => {
+  const store = openStore(":memory:");
+  const sealed = store.plugin("oidc").seal("s3cret", "provider-1");
+
+  expect(sealed).not.toContain("s3cret");
+  expect(store.plugin("oidc").open(sealed, "provider-1")).toBe("s3cret");
+  expect(() => store.plugin("other").open(sealed, "provider-1")).toThrow();
+  expect(() => store.plugin("oidc").open(sealed, "provider-2")).toThrow();
+
+  store.close();
+});

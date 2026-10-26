@@ -286,7 +286,7 @@ export function startPlugins(
   const toolsetUsers = new Set<string>();
   const routes = new Map<string, PluginRoute>();
   const publicRoutes = new Map<string, PublicRoute>();
-  const logins: { plugin: string; login: () => Login | undefined }[] = [];
+  const logins: { plugin: string; offered: () => readonly Login[] }[] = [];
   const offers: ModelOffer[] = [];
 
   const failures = new Map<string, string>(
@@ -466,7 +466,7 @@ export function startPlugins(
       loadsToolsets: false,
       route: undefined as PluginRoute | undefined,
       publicRoute: undefined as PublicRoute | undefined,
-      logins: [] as (() => Login | undefined)[],
+      logins: [] as (() => readonly Login[])[],
       offers: [] as ModelOffer[],
       profiles: new Map<string, PluginProfile>(),
       loadOnly: undefined as readonly string[] | undefined,
@@ -617,7 +617,7 @@ export function startPlugins(
     }
 
     logins.push(
-      ...staged.logins.map((login) => ({ plugin: plugin.name, login })),
+      ...staged.logins.map((offered) => ({ plugin: plugin.name, offered })),
     );
 
     offers.push(...staged.offers);
@@ -956,13 +956,12 @@ export function startPlugins(
     publicRoute: async (request, name, path) =>
       publicRoutes.get(name)?.(request, path),
     logins: () =>
-      logins.flatMap(({ plugin, login }) => {
-        const offered = login();
-
-        return offered === undefined
-          ? []
-          : [{ ...offered, path: `/api/plugins/${plugin}/${offered.path}` }];
-      }),
+      logins.flatMap(({ plugin, offered }) =>
+        offered().map((login) => ({
+          ...login,
+          path: `/api/plugins/${plugin}/${login.path}`,
+        })),
+      ),
   };
 }
 

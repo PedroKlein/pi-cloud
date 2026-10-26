@@ -52,6 +52,8 @@ function memoryStore(): PluginStore {
     run: (sql, ...params) => {
       db.prepare(sql).run(...(params as SQLInputValue[]));
     },
+    seal: (text) => text,
+    open: (sealed) => sealed,
   };
 }
 

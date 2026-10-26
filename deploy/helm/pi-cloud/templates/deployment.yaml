@@ -57,13 +57,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "pi-cloud.secretName" . }}
                   key: secretKey
-            {{- with .Values.oidc.existingSecret }}
-            - name: PI_CLOUD_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ . }}
-                  key: clientSecret
-            {{- end }}
             {{- if .Values.runnerPods.enabled }}
             - name: PI_CLOUD_IMAGE
               value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
