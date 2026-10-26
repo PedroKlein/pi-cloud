@@ -386,11 +386,12 @@ function toState(value: unknown): ReturnType<typeof workState> {
 function settings(
   project: Project,
   body: unknown,
-): Pick<Project, "name" | "instructions" | "threadModel" | "profileId"> {
-  const { name, instructions, threadModel, profile } = (body ?? {}) as Record<
-    string,
-    unknown
-  >;
+): Pick<
+  Project,
+  "name" | "goal" | "instructions" | "threadModel" | "profileId"
+> {
+  const { name, goal, instructions, threadModel, profile } = (body ??
+    {}) as Record<string, unknown>;
 
   if (
     profile !== undefined &&
@@ -402,6 +403,10 @@ function settings(
 
   if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
     throw new BadRequest("name must not be empty");
+  }
+
+  if (goal !== undefined && typeof goal !== "string") {
+    throw new BadRequest("goal must be text");
   }
 
   if (instructions !== undefined && typeof instructions !== "string") {
@@ -425,6 +430,7 @@ function settings(
 
   return {
     name: name?.trim() ?? project.name,
+    goal: goal?.trim() ?? project.goal,
     instructions: instructions ?? project.instructions,
     threadModel: model,
     profileId: profile === undefined ? project.profileId : profileOf(profile),
@@ -445,6 +451,7 @@ function create(
 ): Project {
   const {
     name,
+    goal,
     instructions,
     repositories,
     environment,
@@ -478,6 +485,7 @@ function create(
     id: randomUUID(),
     ownerId: user.slice("user:".length),
     name: name.trim(),
+    goal: typeof goal === "string" ? goal.trim() : "",
     instructions: typeof instructions === "string" ? instructions : "",
     repositories: urls,
     environmentId:
@@ -575,6 +583,7 @@ function view(
   return {
     id: project.id,
     name: project.name,
+    goal: project.goal,
     instructions: project.instructions,
     repositories: project.repositories,
     environmentId: project.environmentId,

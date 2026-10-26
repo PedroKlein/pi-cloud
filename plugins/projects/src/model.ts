@@ -48,6 +48,7 @@ export interface MemoryFileView {
 export interface ProjectView {
   readonly id: string;
   readonly name: string;
+  readonly goal: string;
   readonly instructions: string;
   readonly repositories: readonly string[];
   readonly environmentId: string | null;

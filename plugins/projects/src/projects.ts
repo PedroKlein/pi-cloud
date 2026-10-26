@@ -6,6 +6,9 @@ export interface Project {
   readonly id: string;
   readonly ownerId: string;
   readonly name: string;
+  // What the Project is for, in the context of the coordinator and every
+  // thread, never sent as a message (ADR 0040).
+  readonly goal: string;
   readonly instructions: string;
   readonly repositories: readonly string[];
   readonly environmentId: string | null;
@@ -47,6 +50,7 @@ interface ProjectRow {
   id: string;
   owner_id: string;
   name: string;
+  goal: string | null;
   instructions: string;
   repositories: string;
   environment_id: string | null;
@@ -75,7 +79,7 @@ export interface ProjectStore {
     id: string,
     settings: Pick<
       Project,
-      "name" | "instructions" | "threadModel" | "profileId"
+      "name" | "goal" | "instructions" | "threadModel" | "profileId"
     >,
   ) => void;
   readonly addMember: (member: Member) => void;
@@ -119,7 +123,7 @@ export function projectStore(
     name: string;
   }[];
 
-  for (const column of ["thread_model", "profile_id"]) {
+  for (const column of ["thread_model", "profile_id", "goal"]) {
     if (!columns.some(({ name }) => name === column)) {
       store.exec(`alter table projects_projects add column ${column} text`);
     }
@@ -162,6 +166,7 @@ export function projectStore(
     id: row.id,
     ownerId: row.owner_id,
     name: row.name,
+    goal: row.goal ?? "",
     instructions: row.instructions,
     repositories: JSON.parse(row.repositories) as string[],
     environmentId: row.environment_id,
@@ -196,11 +201,12 @@ export function projectStore(
     create: (project) => {
       store.run(
         `insert into projects_projects
-          (id, owner_id, name, instructions, repositories, environment_id, profile_id, thread_model, coordinator_id, created_at)
-          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, owner_id, name, goal, instructions, repositories, environment_id, profile_id, thread_model, coordinator_id, created_at)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         project.id,
         project.ownerId,
         project.name,
+        project.goal,
         project.instructions,
         JSON.stringify(project.repositories),
         project.environmentId,
@@ -224,11 +230,12 @@ export function projectStore(
 
       return row && toProject(row);
     },
-    update: (id, { name, instructions, threadModel, profileId }) => {
+    update: (id, { name, goal, instructions, threadModel, profileId }) => {
       store.run(
         `update projects_projects
-          set name = ?, instructions = ?, thread_model = ?, profile_id = ? where id = ?`,
+          set name = ?, goal = ?, instructions = ?, thread_model = ?, profile_id = ? where id = ?`,
         name,
+        goal,
         instructions,
         threadModel,
         profileId,
