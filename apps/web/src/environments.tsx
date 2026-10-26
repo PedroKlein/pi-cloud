@@ -313,6 +313,20 @@ function Editor({
         </ul>
         <JoinKey environment={environment} madeKey={madeKey} onKey={onKey} />
       </Section>
+      {environment.folders.length > 0 && (
+        <Section title="Folders">
+          <ul
+            aria-label="Folders"
+            className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 font-mono text-mono-sm"
+          >
+            {environment.folders.map((folder) => (
+              <li key={folder} className="truncate" title={folder}>
+                {folder}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title={environment.name}>
         <form
           onSubmit={submit}
