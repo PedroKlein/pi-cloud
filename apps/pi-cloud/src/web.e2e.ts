@@ -980,6 +980,49 @@ test("shows why an Environment's last runner pod failed", async () => {
   await page.unroute("**/api/plugins/kubernetes/environments/*");
 });
 
+test("lists a Profile's packages as chips and keeps its JSON under Advanced", async () => {
+  await page.goto(server.url.href);
+  await openSettings("Profiles");
+  await page.getByRole("link", { name: "New Profile" }).click();
+
+  const editor = page.locator("#profiles-page form");
+  const add = editor.getByLabel("Add to Pi packages");
+
+  await editor.getByLabel("Name").fill("Tools");
+  await add.fill("npm:pi-subagents");
+  await add.press("Enter");
+  await add.fill("./tools");
+  await add.press("Enter");
+  await editor.getByRole("button", { name: "Remove npm:pi-subagents" }).click();
+  await editor.getByText(/^Advanced/).click();
+
+  await editor
+    .getByLabel("Pi settings, as settings.json")
+    .fill('{ "defaultThinkingLevel": "low" }');
+
+  await editor.getByRole("button", { name: "Create Profile" }).click();
+  await page.getByRole("link", { name: "Tools" }).waitFor();
+  await page.reload();
+
+  const packages = editor.getByRole("list", { name: "Pi packages" });
+
+  await packages.getByText("./tools").waitFor();
+  expect(await packages.getByRole("listitem").count()).toBe(1);
+
+  await editor
+    .getByText(
+      "Advanced: system prompt, MCP servers and Pi settings as files (1 set)",
+    )
+    .waitFor();
+
+  page.once("dialog", async (dialog) => dialog.accept());
+  await editor.getByRole("button", { name: "Delete" }).click();
+
+  await page
+    .getByRole("link", { name: "Tools" })
+    .waitFor({ state: "detached" });
+});
+
 test("makes a Profile and starts a session that follows its instructions", async () => {
   let request = "";
 
