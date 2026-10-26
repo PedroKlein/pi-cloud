@@ -13,6 +13,11 @@ apiRule:
   enabled: false
   host: ""
   gateway: kyma-system/kyma-gateway
+  # MCP clients, such as Claude Code or Pi, outside the cluster.
+  exposeMcp: false
+  # Runners outside the cluster, such as a laptop. Runner pods reach the
+  # server through its Service.
+  exposeAgents: false
 
 # Runs a runner inside the server too, in the Environment of this name.
 builtInRunner: ""

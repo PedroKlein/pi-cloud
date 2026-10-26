@@ -35,6 +35,12 @@ jobs:
           cluster_name: pi-cloud
       # Releases installed before a values block existed upgrade with --reuse-values.
       - run: helm template pi-cloud deploy/helm/pi-cloud --set oidc=null > /dev/null
+      - name: The APIRule keeps runners and MCP out unless asked
+        run: |
+          rule() { helm template pi-cloud deploy/helm/pi-cloud --set apiRule.enabled=true --set apiRule.host=pi.example.com "$@" --show-only templates/apirule.yaml; }
+          ! rule | grep -E 'path: /(agent|api/mcp$|api/auth/setup)'
+          rule --set apiRule.exposeAgents=true --set apiRule.exposeMcp=true | grep -E 'path: /agent/'
+          rule --set apiRule.exposeMcp=true | grep -E 'path: /api/mcp$'
       - run: docker build -t pi-cloud:ci .
       - run: kind load docker-image pi-cloud:ci --name pi-cloud
       - run: >-
