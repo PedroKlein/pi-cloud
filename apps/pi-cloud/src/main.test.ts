@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
@@ -160,6 +160,64 @@ test("exits an agent started to exit when idle once it has run no session for th
   } finally {
     server.kill("SIGKILL");
     await rm(dataDir, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test("joins an agent started with only a join key under its host's name, sharing the folder it started in", async () => {
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "pi-cloud-")));
+  const main = join(import.meta.dirname, "main.ts");
+
+  const server = spawn(
+    process.execPath,
+    [main, "server", "--port", "0", "--database", ":memory:"],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  let agent: ChildProcess | undefined;
+
+  try {
+    const { url, cookie } = await signedIn(server);
+
+    const made = await fetch(new URL("/api/join-key", url), {
+      method: "POST",
+      headers: { cookie },
+    });
+
+    const { key } = (await made.json()) as { key: string };
+
+    agent = spawn(
+      process.execPath,
+      [main, "agent", "--server", url, "--data-dir", join(folder, ".agent")],
+      {
+        cwd: folder,
+        stdio: "ignore",
+        env: { ...process.env, PI_CLOUD_KEY: key },
+      },
+    );
+
+    let environment: Environment | undefined;
+    while (environment?.folders.length !== 1) {
+      const response = await fetch(new URL("/api/environments", url), {
+        headers: { cookie },
+      });
+
+      [environment] = (await response.json()) as Environment[];
+      await sleep(20);
+    }
+
+    const name = hostname().split(".")[0];
+
+    expect(environment.name).toBe(name ?? "");
+
+    expect(environment.runners.map((runner) => runner.name)).toEqual([
+      name ?? "",
+    ]);
+
+    expect(environment.folders).toEqual([folder]);
+  } finally {
+    agent?.kill("SIGKILL");
+    server.kill("SIGKILL");
+    await rm(folder, { recursive: true, force: true });
   }
 }, 30_000);
 

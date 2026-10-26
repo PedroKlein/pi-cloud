@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { runAgent } from "./agent";
@@ -22,9 +22,9 @@ const usage = `usage:
                   [--provider <name> [--data-dir ~/.pi-cloud/server]
                   [--folder <path>]... [--extension <path>]...]
   PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \\
-  pi-cloud agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
+  pi-cloud agent [--name <host name>] [--capacity <n>] [--exit-when-idle <seconds>]
                  [--server http://127.0.0.1:7420] [--session-binary <path>]
-                 [--data-dir ~/.pi-cloud/agent] [--folder <path>]...
+                 [--data-dir ~/.pi-cloud/agent] [--folder <the current folder>]...
                  [--extension <path>]... [--session <id>]`;
 
 const dataRoot = join(homedir(), ".pi-cloud");
@@ -161,8 +161,18 @@ switch (command) {
 
     const credential = credentialOf(key, token);
 
+    // A machine someone connects by hand runs with its own name and shares
+    // the folder it starts in (ADR 0040). A runner a plugin starts names
+    // itself and shares nothing it isn't told to.
+    const name = values.name ?? (key === undefined ? undefined : hostName());
+
+    const folders =
+      values.folder.length > 0 || key === undefined
+        ? values.folder
+        : [process.cwd()];
+
     if (
-      values.name === undefined ||
+      name === undefined ||
       credential === undefined ||
       (capacity !== undefined &&
         !(Number.isSafeInteger(capacity) && capacity > 0)) ||
@@ -173,14 +183,14 @@ switch (command) {
       process.exit(2);
     }
 
-    await checkFolders(values.folder);
+    await checkFolders(folders);
 
     const dataDir = absolutePath(values["data-dir"]);
     const fauxReply = process.env["PI_CLOUD_FAUX_REPLY"];
 
     await runAgent({
       server: values.server,
-      provider: values.name,
+      provider: name,
       credential,
       ...(capacity !== undefined && { capacity }),
       ...(idleSeconds !== undefined && { exitWhenIdleMs: idleSeconds * 1000 }),
@@ -190,7 +200,7 @@ switch (command) {
       }),
       dataDir,
       extensionPaths: values.extension.map(extensionSource),
-      folders: values.folder,
+      folders,
       ...(fauxReply !== undefined && {
         models: await fauxModels(fauxReply, join(dataDir, "faux-auth.json")),
       }),
@@ -223,6 +233,13 @@ switch (command) {
   default:
     process.stderr.write(`${usage}\n`);
     process.exit(2);
+}
+
+// The first label of the host name, in the letters a runner name allows.
+function hostName(): string {
+  const [label = ""] = hostname().split(".");
+
+  return label.replaceAll(/[^\w-]/g, "-").slice(0, 64) || "machine";
 }
 
 function credentialOf(

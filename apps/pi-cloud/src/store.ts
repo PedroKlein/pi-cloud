@@ -123,6 +123,10 @@ create table if not exists agent_tokens (
   session_id text,
   joined integer not null default 1
 );
+create table if not exists join_keys (
+  key_hash text primary key,
+  created_at text not null
+);
 create table if not exists browser_sessions (
   token_hash text primary key,
   user_id text not null references users (id),
@@ -790,6 +794,16 @@ function authStore(db: DatabaseSync): AuthStore {
     "update environments set key_hash = ? where provider = ?",
   );
 
+  const insertJoinKey = db.prepare(
+    "insert into join_keys (key_hash, created_at) values (?, ?)",
+  );
+
+  const selectJoinKey = db.prepare(
+    "select 1 from join_keys where key_hash = ?",
+  );
+
+  const deleteJoinKey = db.prepare("delete from join_keys where key_hash = ?");
+
   const selectKeyEnvironment = db.prepare(
     "select provider from environments where key_hash = ?",
   );
@@ -889,6 +903,16 @@ function authStore(db: DatabaseSync): AuthStore {
       transaction(db, () => {
         updateKey.run(keyHash, provider);
         deleteJoinedTokens.run(provider);
+      });
+    },
+    insertJoinKey: (keyHash) => {
+      insertJoinKey.run(keyHash, new Date().toISOString());
+    },
+    hasJoinKey: (keyHash) => selectJoinKey.get(keyHash) !== undefined,
+    claimJoinKey: (keyHash, provider) => {
+      transaction(db, () => {
+        deleteJoinKey.run(keyHash);
+        updateKey.run(keyHash, provider);
       });
     },
     keyEnvironment: (keyHash) =>
