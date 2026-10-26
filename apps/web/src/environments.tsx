@@ -1,4 +1,4 @@
-import type { Environment } from "@pi-cloud/protocol";
+import { availability, type Environment } from "@pi-cloud/protocol";
 import {
   Badge,
   Button,
@@ -37,7 +37,7 @@ export function EnvironmentsPage({
       id="environments-page"
       className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
     >
-      <PageTitle description="An Environment is where Sessions run: a pool of machines whose agents joined it, with a setup script, variables and secrets for every Session. Edits reach a Session the next time it starts.">
+      <PageTitle description="An Environment is where Sessions run: a pool of runners, the machines whose agents joined it, with a setup script, variables and secrets for every Session. Edits reach a Session the next time it starts.">
         Environments
       </PageTitle>
       <div className="flex flex-wrap gap-2">
@@ -49,8 +49,12 @@ export function EnvironmentsPage({
             className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:border-accent aria-[current=page]:text-fg-strong"
           >
             {each.name}
-            <Badge state={each.online ? "done" : "offline"}>
-              {each.online ? "Online" : "Offline"}
+            <Badge
+              state={availability(each) === "Offline" ? "offline" : "done"}
+            >
+              {availability(each) === "Starts runners on demand"
+                ? "On demand"
+                : availability(each)}
             </Badge>
           </a>
         ))}
@@ -178,7 +182,7 @@ function JoinKey({
             aria-label="Join command"
             className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm"
           >
-            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --name <machine> --server ${location.origin}`}
+            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --name <runner> --server ${location.origin}`}
           </pre>
         </>
       )}
@@ -280,11 +284,13 @@ function Editor({
 
   return (
     <>
-      <Section title="Machines">
+      <Section title="Runners">
         <ul className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 text-ui">
           {environment.runners.length === 0 && (
             <li className="text-fg-dim">
-              No agent has joined since the server started.
+              {environment.onDemand
+                ? "None is running. One starts when a Session needs it."
+                : "No agent has joined since the server started."}
             </li>
           )}
           {environment.runners.map((runner) => (

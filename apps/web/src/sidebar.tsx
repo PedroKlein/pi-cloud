@@ -1,5 +1,9 @@
 import { ThemeSwitch } from "./theme";
-import type { Environment, Session } from "@pi-cloud/protocol";
+import {
+  availability,
+  type Environment,
+  type Session,
+} from "@pi-cloud/protocol";
 import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
 import { type ReactElement, useEffect, useState } from "react";
 import { useNow } from "@pi-cloud/plugins/web";
@@ -228,15 +232,20 @@ function EnvironmentStatus({
   return (
     <div className="flex items-start gap-2 border-t border-line py-2.5 pr-2 pl-4">
       <ul className="flex flex-1 flex-wrap gap-x-4 gap-y-1 pt-1 text-caption text-fg-dim">
-        {environments.map(({ id, name, online }) => (
-          <li key={id} className="flex items-center gap-1.5">
+        {environments.map((environment) => (
+          <li key={environment.id} className="flex items-center gap-1.5">
             <span
               className={cn(
                 "size-2 rounded-full",
-                online ? "bg-done" : "border border-fg-dim",
+                availability(environment) === "Offline"
+                  ? "border border-fg-dim"
+                  : "bg-done",
               )}
             />
-            {name} {online ? "online" : "offline"}
+            {environment.name}{" "}
+            {availability(environment) === "Starts runners on demand"
+              ? "on demand"
+              : availability(environment).toLowerCase()}
           </li>
         ))}
       </ul>

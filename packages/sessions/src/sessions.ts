@@ -37,7 +37,7 @@ export type StoredSession = Omit<Session, "online" | "waiting">;
 
 export type StoredEnvironment = Omit<
   Environment,
-  "online" | "runners" | "folders" | "models" | "secrets"
+  "online" | "onDemand" | "runners" | "folders" | "models" | "secrets"
 > & { readonly secrets: Readonly<Record<string, string>> };
 
 // v1 has one user, who owns every record (ADR 0015).
@@ -130,6 +130,8 @@ export interface SessionsOptions {
   // settings.
   readonly sessionPlugins?: () => SessionPlugins;
   readonly offeredModels?: ModelOffer;
+  // Whether a plugin starts runners for the Environment on demand.
+  readonly startsRunners?: (environmentId: string) => boolean;
   // A Profile a plugin provides, which only the plugin's own Sessions run on.
   readonly pluginProfile?: (id: string) => PluginProfile | undefined;
 }
@@ -159,6 +161,7 @@ export class Sessions {
   readonly #changed: () => void;
   readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
+  readonly #startsRunners: (environmentId: string) => boolean;
   readonly #pluginProfile: (id: string) => PluginProfile | undefined;
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
@@ -190,6 +193,7 @@ export class Sessions {
       options.sessionPlugins ?? (() => ({ plugins: [], pluginSettings: {} }));
 
     this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
+    this.#startsRunners = options.startsRunners ?? (() => false);
     this.#pluginProfile = options.pluginProfile ?? (() => undefined);
   }
 
@@ -526,6 +530,7 @@ export class Sessions {
         ...environment,
         secrets: Object.keys(environment.secrets),
         online: runners.some(({ online }) => online),
+        onDemand: this.#startsRunners(environment.id),
         runners: runners.map(({ name, online, capacity }) => ({
           name,
           online,

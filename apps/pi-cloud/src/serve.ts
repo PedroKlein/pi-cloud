@@ -118,6 +118,7 @@ export function serve(options: ServeOptions): {
     },
     sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
+    startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),
     pluginProfile: (id) => pluginHost.profile(id),
   });
 

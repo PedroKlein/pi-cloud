@@ -1,4 +1,5 @@
 import {
+  availability,
   type Environment,
   type Profile,
   type Session,
@@ -346,7 +347,7 @@ export function NewSessionDialog({
               options={environments.map((environment) => ({
                 value: environment.id,
                 label: environment.name,
-                detail: environment.online ? "online" : "offline",
+                detail: availability(environment).toLowerCase(),
               }))}
               selected={chosen ? [chosen.id] : []}
               onChange={([environment]) => {
