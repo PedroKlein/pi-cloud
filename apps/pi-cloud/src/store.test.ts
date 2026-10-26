@@ -488,6 +488,11 @@ test("moves Profiles from the database to folders and points at them", () => {
       content text not null,
       created_at text not null
     );
+    drop table profile_defaults;
+    create table profile_defaults (
+      owner_id text primary key,
+      profile_id text not null references profiles (id)
+    );
     insert into environments (id, name, provider, owner_id, created_at)
       values ('e1', 'vm', 'vm', 'local', '2026-10-24T00:00:00.000Z');
     create table projects_projects (id text primary key, profile_id text);

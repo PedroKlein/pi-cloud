@@ -338,6 +338,18 @@ function moveProfilesToFolders(
     .get();
 
   transaction(db, () => {
+    // The old table's profile_id referenced Profile rows, which would refuse
+    // the folder ids.
+    db.exec(`
+      create table profile_defaults_moved (
+        owner_id text primary key,
+        profile_id text not null
+      );
+      insert into profile_defaults_moved select owner_id, profile_id from profile_defaults;
+      drop table profile_defaults;
+      alter table profile_defaults_moved rename to profile_defaults;
+    `);
+
     for (const [from, to] of moved) {
       db.prepare("update sessions set profile_id = ? where profile_id = ?").run(
         to,
@@ -355,17 +367,7 @@ function moveProfilesToFolders(
       }
     }
 
-    // The old table's profile_id referenced Profile rows.
-    db.exec(`
-      create table profile_defaults_moved (
-        owner_id text primary key,
-        profile_id text not null
-      );
-      insert into profile_defaults_moved select owner_id, profile_id from profile_defaults;
-      drop table profile_defaults;
-      alter table profile_defaults_moved rename to profile_defaults;
-      drop table profiles;
-    `);
+    db.exec("drop table profiles");
   });
 }
 
