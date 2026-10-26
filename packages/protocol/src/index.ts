@@ -25,6 +25,18 @@ export interface EnvironmentKey {
 // (ADR 0032).
 export const leaseMs = 60_000;
 
+// What the UI says about an Environment: a runner is online, a plugin starts
+// one when a Session needs it, or none can take a Session now (ADR 0040).
+export function availability(
+  environment: Pick<Environment, "online" | "onDemand">,
+): "Online" | "Starts runners on demand" | "Offline" {
+  if (environment.online) {
+    return "Online";
+  }
+
+  return environment.onDemand ? "Starts runners on demand" : "Offline";
+}
+
 export function movable(workspace: Workspace): boolean {
   return workspace.kind === "clone" || workspace.kind === "repositories";
 }
@@ -900,6 +912,9 @@ export interface Environment {
   readonly ownerId: string;
   readonly createdAt: string;
   readonly online: boolean;
+  // A plugin starts runners for it when a Session needs one, such as
+  // Kubernetes pods, so it takes Sessions with no runner online (ADR 0040).
+  readonly onDemand: boolean;
   readonly runners: readonly Runner[];
   readonly folders: readonly string[];
   readonly models: readonly ModelRef[];

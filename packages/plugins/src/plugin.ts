@@ -244,6 +244,11 @@ export interface ServerPluginContext {
     // and a new Environment key leaves it be.
     readonly runnerToken: (environmentId: string, runner: string) => string;
     readonly revokeRunner: (environmentId: string, runner: string) => void;
+    // Says which Environments the plugin starts runners for on demand, so
+    // they don't read as offline while none is running.
+    readonly startsRunners: (
+      starts: (environmentId: string) => boolean,
+    ) => void;
   };
   readonly profiles: {
     // Returns the id the plugin starts its Sessions with.

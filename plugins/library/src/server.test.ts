@@ -78,6 +78,7 @@ function registered(
       unplaced: unused,
       runnerToken: unused,
       revokeRunner: unused,
+      startsRunners: unused,
     },
     sessions: {
       loadOnly: unused,

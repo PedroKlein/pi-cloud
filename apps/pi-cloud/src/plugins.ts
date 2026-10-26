@@ -208,6 +208,7 @@ export interface PluginHost {
     actor: UserActor,
   ) => Promise<ToolResult>;
   readonly offeredModels: (environmentId: string) => OfferedModels;
+  readonly startsRunners: (environmentId: string) => boolean;
   readonly route: (
     request: Request,
     name: string,
@@ -230,6 +231,7 @@ function pluginEnvironments(
     readonly token: (environment: string, runner: string) => string;
     readonly revoke: (environment: string, runner: string) => void;
   },
+  startsRunners: ServerPluginContext["environments"]["startsRunners"],
 ): ServerPluginContext["environments"] {
   const provider = (environmentId: string): string => {
     const found = sessions
@@ -251,6 +253,7 @@ function pluginEnvironments(
     revokeRunner: (environmentId, runner) => {
       runners.revoke(provider(environmentId), runner);
     },
+    startsRunners,
   };
 }
 
@@ -290,6 +293,7 @@ export function startPlugins(
   const publicRoutes = new Map<string, PublicRoute>();
   const logins: { plugin: string; offered: () => readonly Login[] }[] = [];
   const offers: ModelOffer[] = [];
+  const starters: ((environmentId: string) => boolean)[] = [];
 
   const failures = new Map<string, string>(
     deps.installed?.plugins.flatMap(({ manifest: { id }, error }) =>
@@ -470,6 +474,7 @@ export function startPlugins(
       publicRoute: undefined as PublicRoute | undefined,
       logins: [] as (() => readonly Login[])[],
       offers: [] as ModelOffer[],
+      starters: [] as ((environmentId: string) => boolean)[],
       profiles: new Map<string, PluginProfile>(),
       loadOnly: undefined as readonly string[] | undefined,
       unsubscribes: [] as (() => void)[],
@@ -539,7 +544,13 @@ export function startPlugins(
           sessions: pluginSessions(deps.sessions, plugin.name, (names) => {
             staged.loadOnly = names;
           }),
-          environments: pluginEnvironments(deps.sessions, deps.runners),
+          environments: pluginEnvironments(
+            deps.sessions,
+            deps.runners,
+            (starts) => {
+              staged.starters.push(starts);
+            },
+          ),
           profiles: {
             provide: (key, { name: _name, ...content }) => {
               const id = `${plugin.name}.${key}`;
@@ -624,6 +635,7 @@ export function startPlugins(
     );
 
     offers.push(...staged.offers);
+    starters.push(...staged.starters);
 
     for (const [id, profile] of staged.profiles) {
       profiles.set(id, profile);
@@ -954,6 +966,8 @@ export function startPlugins(
         ...(fallback && { default: fallback }),
       };
     },
+    startsRunners: (environmentId) =>
+      starters.some((starts) => starts(environmentId)),
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
     publicRoute: async (request, name, path) =>

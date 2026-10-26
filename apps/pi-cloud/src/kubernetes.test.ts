@@ -229,6 +229,34 @@ function failAll(): void {
   }
 }
 
+test("reads an Environment that starts runner pods as on demand, not offline", async () => {
+  const environments = async (): Promise<readonly Environment[]> =>
+    (await (await call("GET", "/api/environments")).json()) as Environment[];
+
+  const { environment: plain } = (await (
+    await call("POST", "/api/environments", { name: "plain" })
+  ).json()) as { environment: Environment };
+
+  const pods = await kubernetesEnvironment({ capacity: 1, maxPods: 2 });
+
+  const listed = await environments();
+
+  expect(listed.find(({ id }) => id === pods.id)).toMatchObject({
+    online: false,
+    onDemand: true,
+  });
+
+  expect(listed.find(({ id }) => id === plain.id)?.onDemand).toBe(false);
+
+  await call("POST", `/api/plugins/kubernetes/environments/${pods.id}`, {
+    settings: null,
+  });
+
+  expect(
+    (await environments()).find(({ id }) => id === pods.id)?.onDemand,
+  ).toBe(false);
+});
+
 test("starts one runner pod per Session no runner can take, up to the most allowed", async () => {
   const environment = await kubernetesEnvironment({ capacity: 1, maxPods: 2 });
 

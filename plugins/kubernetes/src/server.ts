@@ -140,6 +140,12 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         return answer(environmentId, settings);
       });
 
+      if (startsPods) {
+        context.environments.startsRunners(
+          (environmentId) => store.get(environmentId) !== undefined,
+        );
+      }
+
       if (api === undefined || image === undefined || server === undefined) {
         context.log("kubernetes runner pods off", {
           inCluster: api !== undefined,

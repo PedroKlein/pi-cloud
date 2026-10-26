@@ -4,7 +4,7 @@ import {
   type WebContext,
   type WebPlugin,
 } from "@pi-cloud/plugins/web";
-import type { Environment } from "@pi-cloud/protocol";
+import { availability, type Environment } from "@pi-cloud/protocol";
 import {
   Badge,
   Button,
@@ -109,11 +109,12 @@ function EnvironmentSection({
       title={
         <span className="flex items-center gap-3">
           {environment.name}
-          <span className="text-label font-normal text-fg-dim">
-            {environment.provider}
-          </span>
-          <Badge state={environment.online ? "done" : "offline"}>
-            {environment.online ? "Online" : "Offline"}
+          <Badge
+            state={availability(environment) === "Offline" ? "offline" : "done"}
+          >
+            {availability(environment) === "Starts runners on demand"
+              ? "On demand"
+              : availability(environment)}
           </Badge>
         </span>
       }
