@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { lstat, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,15 +9,14 @@ import type {
   ProfileContent,
   ProfileExport,
 } from "@pi-cloud/protocol";
-
-export type StoredProfile = Omit<Profile, "isDefault">;
+import {
+  defaultProfileId,
+  isRecord,
+  type ProfileFolders,
+  type StoredProfile,
+} from "./folders";
 
 export interface ProfileStore {
-  readonly profiles: (ownerId: string) => readonly StoredProfile[];
-  readonly profile: (id: string) => StoredProfile | undefined;
-  readonly insertProfile: (profile: StoredProfile) => void;
-  readonly updateProfile: (profile: StoredProfile) => void;
-  readonly deleteProfile: (id: string) => void;
   readonly defaultProfileId: (ownerId: string) => string;
   readonly setDefaultProfile: (ownerId: string, id: string) => void;
   // Unarchived Sessions that run with the Profile.
@@ -27,7 +25,7 @@ export interface ProfileStore {
 
 export class InvalidProfile extends Error {}
 
-type Rejection = "not_found" | "default" | "in_use";
+type Rejection = "not_found" | "default" | "in_use" | "admin_only";
 
 type Result<T> =
   | { readonly ok: true; readonly value: T }
@@ -39,72 +37,106 @@ const gitTimeoutMs = 60_000;
 const maxExportBytes = 1024 * 1024;
 const run = promisify(execFile);
 
+// The Profiles a user sees: their own and the shared ones, which only admins
+// change (ADR 0041).
 export class Profiles {
+  readonly #folders: ProfileFolders;
   readonly #store: ProfileStore;
   readonly #ownerId: string;
 
-  constructor(store: ProfileStore, ownerId: string) {
+  constructor(folders: ProfileFolders, store: ProfileStore, ownerId: string) {
+    this.#folders = folders;
     this.#store = store;
     this.#ownerId = ownerId;
   }
 
   list(): readonly Profile[] {
-    const defaultId = this.#store.defaultProfileId(this.#ownerId);
+    return this.#folders
+      .ids()
+      .flatMap((id) => {
+        const profile = this.#visible(id);
 
-    return this.#store
-      .profiles(this.#ownerId)
-      .map((profile) => ({ ...profile, isDefault: profile.id === defaultId }));
+        return profile ? [this.#view(profile)] : [];
+      })
+      .sort(
+        (a, b) =>
+          Number(b.id === defaultProfileId) -
+            Number(a.id === defaultProfileId) || a.name.localeCompare(b.name),
+      );
   }
 
   get(id: string): Profile | undefined {
-    const profile = this.#owned(id);
+    const profile = this.#visible(id);
 
     return profile && this.#view(profile);
   }
 
   // Throws InvalidProfile when the body isn't a name with Profile content.
-  create(body: unknown): Profile {
+  create(body: unknown, admin: boolean): Result<Profile> {
     const fields = fieldsOf(body);
+    const name = nameOf(fields["name"]);
+    const content = contentOf(fields);
+
+    if (fields["shared"] === true && !admin) {
+      return { ok: false, reason: "admin_only" };
+    }
 
     const profile: StoredProfile = {
-      id: randomUUID(),
-      name: nameOf(fields["name"]),
-      ownerId: this.#ownerId,
+      id: this.#folders.freeId(name),
+      name,
+      ownerId: fields["shared"] === true ? null : this.#ownerId,
       createdAt: new Date().toISOString(),
-      ...contentOf(fields),
+      ...content,
     };
 
-    this.#store.insertProfile(profile);
+    this.#folders.write(profile.id, profile, content);
 
-    return this.#view(profile);
+    return { ok: true, value: this.#view(profile) };
   }
 
   // Edits reach a Session the next time its Pi process starts (ADR 0031).
-  update(id: string, body: unknown): Result<Profile> {
-    const profile = this.#owned(id);
+  update(id: string, body: unknown, admin: boolean): Result<Profile> {
+    const profile = this.#visible(id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
 
+    if (profile.ownerId === null && !admin) {
+      return { ok: false, reason: "admin_only" };
+    }
+
     const fields = fieldsOf(body);
+    const content = contentOf({ ...profile, ...fields });
 
     const updated: StoredProfile = {
       ...profile,
       ...(fields["name"] !== undefined && { name: nameOf(fields["name"]) }),
-      ...contentOf({ ...profile, ...fields }),
+      ...content,
     };
 
-    this.#store.updateProfile(updated);
+    const given = Object.fromEntries(
+      Object.entries(content).filter(([key]) => key in fields),
+    );
+
+    this.#folders.write(id, updated, given);
 
     return { ok: true, value: this.#view(updated) };
   }
 
-  remove(id: string): Result<undefined> {
-    if (!this.#owned(id)) {
+  remove(id: string, admin: boolean): Result<undefined> {
+    const profile = this.#visible(id);
+    if (!profile) {
       return { ok: false, reason: "not_found" };
     }
 
-    if (this.#store.defaultProfileId(this.#ownerId) === id) {
+    if (profile.ownerId === null && !admin) {
+      return { ok: false, reason: "admin_only" };
+    }
+
+    if (
+      id === defaultProfileId ||
+      this.#store.defaultProfileId(this.#ownerId) === id
+    ) {
       return { ok: false, reason: "default" };
     }
 
@@ -112,13 +144,13 @@ export class Profiles {
       return { ok: false, reason: "in_use" };
     }
 
-    this.#store.deleteProfile(id);
+    this.#folders.remove(id);
 
     return { ok: true, value: undefined };
   }
 
   makeDefault(id: string): Result<Profile> {
-    const profile = this.#owned(id);
+    const profile = this.#visible(id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
@@ -129,7 +161,7 @@ export class Profiles {
   }
 
   exportOf(id: string): ProfileExport | undefined {
-    const profile = this.#owned(id);
+    const profile = this.#visible(id);
     if (!profile) {
       return undefined;
     }
@@ -151,11 +183,18 @@ export class Profiles {
 
   // An import is a copy the importer owns (ADR 0031).
   import(file: unknown): Profile {
-    if (fieldsOf(file)["piCloudProfile"] !== 1) {
+    const fields = fieldsOf(file);
+    if (fields["piCloudProfile"] !== 1) {
       throw new InvalidProfile("not a Pi Cloud Profile file");
     }
 
-    return this.create(file);
+    const { shared: _ignored, ...owned } = fields;
+    const created = this.create(owned, false);
+    if (!created.ok) {
+      throw new InvalidProfile(created.reason);
+    }
+
+    return created.value;
   }
 
   // The server clones with its own git setup, so only remote https and ssh
@@ -206,10 +245,12 @@ export class Profiles {
     }
   }
 
-  #owned(id: string): StoredProfile | undefined {
-    const profile = this.#store.profile(id);
+  #visible(id: string): StoredProfile | undefined {
+    const profile = this.#folders.read(id);
 
-    return profile?.ownerId === this.#ownerId ? profile : undefined;
+    return profile?.ownerId === null || profile?.ownerId === this.#ownerId
+      ? profile
+      : undefined;
   }
 
   #view(profile: StoredProfile): Profile {
@@ -234,10 +275,6 @@ function fieldsOf(value: unknown): Record<string, unknown> {
   }
 
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function nameOf(value: unknown): string {

@@ -44,10 +44,11 @@ export type StoredEnvironment = Omit<
 export const owner = "local";
 
 export interface SessionStore {
-  profile: (
-    id: string,
-  ) =>
-    | (ProfileContent & { readonly id: string; readonly ownerId: string })
+  profile: (id: string) =>
+    | (ProfileContent & {
+        readonly id: string;
+        readonly ownerId: string | null;
+      })
     | undefined;
   defaultProfileId: (ownerId: string) => string;
   repositoryTrust: (ownerId: string, repository: string) => boolean | null;
@@ -223,9 +224,13 @@ export class Sessions {
     const profileId = request.profile ?? this.#store.defaultProfileId(owner);
     const provided = this.#pluginProfile(profileId);
 
+    const stored = this.#store.profile(profileId);
+
+    // Shared Profiles have no owner (ADR 0041).
     const usable =
       provided === undefined
-        ? this.#store.profile(profileId)?.ownerId === owner
+        ? stored !== undefined &&
+          (stored.ownerId === null || stored.ownerId === owner)
         : provided.plugin === ownedBy?.plugin;
 
     if (!usable) {

@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { ProfileFolders } from "@pi-cloud/profiles";
 import type { StoredSession } from "@pi-cloud/sessions";
 import { openStore } from "./store";
 
@@ -41,11 +42,10 @@ test("keeps sessions from a database that stored a working directory", () => {
   const store = openStore(path);
   const session = store.get("s1");
   const environments = store.environments();
-  const [profile] = store.profiles("local");
   const defaultProfileId = store.defaultProfileId("local");
   store.close();
 
-  expect(profile).toMatchObject({ id: defaultProfileId, name: "Default" });
+  expect(defaultProfileId).toBe("default");
 
   expect(environments).toMatchObject([
     { name: "local", provider: "local", ownerId: "local" },
@@ -457,3 +457,102 @@ test("seals a plugin's secrets so only that plugin opens them, for that row", ()
 
   store.close();
 });
+
+test("moves Profiles from the database to folders and points at them", () => {
+  const path = join(root, "server.db");
+  openStore(path, undefined, folders()).close();
+
+  const old = new DatabaseSync(path);
+
+  const empty = JSON.stringify({
+    packages: [],
+    agentsMd: "",
+    systemMd: "",
+    appendSystemMd: "",
+    mcpServers: {},
+    settings: {},
+  });
+
+  const work = JSON.stringify({
+    ...(JSON.parse(empty) as object),
+    packages: ["npm:pi-goal-x"],
+    agentsMd: "Be brief.",
+    settings: { defaultThinkingLevel: "high" },
+  });
+
+  old.exec(`
+    create table profiles (
+      id text primary key,
+      owner_id text not null,
+      name text not null,
+      content text not null,
+      created_at text not null
+    );
+    insert into environments (id, name, provider, owner_id, created_at)
+      values ('e1', 'vm', 'vm', 'local', '2026-10-24T00:00:00.000Z');
+    create table projects_projects (id text primary key, profile_id text);
+    insert into projects_projects values ('p1', 'uuid-work');
+  `);
+
+  const insertProfile = old.prepare(
+    "insert into profiles values (?, 'local', ?, ?, '2026-10-24T00:00:00.000Z')",
+  );
+
+  insertProfile.run("uuid-default", "Default", empty);
+  insertProfile.run("uuid-work", "Work", work);
+
+  const insertSession = old.prepare(
+    `insert into sessions (id, environment_id, owner_id, runner, profile_id, workspace, status, generation, created_at)
+      values (?, 'e1', 'local', 'vm', ?, '{"kind":"folder","path":"/w"}', 'idle', 1, '2026-10-24T00:00:00.000Z')`,
+  );
+
+  insertSession.run("s1", "uuid-default");
+  insertSession.run("s2", "uuid-work");
+
+  old.exec(
+    "insert into profile_defaults (owner_id, profile_id) values ('local', 'uuid-work')",
+  );
+
+  old.close();
+
+  const profiles = folders();
+  const store = openStore(path, undefined, profiles);
+  const sessions = [store.get("s1"), store.get("s2")];
+  const defaultProfileId = store.defaultProfileId("local");
+  store.close();
+
+  expect(sessions.map((session) => session?.profileId)).toEqual([
+    "default",
+    "work",
+  ]);
+
+  expect(defaultProfileId).toBe("work");
+  expect(profiles.ids()).toEqual(["default", "work"]);
+
+  expect(profiles.read("work")).toMatchObject({
+    name: "Work",
+    ownerId: "local",
+    packages: ["npm:pi-goal-x"],
+    agentsMd: "Be brief.",
+    settings: { defaultThinkingLevel: "high" },
+  });
+
+  const migrated = new DatabaseSync(path);
+
+  const tables = migrated
+    .prepare("select name from sqlite_master where name = 'profiles'")
+    .all();
+
+  const project = migrated
+    .prepare("select profile_id from projects_projects")
+    .get();
+
+  migrated.close();
+
+  expect(tables).toEqual([]);
+  expect(project).toEqual({ profile_id: "work" });
+});
+
+function folders(): ProfileFolders {
+  return new ProfileFolders(join(root, "profiles"), () => undefined);
+}

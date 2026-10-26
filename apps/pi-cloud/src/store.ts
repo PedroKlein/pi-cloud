@@ -2,19 +2,22 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import {
-  emptyProfile,
-  type ModelRef,
-  type PluginSettings,
-  type ProfileContent,
-  type SessionOwner,
-  type SessionStatus,
-  type ThinkingLevel,
-  type Workspace,
-  type WorkspaceRemoval,
+import type {
+  ModelRef,
+  PluginSettings,
+  ProfileContent,
+  SessionOwner,
+  SessionStatus,
+  ThinkingLevel,
+  Workspace,
+  WorkspaceRemoval,
 } from "@pi-cloud/protocol";
 import type { PluginStore } from "@pi-cloud/plugins";
-import type { ProfileStore, StoredProfile } from "@pi-cloud/profiles";
+import {
+  defaultProfileId as sharedDefault,
+  type ProfileFolders,
+  type ProfileStore,
+} from "@pi-cloud/profiles";
 import type { AuthStore, User } from "./auth";
 import { fileSecretKey, SecretBox } from "./secret-box";
 import {
@@ -88,13 +91,6 @@ create table if not exists environments (
 `;
 
 const profileTables = `
-create table if not exists profiles (
-  id text primary key,
-  owner_id text not null,
-  name text not null,
-  content text not null,
-  created_at text not null
-);
 create table if not exists repository_trust (
   owner_id text not null,
   repository text not null,
@@ -103,7 +99,7 @@ create table if not exists repository_trust (
 );
 create table if not exists profile_defaults (
   owner_id text primary key,
-  profile_id text not null references profiles (id)
+  profile_id text not null
 );
 `;
 
@@ -284,45 +280,132 @@ function migrate(db: DatabaseSync): void {
   }
 
   // Sessions from before Profiles run with the default one.
-  const profileId = defaultProfileId(db, owner);
   if (sessionsTableExists && !hasColumn("profile_id")) {
     db.exec(
-      `alter table sessions add column profile_id text not null default '${profileId}'`,
+      `alter table sessions add column profile_id text not null default '${defaultProfileId(db, owner)}'`,
     );
   }
 
   db.exec(sessionTables);
 }
 
-// Every owner has a default Profile, which starts empty (ADR 0034).
+// Owners use the shared default Profile until they pick another (ADR 0041).
 function defaultProfileId(db: DatabaseSync, ownerId: string): string {
   const found = db
     .prepare("select profile_id from profile_defaults where owner_id = ?")
     .get(ownerId) as { profile_id: string } | undefined;
 
-  if (found) {
-    return found.profile_id;
+  return found?.profile_id ?? sharedDefault;
+}
+
+// Profiles were rows before they were folders (ADR 0041). Each becomes a
+// folder named after it, and what pointed at its old id points at the folder.
+// The empty Default Profile every owner got points at the shared one instead.
+function moveProfilesToFolders(
+  db: DatabaseSync,
+  folders: ProfileFolders | undefined,
+): void {
+  const legacy = db
+    .prepare(
+      "select name from sqlite_master where type = 'table' and name = 'profiles'",
+    )
+    .get();
+
+  if (legacy === undefined) {
+    return;
   }
 
-  const id = randomUUID();
+  const rows = db
+    .prepare("select * from profiles order by created_at, name")
+    .all() as unknown as ProfileRow[];
+
+  if (rows.length > 0 && folders === undefined) {
+    throw new Error(
+      "the database holds Profiles and has no folder to move them to",
+    );
+  }
+
+  const moved = new Map(
+    folders === undefined
+      ? []
+      : rows.map((row) => [row.id, moveProfile(row, folders)] as const),
+  );
+
+  const projects = db
+    .prepare(
+      "select name from sqlite_master where type = 'table' and name = 'projects_projects'",
+    )
+    .get();
 
   transaction(db, () => {
-    db.prepare(
-      "insert into profiles (id, owner_id, name, content, created_at) values (?, ?, ?, ?, ?)",
-    ).run(
-      id,
-      ownerId,
-      "Default",
-      JSON.stringify(emptyProfile),
-      new Date().toISOString(),
-    );
+    for (const [from, to] of moved) {
+      db.prepare("update sessions set profile_id = ? where profile_id = ?").run(
+        to,
+        from,
+      );
 
-    db.prepare(
-      "insert into profile_defaults (owner_id, profile_id) values (?, ?)",
-    ).run(ownerId, id);
+      db.prepare(
+        "update profile_defaults set profile_id = ? where profile_id = ?",
+      ).run(to, from);
+
+      if (projects !== undefined) {
+        db.prepare(
+          "update projects_projects set profile_id = ? where profile_id = ?",
+        ).run(to, from);
+      }
+    }
+
+    // The old table's profile_id referenced Profile rows.
+    db.exec(`
+      create table profile_defaults_moved (
+        owner_id text primary key,
+        profile_id text not null
+      );
+      insert into profile_defaults_moved select owner_id, profile_id from profile_defaults;
+      drop table profile_defaults;
+      alter table profile_defaults_moved rename to profile_defaults;
+      drop table profiles;
+    `);
+  });
+}
+
+function moveProfile(row: ProfileRow, folders: ProfileFolders): string {
+  const content = JSON.parse(row.content) as ProfileContent;
+  if (row.name === "Default" && isEmpty(content)) {
+    return sharedDefault;
+  }
+
+  // A move cut short left some folders behind, which are used again.
+  const written = folders.ids().find((id) => {
+    const profile = folders.read(id);
+
+    return (
+      profile?.createdAt === row.created_at &&
+      profile.ownerId === row.owner_id &&
+      profile.name === row.name
+    );
   });
 
+  const id = written ?? folders.freeId(row.name);
+
+  folders.write(
+    id,
+    { name: row.name, ownerId: row.owner_id, createdAt: row.created_at },
+    content,
+  );
+
   return id;
+}
+
+function isEmpty(content: ProfileContent): boolean {
+  return (
+    content.packages.length === 0 &&
+    content.agentsMd === "" &&
+    content.systemMd === "" &&
+    content.appendSystemMd === "" &&
+    Object.keys(content.mcpServers).length === 0 &&
+    Object.keys(content.settings).length === 0
+  );
 }
 
 function migrateToEnvironments(db: DatabaseSync): void {
@@ -387,6 +470,7 @@ function transaction(db: DatabaseSync, run: () => void): void {
 export function openStore(
   path: string,
   secretKey?: Buffer,
+  profiles?: ProfileFolders,
 ): SessionStore &
   ProfileStore & {
     auth: AuthStore;
@@ -407,6 +491,7 @@ export function openStore(
   const db = new DatabaseSync(path);
   db.exec("pragma journal_mode = wal");
   migrate(db);
+  moveProfilesToFolders(db, profiles);
   sealSecrets(db, box);
 
   const toSession = (row: SessionRow): StoredSession => ({
@@ -519,47 +604,6 @@ export function openStore(
 
   const updateTitle = db.prepare("update sessions set title = ? where id = ?");
   const updateModel = db.prepare("update sessions set model = ? where id = ?");
-
-  const toProfile = (row: ProfileRow): StoredProfile => ({
-    id: row.id,
-    ownerId: row.owner_id,
-    name: row.name,
-    createdAt: row.created_at,
-    ...(JSON.parse(row.content) as ProfileContent),
-  });
-
-  const contentJson = ({
-    packages,
-    agentsMd,
-    systemMd,
-    appendSystemMd,
-    mcpServers,
-    settings,
-  }: ProfileContent): string =>
-    JSON.stringify({
-      packages,
-      agentsMd,
-      systemMd,
-      appendSystemMd,
-      mcpServers,
-      settings,
-    } satisfies ProfileContent);
-
-  const selectProfiles = db.prepare(
-    "select * from profiles where owner_id = ? order by created_at, name",
-  );
-
-  const selectProfile = db.prepare("select * from profiles where id = ?");
-
-  const insertProfile = db.prepare(
-    "insert into profiles (id, owner_id, name, content, created_at) values (?, ?, ?, ?, ?)",
-  );
-
-  const updateProfile = db.prepare(
-    "update profiles set name = ?, content = ? where id = ?",
-  );
-
-  const deleteProfile = db.prepare("delete from profiles where id = ?");
 
   const upsertDefault = db.prepare(
     "insert into profile_defaults (owner_id, profile_id) values (?, ?) on conflict (owner_id) do update set profile_id = excluded.profile_id",
@@ -702,28 +746,7 @@ export function openStore(
     check: () => {
       selectAnySession.get();
     },
-    profiles: (ownerId) =>
-      (selectProfiles.all(ownerId) as unknown as ProfileRow[]).map(toProfile),
-    profile: (id) => {
-      const row = selectProfile.get(id) as ProfileRow | undefined;
-
-      return row && toProfile(row);
-    },
-    insertProfile: (profile) => {
-      insertProfile.run(
-        profile.id,
-        profile.ownerId,
-        profile.name,
-        contentJson(profile),
-        profile.createdAt,
-      );
-    },
-    updateProfile: (profile) => {
-      updateProfile.run(profile.name, contentJson(profile), profile.id);
-    },
-    deleteProfile: (id) => {
-      deleteProfile.run(id);
-    },
+    profile: (id) => profiles?.read(id),
     defaultProfileId: (ownerId) => defaultProfileId(db, ownerId),
     setDefaultProfile: (ownerId, id) => {
       upsertDefault.run(ownerId, id);

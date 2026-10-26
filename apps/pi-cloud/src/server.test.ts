@@ -13,7 +13,7 @@ import {
   type WorkPoll,
 } from "@pi-cloud/protocol";
 import type { Log } from "@pi-cloud/providers";
-import { Profiles } from "@pi-cloud/profiles";
+import { ProfileFolders, Profiles } from "@pi-cloud/profiles";
 import { owner, Sessions } from "@pi-cloud/sessions";
 import { Auth } from "./auth";
 import { changeFeed } from "./changes";
@@ -23,8 +23,11 @@ import { readSse } from "./sse";
 import { openStore } from "./store";
 import { firstUserCookie } from "./testdata/sign-in";
 
+// No folder: only the shared default Profile, which is plain Pi.
+const noProfiles = new ProfileFolders("/nonexistent/profiles", () => undefined);
+
 test("reports unhealthy when the database can't be read, keeping why in the log", async () => {
-  const store = openStore(":memory:");
+  const store = openStore(":memory:", undefined, noProfiles);
   const logged: string[] = [];
 
   const sessions = new Sessions(store);
@@ -32,7 +35,7 @@ test("reports unhealthy when the database can't be read, keeping why in the log"
   const handler = createHandler(
     new Auth(store.auth),
     sessions,
-    new Profiles(store, owner),
+    new Profiles(noProfiles, store, owner),
     startPlugins([], [], {
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
@@ -104,7 +107,7 @@ function startServer(
   readonly claim: () => Promise<Assignment>;
   readonly stop: () => void;
 } {
-  const store = openStore(":memory:");
+  const store = openStore(":memory:", undefined, noProfiles);
   const sessions = new Sessions(store, { pollWaitMs: 0, offlineAfterMs });
   const stopped = new AbortController();
   const auth = new Auth(store.auth);
@@ -112,7 +115,7 @@ function startServer(
   const handler = createHandler(
     auth,
     sessions,
-    new Profiles(store, owner),
+    new Profiles(noProfiles, store, owner),
     startPlugins([plugin], [plugin.name], {
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
@@ -407,7 +410,7 @@ test("delivers a server tool's result that finished while the provider was offli
 });
 
 test("lists a plugin's own Sessions only while the plugin is on", async () => {
-  const store = openStore(":memory:");
+  const store = openStore(":memory:", undefined, noProfiles);
   const sessions = new Sessions(store, { pollWaitMs: 0 });
   store.ensureEnvironment("local");
   let context: ServerPluginContext | undefined;
@@ -428,7 +431,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
     const handle = createHandler(
       auth,
       sessions,
-      new Profiles(store, owner),
+      new Profiles(noProfiles, store, owner),
       startPlugins([keeper], enabled, {
         sessions,
         runners: { token: () => "pct_test", revoke: () => undefined },
