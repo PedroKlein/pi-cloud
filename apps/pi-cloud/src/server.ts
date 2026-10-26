@@ -225,10 +225,9 @@ export function createHandler(
         try {
           checkStore();
         } catch (error) {
-          return Response.json(
-            { status: "unavailable", error: String(error) },
-            { status: 503 },
-          );
+          log("database unavailable", { error: String(error) });
+
+          return Response.json({ status: "unavailable" }, { status: 503 });
         }
 
         return Response.json({

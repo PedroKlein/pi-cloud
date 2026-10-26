@@ -23,8 +23,9 @@ import { readSse } from "./sse";
 import { openStore } from "./store";
 import { firstUserCookie } from "./testdata/sign-in";
 
-test("reports unhealthy when the database can't be read", async () => {
+test("reports unhealthy when the database can't be read, keeping why in the log", async () => {
   const store = openStore(":memory:");
+  const logged: string[] = [];
 
   const sessions = new Sessions(store);
 
@@ -60,7 +61,9 @@ test("reports unhealthy when the database can't be read", async () => {
     }),
     changeFeed(),
     store.check,
-    () => undefined,
+    (message, fields) => {
+      logged.push(`${message} ${JSON.stringify(fields)}`);
+    },
   );
 
   store.close();
@@ -68,7 +71,8 @@ test("reports unhealthy when the database can't be read", async () => {
   const response = await handler(new Request("http://127.0.0.1/healthz"));
 
   expect(response.status).toBe(503);
-  expect(await response.json()).toMatchObject({ status: "unavailable" });
+  expect(await response.json()).toEqual({ status: "unavailable" });
+  expect(logged.join("\n")).toContain("database unavailable");
 });
 
 function echo(answered: Promise<void> = Promise.resolve()): ServerPlugin {
