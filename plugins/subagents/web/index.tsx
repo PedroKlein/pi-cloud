@@ -177,7 +177,7 @@ function RunCard({
     <div
       data-subagent-run={asyncId}
       data-subagent-tone={tone}
-      className="overflow-hidden rounded-lg border border-line bg-panel"
+      className="overflow-hidden rounded-lg border border-line bg-elevated shadow-xs"
     >
       <button
         type="button"

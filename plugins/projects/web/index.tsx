@@ -145,7 +145,7 @@ function StartThreadCard({ context, call }: ToolCallProps): ReactElement {
   return (
     <div
       aria-label={`Thread ${title}`}
-      className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2"
+      className="flex items-center gap-3 rounded-lg border border-line bg-elevated shadow-xs px-3 py-2"
     >
       <StateDot thread={thread} />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -458,7 +458,7 @@ function ProjectCards({
             onClick={() => {
               onOpen(project.id);
             }}
-            className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-left hover:border-line-strong hover:bg-hover"
+            className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-elevated shadow-xs px-4 py-3 text-left hover:border-line-strong hover:bg-hover"
           >
             <span className="font-medium text-fg-strong">{project.name}</span>
             <span className="text-caption text-fg-dim">
@@ -593,7 +593,7 @@ function CreateForm({
   return (
     <form
       onSubmit={submit}
-      className="project-create grid max-w-xl gap-3 rounded-lg border border-line bg-panel p-5"
+      className="project-create grid max-w-xl gap-3 rounded-lg border border-line bg-elevated shadow-xs p-5"
     >
       <Field label="Name">
         <input name="name" required className={fieldClass} />
@@ -1084,7 +1084,7 @@ function Rail({
 
           return shown.length === 0 ? null : (
             <section key={group} aria-label={group}>
-              <h3 className="flex items-center gap-2 px-2 pb-1 text-caption font-semibold tracking-wide text-fg-dim uppercase">
+              <h3 className="flex items-center gap-2 px-2 pb-1 text-caption font-medium text-fg-dim">
                 {group} · {shown.length}
               </h3>
               {rows(shown)}
@@ -1093,7 +1093,7 @@ function Rail({
         })}
         {finished.length > 0 && (
           <details aria-label="Finished">
-            <summary className="cursor-pointer px-2 pb-1 text-caption font-semibold tracking-wide text-fg-dim uppercase">
+            <summary className="cursor-pointer px-2 pb-1 text-caption font-medium text-fg-dim">
               Finished ({finished.length})
             </summary>
             {rows(finished)}

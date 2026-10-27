@@ -245,7 +245,7 @@ export function NewSessionDialog({
       ref={dialog}
       onClose={onClose}
       aria-labelledby="new-session-title"
-      className="m-auto w-[min(680px,calc(100vw-32px))] overflow-visible rounded-xl border border-line bg-elevated p-0 text-fg shadow-pop backdrop:bg-black/50 max-sm:mb-0 max-sm:w-full max-sm:rounded-b-none"
+      className="m-auto w-[min(680px,calc(100vw-32px))] overflow-visible rounded-xl border border-line bg-elevated p-0 text-fg shadow-pop backdrop:bg-black/30 backdrop:backdrop-blur-[2px] open:animate-pop-in max-sm:mb-0 max-sm:w-full max-sm:rounded-b-none"
     >
       <form id="create" onSubmit={submit} className="flex flex-col">
         <header className="flex items-center gap-2 pt-3 pr-3 pb-1 pl-5">
@@ -287,7 +287,7 @@ export function NewSessionDialog({
             event.preventDefault();
             submit();
           }}
-          className="resize-none bg-transparent px-5 py-2 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
+          className="max-h-80 min-h-24 resize-none field-sizing-content bg-transparent px-5 py-2 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
         />
 
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">

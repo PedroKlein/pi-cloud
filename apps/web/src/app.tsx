@@ -139,7 +139,7 @@ export function App({
 
     if (name !== undefined && Section) {
       return (
-        <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10">
+        <div className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10">
           <PluginBoundary name={name}>
             <Section context={pluginContext(name)} />
           </PluginBoundary>
@@ -348,7 +348,7 @@ function PluginPage({
       <div
         id="plugin-page"
         data-plugin={name}
-        className="mx-auto flex max-w-5xl flex-col px-4 py-8 md:px-10"
+        className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
       >
         {body}
       </div>

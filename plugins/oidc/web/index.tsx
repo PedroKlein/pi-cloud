@@ -32,7 +32,7 @@ function SettingsSection({
       {value.providers.length > 0 && (
         <ul
           aria-label="Your sign-ins"
-          className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 text-ui"
+          className="flex flex-col gap-1 rounded-lg border border-line bg-elevated shadow-xs p-3 text-ui"
         >
           {value.providers.map((provider) => {
             const linked = value.identities.find(
@@ -127,7 +127,7 @@ function Providers({
       </p>
       <ul
         aria-label="Providers"
-        className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3"
+        className="flex flex-col gap-1 rounded-lg border border-line bg-elevated shadow-xs p-3"
       >
         {value?.length === 0 && (
           <li className="text-fg-dim">No providers yet.</li>
@@ -277,7 +277,7 @@ function ProviderForm({
     <form
       onSubmit={submit}
       aria-label={provider ? `Edit ${provider.label}` : "New provider"}
-      className="grid gap-4 rounded-lg border border-line bg-panel p-5 md:grid-cols-2"
+      className="grid gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5 md:grid-cols-2"
     >
       {textField("label", "Button label", "Sign in with SAP IAS")}
       {textField("issuer", "Issuer", "https://tenant.accounts.ondemand.com")}

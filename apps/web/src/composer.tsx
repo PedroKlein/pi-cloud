@@ -249,7 +249,7 @@ export function Composer({
               attach([...event.dataTransfer.files]);
             }
           }}
-          className="relative flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
+          className="relative flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card transition-[border-color,box-shadow] duration-150 focus-within:border-line-focus focus-within:ring-4 focus-within:ring-focus"
         >
           {suggestions.menu}
           <label htmlFor={textId} className="sr-only">
@@ -323,12 +323,12 @@ export function Composer({
               event.preventDefault();
               send(steer ? "steer" : "followUp");
             }}
-            className="resize-none bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
+            className="max-h-72 min-h-12 resize-none field-sizing-content bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
           />
           <div className="flex items-center gap-2">
             <label
               title="Attach images"
-              className="-ml-2 flex size-8 cursor-pointer items-center justify-center rounded-full text-fg-dim hover:bg-hover hover:text-fg has-focus-visible:outline-2 has-focus-visible:outline-accent"
+              className="-ml-2 flex size-8 cursor-pointer items-center justify-center rounded-full text-fg-dim hover:bg-hover hover:text-fg has-focus-visible:outline-2 has-focus-visible:outline-line-focus"
             >
               <Icon name="paperclip" />
               <input
@@ -502,7 +502,7 @@ function Widgets({
 }
 
 const picker =
-  "h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent";
+  "h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-line-focus";
 
 // Claude Code's model and effort menus, on Pi's model and reasoning level
 // (ADR 0023).

@@ -57,6 +57,8 @@
   --accent: #fff8e7;
   --on-accent: #1a1712;
   --accent-tint: rgb(255 248 231 / 0.12);
+  --focus-ring: rgb(255 248 231 / 0.18);
+  --border-focus: #8a8172;
   --status-working: #45b8c9;
   --status-waiting: #f0a43a;
   --status-done: #4cc38a;
@@ -86,6 +88,8 @@
   --accent: #1a1712;
   --on-accent: #faf7f0;
   --accent-tint: rgb(26 23 18 / 0.08);
+  --focus-ring: rgb(26 23 18 / 0.1);
+  --border-focus: #8a8273;
   --status-working: #086a78;
   --status-waiting: #9a5800;
   --status-done: #17784b;
@@ -116,6 +120,8 @@
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
   --color-accent-tint: var(--accent-tint);
+  --color-focus: var(--focus-ring);
+  --color-line-focus: var(--border-focus);
   --color-working: var(--status-working);
   --color-waiting: var(--status-waiting);
   --color-done: var(--status-done);
@@ -163,15 +169,42 @@
 
   --radius-*: initial;
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
 
   --shadow-*: initial;
+  --shadow-xs: 0 1px 1px rgb(26 23 18 / 0.05);
   --shadow-card: var(--card-shadow);
   --shadow-pop: var(--pop-shadow);
 
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-pop-in: pop-in 160ms var(--ease-out);
+  --animate-fade-in: fade-in 160ms var(--ease-out);
+  --animate-rise-in: rise-in 220ms var(--ease-out);
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
   --container-chat: 760px;
+  --container-form: 768px;
   --spacing-sidebar: 288px;
   --spacing-control: 32px;
   --spacing-touch: 44px;

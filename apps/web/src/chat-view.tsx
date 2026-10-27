@@ -25,6 +25,7 @@ import {
   type Work,
 } from "./chat";
 import type { Feed } from "./feed";
+import { Mark } from "./mark";
 import { renderMarkdown } from "./markdown";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext, toolRenderer } from "./plugins";
@@ -249,11 +250,9 @@ function hasSteps(work: readonly Work[]): boolean {
 
 function Greeting({ place }: { readonly place: string }): ReactElement {
   return (
-    <div className="mx-auto flex max-w-chat flex-col items-center gap-3 px-4 pt-[18vh] text-center">
-      <span className="grid size-10 place-items-center rounded-lg bg-accent-tint font-mono text-title text-accent">
-        π
-      </span>
-      <p className="text-title font-semibold text-fg-strong">
+    <div className="mx-auto flex max-w-chat flex animate-rise-in flex-col items-center gap-3 px-4 pt-[18vh] text-center">
+      <Mark className="size-12" />
+      <p className="font-serif text-display font-light text-fg-strong">
         What should Pi do in {place}?
       </p>
       <p className="text-label text-fg-dim">

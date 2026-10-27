@@ -1,6 +1,12 @@
-import { Button, Field, fieldClass, PageTitle } from "@pipoca/ui";
-import { type ReactElement, type SubmitEvent, useState } from "react";
+import { Button, Field, fieldClass } from "@pipoca/ui";
+import {
+  type ReactElement,
+  type ReactNode,
+  type SubmitEvent,
+  useState,
+} from "react";
 import { api } from "./api";
+import { Mark } from "./mark";
 
 const messages: Record<string, string> = {
   wrong_password: "Wrong name or password.",
@@ -33,11 +39,10 @@ export function SignInPage({
 
   if (setup && setupToken === undefined) {
     return (
-      <main className="mx-auto flex w-full max-w-sm flex-col px-4 py-16">
-        <PageTitle description="Open the setup link from the server's log to create the first user.">
-          No users yet
-        </PageTitle>
-      </main>
+      <Welcome
+        title="No users yet"
+        description="Open the setup link from the server's log to create the first user."
+      />
     );
   }
 
@@ -68,10 +73,12 @@ export function SignInPage({
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-col px-4 py-16">
-      <PageTitle>
-        {setupToken === undefined ? "Sign in" : "Create the first user"}
-      </PageTitle>
+    <Welcome
+      title={setupToken === undefined ? "Sign in" : "Create the first user"}
+      {...(setupToken !== undefined && {
+        description: "This user becomes the server's first admin.",
+      })}
+    >
       {setupToken === undefined && logins.length > 0 && (
         <div className="mb-4 flex flex-col gap-2">
           {logins.map(({ label, path }) => (
@@ -90,7 +97,7 @@ export function SignInPage({
       {(passwordLogin || setupToken !== undefined) && (
         <form
           onSubmit={submit}
-          className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
+          className="flex flex-col gap-4 rounded-lg border border-line bg-elevated p-6 shadow-card"
         >
           <Field label="Name">
             <input
@@ -100,7 +107,12 @@ export function SignInPage({
               className={fieldClass}
             />
           </Field>
-          <Field label="Password">
+          <Field
+            label="Password"
+            hint={
+              setupToken === undefined ? undefined : "At least 8 characters."
+            }
+          >
             <input
               name="password"
               type="password"
@@ -112,18 +124,44 @@ export function SignInPage({
               className={fieldClass}
             />
           </Field>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" type="submit">
-              {setupToken === undefined ? "Sign in" : "Create user"}
-            </Button>
-            {error !== undefined && (
-              <p role="alert" className="text-caption text-failed">
-                {error}
-              </p>
-            )}
-          </div>
+          {error !== undefined && (
+            <p role="alert" className="text-caption text-failed">
+              {error}
+            </p>
+          )}
+          <Button variant="primary" type="submit" className="h-10 w-full">
+            {setupToken === undefined ? "Sign in" : "Create user"}
+          </Button>
         </form>
       )}
+    </Welcome>
+  );
+}
+
+function Welcome({
+  title,
+  description,
+  children,
+}: {
+  readonly title: string;
+  readonly description?: string;
+  readonly children?: ReactNode;
+}): ReactElement {
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-sm animate-rise-in flex-col justify-center px-4 py-16">
+      <div className="mb-8 flex flex-col items-center gap-4 text-center">
+        <span className="flex items-center gap-2 font-serif text-wordmark font-light text-fg-strong">
+          <Mark className="size-8" />
+          pipoca
+        </span>
+        <h1 className="font-serif text-display font-light text-fg-strong">
+          {title}
+        </h1>
+        {description !== undefined && (
+          <p className="text-label text-fg-dim">{description}</p>
+        )}
+      </div>
+      {children}
     </main>
   );
 }

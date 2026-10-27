@@ -26,7 +26,7 @@ export function SettingsPage(): ReactElement {
   return (
     <div
       id="settings-page"
-      className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
+      className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
     >
       <PageTitle description="An MCP client, such as Pi or Claude Code on your laptop, can use the assistant's tools to manage Sessions, Environments, Profiles and Projects as you. It asks for a token, and you can revoke one at any time.">
         MCP clients
@@ -54,7 +54,7 @@ export function SettingsPage(): ReactElement {
         )}
         <ul
           aria-label="MCP tokens"
-          className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 text-ui"
+          className="flex flex-col gap-1 rounded-lg border border-line bg-elevated shadow-xs p-3 text-ui"
         >
           {tokens.length === 0 && (
             <li className="text-fg-dim">No client has a token.</li>

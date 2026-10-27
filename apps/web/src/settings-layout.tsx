@@ -66,7 +66,7 @@ export function SettingsLayout({
         >
           <Icon name="menu" />
         </Button>
-        <h2 className="px-2 pb-2 text-caption font-semibold tracking-wide text-fg-dim uppercase max-md:hidden">
+        <h2 className="px-2 pb-2 text-caption font-medium text-fg-dim max-md:hidden">
           Settings
         </h2>
         {sections(route).map(({ href, label, current }) => (
