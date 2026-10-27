@@ -157,7 +157,7 @@ export function Picker({
             keys(event);
           }
         }}
-        className="inline-flex h-7 max-w-64 cursor-pointer items-center gap-1 rounded-full border border-line bg-panel px-2.5 text-caption text-fg hover:bg-hover focus-visible:outline-2 focus-visible:outline-accent aria-expanded:border-accent"
+        className="inline-flex h-8 max-w-64 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-elevated px-3 text-label text-fg shadow-xs transition-colors duration-150 hover:border-line-strong hover:bg-hover aria-expanded:border-line-focus aria-expanded:bg-hover"
       >
         <span className="truncate">{children}</span>
         <Icon name="chevron-down" className="size-3 shrink-0 text-fg-dim" />
@@ -165,7 +165,7 @@ export function Picker({
       {open && (
         <div
           className={cn(
-            "absolute left-0 z-30 flex w-80 max-w-[calc(100vw-32px)] flex-col gap-1 rounded-lg border border-line bg-elevated p-1.5 shadow-pop",
+            "absolute left-0 z-30 flex w-80 max-w-[calc(100vw-32px)] animate-pop-in flex-col gap-1 rounded-lg border border-line bg-elevated p-1.5 shadow-pop",
             above ? "bottom-full mb-1" : "top-full mt-1",
           )}
         >
@@ -184,7 +184,7 @@ export function Picker({
                 setActive(0);
               }}
               onKeyDown={keys}
-              className="h-8 rounded-md border border-line bg-bg px-2 text-ui text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none"
+              className="h-9 rounded-md border-0 border-b border-line bg-transparent px-2 text-ui text-fg placeholder:text-fg-dim focus:outline-none"
             />
           )}
           <ul
@@ -205,7 +205,7 @@ export function Picker({
                   option.group !== shown[index - 1]?.group && (
                     <span
                       aria-hidden
-                      className="block px-2 pt-2 pb-0.5 text-[10px] font-semibold tracking-wider text-fg-dim uppercase"
+                      className="block px-2 pt-2.5 pb-1 text-caption font-medium text-fg-dim"
                     >
                       {option.group}
                     </span>
@@ -224,7 +224,7 @@ export function Picker({
                     choose(option.value);
                   }}
                   className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-ui",
+                    "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-ui transition-colors duration-100",
                     index === active && "bg-hover",
                   )}
                 >

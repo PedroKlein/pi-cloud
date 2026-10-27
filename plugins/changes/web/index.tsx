@@ -338,7 +338,7 @@ function CreateMenu({
       {open && (
         <ul
           role="menu"
-          className="absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-line bg-panel p-1 shadow-card"
+          className="absolute top-full right-0 z-10 mt-1 w-48 rounded-lg border border-line bg-elevated p-1 shadow-pop animate-pop-in"
         >
           {modes.map(({ command, label }) => (
             <li key={command} role="none">

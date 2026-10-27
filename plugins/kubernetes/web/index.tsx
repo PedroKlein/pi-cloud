@@ -34,7 +34,7 @@ function EnvironmentSection({
     <Section title="Kubernetes">
       <div
         aria-label="Kubernetes"
-        className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5 text-ui"
+        className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5 text-ui"
       >
         {value === undefined ? (
           <p className="text-fg-dim">Loading…</p>

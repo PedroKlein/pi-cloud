@@ -95,7 +95,7 @@ export function ProfilesPage({
   return (
     <div
       id="profiles-page"
-      className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
+      className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
     >
       <PageTitle description="A Profile is a Pi agent folder, like your ~/.pi/agent: packages, instructions, skills, prompts, MCP servers and settings. Every Session runs with one, on any machine. Logins stay on each machine. Edits reach a Session the next time it starts.">
         Profiles
@@ -220,7 +220,7 @@ function Editor({
     <Section title={profile ? profile.name : "New Profile"}>
       <form
         onSubmit={submit}
-        className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
+        className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5"
       >
         <Field label="Name">
           <input
@@ -362,7 +362,7 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
 
   return (
     <Section title="Files">
-      <div className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5">
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
         <ul className="flex flex-col divide-y divide-line">
           {files.map(({ path, size }) => (
             <li key={path} className="flex items-center gap-3 py-1.5">
@@ -528,7 +528,7 @@ function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
 
   return (
     <Section title="Import a Profile">
-      <div className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5">
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
         <Field label="From a folder, such as your ~/.pi/agent. Logins and Session history stay behind.">
           <input
             type="file"

@@ -129,7 +129,7 @@ export function useSuggestions(feed: Feed): Suggestions {
         id={listId}
         role="listbox"
         aria-label={typed?.kind === "file" ? "Files" : "Commands"}
-        className="absolute inset-x-0 bottom-full mb-2 max-h-72 overflow-y-auto rounded-lg border border-line bg-panel p-1 shadow-card"
+        className="absolute inset-x-0 bottom-full mb-2 max-h-72 overflow-y-auto rounded-lg border border-line bg-elevated p-1 shadow-pop animate-pop-in"
       >
         {options.map((option, index) => (
           <li

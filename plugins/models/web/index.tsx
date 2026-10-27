@@ -114,7 +114,7 @@ function EnvironmentSection({
     >
       <div
         data-environment={environment.id}
-        className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
+        className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5"
       >
         {saved?.aliases && <Routing config={saved.aliases} health={health} />}
         <Editor

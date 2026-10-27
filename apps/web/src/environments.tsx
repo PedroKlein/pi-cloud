@@ -36,7 +36,7 @@ export function EnvironmentsPage({
   return (
     <div
       id="environments-page"
-      className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
+      className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
     >
       <PageTitle description="An Environment is where Sessions run: a pool of runners, the machines whose agents joined it, with a setup script, variables and secrets for every Session. Edits reach a Session the next time it starts.">
         Environments
@@ -289,7 +289,7 @@ function Editor({
   return (
     <>
       <Section title="Runners">
-        <ul className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 text-ui">
+        <ul className="flex flex-col gap-1 rounded-lg border border-line bg-elevated shadow-xs p-3 text-ui">
           {environment.runners.length === 0 && (
             <li className="text-fg-dim">
               {environment.onDemand
@@ -317,7 +317,7 @@ function Editor({
         <Section title="Folders">
           <ul
             aria-label="Folders"
-            className="flex flex-col gap-1 rounded-lg border border-line bg-panel p-3 font-mono text-mono-sm"
+            className="flex flex-col gap-1 rounded-lg border border-line bg-elevated shadow-xs p-3 font-mono text-mono-sm"
           >
             {environment.folders.map((folder) => (
               <li key={folder} className="truncate" title={folder}>
@@ -330,7 +330,7 @@ function Editor({
       <Section title={environment.name}>
         <form
           onSubmit={submit}
-          className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-5"
+          className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5"
         >
           <Field label="Name">
             <input

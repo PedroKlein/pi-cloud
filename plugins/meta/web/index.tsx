@@ -158,7 +158,7 @@ function Composer({
   return (
     <form
       onSubmit={submit}
-      className="flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
+      className="flex flex-col gap-2 rounded-xl border border-line bg-elevated py-3 pr-3 pl-5 shadow-card transition-[border-color,box-shadow] duration-150 focus-within:border-line-focus focus-within:ring-4 focus-within:ring-focus"
     >
       <label htmlFor={textId} className="sr-only">
         Ask the Pipoca assistant
@@ -189,7 +189,7 @@ function Composer({
           event.preventDefault();
           send();
         }}
-        className="resize-none bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
+        className="max-h-80 min-h-18 resize-none field-sizing-content bg-transparent pt-1 text-prose text-fg placeholder:text-fg-dim focus:outline-none"
       />
       <div className="flex items-center gap-2">
         {error === undefined ? (
@@ -208,7 +208,7 @@ function Composer({
             setModel(event.target.value);
             remember(event.target.value);
           }}
-          className="h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          className="h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-line-focus"
         >
           <option value="">Default model</option>
           {[...new Set([model, ...models])]

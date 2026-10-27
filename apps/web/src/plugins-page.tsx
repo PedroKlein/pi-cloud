@@ -18,7 +18,7 @@ export function PluginsPage(): ReactElement {
   return (
     <div
       id="plugins-page"
-      className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
+      className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
     >
       <PageTitle description="Plugins add features to Pipoca, for everyone on this server. The server uses new settings at once, open pages after a reload, and Sessions the next time they start.">
         Plugins
@@ -30,7 +30,7 @@ export function PluginsPage(): ReactElement {
           <li
             key={plugin.id}
             aria-label={plugin.title}
-            className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-5"
+            className="flex flex-col gap-3 rounded-lg border border-line bg-elevated shadow-xs p-5"
           >
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-title font-semibold text-fg-strong">
@@ -155,7 +155,7 @@ function Install({
     <form
       onSubmit={submit}
       aria-label="Install a plugin"
-      className="mb-4 flex flex-col gap-2 rounded-lg border border-line bg-panel p-4"
+      className="mb-4 flex flex-col gap-2 rounded-lg border border-line bg-elevated shadow-xs p-4"
     >
       <Field label="Install from a git repository or a .tgz URL. A branch, tag or commit after # pins it. It installs turned off.">
         <input
@@ -248,7 +248,7 @@ function Restart(): ReactElement {
   };
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel p-4 text-ui">
+    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-elevated shadow-xs p-4 text-ui">
       <span className="text-fg">
         {state === "restarting"
           ? "Restarting the server…"

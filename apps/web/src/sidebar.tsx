@@ -93,9 +93,7 @@ export function Sidebar({
       <PluginNav nav={nav} route={route} />
 
       <div className="mt-2 flex items-center justify-between border-t border-line px-4 pt-4 pb-2">
-        <h2 className="text-caption font-semibold tracking-wide text-fg-dim uppercase">
-          Sessions
-        </h2>
+        <h2 className="text-caption font-medium text-fg-dim">Sessions</h2>
         <label className="flex cursor-pointer items-center gap-1.5 text-caption text-fg-dim">
           <input
             id="show-archived"
