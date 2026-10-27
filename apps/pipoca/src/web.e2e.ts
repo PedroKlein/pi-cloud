@@ -640,7 +640,7 @@ test("turns an installed plugin on for the next start", async () => {
     void dialog.accept();
   });
 
-  await hello.getByRole("button", { name: "Turn on" }).click();
+  await hello.getByRole("switch", { name: "On" }).click();
   await hello.getByText("It turns on when the server restarts.").waitFor();
   await hello.getByText("Off until restart").waitFor();
 
@@ -648,8 +648,8 @@ test("turns an installed plugin on for the next start", async () => {
   await page.getByText(/restart it yourself/).waitFor();
 
   await page.reload();
-  await hello.getByRole("button", { name: "Turn off" }).click();
-  await hello.getByRole("button", { name: "Turn on" }).waitFor();
+  await hello.getByRole("switch", { name: "On", checked: true }).click();
+  await hello.getByRole("switch", { name: "On", checked: false }).waitFor();
 
   expect(await hello.getByText(/when the server restarts/).count()).toBe(0);
 });
@@ -700,9 +700,9 @@ test("installs a plugin from a git repository, asks before turning it on, and re
     });
   });
 
-  await weather.getByRole("button", { name: "Turn on" }).click();
+  await weather.getByRole("switch", { name: "On" }).click();
   expect(await asked).toContain("It asks for routes");
-  await weather.getByRole("button", { name: "Turn off" }).click();
+  await weather.getByRole("switch", { name: "On", checked: true }).click();
 
   page.once("dialog", (dialog) => {
     void dialog.accept();

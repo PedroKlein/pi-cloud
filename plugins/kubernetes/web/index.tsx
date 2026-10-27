@@ -4,7 +4,7 @@ import {
   useLoaded,
   type WebPlugin,
 } from "@pipoca/plugins/web";
-import { Button, cn, Field, fieldClass, Section } from "@pipoca/ui";
+import { Button, cn, Field, fieldClass, Section, Select } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import {
   defaultSettings,
@@ -133,19 +133,18 @@ function Settings({
         </p>
       )}
       <Field label="Workspace">
-        <select
+        <Select
           name="workspace"
           value={workspace}
           onChange={(event) => {
             setWorkspace(event.target.value === "claim" ? "claim" : "pod");
           }}
-          className={fieldClass}
         >
           <option value="pod">In the pod, gone with it</option>
           <option value="claim">
             A pod and claim for each Session, kept until it is archived
           </option>
-        </select>
+        </Select>
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
         {workspace === "pod" && (

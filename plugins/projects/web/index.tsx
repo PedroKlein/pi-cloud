@@ -20,7 +20,6 @@ import {
 } from "@pipoca/protocol";
 import {
   Badge,
-  type BadgeState,
   Button,
   cn,
   Field,
@@ -28,8 +27,10 @@ import {
   Icon,
   PageTitle,
   Picker,
-  type PickerOption,
   Section,
+  Select,
+  type BadgeState,
+  type PickerOption,
 } from "@pipoca/ui";
 import {
   type ReactElement,
@@ -495,14 +496,14 @@ function ProfileSelect({
       .value ?? [];
 
   return (
-    <select value={value} onChange={onChange} className={fieldClass}>
+    <Select value={value} onChange={onChange}>
       <option value="">The default Profile</option>
       {profiles.map((profile) => (
         <option key={profile.id} value={profile.id}>
           {profile.name}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 

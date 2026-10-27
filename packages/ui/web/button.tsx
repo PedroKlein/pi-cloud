@@ -25,13 +25,21 @@ export function Button({
   return (
     <button
       type={type}
-      className={cn(
-        "inline-flex h-control shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border text-ui font-medium whitespace-nowrap transition-[background-color,border-color,opacity,transform] duration-150 select-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 pointer-coarse:min-h-touch",
-        iconOnly ? "w-control pointer-coarse:min-w-touch" : "px-3",
-        variants[variant],
-        className,
-      )}
+      className={buttonClass(variant, iconOnly, className)}
       {...props}
     />
+  );
+}
+
+export function buttonClass(
+  variant: keyof typeof variants = "default",
+  iconOnly = false,
+  className?: string,
+): string {
+  return cn(
+    "inline-flex h-control shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border text-ui font-medium whitespace-nowrap transition-[background-color,border-color,opacity,transform] duration-150 select-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 pointer-coarse:min-h-touch",
+    iconOnly ? "w-control pointer-coarse:min-w-touch" : "px-3",
+    variants[variant],
+    className,
   );
 }

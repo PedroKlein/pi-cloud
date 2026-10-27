@@ -6,7 +6,7 @@ import {
   type WebContext,
   type WebPlugin,
 } from "@pipoca/plugins/web";
-import { cn, fieldClass, PageTitle, Section } from "@pipoca/ui";
+import { FileButton, PageTitle, Section, Select } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import type { LibraryFile, LibraryWrite } from "../src/model";
 
@@ -43,20 +43,20 @@ function Page({ context }: PageProps): ReactElement {
         <p className="text-fg-dim">Create a Project first.</p>
       ) : (
         <>
-          <select
+          <Select
             aria-label="Project"
             value={id}
             onChange={(event) => {
               setSelected(event.target.value);
             }}
-            className={cn(fieldClass, "self-start")}
+            className="self-start"
           >
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>
             ))}
-          </select>
+          </Select>
           <ProjectFiles key={id} context={context} projectId={id} />
         </>
       )}
@@ -138,19 +138,16 @@ function ProjectFiles({
             ))}
           </ul>
         )}
-        <label className="flex cursor-pointer items-center gap-3 self-start rounded-md border border-dashed border-line-strong px-4 py-3 text-label text-fg-dim hover:border-accent hover:text-fg">
+        <FileButton
+          multiple
+          aria-label="Upload files"
+          className="self-start"
+          onFiles={(picked) => {
+            void upload(picked);
+          }}
+        >
           Upload files
-          <input
-            type="file"
-            multiple
-            aria-label="Upload files"
-            onChange={(event) => {
-              void upload([...(event.target.files ?? [])]);
-              event.target.value = "";
-            }}
-            className="text-caption"
-          />
-        </label>
+        </FileButton>
       </Section>
       <Section title="Recent writes">
         {writes.length === 0 ? (

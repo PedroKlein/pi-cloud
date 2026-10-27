@@ -5,10 +5,11 @@ import {
   cn,
   Field,
   fieldClass,
-  type KeyValue,
   KeyValues,
   PageTitle,
   Section,
+  Select,
+  type KeyValue,
 } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { api, send } from "./api";
@@ -360,16 +361,12 @@ function Editor({
             </summary>
             <div className="mt-4 flex flex-col gap-4">
               <Field label="Run each Session">
-                <select
-                  name="isolation"
-                  defaultValue={environment.isolation}
-                  className={fieldClass}
-                >
+                <Select name="isolation" defaultValue={environment.isolation}>
                   <option value="process">As a process on its machine</option>
                   <option value="container">
                     In a container (needs Docker)
                   </option>
-                </select>
+                </Select>
               </Field>
               <Field label="Container image, empty for the default">
                 <input
