@@ -1,4 +1,4 @@
-# Pi Cloud concepts
+# Pipoca concepts
 
 > Status: working model. These terms exist to keep future discussions precise. Their interfaces and storage formats are not decided.
 
@@ -6,7 +6,7 @@
 
 ### Cell
 
-One logical Pi Cloud installation. The first Cell has one owner and one authoritative control plane. It may use several Runtime Providers.
+One logical Pipoca installation. The first Cell has one owner and one authoritative control plane. It may use several Runtime Providers.
 
 ### Control Plane
 
@@ -72,7 +72,7 @@ A future capability that starts or continues ordinary Session turns in response 
 
 ```mermaid
 flowchart TD
-    CELL[Personal Pi Cloud Cell] --> CP[Control Plane]
+    CELL[Personal Pipoca Cell] --> CP[Control Plane]
     CELL --> PROF[Profiles]
     CELL --> ENV[Environments]
     CELL --> PROJ[Projects]
@@ -119,7 +119,7 @@ The control plane owns identity, Project and Session records, Environment revisi
 
 The current working precedence is:
 
-1. mandatory Pi Cloud session bridge;
+1. mandatory Pipoca session bridge;
 2. installation policy;
 3. selected Profile;
 4. selected Environment overlay;

@@ -16,7 +16,7 @@ import {
   type ProfileContent,
   type ProfileFiles,
   profilePath,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   contentFiles,
   folderEntries,
@@ -34,7 +34,7 @@ export type Log = (message: string, fields?: Record<string, unknown>) => void;
 // doesn't exist and it is plain Pi (ADR 0041).
 export const defaultProfileId = "default";
 
-// Pi Cloud's own fields, next to Pi's files (ADR 0041).
+// Pipoca's own fields, next to Pi's files (ADR 0041).
 const metaFile = "profile.json";
 
 const ids = /^[a-z0-9][a-z0-9._-]{0,63}$/;

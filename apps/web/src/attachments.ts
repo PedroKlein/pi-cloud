@@ -2,7 +2,7 @@ import {
   type ImageAttachment,
   imageLimits,
   imageTypes,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 interface Candidate {
   readonly name: string;

@@ -1,10 +1,10 @@
-# Pi Cloud working architecture
+# Pipoca working architecture
 
 > Status: working architecture. This records the system shape discussed so far. Interfaces, deployment defaults, protocols, and storage choices remain open.
 
 ## Responsibility split
 
-Pi Cloud separates deterministic control from model-driven coordination.
+Pipoca separates deterministic control from model-driven coordination.
 
 | Part                | Responsibility                                                                                             |
 | ------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -97,7 +97,7 @@ Reconstruction restores persisted conversation and files. It does not restore a 
 
 ## State ownership
 
-Pi Cloud has four state classes with different durability.
+Pipoca has four state classes with different durability.
 
 ### Control-plane state
 
@@ -116,7 +116,7 @@ The storage substrate remains open. SQLite and filesystem artifacts may be enoug
 
 ### Pi transcript
 
-Pi's native JSONL Session remains the authoritative conversation format while the Session runs. Pi Cloud should replicate, back up, or export it rather than create a competing transcript format.
+Pi's native JSONL Session remains the authoritative conversation format while the Session runs. Pipoca should replicate, back up, or export it rather than create a competing transcript format.
 
 The exact replication frequency and recovery authority remain open. A provider failure must not make the Control Plane forget that the Session existed.
 
@@ -188,22 +188,22 @@ v1 is a VM-hosted Cell with one laptop provider ([vision](vision.md#scope), [ADR
 flowchart LR
     BROWSER[Browser or phone] -->|SSH tunnel| SERVER
     subgraph VM[Always-on VM]
-        SERVER[pi-cloud server: Control Plane, web UI, SQLite]
+        SERVER[pipoca server: Control Plane, web UI, SQLite]
         VMP[Built-in VM Provider]
         SERVER --- VMP
     end
     subgraph LAPTOP[Laptop]
-        AGENT[pi-cloud agent: Laptop Provider]
+        AGENT[pipoca agent: Laptop Provider]
     end
     AGENT -->|outbound over SSH tunnel| SERVER
 ```
 
-- `pi-cloud server` runs on the VM. It serves the UI, stores Sessions, Projects, Threads, and attempts in SQLite, assigns Sessions to providers, and relays input and output.
+- `pipoca server` runs on the VM. It serves the UI, stores Sessions, Projects, Threads, and attempts in SQLite, assigns Sessions to providers, and relays input and output.
 - The same process embeds a VM Provider, which uses the same provider interface as a remote agent.
-- `pi-cloud agent` runs on the laptop and connects to the server through the tunnel. Its Sessions pause while the laptop sleeps; VM Sessions keep running.
+- `pipoca agent` runs on the laptop and connects to the server through the tunnel. Its Sessions pause while the laptop sleeps; VM Sessions keep running.
 - A Project can place its coordinator on the VM and individual Threads on the laptop.
 
-v2 moves `pi-cloud server` into Kubernetes and adds a Kubernetes provider without changing these roles.
+v2 moves `pipoca server` into Kubernetes and adds a Kubernetes provider without changing these roles.
 
 ### Local Cell
 
@@ -250,7 +250,7 @@ A stronger Kubernetes isolation profile should consider these controls before it
 
 Namespaces and RBAC help separate users and projects, but they are not by themselves a complete sandbox for arbitrary agent code.
 
-A pragmatic early team deployment may give each developer a separate personal Cell on a VM or in a namespace, with separate Pi configuration, credentials, Sessions, Workspaces, caches, Secrets, and quotas. A later Team Hub can federate those Cells before Pi Cloud attempts to make one Pi Runtime a hard multi-tenant boundary.
+A pragmatic early team deployment may give each developer a separate personal Cell on a VM or in a namespace, with separate Pi configuration, credentials, Sessions, Workspaces, caches, Secrets, and quotas. A later Team Hub can federate those Cells before Pipoca attempts to make one Pi Runtime a hard multi-tenant boundary.
 
 ## Projects on top of Sessions
 

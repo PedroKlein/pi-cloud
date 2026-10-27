@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { SettingSpec } from "@pi-cloud/protocol";
-import { checkedSettings, settingValues } from "@pi-cloud/plugins";
+import type { SettingSpec } from "@pipoca/protocol";
+import { checkedSettings, settingValues } from "@pipoca/plugins";
 
 const schema: Readonly<Record<string, SettingSpec>> = {
   limit: { type: "number", title: "Limit", default: 10, min: 1, max: 100 },

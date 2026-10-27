@@ -1,19 +1,19 @@
 # Writing a plugin
 
-A plugin adds a feature to Pi Cloud for everyone on one server. It can answer HTTP routes and register tools on the server, add a page or panels to the web app, and add commands, tools and Pi packages to Sessions. The built-in plugins in `plugins/` use the same interface. This guide covers plugins you install yourself ([ADR 0022](adr/0022-plugin-model-v2.md)).
+A plugin adds a feature to Pipoca for everyone on one server. It can answer HTTP routes and register tools on the server, add a page or panels to the web app, and add commands, tools and Pi packages to Sessions. The built-in plugins in `plugins/` use the same interface. This guide covers plugins you install yourself ([ADR 0022](adr/0022-plugin-model-v2.md)).
 
 The example in [`examples/plugins/greeter`](../examples/plugins/greeter) has all three parts, and a test runs it on every change.
 
 ## Make the folder
 
-A plugin is a folder with a `package.json`. The `piCloud` field is its manifest:
+A plugin is a folder with a `package.json`. The `pipoca` field is its manifest:
 
 ```json
 {
-  "name": "pi-cloud-greeter",
+  "name": "pipoca-greeter",
   "version": "1.0.0",
   "type": "module",
-  "piCloud": {
+  "pipoca": {
     "id": "greeter",
     "title": "Greeter",
     "description": "Greets you on its own page and with /greet in a Session.",
@@ -48,7 +48,7 @@ export default {
 };
 ```
 
-`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there. `context.config.get()` is the plugin's key in the server's `pi-cloud.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
+`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 
 | Capability     | What it gives                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------- |
@@ -63,10 +63,10 @@ export default {
 
 ## The web part
 
-The web part's default export is a `WebPlugin`, the same object a built-in exports from `@pi-cloud/plugins/web`. `nav` adds a sidebar entry and its page:
+The web part's default export is a `WebPlugin`, the same object a built-in exports from `@pipoca/plugins/web`. `nav` adds a sidebar entry and its page:
 
 ```tsx
-import { Button, PageTitle } from "@pi-cloud/ui";
+import { Button, PageTitle } from "@pipoca/ui";
 import { useState } from "react";
 
 function Page() {
@@ -91,9 +91,9 @@ export default { name: "greeter", nav: { label: "Greeter", Page } };
 
 The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
 
-`useLoaded(load, key, { topics })` from `@pi-cloud/plugins/web` loads data and loads it again when one of the topics changes, such as `sessions`, `profiles`, `environments`, `plugins` or your own `<id>.<name>`. Pass `everyMs` instead for data that changes outside Pi Cloud.
+`useLoaded(load, key, { topics })` from `@pipoca/plugins/web` loads data and loads it again when one of the topics changes, such as `sessions`, `profiles`, `environments`, `plugins` or your own `<id>.<name>`. Pass `everyMs` instead for data that changes outside Pipoca.
 
-The part shares `react`, `react-dom`, `@pi-cloud/ui` and `@pi-cloud/plugins/web` with the page, so hooks work and it looks like the rest of the app. It can't import CSS or other files yet. The page only has the Tailwind classes the app itself uses, so build the UI from `@pi-cloud/ui` components.
+The part shares `react`, `react-dom`, `@pipoca/ui` and `@pipoca/plugins/web` with the page, so hooks work and it looks like the rest of the app. It can't import CSS or other files yet. The page only has the Tailwind classes the app itself uses, so build the UI from `@pipoca/ui` components.
 
 ## The Session part
 
@@ -124,7 +124,7 @@ There are three ways to put a plugin on a server, and each one installs it turne
 
 - **From git:** paste the repository's URL on the Plugins page. A branch, tag or commit after `#` pins it, for example `https://github.com/you/greeter.git#v1.0.0`. The plugin's `package.json` has to be at the top of the repository.
 - **From a tarball:** paste a `.tgz` URL. It must hold one folder, as `npm pack` makes.
-- **In place:** ask the Pi Cloud assistant to write one. It writes the files into the plugins folder and builds them, but it can't turn the plugin on.
+- **In place:** ask the Pipoca assistant to write one. It writes the files into the plugins folder and builds them, but it can't turn the plugin on.
 
 You can also put the folder in the server's plugins folder yourself (`--plugins`, next to the database by default), or link it there from where you develop it.
 

@@ -1,4 +1,4 @@
-import type { Session, SessionStatus } from "@pi-cloud/protocol";
+import type { Session, SessionStatus } from "@pipoca/protocol";
 import { shortName } from "./names";
 
 const busy: readonly SessionStatus[] = ["queued", "starting", "running"];

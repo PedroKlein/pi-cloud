@@ -10,8 +10,8 @@ import type {
   PluginInfo,
   Profile,
   Session,
-} from "@pi-cloud/protocol";
-import { watchChanges } from "@pi-cloud/plugins/web";
+} from "@pipoca/protocol";
+import { watchChanges } from "@pipoca/plugins/web";
 import { api } from "./api";
 import { noticeText, settled } from "./notices";
 import { responseOrder } from "./responses";

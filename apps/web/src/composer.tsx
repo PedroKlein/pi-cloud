@@ -3,9 +3,9 @@ import {
   imageLimits,
   imageTypes,
   type ModelRef,
-} from "@pi-cloud/protocol";
-import type { MountedSession } from "@pi-cloud/plugins/web";
-import { Button, Icon, isComposing } from "@pi-cloud/ui";
+} from "@pipoca/protocol";
+import type { MountedSession } from "@pipoca/plugins/web";
+import { Button, Icon, isComposing } from "@pipoca/ui";
 import {
   type ReactElement,
   type RefObject,

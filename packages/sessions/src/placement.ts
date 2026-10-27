@@ -1,5 +1,5 @@
 import { relative, sep } from "node:path";
-import { type ModelRef, movable } from "@pi-cloud/protocol";
+import { type ModelRef, movable } from "@pipoca/protocol";
 import type { PolledRunner } from "./runner-polls";
 import type { StoredSession } from "./sessions";
 

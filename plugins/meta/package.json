@@ -1,5 +1,5 @@
 {
-  "name": "@pi-cloud/meta",
+  "name": "@pipoca/meta",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,17 +10,17 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.3.0",
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*",
-    "@pi-cloud/ui": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/ui": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"
   },
-  "piCloud": {
+  "pipoca": {
     "id": "meta",
     "title": "Assistant",
-    "description": "Changes Pi Cloud from a chat: the home screen asks the assistant, which works through Pi Cloud's tools and asks before anything risky."
+    "description": "Changes Pipoca from a chat: the home screen asks the assistant, which works through Pipoca's tools and asks before anything risky."
   }
 }

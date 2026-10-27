@@ -1,4 +1,4 @@
-# Pi Cloud open questions
+# Pipoca open questions
 
 > Status: decision backlog. Items here are intentionally unresolved. Move an item into an ADR only after its context, alternatives, decision, and consequences are understood.
 
@@ -24,7 +24,7 @@
 ### Product and repository boundary
 
 - Resolved: the product is called Pipoca, written `pipoca` wherever people type it, with a popped-kernel mark, Ink and Ivory in the app and Butter only in the mark ([ADR 0042](adr/0042-pipoca.md)).
-- Resolved: Pi Cloud owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)). The web UI is React and Tailwind on the design system's tokens, with as few dependencies as possible ([ADR 0020](adr/0020-web-stack.md)).
+- Resolved: Pipoca owns its control plane and UI ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)) and uses TypeScript for every component ([ADR 0002](adr/0002-typescript-for-all-components.md)). The web UI is React and Tailwind on the design system's tokens, with as few dependencies as possible ([ADR 0020](adr/0020-web-stack.md)).
 - Resolved: Bun runtime, Bun workspaces monorepo ([ADR 0003](adr/0003-bun-runtime-and-workspaces.md)).
 - Resolved: the session host runs Pi, a third-party extension and a PTY terminal on Bun, also from a compiled binary ([ADR 0010](adr/0010-session-host-on-bun.md)).
 - Resolved: apps for entry points, domain-named packages, and a separate folder for Pi extensions ([ADR 0008](adr/0008-monorepo-layout.md)).
@@ -53,7 +53,7 @@
 
 - Resolved for v2: a Profile is a Pi agent folder in the server's config folder, owned by a user or shared by an admin, with a shared `default` Profile that starts as plain Pi; a repository's `.pi` loads on top once trusted, and there are no Environment overlays ([ADR 0031](adr/0031-profiles.md), [ADR 0041](adr/0041-profiles-as-folders.md)).
 - Resolved for model aliases: alias config and backend health live on the server per Environment, through a `models` plugin with its own gateway ([ADR 0019](adr/0019-model-aliases.md)).
-- Resolved: credentials are never in a Profile; each machine keeps provider logins in Pi Cloud's own auth file ([ADR 0031](adr/0031-profiles.md)).
+- Resolved: credentials are never in a Profile; each machine keeps provider logins in Pipoca's own auth file ([ADR 0031](adr/0031-profiles.md)).
 - How are required packages distinguished from optional packages?
 - Resolved: Profiles have no revisions; a Session keeps its Profile and loads its current content whenever its process starts ([ADR 0031](adr/0031-profiles.md)).
 - Resolved for v2: a package that fails to install or load stops the Session from starting, with an error that names it ([ADR 0031](adr/0031-profiles.md)). Checking ahead of time is open.
@@ -106,11 +106,11 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 
 ### Extension system
 
-- What is the smallest stable Pi Cloud extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
+- What is the smallest stable Pipoca extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
 - Resolved: a Session may propose a plugin but only the user enables it, and third-party plugins install turned off ([ADR 0022](adr/0022-plugin-model-v2.md#installing-third-party-plugins)).
 - Resolved for v2: plugins are installed and turned on for the whole installation, and changing them restarts the server; each user's Pi personalization stays in their Profile ([ADR 0022](adr/0022-plugin-model-v2.md#plugins-are-per-installation)).
 - Resolved for v2: third-party web parts run in the page like first-party ones, with no sandboxed iframe ([ADR 0022](adr/0022-plugin-model-v2.md#trust)).
-- Resolved for v2: Pi Cloud is changed from chat in meta-sessions, which run on a built-in read-only Profile, get toolsets that plugins contribute, ask before risky calls and can drive the UI; the same toolsets are served over MCP, and a meta-session can write in-place plugins ([ADR 0035](adr/0035-meta-sessions.md)). How a meta-session's powers vary per user is left for v3.
+- Resolved for v2: Pipoca is changed from chat in meta-sessions, which run on a built-in read-only Profile, get toolsets that plugins contribute, ask before risky calls and can drive the UI; the same toolsets are served over MCP, and a meta-session can write in-place plugins ([ADR 0035](adr/0035-meta-sessions.md)). How a meta-session's powers vary per user is left for v3.
 - Is an integrated browser still wanted, and if so as a preview iframe the agent drives through an injected script, or in a desktop app? The CDP screencast was rejected ([ADR 0022](adr/0022-plugin-model-v2.md#no-browser-plugin-yet)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - Resolved: plugins declare settings with defaults in their manifest, values are stored per installation and edited on a Plugins page, and a plugin that fails to start is turned off and reported instead of stopping the server ([ADR 0036](adr/0036-plugin-settings.md)).
@@ -120,7 +120,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Resolved: Chromium resolves `*.localhost` for previews, which cover pages a Session opens through `BROWSER` ([ADR 0037](adr/0037-previews-and-opened-pages.md)). Other browsers are checked as they are used.
 - Resolved: server tools repair JSON-encoded arguments before Pi validates them, built-in plugins may import only the SDK packages, lists update from change events instead of polling, and the usage plugin shows how full the context is ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 - Can an in-place plugin's web part be loaded in a sandboxed headless page before the user turns it on, to report runtime errors, without running its code anywhere it can reach something ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md#later-checking-an-in-place-plugin-before-it-is-turned-on))?
-- Resolved: a plugin can keep its config in a writable config folder, under its own key in a shared `pi-cloud.json` or in its own files, and chooses between a file and SQLite; the UI edits the file, and secrets are sealed in it or named by environment variable ([ADR 0039](adr/0039-plugin-config-files.md)).
+- Resolved: a plugin can keep its config in a writable config folder, under its own key in a shared `pipoca.json` or in its own files, and chooses between a file and SQLite; the UI edits the file, and secrets are sealed in it or named by environment variable ([ADR 0039](adr/0039-plugin-config-files.md)).
 - Can a compiled Bun binary import plugin files from outside itself? It is checked when ADR 0022's third-party install is built.
 
 ## Explicitly postponed

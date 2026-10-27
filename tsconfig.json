@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "include": [
-    "apps/pi-cloud/src",
+    "apps/pipoca/src",
     "packages/*/src",
     "plugins/*/src",
     "**/*.test.ts",

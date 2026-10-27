@@ -6,9 +6,9 @@ import {
   type Session,
   type TerminalTab,
   terminalTakenOver,
-} from "@pi-cloud/protocol";
-import type { EmbeddedSessionProps } from "@pi-cloud/plugins/web";
-import { Badge, Button, cn, Icon, type IconName } from "@pi-cloud/ui";
+} from "@pipoca/protocol";
+import type { EmbeddedSessionProps } from "@pipoca/plugins/web";
+import { Badge, Button, cn, Icon, type IconName } from "@pipoca/ui";
 import {
   type ReactElement,
   type RefObject,
@@ -94,10 +94,10 @@ export function SessionView({
     }
 
     document.title =
-      pageTitle === undefined ? "Pi Cloud" : `${pageTitle} · Pi Cloud`;
+      pageTitle === undefined ? "Pipoca" : `${pageTitle} · Pipoca`;
 
     return () => {
-      document.title = "Pi Cloud";
+      document.title = "Pipoca";
     };
   }, [pageTitle, primary]);
 

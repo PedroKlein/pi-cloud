@@ -3,8 +3,8 @@ import type {
   Prompt,
   Question,
   QuestionOption,
-} from "@pi-cloud/protocol";
-import { Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
+} from "@pipoca/protocol";
+import { Button, cn, fieldClass, Icon } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import type { Explanation } from "./feed";
 import { Actions } from "./fields";

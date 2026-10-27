@@ -6,7 +6,7 @@ import type {
   Removal,
   Work,
   WorkPoll,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import { runProvider } from "./index";
 
 const assignment: SessionStart = {

@@ -1,5 +1,5 @@
 {
-  "name": "@pi-cloud/projects",
+  "name": "@pipoca/projects",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,15 +9,15 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*",
-    "@pi-cloud/ui": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/ui": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"
   },
-  "piCloud": {
+  "pipoca": {
     "id": "projects",
     "title": "Projects",
     "description": "Groups Sessions around a coordinator that works across repositories."

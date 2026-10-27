@@ -3,16 +3,9 @@ import {
   useLoaded,
   type WebContext,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
-import { availability, type Environment } from "@pi-cloud/protocol";
-import {
-  Badge,
-  Button,
-  cn,
-  fieldClass,
-  PageTitle,
-  Section,
-} from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import { availability, type Environment } from "@pipoca/protocol";
+import { Badge, Button, cn, fieldClass, PageTitle, Section } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import {
   aliasesOf,

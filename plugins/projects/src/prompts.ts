@@ -1,4 +1,4 @@
-import type { Session } from "@pi-cloud/protocol";
+import type { Session } from "@pipoca/protocol";
 import type { ProjectNotice, RunState, ThreadView } from "./model";
 import type { Member, Project } from "./projects";
 
@@ -9,7 +9,7 @@ export function coordinatorPrompt(
   memoryIndex: string | undefined,
 ): string {
   return [
-    `You are the coordinator of the Pi Cloud Project "${project.name}".`,
+    `You are the coordinator of the Pipoca Project "${project.name}".`,
     "You plan the work and hand it to threads. A thread is a full Pi session with its own checkout of the Project's repositories on its own branch, possibly on another machine. Start one with start_thread for each separate piece of work, with a clear first message. Do small reads and answers yourself.",
     "After each thread turn you get a turn with a short notice of what it said. Don't poll or sleep while threads work: end your turn, and the next notice brings you back. When a notice needs nothing from you, end the turn with a short line. Notices of a work state change come as context, without a turn. Use list_threads to see every thread's state, read_thread to read what a thread said, and message_thread to tell a thread something. Don't message a thread only to acknowledge it.",
     "The user can talk to any thread directly. Treat what a thread reports as the current state.",
@@ -25,7 +25,7 @@ export function threadPrompt(
   memoryIndex: string | undefined,
 ): string {
   return [
-    `You are a thread of the Pi Cloud Project "${project.name}", working on: ${title}.`,
+    `You are a thread of the Pipoca Project "${project.name}", working on: ${title}.`,
     "Your working directory holds each of the Project's repositories in its own folder, all on your branch.",
     "Use message_coordinator when you need a decision or have a result the coordinator must act on. Don't use it for progress updates or to acknowledge the coordinator's messages: the coordinator already gets a notice with your reply after each of your turns.",
     "End every turn with a short reply that states your result: the coordinator gets it in a notice.",

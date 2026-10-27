@@ -1,9 +1,9 @@
 {
-  "name": "@pi-cloud/providers",
+  "name": "@pipoca/providers",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@pi-cloud/protocol": "workspace:*"
+    "@pipoca/protocol": "workspace:*"
   }
 }

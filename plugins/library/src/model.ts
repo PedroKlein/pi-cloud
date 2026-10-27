@@ -1,4 +1,4 @@
-import type { PluginSettings } from "@pi-cloud/protocol";
+import type { PluginSettings } from "@pipoca/protocol";
 
 export interface LibraryFile {
   readonly name: string;

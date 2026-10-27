@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import type { LiveEvent, SessionEvent } from "@pi-cloud/protocol";
+import type { LiveEvent, SessionEvent } from "@pipoca/protocol";
 import { sessionChannel } from "./session-channel";
 
 const entry = (line: number): SessionEvent => ({

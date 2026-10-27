@@ -11,13 +11,13 @@ import {
   useNow,
   type WebContext,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
+} from "@pipoca/plugins/web";
 import {
   checkoutName,
   type Environment,
   type Profile,
   type Session,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   Badge,
   type BadgeState,
@@ -30,7 +30,7 @@ import {
   Picker,
   type PickerOption,
   Section,
-} from "@pi-cloud/ui";
+} from "@pipoca/ui";
 import {
   type ReactElement,
   type ReactNode,
@@ -678,7 +678,7 @@ function panelOf(rest: string, project: ProjectView): Panel {
   return { kind: "thread", id: first, full: second === "full" };
 }
 
-const railKey = "pi-cloud.projects.rail";
+const railKey = "pipoca.projects.rail";
 
 function useRail(): readonly [boolean, (open: boolean) => void] {
   const [open, setOpen] = useState(() => {

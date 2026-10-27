@@ -4,7 +4,7 @@ import type {
   ModelRoute,
   ModelRouteRequest,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionCloud, SessionPlugin } from "@pipoca/plugins";
 import { aliasesOf, candidates, failure, gatewayProvider } from "./gateway";
 import { mergeHealth, type ModelRef, type SessionConfig } from "./model";
 

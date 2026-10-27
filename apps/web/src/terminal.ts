@@ -1,6 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type { TerminalControl } from "@pi-cloud/protocol";
+import type { TerminalControl } from "@pipoca/protocol";
 
 export function openTerminal(
   sessionId: string,

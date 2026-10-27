@@ -22,8 +22,8 @@ import {
   SettingsManager,
   type ToolExposure,
 } from "@earendil-works/pi-coding-agent";
-import type { Checkout } from "@pi-cloud/plugins";
-import type { ModelRef, ThinkingLevel } from "@pi-cloud/protocol";
+import type { Checkout } from "@pipoca/plugins";
+import type { ModelRef, ThinkingLevel } from "@pipoca/protocol";
 import chalk from "chalk";
 import { pluginPackages } from "./packages";
 import type { Surfaces } from "./surfaces";

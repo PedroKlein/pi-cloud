@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { relative } from "node:path";
 import { promisify } from "node:util";
-import type { SessionCloud } from "@pi-cloud/plugins";
+import type { SessionCloud } from "@pipoca/plugins";
 import { workspaceChanges } from "./changes";
 import type { PullRequest } from "./report";
 
@@ -33,10 +33,10 @@ type Outcome = PullRequest extends infer P
     : never
   : never;
 
-const baseKey = (branch: string): string => `branch.${branch}.piCloudBase`;
+const baseKey = (branch: string): string => `branch.${branch}.pipocaBase`;
 
 const pullRequestKey = (branch: string): string =>
-  `branch.${branch}.piCloudPullRequest`;
+  `branch.${branch}.pipocaPullRequest`;
 
 // Opens the pull requests that /pr asks for, one checkout at a time, and
 // publishes where each stands under "pull-requests". start is false when no

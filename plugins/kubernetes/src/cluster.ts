@@ -56,8 +56,8 @@ export interface ApiAccess {
   readonly ca?: string;
 }
 
-export const environmentLabel = "pi-cloud.dev/environment";
-export const sessionLabel = "pi-cloud.dev/session";
+export const environmentLabel = "pipoca.dev/environment";
+export const sessionLabel = "pipoca.dev/session";
 
 const serviceAccount = "/var/run/secrets/kubernetes.io/serviceaccount";
 
@@ -165,7 +165,7 @@ export function clusterAt(options: ApiAccess): Cluster {
         metadata: {
           name,
           labels: {
-            "app.kubernetes.io/managed-by": "pi-cloud",
+            "app.kubernetes.io/managed-by": "pipoca",
             [environmentLabel]: environmentId,
           },
         },

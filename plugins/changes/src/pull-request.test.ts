@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Checkout, SessionCloud } from "@pi-cloud/plugins";
+import type { Checkout, SessionCloud } from "@pipoca/plugins";
 import { type Complete, pullRequestCommand } from "./pull-request";
 import type { PullRequest } from "./report";
 
@@ -52,8 +52,8 @@ async function sessionCheckout(): Promise<{
   await git(path, "push", "--quiet", "origin", "main");
 
   const base = await git(path, "rev-parse", "HEAD");
-  await git(path, "switch", "--quiet", "-c", "pi-cloud/session");
-  await git(path, "config", "branch.pi-cloud/session.piCloudBase", base);
+  await git(path, "switch", "--quiet", "-c", "pipoca/session");
+  await git(path, "config", "branch.pipoca/session.pipocaBase", base);
 
   return { origin, checkout: { path, base } };
 }
@@ -101,10 +101,10 @@ test("pushes the session branch as its upstream and nothing else", async () => {
   expect(await pr(checkout, "")).toEqual({
     name: "",
     status: "pushed",
-    branch: "pi-cloud/session",
+    branch: "pipoca/session",
   });
 
-  expect(await git(origin, "log", "--format=%s", "pi-cloud/session")).toBe(
+  expect(await git(origin, "log", "--format=%s", "pipoca/session")).toBe(
     "Edit the readme\nfirst",
   );
 
@@ -112,7 +112,7 @@ test("pushes the session branch as its upstream and nothing else", async () => {
 
   expect(
     await git(checkout.path, "rev-parse", "--abbrev-ref", "@{upstream}"),
-  ).toBe("origin/pi-cloud/session");
+  ).toBe("origin/pipoca/session");
 });
 
 test("refuses to commit or push once the checkout has left its session branch", async () => {
@@ -204,10 +204,10 @@ test("pushes the branch's commits when the only uncommitted work is inside a sub
   expect(await pr(checkout, "")).toEqual({
     name: "",
     status: "pushed",
-    branch: "pi-cloud/session",
+    branch: "pipoca/session",
   });
 
-  expect(await git(origin, "log", "--format=%s", "pi-cloud/session")).toBe(
+  expect(await git(origin, "log", "--format=%s", "pipoca/session")).toBe(
     "Add the library\nfirst",
   );
 });
@@ -224,10 +224,10 @@ test("commits a submodule moved to a new commit", async () => {
   expect(await pr(checkout, "", reply)).toEqual({
     name: "",
     status: "pushed",
-    branch: "pi-cloud/session",
+    branch: "pipoca/session",
   });
 
-  expect(await git(origin, "log", "--format=%s", "pi-cloud/session")).toBe(
+  expect(await git(origin, "log", "--format=%s", "pipoca/session")).toBe(
     "Move the library\nAdd the library\nfirst",
   );
 });
@@ -299,7 +299,7 @@ test.each([
   const url = new URL(outcome?.status === "compose" ? outcome.url : "");
 
   expect(`${url.origin}${url.pathname}`).toBe(
-    "https://github.com/acme/widgets/compare/pi-cloud%2Fsession",
+    "https://github.com/acme/widgets/compare/pipoca%2Fsession",
   );
 
   expect(said).not.toContain("secret");
@@ -314,7 +314,7 @@ test("only pushes to a remote that names github.com but is elsewhere", async () 
   expect(outcome).toEqual({
     name: "",
     status: "pushed",
-    branch: "pi-cloud/session",
+    branch: "pipoca/session",
   });
 
   expect(said).not.toContain("secret");

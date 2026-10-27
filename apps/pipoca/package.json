@@ -1,0 +1,39 @@
+{
+  "name": "@pipoca/pipoca",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "pipoca": "./src/main.ts"
+  },
+  "scripts": {
+    "build": "bun src/build.ts",
+    "dev": "bun src/dev.ts",
+    "smoke": "bun src/smoke.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@pipoca/ask": "workspace:*",
+    "@pipoca/changes": "workspace:*",
+    "@pipoca/kubernetes": "workspace:*",
+    "@pipoca/library": "workspace:*",
+    "@pipoca/meta": "workspace:*",
+    "@pipoca/models": "workspace:*",
+    "@pipoca/oidc": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/profiles": "workspace:*",
+    "@pipoca/projects": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/providers": "workspace:*",
+    "@pipoca/sessionhost": "workspace:*",
+    "@pipoca/sessions": "workspace:*",
+    "@pipoca/subagents": "workspace:*",
+    "@pipoca/usage": "workspace:*",
+    "@pipoca/web": "workspace:*",
+    "@pipoca/workspaces": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.3.0",
+    "playwright-core": "1.64.0"
+  }
+}

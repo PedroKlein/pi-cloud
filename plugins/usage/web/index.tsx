@@ -1,4 +1,4 @@
-import type { SessionPartProps, WebPlugin } from "@pi-cloud/plugins/web";
+import type { SessionPartProps, WebPlugin } from "@pipoca/plugins/web";
 import { type ReactElement, useEffect, useState } from "react";
 import { addUsage, describeContext, describeUsage, type Usage } from "./usage";
 

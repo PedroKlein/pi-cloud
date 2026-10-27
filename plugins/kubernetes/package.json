@@ -1,5 +1,5 @@
 {
-  "name": "@pi-cloud/kubernetes",
+  "name": "@pipoca/kubernetes",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,15 +8,15 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*",
-    "@pi-cloud/ui": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/ui": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"
   },
-  "piCloud": {
+  "pipoca": {
     "id": "kubernetes",
     "title": "Kubernetes",
     "description": "Starts runner pods for an Environment when the server runs in a cluster."

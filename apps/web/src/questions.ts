@@ -3,7 +3,7 @@ import type {
   QuestionAnswer,
   QuestionsAnswer,
   Selection,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 // What a person has entered for one question so far.
 export interface QuestionState {

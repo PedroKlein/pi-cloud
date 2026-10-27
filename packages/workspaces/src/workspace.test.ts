@@ -17,7 +17,7 @@ import { type AddressInfo, createServer, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { Workspace } from "@pi-cloud/protocol";
+import type { Workspace } from "@pipoca/protocol";
 import {
   findCheckouts,
   gitCredentials,
@@ -80,7 +80,7 @@ test("refuses folders the provider does not list", async () => {
 
   for (const workspace of [
     { kind: "folder", path: repository },
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
   ] as const) {
     const prepared = prepareWorkspace(
       workspace,
@@ -154,7 +154,7 @@ test("makes a Project repository a worktree of a checkout under a root", async (
   const { checkouts } = await prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: "https://example.com/org/origin" }],
     },
     { dir, folders: [root] },
@@ -184,14 +184,14 @@ test("gives a worktree session its own branch outside the checkout", async () =>
   const dir = join(root, "workspaces", "s1");
 
   const { cwd } = await prepareWorkspace(
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
     { dir, folders: [repository] },
     noLog,
   );
 
   expect(cwd).toBe(dir);
   expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
-  expect(await git(dir, "branch", "--show-current")).toBe("pi-cloud/s1");
+  expect(await git(dir, "branch", "--show-current")).toBe("pipoca/s1");
   expect(await git(repository, "branch", "--show-current")).toBe("main");
 
   expect(
@@ -200,9 +200,9 @@ test("gives a worktree session its own branch outside the checkout", async () =>
       "branch",
       "--format=%(refname:short)",
       "--list",
-      "pi-cloud/*",
+      "pipoca/*",
     ),
-  ).toBe("pi-cloud/s1");
+  ).toBe("pipoca/s1");
 });
 
 test("keeps an existing worktree and its changes on a later attempt", async () => {
@@ -212,7 +212,7 @@ test("keeps an existing worktree and its changes on a later attempt", async () =
   const workspace = {
     kind: "worktree",
     path: repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   await prepareWorkspace(workspace, options, noLog);
@@ -234,7 +234,7 @@ test("works in a folder that is not a checkout when asked for a worktree of it",
   const workspace: Workspace = {
     kind: "worktree",
     path: plain,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   };
 
   const { cwd } = await prepareWorkspace(
@@ -257,7 +257,7 @@ test("fails a worktree with git's own error when git can't read the checkout", a
   await appendFile(join(repository, ".git", "config"), "[core\n");
 
   const prepared = prepareWorkspace(
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
     { dir: join(root, "workspaces", "s1"), folders: [repository] },
     noLog,
   );
@@ -272,7 +272,7 @@ test("keeps a worktree whose checkout git can't read, even when forced", async (
   const workspace = {
     kind: "worktree",
     path: repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   await prepareWorkspace(workspace, { dir, folders: [repository] }, noLog);
@@ -289,14 +289,14 @@ test("clones the repository onto the session's own branch", async () => {
   const dir = join(root, "workspaces", "s1");
 
   const { cwd } = await prepareWorkspace(
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
     { dir, folders: [] },
     noLog,
   );
 
   expect(cwd).toBe(dir);
   expect(await readFile(join(dir, "README.md"), "utf8")).toBe("hello\n");
-  expect(await git(dir, "branch", "--show-current")).toBe("pi-cloud/s1");
+  expect(await git(dir, "branch", "--show-current")).toBe("pipoca/s1");
   expect(await git(dir, "remote", "get-url", "origin")).toBe(repository);
 });
 
@@ -305,7 +305,7 @@ test("reaches the remote with the environment it is given", async () => {
   const remote = "https://git.invalid/origin.git";
 
   await prepareWorkspace(
-    { kind: "clone", repository: remote, branch: "pi-cloud/s1" },
+    { kind: "clone", repository: remote, branch: "pipoca/s1" },
     {
       dir,
       folders: [],
@@ -388,7 +388,7 @@ test("keeps an existing clone and its changes on a later attempt", async () => {
   const workspace = {
     kind: "clone",
     repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   await prepareWorkspace(workspace, { dir, folders: [] }, noLog);
@@ -405,7 +405,7 @@ test("fails with git's error and leaves no directory behind", async () => {
   const dir = join(root, "workspaces", "s1");
 
   const prepared = prepareWorkspace(
-    { kind: "clone", repository: join(root, "missing"), branch: "pi-cloud/s1" },
+    { kind: "clone", repository: join(root, "missing"), branch: "pipoca/s1" },
     { dir, folders: [] },
     noLog,
   );
@@ -419,8 +419,8 @@ test("remembers the commit a session branch started from", async () => {
   const start = await git(repository, "rev-parse", "HEAD");
 
   for (const workspace of [
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
-    { kind: "clone", repository, branch: "pi-cloud/s2" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
+    { kind: "clone", repository, branch: "pipoca/s2" },
   ] as const) {
     const options = {
       dir: join(root, "workspaces", workspace.branch),
@@ -484,19 +484,19 @@ test("starts a session branch from the branch it names", async () => {
     {
       kind: "worktree",
       path: repository,
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       startPoint: "feature",
     },
     {
       kind: "clone",
       repository,
-      branch: "pi-cloud/s2",
+      branch: "pipoca/s2",
       startPoint: "feature",
     },
     {
       kind: "clone",
       repository,
-      branch: "pi-cloud/s3",
+      branch: "pipoca/s3",
       startPoint: feature,
     },
   ] as const) {
@@ -521,7 +521,7 @@ test("clones through a mirror the clone does not depend on", async () => {
   const workspace = {
     kind: "clone",
     repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   const { cwd } = await prepareWorkspace(
@@ -559,7 +559,7 @@ test("clones through a mirror the clone does not depend on", async () => {
   expect(await git(cwd, "log", "--oneline")).toContain("first");
 
   const second = await prepareWorkspace(
-    { ...workspace, branch: "pi-cloud/s2" },
+    { ...workspace, branch: "pipoca/s2" },
     { dir: join(root, "workspaces", "s2"), folders: [], mirrors },
     noLog,
   );
@@ -578,7 +578,7 @@ test("brings a mirror up to date before the next clone", async () => {
   });
 
   await prepareWorkspace(
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
     options("s1"),
     noLog,
   );
@@ -600,7 +600,7 @@ test("brings a mirror up to date before the next clone", async () => {
   const later = await git(repository, "rev-parse", "HEAD");
 
   await prepareWorkspace(
-    { kind: "clone", repository, branch: "pi-cloud/s2" },
+    { kind: "clone", repository, branch: "pipoca/s2" },
     options("s2"),
     noLog,
   );
@@ -616,7 +616,7 @@ test("clones without a mirror when the mirror cannot be made", async () => {
   const logs: string[] = [];
 
   const { cwd } = await prepareWorkspace(
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
     { dir: join(root, "workspaces", "s1"), folders: [], mirrors },
     (message) => {
       logs.push(message);
@@ -633,7 +633,7 @@ test("clones the same repository for several sessions at once", async () => {
   const prepared = await Promise.all(
     ["s1", "s2", "s3"].map(async (name) =>
       prepareWorkspace(
-        { kind: "clone", repository, branch: `pi-cloud/${name}` },
+        { kind: "clone", repository, branch: `pipoca/${name}` },
         { dir: join(root, "workspaces", name), folders: [], mirrors },
         noLog,
       ),
@@ -668,7 +668,7 @@ test("gives up on a repository whose server stops sending", async () => {
     const prepared = await Promise.allSettled(
       ["s1", "s2"].map(async (name) =>
         prepareWorkspace(
-          { kind: "clone", repository: silent, branch: `pi-cloud/${name}` },
+          { kind: "clone", repository: silent, branch: `pipoca/${name}` },
           { dir: join(root, "workspaces", name), folders: [], mirrors },
           noLog,
         ),
@@ -745,7 +745,7 @@ async function withEnv(
 
 async function cloneOverSsh(remote: string, name: string): Promise<void> {
   const prepared = prepareWorkspace(
-    { kind: "clone", repository: remote, branch: `pi-cloud/${name}` },
+    { kind: "clone", repository: remote, branch: `pipoca/${name}` },
     {
       dir: join(root, "workspaces", name),
       folders: [],
@@ -868,7 +868,7 @@ test("copies the gitignored files .worktreeinclude names into a new worktree", a
   const dir = join(root, "workspaces", "s1");
 
   await prepareWorkspace(
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
     { dir, folders: [repository] },
     noLog,
   );
@@ -903,7 +903,7 @@ test("copies nothing into a worktree without .worktreeinclude", async () => {
   const dir = join(root, "workspaces", "s1");
 
   await prepareWorkspace(
-    { kind: "worktree", path: repository, branch: "pi-cloud/s1" },
+    { kind: "worktree", path: repository, branch: "pipoca/s1" },
     { dir, folders: [repository] },
     noLog,
   );
@@ -942,12 +942,12 @@ test("removes a clean worktree and its branch and brings it back from the pushed
   const workspace = {
     kind: "worktree",
     path: checkout,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   await prepareWorkspace(workspace, options, noLog);
   await commit(dir, "work.txt");
-  await git(dir, "push", "origin", "pi-cloud/s1");
+  await git(dir, "push", "origin", "pipoca/s1");
 
   const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
 
@@ -955,23 +955,23 @@ test("removes a clean worktree and its branch and brings it back from the pushed
     outcome: "removed",
     restore: {
       ...workspace,
-      restorePoint: "origin/pi-cloud/s1",
-      branchConfig: { picloudbase: await git(checkout, "rev-parse", "HEAD") },
+      restorePoint: "origin/pipoca/s1",
+      branchConfig: { pipocabase: await git(checkout, "rev-parse", "HEAD") },
     },
   });
 
   expect(stat(dir)).rejects.toThrow();
-  expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(checkout, "branch", "--list", "pipoca/s1")).toBe("");
   expect(await git(checkout, "worktree", "list")).not.toContain(dir);
 
   await prepareWorkspace(
-    { ...workspace, restorePoint: "origin/pi-cloud/s1" },
+    { ...workspace, restorePoint: "origin/pipoca/s1" },
     options,
     noLog,
   );
 
   expect(await readFile(join(dir, "work.txt"), "utf8")).toBe("work.txt\n");
-  expect(await git(dir, "branch", "--show-current")).toBe("pi-cloud/s1");
+  expect(await git(dir, "branch", "--show-current")).toBe("pipoca/s1");
 });
 
 test("keeps a worktree with work git would lose unless forced", async () => {
@@ -1014,7 +1014,7 @@ test("keeps a worktree with work git would lose unless forced", async () => {
     const workspace = {
       kind: "worktree",
       path: checkout,
-      branch: `pi-cloud/s${String(i)}`,
+      branch: `pipoca/s${String(i)}`,
     } as const;
 
     await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
@@ -1047,7 +1047,7 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
   const workspace = {
     kind: "clone",
     repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   const clean = join(root, "workspaces", "clean");
@@ -1063,7 +1063,7 @@ test("removes a clean clone and keeps one with unpushed commits", async () => {
     restore: {
       ...workspace,
       restorePoint: await git(repository, "rev-parse", "main"),
-      branchConfig: { picloudbase: await git(repository, "rev-parse", "main") },
+      branchConfig: { pipocabase: await git(repository, "rev-parse", "main") },
     },
   });
 
@@ -1088,18 +1088,18 @@ test("keeps a clone with unpushed commits off its session branch unless forced",
   const workspace = {
     kind: "clone",
     repository,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   const losses = [
     async (dir: string) => {
-      await git(dir, "branch", "--move", "pi-cloud/s1", "feat/x");
+      await git(dir, "branch", "--move", "pipoca/s1", "feat/x");
       await commit(dir, "renamed.txt");
     },
     async (dir: string) => {
       await git(dir, "switch", "--create", "feat/y");
       await commit(dir, "other.txt");
-      await git(dir, "branch", "--delete", "--force", "pi-cloud/s1");
+      await git(dir, "branch", "--delete", "--force", "pipoca/s1");
     },
     async (dir: string) => {
       await git(dir, "switch", "--detach");
@@ -1137,7 +1137,7 @@ test("removes a clean clone of an empty repository", async () => {
   const workspace = {
     kind: "clone",
     repository: empty,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   const dir = join(root, "workspaces", "s1");
@@ -1174,8 +1174,8 @@ test("brings a session back without the commits of another remote branch that co
   const checkout = await checkoutWithRemote();
 
   for (const workspace of [
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
-    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
+    { kind: "worktree", path: checkout, branch: "pipoca/s2" },
   ] as const) {
     const dir = join(root, "workspaces", workspace.branch);
     const options = { dir, folders: [checkout] };
@@ -1193,8 +1193,8 @@ test("brings a session back at its own commit once the branch holding it moved o
   const checkout = await checkoutWithRemote();
 
   for (const workspace of [
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
-    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
+    { kind: "worktree", path: checkout, branch: "pipoca/s2" },
   ] as const) {
     const dir = join(root, "workspaces", workspace.branch);
     const options = { dir, folders: [checkout] };
@@ -1220,8 +1220,8 @@ test("brings a session back at its own commit when the branch holding it moves o
   const checkout = await checkoutWithRemote();
 
   for (const workspace of [
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
-    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
+    { kind: "worktree", path: checkout, branch: "pipoca/s2" },
   ] as const) {
     const dir = join(root, "workspaces", workspace.branch);
     const options = { dir, folders: [checkout] };
@@ -1257,8 +1257,8 @@ test("starts a session branch over once the remote deleted it after a merge", as
   const checkout = await checkoutWithRemote();
 
   for (const [workspace, start] of [
-    [{ kind: "clone", repository, branch: "pi-cloud/s1" }, repository],
-    [{ kind: "worktree", path: checkout, branch: "pi-cloud/s2" }, checkout],
+    [{ kind: "clone", repository, branch: "pipoca/s1" }, repository],
+    [{ kind: "worktree", path: checkout, branch: "pipoca/s2" }, checkout],
   ] as const) {
     const dir = join(root, "workspaces", workspace.branch);
     const options = { dir, folders: [checkout] };
@@ -1317,11 +1317,11 @@ test("starts a session branch over once the remote deleted it after a merge", as
 
 test("fails a new session branch whose start point git can't find", async () => {
   for (const workspace of [
-    { kind: "clone", repository, branch: "pi-cloud/s1", startPoint: "gone" },
+    { kind: "clone", repository, branch: "pipoca/s1", startPoint: "gone" },
     {
       kind: "worktree",
       path: repository,
-      branch: "pi-cloud/s2",
+      branch: "pipoca/s2",
       startPoint: "gone",
     },
   ] as const) {
@@ -1345,11 +1345,11 @@ test("brings a session branch back with the base and pull request it had", async
   const pullRequest = "https://github.com/example/origin/pull/1";
 
   for (const workspace of [
-    { kind: "clone", repository, branch: "pi-cloud/s1" },
-    { kind: "worktree", path: checkout, branch: "pi-cloud/s2" },
+    { kind: "clone", repository, branch: "pipoca/s1" },
+    { kind: "worktree", path: checkout, branch: "pipoca/s2" },
     {
       kind: "repositories",
-      branch: "pi-cloud/s3",
+      branch: "pipoca/s3",
       repositories: [{ repository }],
     },
   ] as const) {
@@ -1357,7 +1357,7 @@ test("brings a session branch back with the base and pull request it had", async
     const options = { dir, folders: [checkout] };
     const { checkouts } = await prepareWorkspace(workspace, options, noLog);
     const path = checkouts[0]?.path ?? "";
-    const pullRequestKey = `branch.${workspace.branch}.piCloudPullRequest`;
+    const pullRequestKey = `branch.${workspace.branch}.pipocaPullRequest`;
     await commit(path, `${workspace.kind}.txt`);
     await git(path, "push", "origin", workspace.branch);
     await git(path, "config", pullRequestKey, pullRequest);
@@ -1386,8 +1386,8 @@ test("reports a workspace that is already gone as removed", async () => {
   const checkout = await checkoutWithRemote();
 
   for (const workspace of [
-    { kind: "worktree", path: checkout, branch: "pi-cloud/s1" },
-    { kind: "clone", repository, branch: "pi-cloud/s2" },
+    { kind: "worktree", path: checkout, branch: "pipoca/s1" },
+    { kind: "clone", repository, branch: "pipoca/s2" },
   ] as const) {
     const dir = join(root, "workspaces", workspace.branch);
 
@@ -1404,7 +1404,7 @@ test("removes a worktree whose checkout is gone only when forced", async () => {
   const workspace = {
     kind: "worktree",
     path: checkout,
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
   } as const;
 
   await prepareWorkspace(workspace, { dir, folders: [checkout] }, noLog);
@@ -1425,7 +1425,7 @@ test("removes a worktree whose checkout is gone only when forced", async () => {
 
   const several = {
     kind: "repositories",
-    branch: "pi-cloud/s2",
+    branch: "pipoca/s2",
     repositories: [{ repository }],
   } as const;
 
@@ -1471,7 +1471,7 @@ test("checks several repositories out side by side on the session's branch", asy
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }, { repository: second }],
   } as const;
 
@@ -1489,7 +1489,7 @@ test("checks several repositories out side by side on the session's branch", asy
   ]);
 
   for (const { path, base } of checkouts) {
-    expect(await git(path, "branch", "--show-current")).toBe("pi-cloud/s1");
+    expect(await git(path, "branch", "--show-current")).toBe("pipoca/s1");
     expect(base).toBe(await git(path, "rev-parse", "HEAD"));
   }
 
@@ -1514,7 +1514,7 @@ test("fails several repositories only once every checkout has finished", async (
   const prepared = prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: join(root, "missing") }, { repository }],
     },
     { dir, folders: [] },
@@ -1542,7 +1542,7 @@ test("matches a folder whose remote names the repository another way", async () 
   await prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: "https://github.com/example/tool" }],
     },
     { dir, folders: [checkout] },
@@ -1568,7 +1568,7 @@ test("matches a folder whose scp-style remote path starts with a digit", async (
   await prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: "https://git.example.com/3b1b/manim" }],
     },
     { dir, folders: [checkout] },
@@ -1591,7 +1591,7 @@ test("makes each repository a worktree of the first checkout under the roots tha
   await prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository }, { repository: other }],
     },
     { dir, folders: [folders] },
@@ -1620,7 +1620,7 @@ test("removes several repositories only when none of them would lose work", asyn
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }, { repository: second }],
   } as const;
 
@@ -1635,7 +1635,7 @@ test("removes several repositories only when none of them would lose work", asyn
 
   await rm(join(dir, "second", "draft.txt"));
   await commit(join(dir, "origin"), "work.txt");
-  await git(join(dir, "origin"), "push", "origin", "pi-cloud/s1");
+  await git(join(dir, "origin"), "push", "origin", "pipoca/s1");
 
   const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
 
@@ -1646,22 +1646,22 @@ test("removes several repositories only when none of them would lose work", asyn
       repositories: [
         {
           repository,
-          restorePoint: "origin/pi-cloud/s1",
+          restorePoint: "origin/pipoca/s1",
           branchConfig: {
-            picloudbase: await git(checkout, "rev-parse", "HEAD"),
+            pipocabase: await git(checkout, "rev-parse", "HEAD"),
           },
         },
         {
           repository: second,
           restorePoint: await git(second, "rev-parse", "main"),
-          branchConfig: { picloudbase: await git(second, "rev-parse", "main") },
+          branchConfig: { pipocabase: await git(second, "rev-parse", "main") },
         },
       ],
     },
   });
 
   expect(stat(dir)).rejects.toThrow();
-  expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(checkout, "branch", "--list", "pipoca/s1")).toBe("");
 
   if (report.outcome === "removed") {
     await prepareWorkspace(report.restore, options, noLog);
@@ -1690,22 +1690,22 @@ test("removes a repository worktree of a bare repository kept in a folder's .git
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }],
   } as const;
 
   await prepareWorkspace(workspace, options, noLog);
   await commit(join(dir, "origin"), "work.txt");
-  await git(join(dir, "origin"), "push", "origin", "pi-cloud/s1");
+  await git(join(dir, "origin"), "push", "origin", "pipoca/s1");
 
   const report = await removeWorkspace(workspace, { dir, force: false }, noLog);
 
   expect(report).toMatchObject({
     outcome: "removed",
-    restore: { repositories: [{ restorePoint: "origin/pi-cloud/s1" }] },
+    restore: { repositories: [{ restorePoint: "origin/pipoca/s1" }] },
   });
 
-  expect(await git(tools, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(tools, "branch", "--list", "pipoca/s1")).toBe("");
   expect(await git(tools, "worktree", "list")).not.toContain(dir);
 
   await prepareWorkspace(
@@ -1726,7 +1726,7 @@ test("removes a repository worktree whose folder is gone from the checkout it ca
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }],
   } as const;
 
@@ -1738,7 +1738,7 @@ test("removes a repository worktree whose folder is gone from the checkout it ca
     await removeWorkspace(workspace, { ...options, force: false }, noLog),
   ).toEqual({ outcome: "kept", reason: "origin: unpushed commits" });
 
-  await git(checkout, "push", "origin", "pi-cloud/s1");
+  await git(checkout, "push", "origin", "pipoca/s1");
 
   const report = await removeWorkspace(
     workspace,
@@ -1748,10 +1748,10 @@ test("removes a repository worktree whose folder is gone from the checkout it ca
 
   expect(report).toMatchObject({
     outcome: "removed",
-    restore: { repositories: [{ restorePoint: "origin/pi-cloud/s1" }] },
+    restore: { repositories: [{ restorePoint: "origin/pipoca/s1" }] },
   });
 
-  expect(await git(checkout, "branch", "--list", "pi-cloud/s1")).toBe("");
+  expect(await git(checkout, "branch", "--list", "pipoca/s1")).toBe("");
   expect(await git(checkout, "worktree", "list")).not.toContain(dir);
 
   await prepareWorkspace(
@@ -1771,7 +1771,7 @@ test("removes a repository worktree whose session branch was renamed and leaves 
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }],
   } as const;
 
@@ -1796,7 +1796,7 @@ test("keeps several repositories while files sit beside them", async () => {
 
   const workspace = {
     kind: "repositories",
-    branch: "pi-cloud/s1",
+    branch: "pipoca/s1",
     repositories: [{ repository }],
   } as const;
 
@@ -1826,7 +1826,7 @@ test("refuses a repository whose URL leaves no name for its folder", async () =>
   const prepared = prepareWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: unnamed }],
     },
     { dir, folders: [] },
@@ -1853,7 +1853,7 @@ test("never removes the folder above a workspace, even when forced", async () =>
   const removed = removeWorkspace(
     {
       kind: "repositories",
-      branch: "pi-cloud/s1",
+      branch: "pipoca/s1",
       repositories: [{ repository: "https://example.com/org/.." }],
     },
     { dir, force: true },

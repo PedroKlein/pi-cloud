@@ -1,5 +1,5 @@
 {
-  "name": "pi-cloud",
+  "name": "pipoca",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -8,14 +8,14 @@
     "plugins/*"
   ],
   "scripts": {
-    "build": "bun run --cwd apps/pi-cloud build",
-    "dev": "bun run --cwd apps/pi-cloud dev",
-    "smoke": "bun run --cwd apps/pi-cloud smoke",
+    "build": "bun run --cwd apps/pipoca build",
+    "dev": "bun run --cwd apps/pipoca dev",
+    "smoke": "bun run --cwd apps/pipoca smoke",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web",
-    "test:e2e": "bun test ./apps/pi-cloud/src/web.e2e.ts"
+    "test:e2e": "bun test ./apps/pipoca/src/web.e2e.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

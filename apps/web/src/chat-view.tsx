@@ -1,5 +1,5 @@
-import type { MountedSession } from "@pi-cloud/plugins/web";
-import { cn, Icon } from "@pi-cloud/ui";
+import type { MountedSession } from "@pipoca/plugins/web";
+import { cn, Icon } from "@pipoca/ui";
 import {
   type ReactElement,
   type ReactNode,
@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { WebPlugin } from "@pi-cloud/plugins/web";
+import type { WebPlugin } from "@pipoca/plugins/web";
 import { createPortal } from "react-dom";
 import { dataUrl } from "./attachments";
 import {

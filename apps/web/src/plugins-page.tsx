@@ -1,5 +1,5 @@
-import type { PluginInfo, SettingSpec, SettingValue } from "@pi-cloud/protocol";
-import { Badge, Button, cn, Field, fieldClass, PageTitle } from "@pi-cloud/ui";
+import type { PluginInfo, SettingSpec, SettingValue } from "@pipoca/protocol";
+import { Badge, Button, cn, Field, fieldClass, PageTitle } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { usePlugins } from "./hooks";
@@ -20,7 +20,7 @@ export function PluginsPage(): ReactElement {
       id="plugins-page"
       className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10"
     >
-      <PageTitle description="Plugins add features to Pi Cloud, for everyone on this server. The server uses new settings at once, open pages after a reload, and Sessions the next time they start.">
+      <PageTitle description="Plugins add features to Pipoca, for everyone on this server. The server uses new settings at once, open pages after a reload, and Sessions the next time they start.">
         Plugins
       </PageTitle>
       {plugins.some(waitsForRestart) && <Restart />}
@@ -191,10 +191,10 @@ function trustQuestion(plugin: PluginInfo): string {
 
   return [
     `Turn on ${plugin.title}?`,
-    `Its code runs inside the Pi Cloud server, with the server's access. It asks for ${declared.length > 0 ? declared.join(", ") : "nothing more"}.`,
+    `Its code runs inside the Pipoca server, with the server's access. It asks for ${declared.length > 0 ? declared.join(", ") : "nothing more"}.`,
     ...(parts.web === undefined
       ? []
-      : ["Its web part runs in the page of everyone who opens Pi Cloud."]),
+      : ["Its web part runs in the page of everyone who opens Pipoca."]),
     ...(parts.session === undefined
       ? []
       : [

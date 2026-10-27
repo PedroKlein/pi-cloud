@@ -1,8 +1,8 @@
-import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
-import type { Actor, ModelRef, Session } from "@pi-cloud/protocol";
+import type { ServerPlugin, ServerPluginContext } from "@pipoca/plugins";
+import type { Actor, ModelRef, Session } from "@pipoca/protocol";
 import { metaPrompt } from "./prompt";
 
-// Meta-sessions change Pi Cloud itself (ADR 0035). They run on the meta
+// Meta-sessions change Pipoca itself (ADR 0035). They run on the meta
 // Profile and stay out of the Session list.
 export const meta: ServerPlugin = {
   name: "meta",
@@ -16,7 +16,7 @@ export const meta: ServerPlugin = {
     context.toolsets.loadInOwnSessions();
 
     const profile = context.profiles.provide("assistant", {
-      name: "Pi Cloud assistant",
+      name: "Pipoca assistant",
       packages: [],
       agentsMd: "",
       systemMd: "",

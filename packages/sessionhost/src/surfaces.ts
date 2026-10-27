@@ -13,7 +13,7 @@ import {
   Text,
   TuiMainScreen,
 } from "@earendil-works/pi-tui";
-import type { LiveEvent } from "@pi-cloud/protocol";
+import type { LiveEvent } from "@pipoca/protocol";
 import type { Log } from "./host";
 
 export type Surfaces = Pick<

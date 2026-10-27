@@ -1,6 +1,6 @@
-# Pi Cloud
+# Pipoca
 
-Pi Cloud runs [Pi](https://github.com/earendil-works/pi) coding-agent sessions on your own machines and lets you reach them from a browser. A session keeps running when you close the tab, and you can pick it up later from another device with the full transcript and a live terminal.
+Pipoca runs [Pi](https://github.com/earendil-works/pi) coding-agent sessions on your own machines and lets you reach them from a browser. A session keeps running when you close the tab, and you can pick it up later from another device with the full transcript and a live terminal.
 
 It's self-hosted and meant for one person. The plan is a small server on an always-on VM plus an agent on your laptop, so a session can run wherever the work needs it.
 
@@ -9,13 +9,13 @@ It's self-hosted and meant for one person. The plan is a small server on an alwa
 ## How it works
 
 ```text
-browser ──HTTP/SSE──▶ pi-cloud server ◀──long-poll + HTTPS/SSE── pi-cloud agent ──▶ Pi sessions
+browser ──HTTP/SSE──▶ pipoca server ◀──long-poll + HTTPS/SSE── pipoca agent ──▶ Pi sessions
                       (web UI, SQLite)                          (your laptop)
 ```
 
-- `pi-cloud server` serves the web UI, stores sessions and a copy of each transcript in SQLite, and relays commands.
-- `pi-cloud agent` connects out to the server, so the laptop needs no open port. It runs each Pi session in its own process, in a working directory you choose, with the Pi setup of the Profile it picked: packages, instructions and settings. Each machine keeps its own model logins in its data directory, so log it in once with `/login` from any session. A session that crashes reloads from its transcript without touching the others.
-- `pi-cloud server --provider <name>` also runs an agent inside the server. On a VM, its sessions each clone a repository and work on their own branch. See [docs/vm.md](docs/vm.md).
+- `pipoca server` serves the web UI, stores sessions and a copy of each transcript in SQLite, and relays commands.
+- `pipoca agent` connects out to the server, so the laptop needs no open port. It runs each Pi session in its own process, in a working directory you choose, with the Pi setup of the Profile it picked: packages, instructions and settings. Each machine keeps its own model logins in its data directory, so log it in once with `/login` from any session. A session that crashes reloads from its transcript without touching the others.
+- `pipoca server --provider <name>` also runs an agent inside the server. On a VM, its sessions each clone a repository and work on their own branch. See [docs/vm.md](docs/vm.md).
 - If the laptop sleeps or goes offline, its sessions keep running and catch up when it reconnects.
 
 The design is written down in [docs/architecture.md](docs/architecture.md) and the decision records in [docs/adr/](docs/adr/).
@@ -27,7 +27,7 @@ You need [Bun](https://bun.sh) and a working Pi setup with at least one model yo
 ```sh
 bun install
 bun run build
-apps/pi-cloud/dist/pi-cloud server
+apps/pipoca/dist/pipoca server
 ```
 
 The first time it starts, the server logs a setup link (`open the setup link to create the first user`). Open it to create your user; the link works once. After that, the page asks for that name and password, and a browser stays signed in for 30 days. Ten wrong passwords for a name lock it for 15 minutes.
@@ -35,21 +35,21 @@ The first time it starts, the server logs a setup link (`open the setup link to 
 On the Environments page, make an Environment named `laptop`. The page shows its key once, in the command that starts an agent:
 
 ```sh
-PI_CLOUD_KEY=pck_… apps/pi-cloud/dist/pi-cloud agent --name laptop --folder ~/code/my-project
+PIPOCA_KEY=pck_… apps/pipoca/dist/pipoca agent --name laptop --folder ~/code/my-project
 ```
 
 Then open New session, type what Pi should do, pick `~/code/my-project` in the folder chip (and the `laptop` Environment, when there is more than one), and press Enter. The composer remembers what you picked for next time. A session runs in the Environment it was created in ([ADR 0014](docs/adr/0014-concept-map-and-environments.md)).
 
-The agent only runs sessions in the folders you list with `--folder`, or in folders inside them. One `--folder ~/code` covers every checkout under it, and the folder chip lists the git checkouts it finds there, after the ones you used recently. The workspace follows from what you pick ([ADR 0040](docs/adr/0040-fewer-forms.md)). A folder gets its own Git worktree, on a branch named `pi-cloud/` plus the first 8 characters of the session id, stored under the agent's data directory. Tick "Share the folder" in the chip to run in the folder itself; sessions sharing a folder this way can step on each other's changes. A pasted repository URL gets a fresh clone. Two or more URLs check each one out side by side in one workspace, all on the session's branch: as a worktree of a checkout under a listed folder whose remote is that repository, or as a fresh clone when none is. The Changes panel then shows each repository on its own, and archiving deletes the workspace only if none of them would lose work and no other files sit beside them.
+The agent only runs sessions in the folders you list with `--folder`, or in folders inside them. One `--folder ~/code` covers every checkout under it, and the folder chip lists the git checkouts it finds there, after the ones you used recently. The workspace follows from what you pick ([ADR 0040](docs/adr/0040-fewer-forms.md)). A folder gets its own Git worktree, on a branch named `pipoca/` plus the first 8 characters of the session id, stored under the agent's data directory. Tick "Share the folder" in the chip to run in the folder itself; sessions sharing a folder this way can step on each other's changes. A pasted repository URL gets a fresh clone. Two or more URLs check each one out side by side in one workspace, all on the session's branch: as a worktree of a checkout under a listed folder whose remote is that repository, or as a fresh clone when none is. The Changes panel then shows each repository on its own, and archiving deletes the workspace only if none of them would lose work and no other files sit beside them.
 
 In a session, Enter queues a message for when Pi finishes its turn, and Ctrl+Enter (⌘Enter on a Mac) sends it now, so Pi reads it after its current step. On a phone, Enter starts a new line and the send button sends. A queued message can be taken back or sent now. The header shows the session's token use and cost (the `usage` plugin), and its Diff button opens the Changes panel with what the session changed in its Git workspace (the `changes` plugin). When the agent delegates to subagents (the `subagents` plugin, [ADR 0030](docs/adr/0030-subagents.md)), each run shows as a card in the chat with its agent, progress and time; open it to see the subagent's steps and output. A chip under the composer counts the runs still going. The plugin loads [pi-subagents](https://github.com/nicobailon/pi-subagents) in every session, installing it the first time; if you already use pi-subagents, yours is used instead. Pi shows Pi's own terminal UI for the session, so extensions that only work in a terminal work there too, and Terminal opens a shell in the session's directory. For a worktree or clone, the "from" chip picks the branch, tag or commit the session's branch starts at.
 
-The home screen asks the Pi Cloud assistant (the `meta` plugin, [ADR 0035](docs/adr/0035-meta-sessions.md)). Type a question and press Enter: that starts a meta-session, a session with no repositories that runs on the plugin's own read-only Profile, without Pi's file and shell tools. Before any tool call that could change something, it shows a card with the tool and its whole input and waits for you to allow it; read-only tools run without asking. A meta-session loads only the `ask`, `models` and `meta` session parts, so subagents and `/pr` aren't there. Its tools manage Sessions, Environments, Profiles and Projects through the same routes as the web UI. It can also write an in-place plugin into the plugins folder and build it, without running any of its code; turning it on stays yours, on the Plugins page. They never see secret values, runner keys or what a Profile's MCP servers hold. When it starts or opens something, a wide screen goes there, and a phone shows a notice with an Open button. Earlier conversations are listed under the composer and on the Assistant page, not in the session list. "Start a session yourself" opens the New session form.
+The home screen asks the Pipoca assistant (the `meta` plugin, [ADR 0035](docs/adr/0035-meta-sessions.md)). Type a question and press Enter: that starts a meta-session, a session with no repositories that runs on the plugin's own read-only Profile, without Pi's file and shell tools. Before any tool call that could change something, it shows a card with the tool and its whole input and waits for you to allow it; read-only tools run without asking. A meta-session loads only the `ask`, `models` and `meta` session parts, so subagents and `/pr` aren't there. Its tools manage Sessions, Environments, Profiles and Projects through the same routes as the web UI. It can also write an in-place plugin into the plugins folder and build it, without running any of its code; turning it on stays yours, on the Plugins page. They never see secret values, runner keys or what a Profile's MCP servers hold. When it starts or opens something, a wide screen goes there, and a phone shows a notice with an Open button. Earlier conversations are listed under the composer and on the Assistant page, not in the session list. "Start a session yourself" opens the New session form.
 
-The same tools are served over MCP at `/api/mcp`, so Pi or Claude Code on your laptop can manage Pi Cloud too. Make a token under Settings, MCP clients; it is shown once, with the command that adds the server:
+The same tools are served over MCP at `/api/mcp`, so Pi or Claude Code on your laptop can manage Pipoca too. Make a token under Settings, MCP clients; it is shown once, with the command that adds the server:
 
 ```sh
-claude mcp add --transport http pi-cloud https://pi-cloud.example/api/mcp --header "Authorization: Bearer pcm_..."
+claude mcp add --transport http pipoca https://pipoca.example/api/mcp --header "Authorization: Bearer pcm_..."
 ```
 
 A client acts as the user who made its token, and asking before risky tools is up to the client. Revoking the token cuts it off at once. The endpoint answers each request with one JSON reply and opens no event stream.
@@ -63,51 +63,51 @@ Archive hides a session from the list and stops it on its machine; its transcrip
 Options:
 
 ```text
-[PI_CLOUD_SECRET_KEY=<32 bytes, base64>] \
-pi-cloud server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
-                [--database ~/.pi-cloud/server.db] [--plugins ~/.pi-cloud/plugins]
-                [--provider <name> [--data-dir ~/.pi-cloud/server]
+[PIPOCA_SECRET_KEY=<32 bytes, base64>] \
+pipoca server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
+                [--database ~/.pipoca/server.db] [--plugins ~/.pipoca/plugins]
+                [--provider <name> [--data-dir ~/.pipoca/server]
                 [--folder <path>]... [--extension <path>]...]
-PI_CLOUD_KEY=<Environment key> | PI_CLOUD_TOKEN=<runner token> \
-pi-cloud agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
-               [--server http://127.0.0.1:7420] [--data-dir ~/.pi-cloud/agent]
+PIPOCA_KEY=<Environment key> | PIPOCA_TOKEN=<runner token> \
+pipoca agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
+               [--server http://127.0.0.1:7420] [--data-dir ~/.pipoca/agent]
                [--session-binary <path>] [--folder <path>]...
                [--extension <path>]...
 ```
 
 `--host` is the address the server listens on; use `0.0.0.0` behind a proxy or in a container. `--url` is where people open it, when that differs, so the setup link points there. `--provider` also runs an agent inside the server, in the Environment of that name, which needs no key.
 
-`--plugins` is the folder for installed plugins, next to the database by default ([ADR 0022](docs/adr/0022-plugin-model-v2.md#installing-third-party-plugins)). [docs/plugins.md](docs/plugins.md) shows how to write one. Each is a folder named by its id with a `piCloud` manifest in its `package.json`. Install one on the Plugins page from a git repository or a `.tgz` URL, pinned to its commit or SHA-256 in `.source.json` in its folder, or let the assistant write one in place. Update fetches the newest version from the same URL, and Remove works once the plugin isn't running. An installed plugin starts turned off and none of its code runs. Turning it on asks first, listing the capabilities it asks for and where its parts run, and takes effect when the server next starts; `enabled.json` in the folder lists the ones turned on. A plugin that is on is installed and bundled into `.build` each time the server starts, using the server's own binary as `bun`, so the machine needs neither Bun nor npm, and a build error shows on the Plugins page. Restart now on that page makes the server exit with code 75 for whatever runs it to start it again: systemd with `Restart=on-failure`, a pod, or `bun run dev`. It asks first while a Session on the server's own runner is mid-turn, since that turn is interrupted. The server knows systemd by `INVOCATION_ID`; the chart and the dev loop set `PI_CLOUD_SUPERVISED=1`, which you can set for any other supervisor that restarts on exit. Elsewhere it says to restart the server yourself.
+`--plugins` is the folder for installed plugins, next to the database by default ([ADR 0022](docs/adr/0022-plugin-model-v2.md#installing-third-party-plugins)). [docs/plugins.md](docs/plugins.md) shows how to write one. Each is a folder named by its id with a `pipoca` manifest in its `package.json`. Install one on the Plugins page from a git repository or a `.tgz` URL, pinned to its commit or SHA-256 in `.source.json` in its folder, or let the assistant write one in place. Update fetches the newest version from the same URL, and Remove works once the plugin isn't running. An installed plugin starts turned off and none of its code runs. Turning it on asks first, listing the capabilities it asks for and where its parts run, and takes effect when the server next starts; `enabled.json` in the folder lists the ones turned on. A plugin that is on is installed and bundled into `.build` each time the server starts, using the server's own binary as `bun`, so the machine needs neither Bun nor npm, and a build error shows on the Plugins page. Restart now on that page makes the server exit with code 75 for whatever runs it to start it again: systemd with `Restart=on-failure`, a pod, or `bun run dev`. It asks first while a Session on the server's own runner is mid-turn, since that turn is interrupted. The server knows systemd by `INVOCATION_ID`; the chart and the dev loop set `PIPOCA_SUPERVISED=1`, which you can set for any other supervisor that restarts on exit. Elsewhere it says to restart the server yourself.
 
-An agent joins the pool of the Environment whose key it holds, under its `--name`, and gets a token of its own for everything else ([ADR 0033](docs/adr/0033-v2-authentication-and-order.md)). Each session it starts gets a token too, which reaches only that session. Replace key on the Environments page lets go of every agent that joined with the old key; start them again with the new one. The agent reads the key from `PI_CLOUD_KEY` and removes it from what its sessions inherit. A runner that a plugin starts, such as a Kubernetes pod, gets a token in `PI_CLOUD_TOKEN` instead, and `--exit-when-idle <seconds>` stops it once it has run no session for that long. Tests of the built binary set `PI_CLOUD_FAUX_REPLY` so every turn answers with that text and no model provider is needed.
+An agent joins the pool of the Environment whose key it holds, under its `--name`, and gets a token of its own for everything else ([ADR 0033](docs/adr/0033-v2-authentication-and-order.md)). Each session it starts gets a token too, which reaches only that session. Replace key on the Environments page lets go of every agent that joined with the old key; start them again with the new one. The agent reads the key from `PIPOCA_KEY` and removes it from what its sessions inherit. A runner that a plugin starts, such as a Kubernetes pod, gets a token in `PIPOCA_TOKEN` instead, and `--exit-when-idle <seconds>` stops it once it has run no session for that long. Tests of the built binary set `PIPOCA_FAUX_REPLY` so every turn answers with that text and no model provider is needed.
 
-An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only. The server encrypts secrets with AES-GCM before it stores them, using the key in `PI_CLOUD_SECRET_KEY` (`openssl rand -base64 32`), or else one it makes in `server.db.key` next to the database. Losing the key loses every stored secret. A `GH_TOKEN` secret also signs git in to GitHub over https, both for cloning a session's repositories and for the session's own pushes.
+An Environment can have a setup script, variables and secrets (`PATCH /api/environments/<id>` with `setupScript`, `variables` and `secrets`; a null secret removes it). Each agent runs the setup script once per version before the first session that needs it, and a session's processes and terminals get the variables and secrets. The API lists secret names only. The server encrypts secrets with AES-GCM before it stores them, using the key in `PIPOCA_SECRET_KEY` (`openssl rand -base64 32`), or else one it makes in `server.db.key` next to the database. Losing the key loses every stored secret. A `GH_TOKEN` secret also signs git in to GitHub over https, both for cloning a session's repositories and for the session's own pushes.
 
-With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pi-cloud binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.
+With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pipoca binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.
 
 Several agents can join one Environment's pool with its key ([ADR 0032](docs/adr/0032-environments-and-runners.md)). `--capacity` caps how many sessions the agent runs at once. A session in a folder goes to an agent that lists the folder, and a session that has run goes back to the agent it ran on. A clone or several-repositories session moves to another agent in the pool if its agent stops polling for a minute; it starts again from its transcript in a fresh checkout of its branch, so only pushed work comes along. An agent that can't reach the server for 30 seconds stops those sessions itself, so two agents never run one session.
 
 ### In Kubernetes
 
-The `Dockerfile` builds an image that runs the server, and `deploy/helm/pi-cloud` installs it with one replica and its data on a ReadWriteOnce volume ([ADR 0034](docs/adr/0034-v2-deployment-and-credentials.md)). On install the chart makes a Secret holding the secret key, and it keeps that Secret on upgrades and uninstalls. Put HTTPS in front with your gateway, and set `url` to where people open it:
+The `Dockerfile` builds an image that runs the server, and `deploy/helm/pipoca` installs it with one replica and its data on a ReadWriteOnce volume ([ADR 0034](docs/adr/0034-v2-deployment-and-credentials.md)). On install the chart makes a Secret holding the secret key, and it keeps that Secret on upgrades and uninstalls. Put HTTPS in front with your gateway, and set `url` to where people open it:
 
 ```sh
-helm install pi-cloud deploy/helm/pi-cloud --set url=https://pi.example.com
-kubectl logs deploy/pi-cloud | grep setup
+helm install pipoca deploy/helm/pipoca --set url=https://pi.example.com
+kubectl logs deploy/pipoca | grep setup
 ```
 
 On Kyma, `apiRule.enabled` puts the server behind Kyma's gateway at `apiRule.host`, and `url` defaults to that host:
 
 ```sh
-helm install pi-cloud deploy/helm/pi-cloud --namespace pi-cloud --create-namespace \
-  --set apiRule.enabled=true --set apiRule.host=pi-cloud.<cluster domain>
+helm install pipoca deploy/helm/pipoca --namespace pipoca --create-namespace \
+  --set apiRule.enabled=true --set apiRule.host=pipoca.<cluster domain>
 ```
 
-The gateway lets through only what a browser needs: the web UI, sign-in and the `/api` routes it calls. The setup link, the runner routes under `/agent` and `/api/mcp` stay closed, so open the setup link through `kubectl port-forward svc/pi-cloud 7420`. Runner pods reach the server through its Service, and the chart adds an Istio policy that lets pods in the namespace reach `/agent`, since the APIRule's own policies only let the gateway in. `apiRule.exposeAgents=true` opens `/agent` for runners outside the cluster, such as a laptop, and `apiRule.exposeMcp=true` opens `/api/mcp` for MCP clients.
+The gateway lets through only what a browser needs: the web UI, sign-in and the `/api` routes it calls. The setup link, the runner routes under `/agent` and `/api/mcp` stay closed, so open the setup link through `kubectl port-forward svc/pipoca 7420`. Runner pods reach the server through its Service, and the chart adds an Istio policy that lets pods in the namespace reach `/agent`, since the APIRule's own policies only let the gateway in. `apiRule.exposeAgents=true` opens `/agent` for runners outside the cluster, such as a laptop, and `apiRule.exposeMcp=true` opens `/api/mcp` for MCP clients.
 
 To sign in through OpenID Connect providers, such as SAP IAS, Okta or Google ([ADR 0038](docs/adr/0038-single-sign-on-and-admins.md)), register `<url>/api/plugins/oidc/callback` as the redirect URI with each provider. An admin adds each provider in Settings, under Single sign-on: its issuer, client ID, a client secret only if the provider requires one (the plugin uses PKCE), and who gets in, by groups from the ID token or by verified email and domain. Each provider gets its own button on the sign-in page. Link your own user from Settings first, then `oidc.ssoOnly=true` turns the password login off.
 
-Settings keeps the providers in the server's `pi-cloud.json`, in its config folder next to the database ([ADR 0039](docs/adr/0039-plugin-config-files.md)), and you can edit that file by hand too. To come up with providers already set, put them under the chart's `config` value, each with an `id`. The chart writes `config` to the data volume only when no `pi-cloud.json` is there yet, so after that edit the file or use Settings. A provider that needs a client secret either gets it in Settings, which stores it sealed, or names an environment variable in `clientSecretEnv`, which `extraEnv` or `extraEnvFrom` fills from a Kubernetes Secret:
+Settings keeps the providers in the server's `pipoca.json`, in its config folder next to the database ([ADR 0039](docs/adr/0039-plugin-config-files.md)), and you can edit that file by hand too. To come up with providers already set, put them under the chart's `config` value, each with an `id`. The chart writes `config` to the data volume only when no `pipoca.json` is there yet, so after that edit the file or use Settings. A provider that needs a client secret either gets it in Settings, which stores it sealed, or names an environment variable in `clientSecretEnv`, which `extraEnv` or `extraEnvFrom` fills from a Kubernetes Secret:
 
 ```yaml
 config:
@@ -117,11 +117,11 @@ config:
         label: Sign in with SAP
         issuer: https://<tenant>.accounts.ondemand.com
         clientId: <client id>
-        accessGroup: pi-cloud-users
-        adminGroup: pi-cloud-admins
+        accessGroup: pipoca-users
+        adminGroup: pipoca-admins
 ```
 
-Every push to main publishes the image as `ghcr.io/pedroklein/pi-cloud:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
+Every push to main publishes the image as `ghcr.io/pedroklein/pipoca:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
 
 The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](docs/adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, turn on runner pods in its Kubernetes section on the Environments page, or save its settings:
 
@@ -133,7 +133,7 @@ curl <server>/api/plugins/kubernetes/environments/<environment id> \
 
 `{"settings": null}` turns them off again.
 
-When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pi Cloud image when it names none, with the `pi-cloud` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. When a pod fails, or stops without its agent ever reaching the server, the next pod for that Environment waits 10 seconds, twice as long after each failure in a row up to about 5 minutes, and the Environment's Kubernetes section shows why. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Only admins change these settings, since a patch can still mount the namespace's Secrets. Pods run Sessions as processes, so the Environment's isolation must be `process`. With `"workspace": "pod"`, the default, a workspace lives only as long as its pod, so use clone or repositories workspaces there. With `"workspace": "claim"`, each Session gets a pod of its own, named after it, whose home is a claim of `claimSize` (with `storageClass`, or the cluster's default). If that pod stops or is deleted, the plugin starts it again with the same claim, and the claim goes once the Session is archived.
+When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pipoca image when it names none, with the `pipoca` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. When a pod fails, or stops without its agent ever reaching the server, the next pod for that Environment waits 10 seconds, twice as long after each failure in a row up to about 5 minutes, and the Environment's Kubernetes section shows why. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Only admins change these settings, since a patch can still mount the namespace's Secrets. Pods run Sessions as processes, so the Environment's isolation must be `process`. With `"workspace": "pod"`, the default, a workspace lives only as long as its pod, so use clone or repositories workspaces there. With `"workspace": "claim"`, each Session gets a pod of its own, named after it, whose home is a claim of `claimSize` (with `storageClass`, or the cluster's default). If that pod stops or is deleted, the plugin starts it again with the same claim, and the claim goes once the Session is archived.
 
 ## Roadmap
 
@@ -145,7 +145,7 @@ See [docs/vision.md](docs/vision.md) for scope and non-goals, and [docs/open-que
 ## Repository layout
 
 ```text
-apps/pi-cloud     the pi-cloud binary: server and agent
+apps/pipoca     the pipoca binary: server and agent
 apps/web          the web UI
 packages/         protocol, sessions, providers, workspaces and the session host
 docs/             vision, architecture, research and decision records
@@ -153,7 +153,7 @@ docs/             vision, architecture, research and decision records
 
 ## Development
 
-`bun run dev` runs the server with a built-in provider named `cloud`, plus an agent named `local` that may use this repository's folder, from source, and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pi-cloud/dev`.
+`bun run dev` runs the server with a built-in provider named `cloud`, plus an agent named `local` that may use this repository's folder, from source, and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pipoca/dev`.
 
 ```sh
 bun run dev
@@ -163,6 +163,6 @@ bun run typecheck
 bun test
 ```
 
-Tests use Pi's faux model provider, so they need no API key. `bun test ./apps/pi-cloud/src/kind.e2e.ts` runs against the chart installed in your current kubectl context, as CI does on kind. `bun run test:e2e` drives the web UI in headless Chromium against a server with a faux-model provider. It needs Playwright's browser once: `bun x playwright-core install chromium`. [AGENTS.md](AGENTS.md) has the coding conventions.
+Tests use Pi's faux model provider, so they need no API key. `bun test ./apps/pipoca/src/kind.e2e.ts` runs against the chart installed in your current kubectl context, as CI does on kind. `bun run test:e2e` drives the web UI in headless Chromium against a server with a faux-model provider. It needs Playwright's browser once: `bun x playwright-core install chromium`. [AGENTS.md](AGENTS.md) has the coding conventions.
 
-`bun run smoke` checks that Pi Cloud works with your own Pi setup: your default model, your extensions and your shell. It starts a server and an agent, creates a session in a temporary directory, sends one short prompt to your default model, runs a command in the terminal, and fails if the agent printed any errors. The prompt costs a few tokens. Pass `--model provider/id` to use a cheaper model than your default, as in `bun run smoke --model openai/gpt-5-mini`.
+`bun run smoke` checks that Pipoca works with your own Pi setup: your default model, your extensions and your shell. It starts a server and an agent, creates a session in a temporary directory, sends one short prompt to your default model, runs a command in the terminal, and fails if the agent printed any errors. The prompt costs a few tokens. Pass `--model provider/id` to use a cheaper model than your default, as in `bun run smoke --model openai/gpt-5-mini`.

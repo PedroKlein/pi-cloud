@@ -9,7 +9,7 @@ import {
   type Work,
   type WorkPoll,
   type Workspace,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 export interface ControlPlane {
   work: (poll: WorkPoll, signal: AbortSignal) => Promise<Work>;

@@ -1,5 +1,5 @@
 export const protocolVersion = 4;
-export const versionHeader = "pi-cloud-protocol";
+export const versionHeader = "pipoca-protocol";
 
 // A runner joins the pool of the Environment whose key it holds, under a name
 // of its own, and gets a token for its other calls (ADR 0033).
@@ -65,7 +65,7 @@ interface Restorable {
   // The remote branch or commit that held the branch's work. Once no remote
   // has it, the branch starts over from startPoint.
   readonly restorePoint?: string;
-  // The piCloud* keys of the branch's git config by name, such as the commit
+  // The pipoca* keys of the branch's git config by name, such as the commit
   // it started from and its pull request (ADR 0021). They come back with the
   // branch, but not when it starts over.
   readonly branchConfig?: Readonly<Record<string, string>>;
@@ -161,11 +161,11 @@ export interface Profile extends ProfileContent {
 
 // The file a Profile is exported to and imported from.
 export interface ProfileExport extends ProfileContent {
-  readonly piCloudProfile: 1;
+  readonly pipocaProfile: 1;
   readonly name: string;
 }
 
-// Pi Cloud's own file, and what each machine keeps for itself: logins,
+// Pipoca's own file, and what each machine keeps for itself: logins,
 // Session history and installed packages (ADR 0041).
 const machineOwned = new Set([
   "profile.json",
@@ -273,7 +273,7 @@ export type Capability = (typeof capabilities)[number];
 // when something a plugin can reach goes away or changes meaning (ADR 0036).
 export const pluginEngine = 1;
 
-// The piCloud field of a plugin's package.json (ADR 0022, ADR 0036).
+// The pipoca field of a plugin's package.json (ADR 0022, ADR 0036).
 export interface PluginManifest {
   readonly id: string;
   readonly title: string;
@@ -824,7 +824,7 @@ export type Command = { readonly actor: Actor } & (
 );
 
 // The custom message type that carries a NoticeTag in its details.
-export const noticeType = "pi-cloud-notice";
+export const noticeType = "pipoca-notice";
 
 export interface NoticeTag {
   readonly plugin: string;

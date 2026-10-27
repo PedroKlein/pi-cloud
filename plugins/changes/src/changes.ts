@@ -34,7 +34,7 @@ export async function workspaceChanges(
     return undefined;
   }
 
-  const scratch = await mkdtemp(join(tmpdir(), "pi-cloud-changes-"));
+  const scratch = await mkdtemp(join(tmpdir(), "pipoca-changes-"));
   const env = { GIT_INDEX_FILE: join(scratch, "index") };
 
   try {

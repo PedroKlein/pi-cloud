@@ -1,5 +1,5 @@
-import type { Answer, Prompt } from "@pi-cloud/protocol";
-import { Button, fieldClass } from "@pi-cloud/ui";
+import type { Answer, Prompt } from "@pipoca/protocol";
+import { Button, fieldClass } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import type { OpenPrompt } from "./feed";
 import { Actions } from "./fields";

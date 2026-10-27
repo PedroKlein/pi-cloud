@@ -1,4 +1,4 @@
-import { Button, Icon } from "@pi-cloud/ui";
+import { Button, Icon } from "@pipoca/ui";
 import type { ReactElement, ReactNode } from "react";
 import { enabledPlugins, pluginTitle } from "./plugins";
 
@@ -8,7 +8,7 @@ interface SettingsSection {
   readonly current: boolean;
 }
 
-// Everything that configures Pi Cloud sits on one page with sections, opened
+// Everything that configures Pipoca sits on one page with sections, opened
 // from the account menu, like Claude Code's settings (ADR 0040).
 function sections(route: string): readonly SettingsSection[] {
   return [

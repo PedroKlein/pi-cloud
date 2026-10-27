@@ -4,7 +4,7 @@ import {
   defineTool,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { ToolResult, ToolSpec } from "@pi-cloud/protocol";
+import type { ToolResult, ToolSpec } from "@pipoca/protocol";
 import { repairArguments } from "./arguments";
 
 export interface ServerToolCalls {

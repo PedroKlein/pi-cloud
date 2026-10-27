@@ -1,4 +1,4 @@
-import { Button } from "@pi-cloud/ui";
+import { Button } from "@pipoca/ui";
 import { Component, type ReactNode } from "react";
 
 interface Props {

@@ -1,4 +1,4 @@
-import type { SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionPlugin } from "@pipoca/plugins";
 
 // The web part draws pi-subagents' runs, so it pins a version whose status
 // and inspect formats it reads (ADR 0030).

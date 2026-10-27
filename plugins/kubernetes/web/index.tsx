@@ -3,8 +3,8 @@ import {
   json,
   useLoaded,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
-import { Button, cn, Field, fieldClass, Section } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import { Button, cn, Field, fieldClass, Section } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import {
   defaultSettings,

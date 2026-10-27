@@ -4,15 +4,15 @@ import {
   DefaultPackageManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { PiPackage, ProfileFiles } from "@pi-cloud/protocol";
+import type { PiPackage, ProfileFiles } from "@pipoca/protocol";
 
 type Log = (message: string, fields?: Record<string, unknown>) => void;
 
 // The package sources installed so far, so a start installs only new ones.
-const installedFile = ".pi-cloud-packages.json";
+const installedFile = ".pipoca-packages.json";
 
 // The hash of the Profile files this folder holds, and their paths.
-const copyFile = ".pi-cloud-profile.json";
+const copyFile = ".pipoca-profile.json";
 
 // What folders written before a Profile was a whole folder held.
 const earlierFiles = [

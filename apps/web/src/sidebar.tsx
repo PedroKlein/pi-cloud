@@ -1,12 +1,8 @@
 import { ThemeSwitch } from "./theme";
-import {
-  availability,
-  type Environment,
-  type Session,
-} from "@pi-cloud/protocol";
-import { Badge, Button, cn, fieldClass, Icon } from "@pi-cloud/ui";
+import { availability, type Environment, type Session } from "@pipoca/protocol";
+import { Badge, Button, cn, fieldClass, Icon } from "@pipoca/ui";
 import { type ReactElement, useEffect, useState } from "react";
-import { useNow } from "@pi-cloud/plugins/web";
+import { useNow } from "@pipoca/plugins/web";
 import { api, send } from "./api";
 import { matches } from "./notices";
 import {
@@ -63,13 +59,13 @@ export function Sidebar({
   );
 
   return (
-    <nav aria-label="Pi Cloud" className="flex h-full flex-col bg-panel">
+    <nav aria-label="Pipoca" className="flex h-full flex-col bg-panel">
       <div className="flex items-center justify-between gap-2 py-3 pr-3 pl-4">
         <span className="flex items-center gap-2.5 text-title font-semibold text-fg-strong">
           <span className="grid size-7 place-items-center rounded-md bg-accent font-mono text-ui text-on-accent">
             π
           </span>
-          Pi Cloud
+          Pipoca
         </span>
         <span className="flex items-center gap-1">
           <Button

@@ -1,5 +1,5 @@
-import type { PluginStore } from "@pi-cloud/plugins";
-import type { Actor } from "@pi-cloud/protocol";
+import type { PluginStore } from "@pipoca/plugins";
+import type { Actor } from "@pipoca/protocol";
 import type { LibraryFile, LibraryWrite } from "./model";
 
 interface FileRow {

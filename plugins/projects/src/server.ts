@@ -4,8 +4,8 @@ import type {
   SendOutcome,
   ServerPlugin,
   ServerPluginContext,
-} from "@pi-cloud/plugins";
-import { type Actor, checkoutName } from "@pi-cloud/protocol";
+} from "@pipoca/plugins";
+import { type Actor, checkoutName } from "@pipoca/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
 import {
   coordinatorPrompt,

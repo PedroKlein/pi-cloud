@@ -1,4 +1,4 @@
-import type { ModelRef, Session, Workspace } from "@pi-cloud/protocol";
+import type { ModelRef, Session, Workspace } from "@pipoca/protocol";
 
 const removalText = {
   pending: "removing workspace",

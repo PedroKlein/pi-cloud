@@ -2,8 +2,8 @@ import type {
   ServerPluginContext,
   ServerTool,
   ToolCaller,
-} from "@pi-cloud/plugins";
-import type { Actor, ModelRef, ToolResult } from "@pi-cloud/protocol";
+} from "@pipoca/plugins";
+import type { Actor, ModelRef, ToolResult } from "@pipoca/protocol";
 import { type WorkState, workStates } from "./model";
 import { threadNotice, threadPrompt, threadView, unreachable } from "./prompts";
 import type { Member, Project, ProjectStore } from "./projects";

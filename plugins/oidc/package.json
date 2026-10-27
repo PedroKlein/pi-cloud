@@ -1,5 +1,5 @@
 {
-  "name": "@pi-cloud/oidc",
+  "name": "@pipoca/oidc",
   "private": true,
   "type": "module",
   "exports": {
@@ -8,15 +8,15 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*",
-    "@pi-cloud/ui": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/ui": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"
   },
-  "piCloud": {
+  "pipoca": {
     "id": "oidc",
     "title": "Single sign-on",
     "description": "Signs people in through OpenID Connect providers, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose. Admins add providers in Settings."

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProfileFiles } from "@pi-cloud/protocol";
+import type { ProfileFiles } from "@pipoca/protocol";
 import { syncProfile } from "./profile";
 
 let root: string;

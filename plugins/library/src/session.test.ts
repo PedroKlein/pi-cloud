@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { SessionCloud } from "@pi-cloud/plugins";
+import type { SessionCloud } from "@pipoca/plugins";
 import { library } from "./session";
 
 const megabyte = 1024 * 1024;
@@ -11,7 +11,7 @@ const megabyte = 1024 * 1024;
 let cwd: string;
 
 beforeEach(async () => {
-  cwd = await mkdtemp(join(tmpdir(), "pi-cloud-library-"));
+  cwd = await mkdtemp(join(tmpdir(), "pipoca-library-"));
 });
 
 afterEach(async () => {

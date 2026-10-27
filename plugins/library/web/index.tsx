@@ -5,8 +5,8 @@ import {
   useLoaded,
   type WebContext,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
-import { cn, fieldClass, PageTitle, Section } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import { cn, fieldClass, PageTitle, Section } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import type { LibraryFile, LibraryWrite } from "../src/model";
 

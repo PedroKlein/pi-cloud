@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { KernelEvent, ModelOffer, StartRequest } from "@pi-cloud/plugins";
+import type { KernelEvent, ModelOffer, StartRequest } from "@pipoca/plugins";
 import {
   type Actor,
   type Assignment,
@@ -30,8 +30,8 @@ import {
   type Work,
   type WorkPoll,
   type WorkspaceRequest,
-} from "@pi-cloud/protocol";
-import { contentFiles, ProfileTooBig } from "@pi-cloud/profiles";
+} from "@pipoca/protocol";
+import { contentFiles, ProfileTooBig } from "@pipoca/profiles";
 import { placesOn, placesOnNewRunner, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
 
@@ -254,7 +254,7 @@ export class Sessions {
       workspace:
         request.workspace.kind === "folder"
           ? request.workspace
-          : { ...request.workspace, branch: `pi-cloud/${id.slice(0, 8)}` },
+          : { ...request.workspace, branch: `pipoca/${id.slice(0, 8)}` },
       model:
         request.model ?? this.#offeredModels(environment.id).default ?? null,
       thinking: request.thinking ?? null,

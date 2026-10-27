@@ -5,7 +5,7 @@ import {
   type ProfileContent,
   type ProfileFiles,
   profilePath,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 // Every runner that starts a Session with a Profile downloads its files, so
 // a folder this big is refused (ADR 0041).

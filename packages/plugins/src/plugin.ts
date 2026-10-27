@@ -16,7 +16,7 @@ import type {
   ToolNamespace,
   ToolResult,
   ToolSpec,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 export type KernelEvent =
   | {
@@ -69,7 +69,7 @@ export interface ServerTool extends ToolSpec {
 }
 
 // A group of tools for meta-sessions and MCP clients (ADR 0035). Each tool
-// is a request to one of Pi Cloud's HTTP routes, made as the calling user, so
+// is a request to one of Pipoca's HTTP routes, made as the calling user, so
 // it is checked exactly as the same change in the web UI is.
 export interface Toolset {
   readonly namespace: ToolNamespace;
@@ -140,7 +140,7 @@ export interface PluginStore {
 
 // The plugin's part of the server's config folder (ADR 0039).
 export interface PluginConfig {
-  // The plugin's key in the folder's pi-cloud.json, read again when the file
+  // The plugin's key in the folder's pipoca.json, read again when the file
   // changes, for the plugin to check.
   readonly get: () => unknown;
   // Replaces the plugin's key and leaves the others alone.

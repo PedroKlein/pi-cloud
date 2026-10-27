@@ -1,5 +1,5 @@
-import type { ServerPlugin, ToolCaller } from "@pi-cloud/plugins";
-import type { Actor } from "@pi-cloud/protocol";
+import type { ServerPlugin, ToolCaller } from "@pipoca/plugins";
+import type { Actor } from "@pipoca/protocol";
 import { type LibraryStore, libraryStore } from "./library";
 import { fileLimit, nameRule, sizeRule, validName } from "./model";
 

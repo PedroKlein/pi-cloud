@@ -4,8 +4,8 @@ import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
 } from "@earendil-works/pi-coding-agent";
-import type { AskQuestions, Explain } from "@pi-cloud/plugins";
-import type { Answer, Command, LiveEvent, Prompt } from "@pi-cloud/protocol";
+import type { AskQuestions, Explain } from "@pipoca/plugins";
+import type { Answer, Command, LiveEvent, Prompt } from "@pipoca/protocol";
 
 export type RemoteUI = Pick<
   ExtensionUIContext,
@@ -120,7 +120,7 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       // A custom dialog is a terminal component, which the web can't draw.
       custom: async () =>
         Promise.reject(
-          new Error("Pi Cloud's web UI can't show custom terminal dialogs"),
+          new Error("Pipoca's web UI can't show custom terminal dialogs"),
         ),
     },
     questions: async (questions, explain, signal) => {

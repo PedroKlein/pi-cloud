@@ -1,4 +1,4 @@
-import { Button, cn, Icon } from "@pi-cloud/ui";
+import { Button, cn, Icon } from "@pipoca/ui";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import {
   useEnvironments,
@@ -295,7 +295,7 @@ function Empty({
       <span className="grid size-14 place-items-center rounded-xl bg-accent font-mono text-display text-on-accent shadow-card">
         π
       </span>
-      <h1 className="text-display font-semibold text-fg-strong">Pi Cloud</h1>
+      <h1 className="text-display font-semibold text-fg-strong">Pipoca</h1>
       <p className="text-fg-dim">
         Pick a session, or start a new one on one of your machines.
       </p>

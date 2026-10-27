@@ -10,7 +10,7 @@ import {
   type OpenedPage,
   type PreviewRequest,
   previewPort,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 // One browser request to a preview, carried by its own socket to the server.
 export interface PreviewExchange {
@@ -205,7 +205,7 @@ async function listening(url: URL, port: number): Promise<boolean> {
 
 // Points BROWSER at a script that hands each URL to the Session host, for
 // Pi's tools and extensions, such as plannotator. The script runs opener with
-// the URL, and opener posts it to PI_CLOUD_PAGES.
+// the URL, and opener posts it to PIPOCA_PAGES.
 export async function browserHelper(
   dir: string,
   opener: readonly string[],
@@ -255,7 +255,7 @@ export async function browserHelper(
   return {
     variables: {
       BROWSER: script,
-      PI_CLOUD_PAGES: `http://127.0.0.1:${String(port)}/${token}`,
+      PIPOCA_PAGES: `http://127.0.0.1:${String(port)}/${token}`,
     },
     stop: () => {
       server.close();

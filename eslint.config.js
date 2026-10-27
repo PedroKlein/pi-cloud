@@ -102,9 +102,9 @@ export default tseslint.config(
         {
           patterns: [
             {
-              regex: "^@pi-cloud/(?!(plugins|plugins/web|protocol|ui)$)",
+              regex: "^@pipoca/(?!(plugins|plugins/web|protocol|ui)$)",
               message:
-                "Plugins import only @pi-cloud/plugins, @pi-cloud/protocol and @pi-cloud/ui.",
+                "Plugins import only @pipoca/plugins, @pipoca/protocol and @pipoca/ui.",
             },
             {
               regex: "^\\.\\./\\.\\./",
