@@ -25,6 +25,7 @@ import {
 import { SessionView } from "./session-view";
 import { SettingsPage } from "./settings";
 import { isSettingsRoute, SettingsLayout } from "./settings-layout";
+import { Mark } from "./mark";
 import { Sidebar } from "./sidebar";
 
 export function App({
@@ -292,10 +293,8 @@ function Empty({
 }): ReactElement {
   return (
     <div className="m-auto flex max-w-sm flex-col items-center gap-4 p-8 text-center">
-      <span className="grid size-14 place-items-center rounded-xl bg-accent font-mono text-display text-on-accent shadow-card">
-        π
-      </span>
-      <h1 className="text-display font-semibold text-fg-strong">Pipoca</h1>
+      <Mark className="size-16" />
+      <h1 className="font-serif text-hero font-light text-fg-strong">pipoca</h1>
       <p className="text-fg-dim">
         Pick a session, or start a new one on one of your machines.
       </p>

@@ -1,5 +1,6 @@
-IBM Plex Sans: Copyright 2019 IBM Corp. All rights reserved.
-IBM Plex Mono: Copyright 2017 IBM Corp. All rights reserved.
+Hanken Grotesk: Copyright 2021 The Hanken Grotesk Project Authors (https://github.com/marcologous/hanken-grotesk)
+Newsreader: Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader)
+JetBrains Mono: Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

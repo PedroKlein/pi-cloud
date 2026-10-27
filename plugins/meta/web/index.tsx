@@ -62,7 +62,7 @@ function Home({ context, onNewSession }: HomeProps): ReactElement {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 py-12 md:py-24">
-      <h1 className="text-center text-display font-semibold text-fg-strong">
+      <h1 className="text-center font-serif text-hero font-light text-fg-strong">
         What do you want to build today?
       </h1>
       {environments !== undefined && environments.length > 0 && (

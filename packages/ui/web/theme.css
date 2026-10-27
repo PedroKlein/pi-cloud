@@ -1,55 +1,62 @@
 @font-face {
-  font-family: "IBM Plex Sans";
+  font-family: "Hanken Grotesk";
   font-weight: 400;
   font-display: swap;
-  src: url("./fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+  src: url("./fonts/hanken-grotesk-latin-400-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "IBM Plex Sans";
+  font-family: "Hanken Grotesk";
   font-weight: 500;
   font-display: swap;
-  src: url("./fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+  src: url("./fonts/hanken-grotesk-latin-500-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "IBM Plex Sans";
+  font-family: "Hanken Grotesk";
   font-weight: 600;
   font-display: swap;
-  src: url("./fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+  src: url("./fonts/hanken-grotesk-latin-600-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "IBM Plex Mono";
+  font-family: "Newsreader";
+  font-weight: 300;
+  font-display: swap;
+  src: url("./fonts/newsreader-latin-300-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
   font-weight: 400;
   font-display: swap;
-  src: url("./fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  src: url("./fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "IBM Plex Mono";
+  font-family: "JetBrains Mono";
   font-weight: 500;
   font-display: swap;
-  src: url("./fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  src: url("./fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
 }
 
 /* A theme is a set of values for these variables, on the page or on any element. */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #111214;
-  --bg-panel: #17181b;
-  --bg-elevated: #1f2125;
-  --bg-hover: #26282d;
-  --bg-code: #16171a;
-  --border: #2c2e33;
-  --border-strong: #3c3f46;
-  --text: #e6e6e8;
-  --text-strong: #ffffff;
-  --text-dim: #9a9ca3;
-  --accent: #7b97ff;
-  --on-accent: #0b1020;
-  --accent-tint: rgb(123 151 255 / 0.16);
+  --bg: #14120e;
+  --bg-panel: #1a1814;
+  --bg-elevated: #221f1a;
+  --bg-hover: #2a2721;
+  --bg-code: #181611;
+  --border: #322e27;
+  --border-strong: #454037;
+  --text: #ebe5d9;
+  --text-strong: #fff8e7;
+  --text-dim: #a29a8c;
+  --accent: #fff8e7;
+  --on-accent: #1a1712;
+  --accent-tint: rgb(255 248 231 / 0.12);
   --status-working: #45b8c9;
   --status-waiting: #f0a43a;
   --status-done: #4cc38a;
@@ -58,27 +65,27 @@
   --status-waiting-tint: rgb(240 164 58 / 0.16);
   --status-done-tint: rgb(76 195 138 / 0.14);
   --status-failed-tint: rgb(255 110 110 / 0.14);
-  --term-bg: #0b0c0e;
-  --term-fg: #d7d8dc;
+  --term-bg: #0f0d0a;
+  --term-fg: #e2dccf;
   --card-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.28);
   --pop-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #fafafa;
-  --bg-panel: #f3f3f4;
-  --bg-elevated: #ffffff;
-  --bg-hover: #e9e9eb;
-  --bg-code: #f1f1f3;
-  --border: #e2e2e5;
-  --border-strong: #c9c9cf;
-  --text: #1b1c1f;
-  --text-strong: #0c0d0f;
-  --text-dim: #5c5e66;
-  --accent: #2f5bea;
-  --on-accent: #ffffff;
-  --accent-tint: rgb(47 91 234 / 0.1);
+  --bg: #faf7f0;
+  --bg-panel: #f3efe5;
+  --bg-elevated: #fffdf8;
+  --bg-hover: #ebe6da;
+  --bg-code: #f1ece1;
+  --border: #e3ddd0;
+  --border-strong: #cbc3b3;
+  --text: #1a1712;
+  --text-strong: #0f0d0a;
+  --text-dim: #6b6457;
+  --accent: #1a1712;
+  --on-accent: #faf7f0;
+  --accent-tint: rgb(26 23 18 / 0.08);
   --status-working: #086a78;
   --status-waiting: #9a5800;
   --status-done: #17784b;
@@ -87,11 +94,11 @@
   --status-waiting-tint: rgb(154 88 0 / 0.1);
   --status-done-tint: rgb(23 120 75 / 0.1);
   --status-failed-tint: rgb(196 47 43 / 0.08);
-  --term-bg: #fcfcfd;
-  --term-fg: #1b1c1f;
+  --term-bg: #fdfbf6;
+  --term-fg: #1a1712;
   --card-shadow:
-    0 1px 2px rgb(16 17 20 / 0.06), 0 8px 24px rgb(16 17 20 / 0.08);
-  --pop-shadow: 0 12px 32px rgb(16 17 20 / 0.16);
+    0 1px 2px rgb(26 23 18 / 0.06), 0 8px 24px rgb(26 23 18 / 0.08);
+  --pop-shadow: 0 12px 32px rgb(26 23 18 / 0.16);
 }
 
 @theme {
@@ -123,9 +130,16 @@
   --color-current: currentColor;
 
   --font-sans:
-    "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Newsreader", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
+  --text-wordmark: 22px;
+  --text-wordmark--line-height: 1;
+  --text-wordmark--letter-spacing: -0.035em;
+  --text-hero: 40px;
+  --text-hero--line-height: 1.1;
+  --text-hero--letter-spacing: -0.02em;
   --text-display: 28px;
   --text-display--line-height: 34px;
   --text-display--letter-spacing: -0.01em;
