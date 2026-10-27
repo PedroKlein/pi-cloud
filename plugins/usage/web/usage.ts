@@ -49,6 +49,7 @@ export function addUsage(
 export function describeUsage(totals: ReadonlyMap<string, Usage>): {
   readonly summary: string;
   readonly detail: string;
+  readonly cost: string;
 } {
   const describe = (usage: Usage): string =>
     `${tokens(usage.input + usage.cacheRead + usage.cacheWrite)} in · ${tokens(usage.output)} out · $${usage.cost.toFixed(4)}`;
@@ -66,6 +67,8 @@ export function describeUsage(totals: ReadonlyMap<string, Usage>): {
 
   return {
     summary: totals.size === 0 ? "" : describe(all),
+    cost:
+      all.cost > 0 && all.cost < 0.01 ? "<$0.01" : `$${all.cost.toFixed(2)}`,
     detail: [...totals]
       .map(([model, usage]) => `${model}: ${describe(usage)}`)
       .join("\n"),
