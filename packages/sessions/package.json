@@ -1,11 +1,11 @@
 {
-  "name": "@pi-cloud/sessions",
+  "name": "@pipoca/sessions",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/profiles": "workspace:*",
-    "@pi-cloud/protocol": "workspace:*"
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/profiles": "workspace:*",
+    "@pipoca/protocol": "workspace:*"
   }
 }

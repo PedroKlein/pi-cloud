@@ -1,6 +1,6 @@
-# Pi Cloud research notes
+# Pipoca research notes
 
-> Status: research snapshot. These facts informed the vision but do not dictate Pi Cloud's implementation.
+> Status: research snapshot. These facts informed the vision but do not dictate Pipoca's implementation.
 
 ## Claude Projects
 
@@ -64,7 +64,7 @@ Sources:
 
 ## Pi capabilities
 
-Pi already provides the main Session-runtime primitives Pi Cloud needs:
+Pi already provides the main Session-runtime primitives Pipoca needs:
 
 - persistent native JSONL Sessions;
 - full independent `AgentSession` instances;
@@ -78,7 +78,7 @@ Pi already provides the main Session-runtime primitives Pi Cloud needs:
 - compaction and settlement boundaries;
 - nested subagents and workflows.
 
-Pi Cloud still needs to supply the distributed layer: Environment and Profile registries, Provider Agents, scheduling and leases, Workspace provisioning, event replay, Projects and Thread reports, shared memory, artifact publication, and the browser control plane.
+Pipoca still needs to supply the distributed layer: Environment and Profile registries, Provider Agents, scheduling and leases, Workspace provisioning, event replay, Projects and Thread reports, shared memory, artifact publication, and the browser control plane.
 
 Sources:
 
@@ -91,7 +91,7 @@ Sources:
 
 [`@earendil-works/pi-durable`](https://github.com/earendil-works/pi/tree/main/packages/durable) is a second Pi harness, separate from `pi-coding-agent`. It commits entries, task checkpoints and documents atomically before anything is shown, so a process that dies mid-turn resumes where it stopped. Tool intent is stored before a tool runs: a tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. It also has idempotent submits by `requestId`, conversations owned by tasks with abort cascading bottom-up, durable sleeps with a wake hook for hosts that hibernate, and a guard that parks a task after repeated crashes.
 
-Pi Cloud does not use it in v1:
+Pipoca does not use it in v1:
 
 - `pi-coding-agent` does not depend on it, and it has its own extension API. Pi packages, extensions, skills and settings written for the coding agent don't run on it.
 - It has its own transcript format, not the session JSONL that ADR 0006 replicates.
@@ -129,7 +129,7 @@ It is the likely answer to resuming a Session on fresh compute in v2, and the se
 
 [OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) is now Agent Canvas, a self-hosted React UI for coding agents. The backend is the Agent Server in [OpenHands/software-agent-sdk](https://github.com/OpenHands/software-agent-sdk): one REST and WebSocket server per host that runs conversations, stores their events on local disk and can start a Docker container per conversation. Canvas can drive Pi as an ACP subprocess (`pi-acp`).
 
-It is not shaped like Claude Code cloud. There is no control plane: the browser connects to each Agent Server directly and switches between them. That model has three costs Pi Cloud avoids with an outbound agent and one server ([ADR 0006](adr/0006-provider-protocol.md)):
+It is not shaped like Claude Code cloud. There is no control plane: the browser connects to each Agent Server directly and switches between them. That model has three costs Pipoca avoids with an outbound agent and one server ([ADR 0006](adr/0006-provider-protocol.md)):
 
 - Every backend must be reachable from the browser, so remote machines need a tunnel. Their DigitalOcean integration ships a tunnel bridge and a reverse proxy for this.
 - The browser keeps a session key per backend in `localStorage`. Their self-hosting guide notes that any script on the same origin can read every key.
@@ -158,4 +158,4 @@ Several open-source systems create one Job or pod for a bounded Claude task. The
 
 ## Research conclusion
 
-No reviewed project combines Pi-native Session fidelity, Claude-style Projects and Threads, portable Environments, strong Kubernetes execution, and future collaboration. PI WEB is the closest reference; Pi Cloud owns its own control plane and UI rather than building on it ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)).
+No reviewed project combines Pi-native Session fidelity, Claude-style Projects and Threads, portable Environments, strong Kubernetes execution, and future collaboration. PI WEB is the closest reference; Pipoca owns its own control plane and UI rather than building on it ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)).

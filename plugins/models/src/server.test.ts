@@ -6,7 +6,7 @@ import {
   type PluginRoute,
   type PluginStore,
   type ToolCaller,
-} from "@pi-cloud/plugins";
+} from "@pipoca/plugins";
 import { models } from "./server";
 
 const environmentId = "environment-1";

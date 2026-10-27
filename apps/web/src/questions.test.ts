@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Question } from "@pi-cloud/protocol";
+import type { Question } from "@pipoca/protocol";
 import {
   answered,
   answersOf,

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionPlugin } from "@pipoca/plugins";
 
 // tool_search only loads tools, but carries no hints.
 const readers = new Set(["tool_search"]);

@@ -17,32 +17,32 @@
         "typescript-eslint": "^8.71.2",
       },
     },
-    "apps/pi-cloud": {
-      "name": "@pi-cloud/pi-cloud",
+    "apps/pipoca": {
+      "name": "@pipoca/pipoca",
       "version": "0.1.0",
       "bin": {
-        "pi-cloud": "./src/main.ts",
+        "pipoca": "./src/main.ts",
       },
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/ask": "workspace:*",
-        "@pi-cloud/changes": "workspace:*",
-        "@pi-cloud/kubernetes": "workspace:*",
-        "@pi-cloud/library": "workspace:*",
-        "@pi-cloud/meta": "workspace:*",
-        "@pi-cloud/models": "workspace:*",
-        "@pi-cloud/oidc": "workspace:*",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/profiles": "workspace:*",
-        "@pi-cloud/projects": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/providers": "workspace:*",
-        "@pi-cloud/sessionhost": "workspace:*",
-        "@pi-cloud/sessions": "workspace:*",
-        "@pi-cloud/subagents": "workspace:*",
-        "@pi-cloud/usage": "workspace:*",
-        "@pi-cloud/web": "workspace:*",
-        "@pi-cloud/workspaces": "workspace:*",
+        "@pipoca/ask": "workspace:*",
+        "@pipoca/changes": "workspace:*",
+        "@pipoca/kubernetes": "workspace:*",
+        "@pipoca/library": "workspace:*",
+        "@pipoca/meta": "workspace:*",
+        "@pipoca/models": "workspace:*",
+        "@pipoca/oidc": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/profiles": "workspace:*",
+        "@pipoca/projects": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/providers": "workspace:*",
+        "@pipoca/sessionhost": "workspace:*",
+        "@pipoca/sessions": "workspace:*",
+        "@pipoca/subagents": "workspace:*",
+        "@pipoca/usage": "workspace:*",
+        "@pipoca/web": "workspace:*",
+        "@pipoca/workspaces": "workspace:*",
       },
       "devDependencies": {
         "@earendil-works/pi-ai": "1.3.0",
@@ -50,20 +50,20 @@
       },
     },
     "apps/web": {
-      "name": "@pi-cloud/web",
+      "name": "@pipoca/web",
       "dependencies": {
-        "@pi-cloud/changes": "workspace:*",
-        "@pi-cloud/kubernetes": "workspace:*",
-        "@pi-cloud/library": "workspace:*",
-        "@pi-cloud/meta": "workspace:*",
-        "@pi-cloud/models": "workspace:*",
-        "@pi-cloud/oidc": "workspace:*",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/projects": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/subagents": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
-        "@pi-cloud/usage": "workspace:*",
+        "@pipoca/changes": "workspace:*",
+        "@pipoca/kubernetes": "workspace:*",
+        "@pipoca/library": "workspace:*",
+        "@pipoca/meta": "workspace:*",
+        "@pipoca/models": "workspace:*",
+        "@pipoca/oidc": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/projects": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/subagents": "workspace:*",
+        "@pipoca/ui": "workspace:*",
+        "@pipoca/usage": "workspace:*",
         "@xterm/addon-fit": "0.11.0",
         "@xterm/xterm": "6.0.0",
         "marked": "18.1.1",
@@ -76,10 +76,10 @@
       },
     },
     "packages/plugins": {
-      "name": "@pi-cloud/plugins",
+      "name": "@pipoca/plugins",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -87,47 +87,47 @@
       },
     },
     "packages/profiles": {
-      "name": "@pi-cloud/profiles",
+      "name": "@pipoca/profiles",
       "dependencies": {
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
       },
     },
     "packages/protocol": {
-      "name": "@pi-cloud/protocol",
+      "name": "@pipoca/protocol",
     },
     "packages/providers": {
-      "name": "@pi-cloud/providers",
+      "name": "@pipoca/providers",
       "dependencies": {
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
       },
     },
     "packages/sessionhost": {
-      "name": "@pi-cloud/sessionhost",
+      "name": "@pipoca/sessionhost",
       "dependencies": {
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-coding-agent": "1.3.0",
         "@earendil-works/pi-tui": "1.3.0",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
         "chalk": "6.0.0",
         "quickjs-wasi": "3.6.2",
       },
       "devDependencies": {
-        "@pi-cloud/ask": "workspace:*",
-        "@pi-cloud/changes": "workspace:*",
+        "@pipoca/ask": "workspace:*",
+        "@pipoca/changes": "workspace:*",
         "pi-subagents": "0.79.1",
       },
     },
     "packages/sessions": {
-      "name": "@pi-cloud/sessions",
+      "name": "@pipoca/sessions",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/profiles": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/profiles": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
       },
     },
     "packages/ui": {
-      "name": "@pi-cloud/ui",
+      "name": "@pipoca/ui",
       "dependencies": {
         "react": "19.3.1",
       },
@@ -136,25 +136,25 @@
       },
     },
     "packages/workspaces": {
-      "name": "@pi-cloud/workspaces",
+      "name": "@pipoca/workspaces",
       "dependencies": {
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
       },
     },
     "plugins/ask": {
-      "name": "@pi-cloud/ask",
+      "name": "@pipoca/ask",
       "dependencies": {
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
       },
     },
     "plugins/changes": {
-      "name": "@pi-cloud/changes",
+      "name": "@pipoca/changes",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -162,11 +162,11 @@
       },
     },
     "plugins/kubernetes": {
-      "name": "@pi-cloud/kubernetes",
+      "name": "@pipoca/kubernetes",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -174,13 +174,13 @@
       },
     },
     "plugins/library": {
-      "name": "@pi-cloud/library",
+      "name": "@pipoca/library",
       "dependencies": {
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -188,12 +188,12 @@
       },
     },
     "plugins/meta": {
-      "name": "@pi-cloud/meta",
+      "name": "@pipoca/meta",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -201,12 +201,12 @@
       },
     },
     "plugins/models": {
-      "name": "@pi-cloud/models",
+      "name": "@pipoca/models",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -214,11 +214,11 @@
       },
     },
     "plugins/oidc": {
-      "name": "@pi-cloud/oidc",
+      "name": "@pipoca/oidc",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -226,11 +226,11 @@
       },
     },
     "plugins/projects": {
-      "name": "@pi-cloud/projects",
+      "name": "@pipoca/projects",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -238,11 +238,11 @@
       },
     },
     "plugins/subagents": {
-      "name": "@pi-cloud/subagents",
+      "name": "@pipoca/subagents",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/protocol": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -250,10 +250,10 @@
       },
     },
     "plugins/usage": {
-      "name": "@pi-cloud/usage",
+      "name": "@pipoca/usage",
       "dependencies": {
-        "@pi-cloud/plugins": "workspace:*",
-        "@pi-cloud/ui": "workspace:*",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/ui": "workspace:*",
         "react": "19.3.1",
       },
       "devDependencies": {
@@ -422,45 +422,45 @@
 
     "@oven/bun-windows-x64": ["@oven/bun-windows-x64@1.4.3", "", { "os": "win32", "cpu": "x64" }, "sha512-9pV16qXHTFvZDH61S8hpdpVBbWmvEqekczLF54zTnQHKP28D6yRCNLrD/7jVbXYR61fQYAx4FSBgzCxGCKb3rQ=="],
 
-    "@pi-cloud/ask": ["@pi-cloud/ask@workspace:plugins/ask"],
+    "@pipoca/ask": ["@pipoca/ask@workspace:plugins/ask"],
 
-    "@pi-cloud/changes": ["@pi-cloud/changes@workspace:plugins/changes"],
+    "@pipoca/changes": ["@pipoca/changes@workspace:plugins/changes"],
 
-    "@pi-cloud/kubernetes": ["@pi-cloud/kubernetes@workspace:plugins/kubernetes"],
+    "@pipoca/kubernetes": ["@pipoca/kubernetes@workspace:plugins/kubernetes"],
 
-    "@pi-cloud/library": ["@pi-cloud/library@workspace:plugins/library"],
+    "@pipoca/library": ["@pipoca/library@workspace:plugins/library"],
 
-    "@pi-cloud/meta": ["@pi-cloud/meta@workspace:plugins/meta"],
+    "@pipoca/meta": ["@pipoca/meta@workspace:plugins/meta"],
 
-    "@pi-cloud/models": ["@pi-cloud/models@workspace:plugins/models"],
+    "@pipoca/models": ["@pipoca/models@workspace:plugins/models"],
 
-    "@pi-cloud/oidc": ["@pi-cloud/oidc@workspace:plugins/oidc"],
+    "@pipoca/oidc": ["@pipoca/oidc@workspace:plugins/oidc"],
 
-    "@pi-cloud/pi-cloud": ["@pi-cloud/pi-cloud@workspace:apps/pi-cloud"],
+    "@pipoca/pipoca": ["@pipoca/pipoca@workspace:apps/pipoca"],
 
-    "@pi-cloud/plugins": ["@pi-cloud/plugins@workspace:packages/plugins"],
+    "@pipoca/plugins": ["@pipoca/plugins@workspace:packages/plugins"],
 
-    "@pi-cloud/profiles": ["@pi-cloud/profiles@workspace:packages/profiles"],
+    "@pipoca/profiles": ["@pipoca/profiles@workspace:packages/profiles"],
 
-    "@pi-cloud/projects": ["@pi-cloud/projects@workspace:plugins/projects"],
+    "@pipoca/projects": ["@pipoca/projects@workspace:plugins/projects"],
 
-    "@pi-cloud/protocol": ["@pi-cloud/protocol@workspace:packages/protocol"],
+    "@pipoca/protocol": ["@pipoca/protocol@workspace:packages/protocol"],
 
-    "@pi-cloud/providers": ["@pi-cloud/providers@workspace:packages/providers"],
+    "@pipoca/providers": ["@pipoca/providers@workspace:packages/providers"],
 
-    "@pi-cloud/sessionhost": ["@pi-cloud/sessionhost@workspace:packages/sessionhost"],
+    "@pipoca/sessionhost": ["@pipoca/sessionhost@workspace:packages/sessionhost"],
 
-    "@pi-cloud/sessions": ["@pi-cloud/sessions@workspace:packages/sessions"],
+    "@pipoca/sessions": ["@pipoca/sessions@workspace:packages/sessions"],
 
-    "@pi-cloud/subagents": ["@pi-cloud/subagents@workspace:plugins/subagents"],
+    "@pipoca/subagents": ["@pipoca/subagents@workspace:plugins/subagents"],
 
-    "@pi-cloud/ui": ["@pi-cloud/ui@workspace:packages/ui"],
+    "@pipoca/ui": ["@pipoca/ui@workspace:packages/ui"],
 
-    "@pi-cloud/usage": ["@pi-cloud/usage@workspace:plugins/usage"],
+    "@pipoca/usage": ["@pipoca/usage@workspace:plugins/usage"],
 
-    "@pi-cloud/web": ["@pi-cloud/web@workspace:apps/web"],
+    "@pipoca/web": ["@pipoca/web@workspace:apps/web"],
 
-    "@pi-cloud/workspaces": ["@pi-cloud/workspaces@workspace:packages/workspaces"],
+    "@pipoca/workspaces": ["@pipoca/workspaces@workspace:packages/workspaces"],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

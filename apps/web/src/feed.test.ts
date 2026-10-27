@@ -1,5 +1,5 @@
 import { expect, jest, test } from "bun:test";
-import type { LiveEvent, Prompt, Session } from "@pi-cloud/protocol";
+import type { LiveEvent, Prompt, Session } from "@pipoca/protocol";
 import { type EventStream, type Feed, feedReader, followEvents } from "./feed";
 
 const session = (waiting: boolean, change: Partial<Session> = {}): Session => ({

@@ -1,8 +1,4 @@
-import type {
-  OfferedModels,
-  PluginStore,
-  ServerPlugin,
-} from "@pi-cloud/plugins";
+import type { OfferedModels, PluginStore, ServerPlugin } from "@pipoca/plugins";
 import { aliasesOf, gatewayProvider } from "./gateway";
 import {
   type AliasConfig,

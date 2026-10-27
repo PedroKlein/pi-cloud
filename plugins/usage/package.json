@@ -1,5 +1,5 @@
 {
-  "name": "@pi-cloud/usage",
+  "name": "@pipoca/usage",
   "private": true,
   "type": "module",
   "exports": {
@@ -7,14 +7,14 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@pi-cloud/plugins": "workspace:*",
-    "@pi-cloud/ui": "workspace:*",
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/ui": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0"
   },
-  "piCloud": {
+  "pipoca": {
     "id": "usage",
     "title": "Usage",
     "description": "Shows a Session's token use and cost in its header."

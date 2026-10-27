@@ -1,4 +1,4 @@
-import { availability, type Environment } from "@pi-cloud/protocol";
+import { availability, type Environment } from "@pipoca/protocol";
 import {
   Badge,
   Button,
@@ -9,7 +9,7 @@ import {
   KeyValues,
   PageTitle,
   Section,
-} from "@pi-cloud/ui";
+} from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { api, send } from "./api";
 import { PluginBoundary } from "./plugin-boundary";
@@ -183,7 +183,7 @@ function JoinKey({
             aria-label="Join command"
             className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm"
           >
-            {`PI_CLOUD_KEY=${madeKey} pi-cloud agent --server ${location.origin}`}
+            {`PIPOCA_KEY=${madeKey} pipoca agent --server ${location.origin}`}
           </pre>
         </>
       )}

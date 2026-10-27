@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Session } from "@pi-cloud/protocol";
+import type { Session } from "@pipoca/protocol";
 import { matches, noticeText, settled } from "./notices";
 
 const session = (change: Partial<Session>): Session => ({

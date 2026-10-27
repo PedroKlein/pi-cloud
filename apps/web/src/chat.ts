@@ -3,7 +3,7 @@ import {
   imageTypes,
   type NoticeTag,
   noticeType,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 export type ChatItem = (
   | {

@@ -1,5 +1,5 @@
-import type { MountedSession } from "@pi-cloud/plugins/web";
-import { liveSurface, type SessionEvent } from "@pi-cloud/protocol";
+import type { MountedSession } from "@pipoca/plugins/web";
+import { liveSurface, type SessionEvent } from "@pipoca/protocol";
 import { command } from "./api";
 
 // The Session view hands every event it receives to dispatch, so plugins

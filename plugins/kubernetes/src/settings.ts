@@ -1,4 +1,4 @@
-import type { PluginStore } from "@pi-cloud/plugins";
+import type { PluginStore } from "@pipoca/plugins";
 
 // A Kubernetes Environment's runner pods (ADR 0032). With "claim", each
 // Session gets a pod of its own that mounts a claim of claimSize, so its

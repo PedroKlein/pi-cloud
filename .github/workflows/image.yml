@@ -22,5 +22,5 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/pedroklein/pi-cloud:main
-            ghcr.io/pedroklein/pi-cloud:sha-${{ github.sha }}
+            ghcr.io/pedroklein/pipoca:main
+            ghcr.io/pedroklein/pipoca:sha-${{ github.sha }}

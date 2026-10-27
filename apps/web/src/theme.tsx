@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@pi-cloud/ui";
+import { Icon, type IconName } from "@pipoca/ui";
 import { type ReactElement, useEffect, useState } from "react";
 
 const choices = ["system", "light", "dark"] as const;
@@ -11,7 +11,7 @@ const icons: Readonly<Record<Choice, IconName>> = {
   dark: "moon",
 };
 
-const storageKey = "pi-cloud.theme";
+const storageKey = "pipoca.theme";
 
 const prefersLight = (): MediaQueryList =>
   matchMedia("(prefers-color-scheme: light)");

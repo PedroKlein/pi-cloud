@@ -5,7 +5,7 @@ import {
   defineTool,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionCloud, SessionPlugin } from "@pipoca/plugins";
 import {
   fileLimit,
   type LibraryFile,

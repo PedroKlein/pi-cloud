@@ -1,4 +1,4 @@
-import type { Toolset } from "@pi-cloud/plugins";
+import type { Toolset } from "@pipoca/plugins";
 import type { ProjectView } from "./model";
 
 const settingsFields = {

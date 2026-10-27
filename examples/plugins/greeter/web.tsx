@@ -1,4 +1,4 @@
-import { Button, PageTitle } from "@pi-cloud/ui";
+import { Button, PageTitle } from "@pipoca/ui";
 import { useState } from "react";
 
 function Page() {

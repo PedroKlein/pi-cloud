@@ -6,7 +6,7 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 
 ## Running a Session on fresh compute
 
-- **Resume mid-turn.** pi-durable commits a tool call's intent before running it and checkpoints every model turn. A process that dies mid-turn picks up where it stopped. A tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. [ADR 0032](adr/0032-environments-and-runners.md) resumes a Session from its transcript instead, because Pi packages don't run on pi-durable. It is still a candidate engine for Jobs and automations, which Pi Cloud defines itself.
+- **Resume mid-turn.** pi-durable commits a tool call's intent before running it and checkpoints every model turn. A process that dies mid-turn picks up where it stopped. A tool marked replay-safe reruns, and any other gets an `interrupted` result with the output so far. [ADR 0032](adr/0032-environments-and-runners.md) resumes a Session from its transcript instead, because Pi packages don't run on pi-durable. It is still a candidate engine for Jobs and automations, which Pipoca defines itself.
 - **Expiring leases with fencing.** ADR 0006 deferred these. OpenHands' conversation lease holds an owner, a generation and a 45 second TTL. A new owner bumps the generation, and every write checks ownership first. When the owner is on the same host and its pid is dead, takeover is immediate. Our server-side version would be the same rows in SQLite.
 - **Crash-loop guard.** pi-durable parks a task after 5 restarts without progress, reports it once, and offers an explicit retry. A Session that keeps killing its pod needs the same.
 
@@ -42,16 +42,16 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 
 ## Extensions
 
-- **Hooks around tool calls.** Both projects have them: pi-durable's `beforeTool` can block a call, and OpenHands has `PreToolUse` and `PostToolUse`. A Pi Cloud policy extension (approvals, audit) would sit there.
+- **Hooks around tool calls.** Both projects have them: pi-durable's `beforeTool` can block a call, and OpenHands has `PreToolUse` and `PostToolUse`. A Pipoca policy extension (approvals, audit) would sit there.
 - **Install and enable are separate.** OpenHands installs UI extensions disabled. An agent may install one, but only the user enables it. The backend owns installed extensions, pinned to a resolved revision.
 - **Plugins that extend each other.** OpenClaw plugins contribute to typed capability contracts that other plugins own, and Hermes plugins fill provider slots with a fallback to the built-in. A workflow plugin whose node types come from other plugins would need this ([ADR 0036](adr/0036-plugin-settings.md#later)).
 - **Typed hooks with grants.** OpenClaw gives each hook a typed payload, and a plugin must be granted access before its hooks see conversation content. Hermes separates observer hooks from middleware that can change a request.
-- **Define an operation once.** OpenClaw turns one typed operation into a UI call, an agent tool and a command. Pi Cloud's plugins write a route and a tool for the same thing, which ADR 0035's toolsets make more common.
+- **Define an operation once.** OpenClaw turns one typed operation into a UI call, an agent tool and a command. Pipoca's plugins write a route and a tool for the same thing, which ADR 0035's toolsets make more common.
 - **Inline views from tool results.** OpenClaw lets a tool return a small JSON view that the chat draws.
 - **Declared backups and migrations.** OpenClaw's manifest names the state a plugin keeps and how to migrate it, so backups and upgrades don't need the plugin's code.
 - **A plugin host process.** Hermes can run plugins in a separate process, so a crash or a hostile plugin can't take the server down.
 - **Tell the agent where it is.** OpenHands appends the URLs of the services around the agent to its context, so it doesn't guess ports. Our cloud-bridge extension could do the same for preview URLs.
-- **A skill for outside agents.** LearnHarness ships a skill that explains its data to any agent and draws a read-only line. A `pi-cloud` skill could explain Sessions, Projects, Environments, Profiles and the risky tools to Claude Code or a local Pi using the MCP endpoint ([ADR 0035](adr/0035-meta-sessions.md#mcp)).
+- **A skill for outside agents.** LearnHarness ships a skill that explains its data to any agent and draws a read-only line. A `pipoca` skill could explain Sessions, Projects, Environments, Profiles and the risky tools to Claude Code or a local Pi using the MCP endpoint ([ADR 0035](adr/0035-meta-sessions.md#mcp)).
 - **Agents that look at their own pages.** LearnHarness's sub-agents load what they built in headless Chrome and read its errors before delivering it. A Pi package in a Profile could give a Session a tool that screenshots a preview and returns its console ([ADR 0037](adr/0037-previews-and-opened-pages.md)).
 
 ## Extension UI
@@ -59,7 +59,7 @@ v2 adds Kubernetes, stronger isolation and a public extension interface ([vision
 Pi extensions can draw their own terminal UI with `ctx.ui.custom()`, editor components and headers. None of that reaches a web client: Pi's rpc mode forwards dialogs, notifications, statuses, widgets and the title, and Pi's docs tell extension authors to guard the rest with `ctx.mode === "tui"`. v1 forwards everything rpc mode offers, renders component widgets, footers and headers in the Session host for the web ([ADR 0029](adr/0029-extension-ui-on-the-web.md)), and builds the most common interaction, asking the user structured questions, into the host. These two ideas would cover the rest.
 
 - **A terminal view of a Session.** Built in v1 as the Pi view ([ADR 0027](adr/0027-pi-tui-view.md)). Pi exports `InteractiveMode`, its real TUI, and it accepts a `terminal` option. A spike on 2026-10-20 ran the TUIs of two Sessions on virtual terminals inside one Bun process. Both stayed independent, `custom()` components rendered (pi-ask's form included), the JSONL was still written, a message sent the way the web UI sends one showed up in the TUI, and a forced redraw gave a reconnecting viewer a full frame. Two things block it without changing Pi. Quitting the TUI calls `process.exit`, and each instance installs its own signal and `uncaughtException` handlers, so one quit would end every Session in the agent. The TUI also rebinds the extension UI to itself; rebinding back to the web works, but each rebind fires `session_start` again. Both go away with a process per Session, which v2 isolation may bring anyway. Claude Code makes the same split: Remote Control sessions show a structured view on claude.ai while the terminal runs on the machine ([Remote Control](https://code.claude.com/docs/en/remote-control)).
-- **A portable UI vocabulary for extensions.** Claude Code mods don't draw. A `ui.render` hook returns a tree of elements (`Box`, `Text`, `Button`, `Input`, `Select`, `Markdown` and a few more), and the terminal, Desktop and VS Code each render it their own way. When a host doesn't support an element, it draws its own default ([mods interface](https://code.claude.com/docs/en/plugins/mods/interface)). Pi's `custom()` returns terminal components instead, which only a terminal can render. A Pi Cloud extension API could offer an element set that the web renders natively and the TUI renders as text. It belongs with the public extension interface and Profiles.
+- **A portable UI vocabulary for extensions.** Claude Code mods don't draw. A `ui.render` hook returns a tree of elements (`Box`, `Text`, `Button`, `Input`, `Select`, `Markdown` and a few more), and the terminal, Desktop and VS Code each render it their own way. When a host doesn't support an element, it draws its own default ([mods interface](https://code.claude.com/docs/en/plugins/mods/interface)). Pi's `custom()` returns terminal components instead, which only a terminal can render. A Pipoca extension API could offer an element set that the web renders natively and the TUI renders as text. It belongs with the public extension interface and Profiles.
 
 ## Observability
 
@@ -72,7 +72,7 @@ Pi extensions can draw their own terminal UI with `ctx.ui.custom()`, editor comp
 
 ## Other agents
 
-- **ACP as a seam.** OpenHands runs other agents (Claude Code, Codex, Gemini, Pi) as ACP subprocesses. Pi Cloud embeds Pi directly, which is the point. ACP could still be the way to host a non-Pi agent later.
+- **ACP as a seam.** OpenHands runs other agents (Claude Code, Codex, Gemini, Pi) as ACP subprocesses. Pipoca embeds Pi directly, which is the point. ACP could still be the way to host a non-Pi agent later.
 
 ## Testing
 

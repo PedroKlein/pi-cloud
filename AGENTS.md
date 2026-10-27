@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Pi Cloud is a self-hosted control plane for durable Pi sessions and Projects on your own machines. Start with [README.md](README.md), then [docs/vision.md](docs/vision.md) for scope and [docs/adr/](docs/adr/) for decisions.
+Pipoca is a self-hosted control plane for durable Pi sessions and Projects on your own machines. Start with [README.md](README.md), then [docs/vision.md](docs/vision.md) for scope and [docs/adr/](docs/adr/) for decisions.
 
 ## Where things stand
 
@@ -19,7 +19,7 @@ Pi Cloud is a self-hosted control plane for durable Pi sessions and Projects on 
 [ADR 0008](docs/adr/0008-monorepo-layout.md):
 
 ```text
-apps/            thin entry points: the pi-cloud binary (with its adapters) and web
+apps/            thin entry points: the pipoca binary (with its adapters) and web
 packages/        domain packages: protocol, sessions, workspaces, providers, sessionhost
 plugins/         features built on the kernel, such as projects (ADR 0015)
 ```
@@ -55,7 +55,7 @@ plugins/         features built on the kernel, such as projects (ADR 0015)
 - Mock only at system boundaries: HTTP, database, filesystem and processes.
 - Work in vertical slices: one failing test, the code to pass it, then the next. Don't write all the tests first.
 - Bugs: reproduce with the exact reported command first. Then write a test that fails because of the bug, fix it, and keep the test. No test, no fix, unless an existing test already covers that exact failure (say which one).
-- A bug in the web UI gets its test in `apps/pi-cloud/src/web.e2e.ts` (`bun run test:e2e`) when it shows only in a browser: focus, keys, layout or a phone viewport.
+- A bug in the web UI gets its test in `apps/pipoca/src/web.e2e.ts` (`bun run test:e2e`) when it shows only in a browser: focus, keys, layout or a phone viewport.
 - Tests that open Pi's own terminal UI need `fd` on `PATH`. Without it Pi tries to download `fd` at startup, and offline the test times out.
 
 ## Done means evidence

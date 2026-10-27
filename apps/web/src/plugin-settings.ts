@@ -2,7 +2,7 @@ import type {
   PluginSettings,
   SettingSpec,
   SettingValue,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 // The values a plugin's settings form holds, by the types its schema gives.
 // A list of text takes one entry per line.

@@ -1,4 +1,4 @@
-# Pi Cloud Environments
+# Pipoca Environments
 
 > Status: working model. Environment is an agreed product concept; its provider cardinality, build system, schema, and migration rules remain open.
 
@@ -79,7 +79,7 @@ Explicit revisions make failures reproducible and avoid silently changing the me
 
 ## Runtime baseline and setup
 
-Claude cloud Environments distinguish cached environment setup from per-session startup. Pi Cloud should preserve that conceptual split.
+Claude cloud Environments distinguish cached environment setup from per-session startup. Pipoca should preserve that conceptual split.
 
 ### Environment setup
 

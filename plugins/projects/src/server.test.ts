@@ -8,8 +8,8 @@ import {
   type SendOutcome,
   type ServerPluginContext,
   type ServerTool,
-} from "@pi-cloud/plugins";
-import type { Actor, Session } from "@pi-cloud/protocol";
+} from "@pipoca/plugins";
+import type { Actor, Session } from "@pipoca/protocol";
 import type { ProjectView } from "./model";
 import { projects } from "./server";
 
@@ -292,7 +292,7 @@ async function startProject(
   kernel: FakeKernel,
 ): Promise<{ coordinatorId: string; threadId: string }> {
   const response = await kernel.route()(
-    new Request("http://pi-cloud/projects", {
+    new Request("http://pipoca/projects", {
       method: "POST",
       body: JSON.stringify({
         name: "Release",
@@ -421,7 +421,7 @@ test("owns its coordinator and threads, and those started before owners existed"
   const { coordinatorId, threadId } = await startProject(kernel);
 
   const listed = await kernel.route()(
-    new Request("http://pi-cloud/projects"),
+    new Request("http://pipoca/projects"),
     "projects",
     undefined,
   );
@@ -879,7 +879,7 @@ test("reads a thread's messages around transcript lines that aren't text", async
 
 async function projectView(kernel: FakeKernel): Promise<ProjectView> {
   const list = await kernel.route()(
-    new Request("http://pi-cloud/projects"),
+    new Request("http://pipoca/projects"),
     "projects",
     undefined,
   );
@@ -887,7 +887,7 @@ async function projectView(kernel: FakeKernel): Promise<ProjectView> {
   const [summary] = (await list.json()) as { id: string }[];
 
   const response = await kernel.route()(
-    new Request(`http://pi-cloud/projects/${summary?.id ?? ""}`),
+    new Request(`http://pipoca/projects/${summary?.id ?? ""}`),
     `projects/${summary?.id ?? ""}`,
     undefined,
   );
@@ -902,7 +902,7 @@ async function editProject(
   const { id } = await projectView(kernel);
 
   return kernel.route()(
-    new Request(`http://pi-cloud/projects/${id}/settings`, {
+    new Request(`http://pipoca/projects/${id}/settings`, {
       method: "POST",
       body: JSON.stringify(changes),
     }),
@@ -960,7 +960,7 @@ test("keeps a Project's goal in the context of the coordinator and its threads w
   projects.register(kernel.context);
 
   const response = await kernel.route()(
-    new Request("http://pi-cloud/projects", {
+    new Request("http://pipoca/projects", {
       method: "POST",
       body: JSON.stringify({
         name: "Release",
@@ -1000,7 +1000,7 @@ test("starts the coordinator and new threads with the Project's Profile", async 
   projects.register(kernel.context);
 
   const response = await kernel.route()(
-    new Request("http://pi-cloud/projects", {
+    new Request("http://pipoca/projects", {
       method: "POST",
       body: JSON.stringify({
         name: "Release",
@@ -1069,7 +1069,7 @@ test("lists each Project with its repositories, coordinator state and the thread
   ).toMatchObject({ runState: "waiting", workState: "in_progress" });
 
   const list = await kernel.route()(
-    new Request("http://pi-cloud/projects"),
+    new Request("http://pipoca/projects"),
     "projects",
     undefined,
   );
@@ -1120,7 +1120,7 @@ test("shows one thread's state and Project for a link to it", async () => {
 
   const thread = async (id: string): Promise<Response> =>
     kernel.route()(
-      new Request(`http://pi-cloud/threads/${id}`),
+      new Request(`http://pipoca/threads/${id}`),
       `threads/${id}`,
       undefined,
     );

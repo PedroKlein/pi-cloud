@@ -9,7 +9,7 @@ import {
   type Profile,
   type ProfileContent,
   profilePath,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   defaultProfileId,
   isRecord,
@@ -38,7 +38,7 @@ type Result<T> =
   | { readonly ok: false; readonly reason: Rejection };
 
 // The file a repository shares a Profile in, at its root.
-const exportFile = "pi-cloud-profile.json";
+const exportFile = "pipoca-profile.json";
 const gitTimeoutMs = 60_000;
 const maxExportBytes = 1024 * 1024;
 const run = promisify(execFile);
@@ -241,8 +241,8 @@ export class Profiles {
   // An import is a copy the importer owns (ADR 0031).
   import(file: unknown): Profile {
     const fields = fieldsOf(file);
-    if (fields["piCloudProfile"] !== 1) {
-      throw new InvalidProfile("not a Pi Cloud Profile file");
+    if (fields["pipocaProfile"] !== 1) {
+      throw new InvalidProfile("not a Pipoca Profile file");
     }
 
     const { shared: _ignored, ...owned } = fields;
@@ -262,7 +262,7 @@ export class Profiles {
       throw new InvalidProfile("url must be an https:// or ssh:// git URL");
     }
 
-    const dir = await mkdtemp(join(tmpdir(), "pi-cloud-profile-"));
+    const dir = await mkdtemp(join(tmpdir(), "pipoca-profile-"));
     try {
       await run(
         "git",

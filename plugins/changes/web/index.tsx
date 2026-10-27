@@ -2,8 +2,8 @@ import type {
   MountedSession,
   SessionPartProps,
   WebPlugin,
-} from "@pi-cloud/plugins/web";
-import { Button, cn, Icon, isComposing } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import { Button, cn, Icon, isComposing } from "@pipoca/ui";
 import {
   Fragment,
   type ReactElement,

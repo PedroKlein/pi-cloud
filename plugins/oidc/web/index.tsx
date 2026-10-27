@@ -3,8 +3,8 @@ import {
   useLoaded,
   type WebContext,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
-import { Button, Field, fieldClass, Section } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import { Button, Field, fieldClass, Section } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import type { Account, ProviderInput, ProviderView } from "../src/model";
 
@@ -118,7 +118,7 @@ function Providers({
   return (
     <div className="flex flex-col gap-2 text-ui">
       <p className="text-fg-dim">
-        Providers people can sign in with, kept in the server's pi-cloud.json.
+        Providers people can sign in with, kept in the server's pipoca.json.
         Register{" "}
         <code className="font-mono text-mono-sm">
           {location.origin}/api/plugins/oidc/callback
@@ -291,8 +291,8 @@ function ProviderForm({
         />
       </Field>
       {textField("groupsClaim", "Groups claim", "groups")}
-      {textField("accessGroup", "Access group", "pi-cloud-users")}
-      {textField("adminGroup", "Admin group", "pi-cloud-admins")}
+      {textField("accessGroup", "Access group", "pipoca-users")}
+      {textField("adminGroup", "Admin group", "pipoca-admins")}
       {listField("allowedEmails", "Allowed emails", "ana@example.com")}
       {listField("allowedDomains", "Allowed domains", "example.com")}
       {listField("adminEmails", "Admin emails", "ana@example.com")}

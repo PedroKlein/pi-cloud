@@ -1,4 +1,4 @@
-import type { WorkPoll } from "@pi-cloud/protocol";
+import type { WorkPoll } from "@pipoca/protocol";
 
 type Inventory = Pick<WorkPoll, "folders" | "models" | "session">;
 

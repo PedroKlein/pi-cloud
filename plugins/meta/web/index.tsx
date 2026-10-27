@@ -6,9 +6,9 @@ import {
   useLoaded,
   type WebContext,
   type WebPlugin,
-} from "@pi-cloud/plugins/web";
-import type { Environment, ModelRef, Session } from "@pi-cloud/protocol";
-import { Button, cn, Icon, isComposing } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import type { Environment, ModelRef, Session } from "@pipoca/protocol";
+import { Button, cn, Icon, isComposing } from "@pipoca/ui";
 import {
   type ReactElement,
   type SubmitEvent,
@@ -21,7 +21,7 @@ import {
 // Fired when a new meta-session starts, so every list shows it at once.
 const started = new EventTarget();
 
-const modelKey = "pi-cloud.meta.model";
+const modelKey = "pipoca.meta.model";
 
 export const meta: WebPlugin = {
   name: "meta",
@@ -161,7 +161,7 @@ function Composer({
       className="flex flex-col gap-2 rounded-xl border border-line bg-elevated py-2 pr-2 pl-4 shadow-card focus-within:border-accent"
     >
       <label htmlFor={textId} className="sr-only">
-        Ask the Pi Cloud assistant
+        Ask the Pipoca assistant
       </label>
       <textarea
         id={textId}
@@ -284,7 +284,7 @@ function Conversations({
       <h1 className="text-display font-semibold text-fg-strong">Assistant</h1>
       {sessions.length === 0 ? (
         <p className="text-fg-dim">
-          Conversations with the Pi Cloud assistant show here.{" "}
+          Conversations with the Pipoca assistant show here.{" "}
           <a href="#" className="text-accent">
             Start one
           </a>

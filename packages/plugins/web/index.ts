@@ -3,7 +3,7 @@ import type {
   PluginSettings,
   Session,
   SessionEvent,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   type ComponentType,
   type ReactNode,
@@ -267,7 +267,7 @@ export function watchChanges(
 
 // Loads data for a component, again when key changes, on reload(), when one
 // of the topics changes, and every everyMs for data that changes outside
-// Pi Cloud. Stale results for an old key are dropped.
+// Pipoca. Stale results for an old key are dropped.
 // A failed first load is thrown during render, for the error boundary the
 // web app puts around every plugin part; a failed refresh keeps the last
 // value.

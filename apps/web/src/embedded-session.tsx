@@ -1,4 +1,4 @@
-import type { EmbeddedSessionProps } from "@pi-cloud/plugins/web";
+import type { EmbeddedSessionProps } from "@pipoca/plugins/web";
 import { createContext, type ReactElement, useContext } from "react";
 import { useEnvironments } from "./hooks";
 import { SessionView } from "./session-view";

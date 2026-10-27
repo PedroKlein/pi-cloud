@@ -17,7 +17,7 @@ import {
   checkoutName,
   type RemovalReport,
   type Workspace,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 const run = promisify(execFile);
 
@@ -433,7 +433,7 @@ async function removeCheckout(
     : null;
 
   const branchConfig =
-    restore === null ? {} : await piCloudConfig(repository, workspace.branch);
+    restore === null ? {} : await pipocaConfig(repository, workspace.branch);
 
   if (workspace.kind === "clone") {
     await rm(dir, { recursive: true, force: true });
@@ -935,7 +935,7 @@ async function remoteStartPoint(
 
 // The commit a session branch started from, kept in the branch's git config
 // so a later attempt, and git itself when the branch is deleted, know it.
-const baseKey = (branch: string): string => `branch.${branch}.piCloudBase`;
+const baseKey = (branch: string): string => `branch.${branch}.pipocaBase`;
 
 // A restored branch gets its config back first, and keeps the base in it
 // while git still has that commit.
@@ -968,9 +968,9 @@ async function readBase(dir: string, branch: string): Promise<string | null> {
   return git(dir, "config", "--get", baseKey(branch)).catch(() => null);
 }
 
-// The branch.<branch>.piCloud* keys by name, such as its base and the pull
+// The branch.<branch>.pipoca* keys by name, such as its base and the pull
 // request the changes plugin opened for it. git prints them lowercased.
-async function piCloudConfig(
+async function pipocaConfig(
   repository: string,
   branch: string,
 ): Promise<Record<string, string>> {
@@ -980,13 +980,13 @@ async function piCloudConfig(
     repository,
     "config",
     "--get-regexp",
-    "^branch\\..*\\.picloud",
+    "^branch\\..*\\.pipoca",
   ).catch(() => "");
 
   return Object.fromEntries(
     lines.split("\n").flatMap((line) => {
       const [, name, value] =
-        /^(picloud[^.\s]*) (.*)$/.exec(line.slice(prefix.length)) ?? [];
+        /^(pipoca[^.\s]*) (.*)$/.exec(line.slice(prefix.length)) ?? [];
 
       return line.startsWith(prefix) &&
         name !== undefined &&

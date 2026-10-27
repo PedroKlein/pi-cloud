@@ -1,4 +1,4 @@
-import { cn } from "@pi-cloud/ui";
+import { cn } from "@pipoca/ui";
 import {
   type KeyboardEvent,
   type ReactElement,

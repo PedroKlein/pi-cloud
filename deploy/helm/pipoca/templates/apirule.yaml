@@ -1,0 +1,80 @@
+{{- if .Values.apiRule.enabled }}
+{{- $methods := list "GET" "POST" "PUT" "PATCH" "DELETE" }}
+apiVersion: gateway.kyma-project.io/v2
+kind: APIRule
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "pipoca.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ .Values.apiRule.host }}
+  gateway: {{ .Values.apiRule.gateway }}
+  service:
+    name: {{ .Release.Name }}
+    port: {{ .Values.service.port }}
+  # The server signs people and runners in itself, so the gateway only keeps
+  # out the paths a browser never needs. A path no rule matches is refused,
+  # so the setup link only works through a port-forward.
+  rules:
+    - path: /
+      methods: [GET]
+      noAuth: true
+    # The web UI's bundled files.
+    - path: /{*}
+      methods: [GET]
+      noAuth: true
+    - path: /api/auth
+      methods: [GET]
+      noAuth: true
+    - path: /api/auth/login
+      methods: [POST]
+      noAuth: true
+    - path: /api/auth/logout
+      methods: [POST]
+      noAuth: true
+    - path: /api/changes
+      methods: [GET]
+      noAuth: true
+    {{- range list "sessions" "environments" "profiles" "plugins" "plugin-files" "plugin-builds" "plugin-parts" "pinned-pages" "mcp-tokens" "join-key" "restart" }}
+    - path: /api/{{ . }}
+      methods: {{ toJson $methods }}
+      noAuth: true
+    - path: /api/{{ . }}/{**}
+      methods: {{ toJson $methods }}
+      noAuth: true
+    {{- end }}
+    {{- if .Values.apiRule.exposeMcp }}
+    - path: /api/mcp
+      methods: [GET, POST, DELETE]
+      noAuth: true
+    {{- end }}
+    {{- if .Values.apiRule.exposeAgents }}
+    - path: /agent/{**}
+      methods: {{ toJson $methods }}
+      noAuth: true
+    {{- end }}
+{{- end }}
+{{- if .Values.apiRule.enabled }}
+---
+# The APIRule's policies let in only the gateway, which would also shut out
+# the runner pods that reach the server through its Service.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Release.Name }}-runners
+  labels:
+    {{- include "pipoca.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "pipoca.labels" . | nindent 6 }}
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [{{ .Release.Namespace }}]
+      to:
+        - operation:
+            paths: ["/agent/*"]
+{{- end }}

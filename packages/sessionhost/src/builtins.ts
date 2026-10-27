@@ -8,7 +8,7 @@ import {
   type LiveEvent,
   type SlashCommand,
   thinkingLevels,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import { availableModel } from "./session";
 import type { remoteUI } from "./ui";
 

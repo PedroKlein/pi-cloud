@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { ServerPlugin, ServerPluginContext } from "@pi-cloud/plugins";
-import { type Environment, movable } from "@pi-cloud/protocol";
+import type { ServerPlugin, ServerPluginContext } from "@pipoca/plugins";
+import { type Environment, movable } from "@pipoca/protocol";
 import {
   type ApiAccess,
   type Cluster,
@@ -22,7 +22,7 @@ import {
 
 export interface KubernetesOptions {
   readonly api: ApiAccess | undefined;
-  // The Pi Cloud image, and the image of an Environment that names none.
+  // The Pipoca image, and the image of an Environment that names none.
   readonly image: string | undefined;
   // The server's in-cluster address, which runner pods poll.
   readonly server: string | undefined;
@@ -196,14 +196,14 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
 }
 
 export const kubernetesPlugin = kubernetes(() => {
-  const faux = process.env["PI_CLOUD_FAUX_REPLY"];
+  const faux = process.env["PIPOCA_FAUX_REPLY"];
 
   return {
     api: inClusterApi(),
-    image: process.env["PI_CLOUD_IMAGE"],
-    server: process.env["PI_CLOUD_RUNNER_URL"],
+    image: process.env["PIPOCA_IMAGE"],
+    server: process.env["PIPOCA_RUNNER_URL"],
     // Tests run the binary on Pi's faux model, in pods too.
-    variables: faux === undefined ? {} : { PI_CLOUD_FAUX_REPLY: faux },
+    variables: faux === undefined ? {} : { PIPOCA_FAUX_REPLY: faux },
   };
 });
 

@@ -1,5 +1,5 @@
-import { json, ok, useLoaded } from "@pi-cloud/plugins/web";
-import { type PiPackage, type Profile, profilePath } from "@pi-cloud/protocol";
+import { json, ok, useLoaded } from "@pipoca/plugins/web";
+import { type PiPackage, type Profile, profilePath } from "@pipoca/protocol";
 import {
   Badge,
   Button,
@@ -10,7 +10,7 @@ import {
   ListInput,
   PageTitle,
   Section,
-} from "@pi-cloud/ui";
+} from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 

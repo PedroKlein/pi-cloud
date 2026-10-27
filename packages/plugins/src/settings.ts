@@ -2,7 +2,7 @@ import type {
   PluginSettings,
   SettingSpec,
   SettingValue,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 
 type Schema = Readonly<Record<string, SettingSpec>>;
 

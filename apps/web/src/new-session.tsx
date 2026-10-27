@@ -5,7 +5,7 @@ import {
   type Session,
   type ThinkingLevel,
   thinkingLevels,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   Button,
   cn,
@@ -13,7 +13,7 @@ import {
   isComposing,
   Picker,
   type PickerOption,
-} from "@pi-cloud/ui";
+} from "@pipoca/ui";
 import {
   type ReactElement,
   type SubmitEvent,
@@ -35,7 +35,7 @@ interface Choices {
   readonly profile: string;
 }
 
-const choicesKey = "pi-cloud.new-session";
+const choicesKey = "pipoca.new-session";
 
 const fresh: Choices = {
   environment: "",

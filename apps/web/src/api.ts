@@ -1,4 +1,4 @@
-import type { Command } from "@pi-cloud/protocol";
+import type { Command } from "@pipoca/protocol";
 
 // The server adds the actor to everything a browser sends.
 export type BrowserCommand = Command extends infer C

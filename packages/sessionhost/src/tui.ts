@@ -6,7 +6,7 @@ import {
   InteractiveMode,
 } from "@earendil-works/pi-coding-agent";
 import { StdinBuffer, type Terminal } from "@earendil-works/pi-tui";
-import { type LiveEvent, piTerminal } from "@pi-cloud/protocol";
+import { type LiveEvent, piTerminal } from "@pipoca/protocol";
 import type {
   Log,
   SessionStream,
@@ -44,7 +44,7 @@ const drawn = new Set<string | symbol>([
 ]);
 
 const oneSession =
-  "Pi Cloud keeps one Pi session per session. Start a new session from the sidebar instead.";
+  "Pipoca keeps one Pi session per session. Start a new session from the sidebar instead.";
 
 // Pi's own TUI for a Session, started the first time a browser opens the Pi
 // view and kept until the Session stops. Extension dialogs go to the TUI while
@@ -151,7 +151,7 @@ export function piView(
         async () => Promise.reject(new Error(oneSession)),
       );
 
-      // Pi Cloud ships its own Pi, so Pi's advice to update itself is wrong.
+      // Pipoca ships its own Pi, so Pi's advice to update itself is wrong.
       process.env["PI_SKIP_VERSION_CHECK"] = "1";
 
       const interactive = new InteractiveMode(runtime, {
@@ -168,7 +168,7 @@ export function piView(
       };
 
       internals.handleCtrlZ = () => {
-        internals.showStatus("Suspending isn't available in Pi Cloud");
+        internals.showStatus("Suspending isn't available in Pipoca");
       };
 
       const initialized = interactive.init();

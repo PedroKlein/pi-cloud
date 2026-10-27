@@ -4,9 +4,9 @@ import type {
   ToolCallProps,
   WebPlugin,
   WidgetProps,
-} from "@pi-cloud/plugins/web";
-import type { SessionEvent } from "@pi-cloud/protocol";
-import { cn, Icon } from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import type { SessionEvent } from "@pipoca/protocol";
+import { cn, Icon } from "@pipoca/ui";
 import { type ReactElement, useEffect, useState } from "react";
 import {
   asyncIdOf,

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Session } from "@pi-cloud/protocol";
+import type { Session } from "@pipoca/protocol";
 import { ago, sessionBadge, shortName, workspaceName } from "./names";
 
 const session = (change: Partial<Session>): Session => ({
@@ -60,9 +60,7 @@ test("a session that needs a look shows its state", () => {
 });
 
 test("names a workspace by its folder or repository", () => {
-  expect(shortName({ kind: "folder", path: "/home/me/pi-cloud" })).toBe(
-    "pi-cloud",
-  );
+  expect(shortName({ kind: "folder", path: "/home/me/pipoca" })).toBe("pipoca");
 
   expect(
     shortName({
@@ -99,7 +97,7 @@ test("names a workspace with no repositories without its branch", () => {
     workspaceName({
       kind: "repositories",
       repositories: [],
-      branch: "pi-cloud/3204c1c7",
+      branch: "pipoca/3204c1c7",
     }),
   ).toBe("no repositories");
 
@@ -107,7 +105,7 @@ test("names a workspace with no repositories without its branch", () => {
     workspaceName({
       kind: "repositories",
       repositories: [{ repository: "https://example.com/shop.git" }],
-      branch: "pi-cloud/1",
+      branch: "pipoca/1",
     }),
-  ).toBe("https://example.com/shop.git (pi-cloud/1)");
+  ).toBe("https://example.com/shop.git (pipoca/1)");
 });

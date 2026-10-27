@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { PluginStore, ServerPlugin, User } from "@pi-cloud/plugins";
+import type { PluginStore, ServerPlugin, User } from "@pipoca/plugins";
 import type { Account, LinkedIdentity } from "./model";
 import {
   type Attempt,
@@ -21,7 +21,7 @@ import {
 
 // A browser has this long to come back from the provider.
 const attemptMs = 10 * 60_000;
-const browserCookie = "pi-cloud-oidc";
+const browserCookie = "pipoca-oidc";
 
 interface Pending extends Attempt {
   readonly providerId: string;
@@ -430,7 +430,7 @@ function secure(request: Request): boolean {
 // redirect it follows straight away.
 function redirect(to: string, cookie: string | undefined): Response {
   return new Response(
-    `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${to}"><title>Pi Cloud</title><a href="${to}">Continue</a>`,
+    `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${to}"><title>Pipoca</title><a href="${to}">Continue</a>`,
     {
       headers: {
         "content-type": "text/html; charset=utf-8",
@@ -443,7 +443,7 @@ function redirect(to: string, cookie: string | undefined): Response {
 
 function page(message: string, status: number): Response {
   return new Response(
-    `<!doctype html><meta charset="utf-8"><title>Pi Cloud</title><p>${escaped(message)}</p><p><a href="/">Back to Pi Cloud</a></p>`,
+    `<!doctype html><meta charset="utf-8"><title>Pipoca</title><p>${escaped(message)}</p><p><a href="/">Back to Pipoca</a></p>`,
     {
       status,
       headers: {

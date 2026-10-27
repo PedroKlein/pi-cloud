@@ -5,8 +5,8 @@ import {
   type PluginRoute,
   type PluginStore,
   type ToolCaller,
-} from "@pi-cloud/plugins";
-import type { PluginSettings } from "@pi-cloud/protocol";
+} from "@pipoca/plugins";
+import type { PluginSettings } from "@pipoca/protocol";
 import { library } from "./server";
 
 const member: ToolCaller = {

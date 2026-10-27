@@ -460,7 +460,7 @@ test("opens a turn with a plugin's notice, and keeps an untagged one a note", ()
   const notice = (details: unknown): string =>
     JSON.stringify({
       type: "custom_message",
-      customType: "pi-cloud-notice",
+      customType: "pipoca-notice",
       content: "Docs finished a turn",
       display: true,
       details,

@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@pi-cloud/ui/theme.css";
+@import "@pipoca/ui/theme.css";
 @import "@xterm/xterm/css/xterm.css";
 
 @source "../../../packages/ui/web";

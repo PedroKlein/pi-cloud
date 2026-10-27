@@ -1,5 +1,5 @@
-import type { Environment, Session } from "@pi-cloud/protocol";
-import { Button, cn, Icon } from "@pi-cloud/ui";
+import type { Environment, Session } from "@pipoca/protocol";
+import { Button, cn, Icon } from "@pipoca/ui";
 import { type ReactElement, type ReactNode, useState } from "react";
 import { api } from "./api";
 
@@ -112,7 +112,7 @@ function ConnectMachine(): ReactElement {
     );
   }
 
-  const command = `PI_CLOUD_KEY=${key} pi-cloud agent --server ${location.origin}`;
+  const command = `PIPOCA_KEY=${key} pipoca agent --server ${location.origin}`;
 
   return (
     <>

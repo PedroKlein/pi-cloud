@@ -11,7 +11,7 @@ import type {
   AgentSessionEvent,
   ExtensionError,
 } from "@earendil-works/pi-coding-agent";
-import type { SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionPlugin } from "@pipoca/plugins";
 import {
   type Command,
   type ImageAttachment,
@@ -22,7 +22,7 @@ import {
   type PluginSettings,
   type SlashCommand,
   type ToolSpec,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import {
   builtinCommands,
   builtinOf,
@@ -70,7 +70,7 @@ export interface HostOptions extends SessionOptions {
   readonly pluginSettings?: Readonly<Record<string, PluginSettings>>;
   readonly firstMessage?: string | null;
   readonly serverToolTimeoutMs?: number;
-  // Runs `pi-cloud open <url>`, for the BROWSER helper.
+  // Runs `pipoca open <url>`, for the BROWSER helper.
   readonly opener?: readonly string[];
 }
 
@@ -246,7 +246,7 @@ async function askForTrust(
   const answer = await session.extensionRunner
     .getUIContext()
     .select(
-      `Trust ${session.sessionManager.getCwd()}? It has its own Pi configuration in .pi, such as extensions, which can run code. Pi Cloud asks once for each repository.`,
+      `Trust ${session.sessionManager.getCwd()}? It has its own Pi configuration in .pi, such as extensions, which can run code. Pipoca asks once for each repository.`,
       [trustIt, distrustIt],
     );
 
@@ -675,7 +675,7 @@ async function run(
     case "context":
       await session.sendCustomMessage(
         {
-          customType: "pi-cloud-context",
+          customType: "pipoca-context",
           content: command.text,
           display: true,
         },

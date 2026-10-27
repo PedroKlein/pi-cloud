@@ -1,4 +1,4 @@
-import { Button, Field, fieldClass, PageTitle } from "@pi-cloud/ui";
+import { Button, Field, fieldClass, PageTitle } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api } from "./api";
 

@@ -18,14 +18,14 @@ import {
   ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import type { SessionPlugin } from "@pi-cloud/plugins";
-import type { Command, LiveEvent, ToolSpec } from "@pi-cloud/protocol";
-import { ask } from "@pi-cloud/ask/session";
+import type { SessionPlugin } from "@pipoca/plugins";
+import type { Command, LiveEvent, ToolSpec } from "@pipoca/protocol";
+import { ask } from "@pipoca/ask/session";
 import {
   type CheckoutChanges,
   changes,
   type PullRequest,
-} from "@pi-cloud/changes/session";
+} from "@pipoca/changes/session";
 import {
   hostSession,
   hostTerminals,
@@ -1369,7 +1369,7 @@ test("asks structured questions with the ask plugin's ask_user tool", async () =
   );
 });
 
-// Pi Cloud's web UI can't draw a terminal extension's custom() dialog, so
+// Pipoca's web UI can't draw a terminal extension's custom() dialog, so
 // the built-in form must replace a user's own ask_user.
 test("replaces a user's own ask_user extension with the web form", async () => {
   const { faux, models } = await fauxModels(root);
@@ -2227,7 +2227,7 @@ async function pullRequestSetup(reply: string): Promise<{
   await git("switch", "--quiet", "-c", "pi/notes");
 
   const base = await git("rev-parse", "HEAD");
-  await git("config", "branch.pi/notes.piCloudBase", base);
+  await git("config", "branch.pi/notes.pipocaBase", base);
 
   await mkdir(bin);
 
@@ -2709,7 +2709,7 @@ test("keeps a plugin's notice in the transcript and starts a turn with it", asyn
     .find(({ type }) => type === "custom_message");
 
   expect(kept).toMatchObject({
-    customType: "pi-cloud-notice",
+    customType: "pipoca-notice",
     content: "Docs finished a turn",
     details: notice,
   });
@@ -3748,7 +3748,7 @@ export default (pi) => {
   expect(await readFile(starts, "utf8")).toBe("started\n".repeat(2));
 }, 20_000);
 
-test("doesn't tell the user to update the Pi that Pi Cloud ships", async () => {
+test("doesn't tell the user to update the Pi that Pipoca ships", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
   const realFetch = globalThis.fetch;
@@ -3816,7 +3816,7 @@ test("refuses to replace the session from the TUI", async () => {
   expect(pi.screen()).not.toContain("New session started");
 }, 20_000);
 
-test("lists Pi Cloud's own extensions by name in the TUI", async () => {
+test("lists Pipoca's own extensions by name in the TUI", async () => {
   const { models } = await fauxModels(root);
   const fake = fakeStream();
 

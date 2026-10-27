@@ -1,0 +1,68 @@
+image:
+  repository: ghcr.io/pedroklein/pipoca
+  # main follows the main branch; pin a sha-<commit> tag for a steady install.
+  tag: main
+  pullPolicy: IfNotPresent
+
+# Where people open the server, such as https://pi.example.com. The setup link
+# in the log points here. Defaults to https://<apiRule.host> on Kyma.
+url: ""
+
+# Kyma's gateway, which ends HTTPS in front of the server (ADR 0034).
+apiRule:
+  enabled: false
+  host: ""
+  gateway: kyma-system/kyma-gateway
+  # MCP clients, such as Claude Code or Pi, outside the cluster.
+  exposeMcp: false
+  # Runners outside the cluster, such as a laptop. Runner pods reach the
+  # server through its Service.
+  exposeAgents: false
+
+# Runs a runner inside the server too, in the Environment of this name.
+builtInRunner: ""
+
+# A Secret with a `secretKey` entry: 32 bytes, base64. When empty, the chart
+# makes one on install and keeps it on upgrades.
+existingSecret: ""
+
+# Single sign-on through OpenID Connect providers (ADR 0038), which admins
+# add in Settings.
+oidc:
+  # Turns the password login off, once your user signs in through the
+  # provider. The setup link still works.
+  ssoOnly: false
+
+persistence:
+  size: 5Gi
+  storageClass: ""
+
+service:
+  port: 7420
+
+resources: {}
+
+# Lets the kubernetes plugin start runner pods in this namespace, with a
+# service account allowed to manage pods, Secrets and claims here (ADR 0032).
+runnerPods:
+  enabled: true
+
+# More environment for the server, such as PIPOCA_FAUX_REPLY in tests, or
+# a secret a plugin's config names, taken from a Secret with valueFrom.
+extraEnv: []
+# Whole Secrets or ConfigMaps as environment, such as client secrets.
+extraEnvFrom: []
+
+# The first pipoca.json of the server's config folder, a key per plugin
+# (ADR 0039). It is written to the data volume only when no file is there
+# yet; after that Settings edits the file, and so can you. Secrets don't go
+# here: name an environment variable instead, such as oidc's clientSecretEnv.
+config: {}
+#  oidc:
+#    providers:
+#      - id: ias
+#        label: Sign in with SAP
+#        issuer: https://example.accounts.ondemand.com
+#        clientId: <client id>
+#        accessGroup: pipoca-users
+#        adminGroup: pipoca-admins

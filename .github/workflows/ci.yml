@@ -32,31 +32,31 @@ jobs:
       - run: bun install --frozen-lockfile
       - uses: helm/kind-action@v1
         with:
-          cluster_name: pi-cloud
+          cluster_name: pipoca
       # Releases installed before a values block existed upgrade with --reuse-values.
-      - run: helm template pi-cloud deploy/helm/pi-cloud --set oidc=null > /dev/null
+      - run: helm template pipoca deploy/helm/pipoca --set oidc=null > /dev/null
       - name: The APIRule keeps runners and MCP out unless asked
         run: |
-          rule() { helm template pi-cloud deploy/helm/pi-cloud --set apiRule.enabled=true --set apiRule.host=pi.example.com "$@" --show-only templates/apirule.yaml; }
+          rule() { helm template pipoca deploy/helm/pipoca --set apiRule.enabled=true --set apiRule.host=pi.example.com "$@" --show-only templates/apirule.yaml; }
           ! rule | grep -E 'path: /(agent|api/mcp$|api/auth/setup)'
           rule --set apiRule.exposeAgents=true --set apiRule.exposeMcp=true | grep -E 'path: /agent/'
           rule --set apiRule.exposeMcp=true | grep -E 'path: /api/mcp$'
           rule | grep -A20 'kind: AuthorizationPolicy' | grep -F '"/agent/*"'
-      - run: docker build -t pi-cloud:ci .
-      - run: kind load docker-image pi-cloud:ci --name pi-cloud
+      - run: docker build -t pipoca:ci .
+      - run: kind load docker-image pipoca:ci --name pipoca
       - run: >-
-          helm install pi-cloud deploy/helm/pi-cloud --wait --timeout 3m
-          --set image.repository=pi-cloud --set image.tag=ci
+          helm install pipoca deploy/helm/pipoca --wait --timeout 3m
+          --set image.repository=pipoca --set image.tag=ci
           --set image.pullPolicy=Never
-          --set extraEnv[0].name=PI_CLOUD_FAUX_REPLY
+          --set extraEnv[0].name=PIPOCA_FAUX_REPLY
           --set "extraEnv[0].value=hello from kind"
           --set config.oidc.providers[0].id=kind
           --set "config.oidc.providers[0].label=Sign in with kind"
           --set config.oidc.providers[0].issuer=https://kind.example
-          --set config.oidc.providers[0].clientId=pi-cloud
-      - run: bun test ./apps/pi-cloud/src/kind.e2e.ts
+          --set config.oidc.providers[0].clientId=pipoca
+      - run: bun test ./apps/pipoca/src/kind.e2e.ts
       - if: failure()
         run: >-
-          kubectl describe pods; kubectl logs deploy/pi-cloud --all-containers;
+          kubectl describe pods; kubectl logs deploy/pipoca --all-containers;
           kubectl logs kind-agent;
-          kubectl logs -l app.kubernetes.io/managed-by=pi-cloud --all-containers --prefix
+          kubectl logs -l app.kubernetes.io/managed-by=pipoca --all-containers --prefix

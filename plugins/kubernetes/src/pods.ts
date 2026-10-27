@@ -6,7 +6,7 @@ export interface PodOptions {
   readonly environmentId: string;
   // The Environment's image, which the agent and its Sessions run in.
   readonly image: string;
-  // The Pi Cloud image, which the binary is copied from.
+  // The Pipoca image, which the binary is copied from.
   readonly binaryImage: string;
   // The server's in-cluster address.
   readonly server: string;
@@ -18,10 +18,10 @@ export interface PodOptions {
   readonly sessionId?: string;
 }
 
-const binaryDir = "/pi-cloud";
+const binaryDir = "/pipoca";
 const home = "/home/pi";
 
-// A runner pod: an init container copies the pi-cloud binary in, and the
+// A runner pod: an init container copies the pipoca binary in, and the
 // agent joins with its token from the pod's Secret of the same name. Sessions
 // in it use process isolation (ADR 0032). The pod joins the namespace's
 // Istio mesh, if any, as the server does: a mesh with strict mTLS turns away
@@ -35,7 +35,7 @@ export function runnerPod(options: PodOptions): object {
     metadata: {
       name,
       labels: {
-        "app.kubernetes.io/managed-by": "pi-cloud",
+        "app.kubernetes.io/managed-by": "pipoca",
         [environmentLabel]: options.environmentId,
         ...(options.sessionId !== undefined && {
           [sessionLabel]: options.sessionId,
@@ -45,21 +45,21 @@ export function runnerPod(options: PodOptions): object {
     spec: {
       restartPolicy: "Never",
       automountServiceAccountToken: false,
-      // A new volume is root's. The Pi Cloud image and most images built on
+      // A new volume is root's. The Pipoca image and most images built on
       // node run as uid and gid 1000, as the server does.
       securityContext: { fsGroup: 1000 },
       volumes: [
-        { name: "pi-cloud", emptyDir: {} },
+        { name: "pipoca", emptyDir: {} },
         options.sessionId === undefined
           ? { name: "home", emptyDir: {} }
           : { name: "home", persistentVolumeClaim: { claimName: name } },
       ],
       initContainers: [
         {
-          name: "pi-cloud",
+          name: "pipoca",
           image: options.binaryImage,
-          command: ["cp", "/usr/local/bin/pi-cloud", `${binaryDir}/pi-cloud`],
-          volumeMounts: [{ name: "pi-cloud", mountPath: binaryDir }],
+          command: ["cp", "/usr/local/bin/pipoca", `${binaryDir}/pipoca`],
+          volumeMounts: [{ name: "pipoca", mountPath: binaryDir }],
         },
       ],
       containers: [
@@ -69,7 +69,7 @@ export function runnerPod(options: PodOptions): object {
           // A failed agent's last log lines show where it stopped.
           terminationMessagePolicy: "FallbackToLogsOnError",
           command: [
-            `${binaryDir}/pi-cloud`,
+            `${binaryDir}/pipoca`,
             "agent",
             "--name",
             name,
@@ -90,12 +90,12 @@ export function runnerPod(options: PodOptions): object {
               value,
             })),
             {
-              name: "PI_CLOUD_TOKEN",
+              name: "PIPOCA_TOKEN",
               valueFrom: { secretKeyRef: { name, key: "token" } },
             },
           ],
           volumeMounts: [
-            { name: "pi-cloud", mountPath: binaryDir },
+            { name: "pipoca", mountPath: binaryDir },
             { name: "home", mountPath: home },
           ],
         },
@@ -130,7 +130,7 @@ export function sessionClaim(
     metadata: {
       name: sessionPodName(sessionId),
       labels: {
-        "app.kubernetes.io/managed-by": "pi-cloud",
+        "app.kubernetes.io/managed-by": "pipoca",
         [environmentLabel]: environmentId,
         [sessionLabel]: sessionId,
       },

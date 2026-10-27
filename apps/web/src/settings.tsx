@@ -1,4 +1,4 @@
-import { Button, cn, fieldClass, PageTitle } from "@pi-cloud/ui";
+import { Button, cn, fieldClass, PageTitle } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { useMcpTokens } from "./hooks";
@@ -13,7 +13,7 @@ export function SettingsPage(): ReactElement {
   }>();
 
   const revoke = (id: string, name: string): void => {
-    if (!confirm(`${name} won't be able to reach Pi Cloud any more.`)) {
+    if (!confirm(`${name} won't be able to reach Pipoca any more.`)) {
       return;
     }
 
@@ -48,7 +48,7 @@ export function SettingsPage(): ReactElement {
               aria-label="Add command"
               className="overflow-x-auto rounded-md border border-line bg-elevated p-3 font-mono text-mono-sm"
             >
-              {`claude mcp add --transport http pi-cloud ${location.origin}/api/mcp --header "Authorization: Bearer ${made.secret}"`}
+              {`claude mcp add --transport http pipoca ${location.origin}/api/mcp --header "Authorization: Bearer ${made.secret}"`}
             </pre>
           </div>
         )}

@@ -1,9 +1,9 @@
 {
-  "name": "pi-cloud-greeter",
+  "name": "pipoca-greeter",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "piCloud": {
+  "pipoca": {
     "id": "greeter",
     "title": "Greeter",
     "description": "Greets you on its own page and with /greet in a Session.",

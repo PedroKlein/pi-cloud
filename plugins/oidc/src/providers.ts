@@ -1,4 +1,4 @@
-import type { PluginConfig, PluginStore } from "@pi-cloud/plugins";
+import type { PluginConfig, PluginStore } from "@pipoca/plugins";
 import type { ProviderInput, ProviderView } from "./model";
 
 // A provider as the plugin uses it. Lists are lower case.
@@ -40,7 +40,7 @@ interface Entry {
 const defaultGroupsClaim = "groups";
 const defaultLabel = "Sign in with single sign-on";
 
-// The providers live under the plugin's key in pi-cloud.json, which Settings
+// The providers live under the plugin's key in pipoca.json, which Settings
 // and people both edit (ADR 0039). A list that stops fitting is logged, and
 // the last one that fit stays in use.
 export function providerStore(
@@ -210,7 +210,7 @@ function entriesOf(
   }
 
   if (!isObject(value)) {
-    throw new InvalidProvider("oidc in pi-cloud.json must be an object");
+    throw new InvalidProvider("oidc in pipoca.json must be an object");
   }
 
   const { providers = [] } = value;

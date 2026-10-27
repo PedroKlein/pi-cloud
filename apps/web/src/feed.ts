@@ -9,7 +9,7 @@ import {
   type SlashCommand,
   type TerminalTab,
   type UiAction,
-} from "@pi-cloud/protocol";
+} from "@pipoca/protocol";
 import { chatItems, type ChatItem } from "./chat";
 
 type Widget = Extract<LiveEvent, { type: "widget" }>;

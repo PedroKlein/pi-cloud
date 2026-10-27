@@ -1,22 +1,22 @@
-import { changes } from "@pi-cloud/changes/web";
-import { kubernetes } from "@pi-cloud/kubernetes/web";
-import { library } from "@pi-cloud/library/web";
-import { meta } from "@pi-cloud/meta/web";
-import { models } from "@pi-cloud/models/web";
-import { oidc } from "@pi-cloud/oidc/web";
+import { changes } from "@pipoca/changes/web";
+import { kubernetes } from "@pipoca/kubernetes/web";
+import { library } from "@pipoca/library/web";
+import { meta } from "@pipoca/meta/web";
+import { models } from "@pipoca/models/web";
+import { oidc } from "@pipoca/oidc/web";
 import type {
   NavItemsProps,
   ToolCallProps,
   WebContext,
   WebPlugin,
   WidgetProps,
-} from "@pi-cloud/plugins/web";
-import type { PluginInfo, PluginSettings, Session } from "@pi-cloud/protocol";
-import { projects } from "@pi-cloud/projects/web";
-import { subagents } from "@pi-cloud/subagents/web";
-import { usage } from "@pi-cloud/usage/web";
-import * as plugins from "@pi-cloud/plugins/web";
-import * as ui from "@pi-cloud/ui";
+} from "@pipoca/plugins/web";
+import type { PluginInfo, PluginSettings, Session } from "@pipoca/protocol";
+import { projects } from "@pipoca/projects/web";
+import { subagents } from "@pipoca/subagents/web";
+import { usage } from "@pipoca/usage/web";
+import * as plugins from "@pipoca/plugins/web";
+import * as ui from "@pipoca/ui";
 import * as react from "react";
 import type { ComponentType } from "react";
 import * as reactDom from "react-dom";
@@ -45,13 +45,13 @@ let titles: ReadonlyMap<string, string> = new Map();
 // An installed plugin's web part is bundled with these left out, and reads
 // them from here, so the page has one React and one design system (ADR 0022).
 Object.assign(globalThis, {
-  piCloudShared: {
+  pipocaShared: {
     react,
     "react/jsx-runtime": jsxRuntime,
     "react-dom": reactDom,
     "react-dom/client": reactDomClient,
-    "@pi-cloud/ui": ui,
-    "@pi-cloud/plugins/web": plugins,
+    "@pipoca/ui": ui,
+    "@pipoca/plugins/web": plugins,
   },
 });
 

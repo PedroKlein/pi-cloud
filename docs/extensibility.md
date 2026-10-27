@@ -1,10 +1,10 @@
-# Pi Cloud extensibility
+# Pipoca extensibility
 
 > Status: working model. Pi personalization and platform extensibility are foundational requirements. The v1 plugin interface is in [ADR 0015](adr/0015-plugins.md); the public contracts are not yet designed.
 
 ## Two extension systems
 
-Pi Cloud should preserve Pi's existing customization system and add a separate extension system for control-plane and provider capabilities.
+Pipoca should preserve Pi's existing customization system and add a separate extension system for control-plane and provider capabilities.
 
 ### Pi personalization
 
@@ -20,11 +20,11 @@ Pi already supports:
 - user and project settings;
 - context and system-prompt files.
 
-Hosted Sessions use these resources through a Profile ([ADR 0031](adr/0031-profiles.md)). Pi Cloud should not invent cloud-only replacements for them.
+Hosted Sessions use these resources through a Profile ([ADR 0031](adr/0031-profiles.md)). Pipoca should not invent cloud-only replacements for them.
 
-### Pi Cloud capabilities
+### Pipoca capabilities
 
-Pi Cloud itself needs installable capabilities around Sessions: Runtime Providers, Workspace implementations, source-control integration, Environment builders, triggers, notifications, artifacts, policies, and browser contributions.
+Pipoca itself needs installable capabilities around Sessions: Runtime Providers, Workspace implementations, source-control integration, Environment builders, triggers, notifications, artifacts, policies, and browser contributions.
 
 The two systems may be shipped together in one package, but they operate at different seams.
 
@@ -44,7 +44,7 @@ A Session records which Profile it uses, fixed when it starts. Profiles have no 
 
 The working configuration precedence is:
 
-1. mandatory Pi Cloud Session bridge;
+1. mandatory Pipoca Session bridge;
 2. installation policy;
 3. selected Profile;
 4. selected Environment overlay;
@@ -105,7 +105,7 @@ First-party versions of those features should use public kernel interfaces.
 
 ## Extension categories
 
-A Pi Cloud package may eventually contribute one or more of these capabilities.
+A Pipoca package may eventually contribute one or more of these capabilities.
 
 | Category                | Examples                                             |
 | ----------------------- | ---------------------------------------------------- |
@@ -126,7 +126,7 @@ The first-party local and Kubernetes providers should use the same provider inte
 
 ## Trust model
 
-Pi extensions run with the Pi process's operating-system authority. Pi Cloud server and provider extensions may be equally powerful.
+Pi extensions run with the Pi process's operating-system authority. Pipoca server and provider extensions may be equally powerful.
 
 The personal product may initially allow trusted in-process extensions. The design should still distinguish:
 
@@ -247,14 +247,14 @@ Collaboration state such as presence, read markers, comments, and who answered a
 The following map records likely module seams, not a decision to create every package or to scaffold them now:
 
 ```text
-pi-cloud/
+pipoca/
   apps/
     server/                 control-plane API and extension host
     web/                    browser and PWA
   packages/
     protocol/               versioned Provider and Session wire types
     core/                   domain and orchestration
-    sdk/                    Pi Cloud extension SDK
+    sdk/                    Pipoca extension SDK
     runtime-agent/          provider-side agent
     pi-session-bridge/      mandatory Pi companion package
     provider-local/         local and VM process adapter
@@ -267,7 +267,7 @@ pi-cloud/
   docs/
 ```
 
-Pi Cloud owns this repository boundary ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)), but the package layout is still open. This map exists so later discussion can place responsibilities without turning one package into a control-plane, runtime, UI, and Kubernetes god module.
+Pipoca owns this repository boundary ([ADR 0001](adr/0001-own-the-control-plane-and-ui.md)), but the package layout is still open. This map exists so later discussion can place responsibilities without turning one package into a control-plane, runtime, UI, and Kubernetes god module.
 
 ## Federation direction
 

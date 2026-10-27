@@ -1,5 +1,5 @@
 import { relative } from "node:path";
-import type { SessionCloud, SessionPlugin } from "@pi-cloud/plugins";
+import type { SessionCloud, SessionPlugin } from "@pipoca/plugins";
 import { workspaceChanges } from "./changes";
 import { type Complete, pullRequestCommand } from "./pull-request";
 import type { CheckoutChanges } from "./report";

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { SessionCloud } from "@pi-cloud/plugins";
+import type { SessionCloud } from "@pipoca/plugins";
 import { ask } from "./session";
 
 async function askUser(

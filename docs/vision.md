@@ -1,10 +1,10 @@
-# Pi Cloud vision
+# Pipoca vision
 
-> Status: directional foundation. This explains what Pi Cloud is trying to become. It is not an implementation specification.
+> Status: directional foundation. This explains what Pipoca is trying to become. It is not an implementation specification.
 
 ## Goal
 
-Pi Cloud is a foundation for running Pi at scale. It is a small kernel that runs full Pi sessions wherever the work fits best, plus a plugin system as open as Pi's own. Every feature on top is a plugin: Projects first, later Jobs, Workflows, integrations and team features.
+Pipoca is a foundation for running Pi at scale. It is a small kernel that runs full Pi sessions wherever the work fits best, plus a plugin system as open as Pi's own. Every feature on top is a plugin: Projects first, later Jobs, Workflows, integrations and team features.
 
 The kernel makes full Pi sessions available from a browser, phone, terminal, or editor while the work runs on a laptop, a VM, or later Kubernetes. Plugins decide what that work is for.
 
@@ -50,14 +50,14 @@ v1 is done when all five use cases above pass on the laptop and the VM with a ch
 - Authentication for the web UI and Provider Agent enrollment, once the Control Plane is reachable beyond a tunnel: a built-in password login, OIDC as a plugin, and a key per Environment for runners ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 - Profiles defined on the server, which every provider uses, including fresh runtimes ([ADR 0031](adr/0031-profiles.md)).
 - Forking a Session onto another runner, starting from the server's copy of its transcript ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)).
-- Pi Cloud on SAP's Kyma as a container image and a Helm chart, with HTTPS in Kyma's gateway ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
-- A public Pi Cloud extension SDK, published once two real providers use the same internal seams.
+- Pipoca on SAP's Kyma as a container image and a Helm chart, with HTTPS in Kyma's gateway ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
+- A public Pipoca extension SDK, published once two real providers use the same internal seams.
 
 v2 is built in this order: Profiles, Environments as pools, authentication, Kubernetes, meta-sessions ([ADR 0035](adr/0035-meta-sessions.md)), then third-party and in-place plugins, with the plugin pieces in between ([ADR 0033](adr/0033-v2-authentication-and-order.md)).
 
 ### v3: a team's control center
 
-v3 turns one person's Pi Cloud into a place where a team works. v2 already prepares for it: every record has an owner, authentication has real users, and a runner serves one owner at a time ([ADR 0032](adr/0032-environments-and-runners.md), [ADR 0033](adr/0033-v2-authentication-and-order.md)).
+v3 turns one person's Pipoca into a place where a team works. v2 already prepares for it: every record has an owner, authentication has real users, and a runner serves one owner at a time ([ADR 0032](adr/0032-environments-and-runners.md), [ADR 0033](adr/0033-v2-authentication-and-order.md)).
 
 - Inviting people, roles and permissions.
 - Shared organization Environments and Profiles.
@@ -94,7 +94,7 @@ A person, a Project coordinator, a schedule, a webhook and a software factory al
 
 ### Pi remains Pi
 
-Hosted sessions must use Pi's normal runtime and session model. Pi Cloud should orchestrate Pi, not replace its agent loop with a reduced cloud-specific implementation.
+Hosted sessions must use Pi's normal runtime and session model. Pipoca should orchestrate Pi, not replace its agent loop with a reduced cloud-specific implementation.
 
 ### Personalization is portable
 
@@ -116,7 +116,7 @@ An Environment answers what can run and under which policy. A Workspace answers 
 
 ### One authoritative personal control plane
 
-A personal Pi Cloud Cell should have one logical control plane. Provider Agents on laptops, VMs, and clusters connect outbound to it and execute assigned sessions. Independent control planes on every provider would require distributed conflict resolution before the product has earned that complexity.
+A personal Pipoca Cell should have one logical control plane. Provider Agents on laptops, VMs, and clusters connect outbound to it and execute assigned sessions. Independent control planes on every provider would require distributed conflict resolution before the product has earned that complexity.
 
 ### Extension seams are product architecture
 
@@ -149,4 +149,4 @@ These should start ordinary session turns through a common execution interface r
 - Treating Kubernetes CRDs as the primary application database.
 - Guaranteeing transparent migration of running processes between providers.
 - Automatically promoting every thread observation into shared Project memory.
-- Replacing Pi packages or project-local configuration with a Pi Cloud-only plugin format.
+- Replacing Pi packages or project-local configuration with a Pipoca-only plugin format.
