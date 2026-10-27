@@ -8,7 +8,7 @@ import {
   type WebPlugin,
 } from "@pipoca/plugins/web";
 import type { Environment, ModelRef, Session } from "@pipoca/protocol";
-import { Button, cn, Icon, isComposing } from "@pipoca/ui";
+import { Button, cn, Icon, isComposing, Picker } from "@pipoca/ui";
 import {
   type ReactElement,
   type SubmitEvent,
@@ -201,24 +201,28 @@ function Composer({
             {error}
           </p>
         )}
-        <select
-          aria-label="Model"
-          value={model}
-          onChange={(event) => {
-            setModel(event.target.value);
-            remember(event.target.value);
+        <Picker
+          label="Model"
+          quiet
+          options={[
+            { value: "", label: "Default model" },
+            ...[...new Set([model, ...models])]
+              .filter((name) => name !== "")
+              .map((name) => ({
+                value: name,
+                label: name.slice(name.indexOf("/") + 1),
+                group: name.slice(0, name.indexOf("/")),
+              })),
+          ]}
+          selected={[model]}
+          {...(models.length > 6 && { placeholder: "Search models" })}
+          onChange={([name = ""]) => {
+            setModel(name);
+            remember(name);
           }}
-          className="h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-line-focus"
         >
-          <option value="">Default model</option>
-          {[...new Set([model, ...models])]
-            .filter((name) => name !== "")
-            .map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-        </select>
+          {model === "" ? "Default model" : model.slice(model.indexOf("/") + 1)}
+        </Picker>
         <Button
           variant="primary"
           iconOnly
