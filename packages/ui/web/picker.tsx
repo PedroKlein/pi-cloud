@@ -2,6 +2,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
   useId,
   useRef,
   useState,
@@ -27,6 +28,9 @@ export function Picker({
   placeholder,
   create,
   footer,
+  actions = [],
+  quiet = false,
+  trigger: given,
   onChange,
 }: {
   readonly label: string;
@@ -39,13 +43,24 @@ export function Picker({
   // An option made from what was typed, such as a pasted URL.
   readonly create?: (query: string) => PickerOption | undefined;
   readonly footer?: ReactNode;
+  // Commands under the list, such as logging in, which close it.
+  readonly actions?: readonly {
+    readonly label: string;
+    readonly run: () => void;
+  }[];
+  // A plain label inside a composer instead of a bordered chip.
+  readonly quiet?: boolean;
+  // Lets a command such as /model open the list.
+  readonly trigger?: RefObject<HTMLButtonElement | null>;
   readonly onChange: (values: readonly string[]) => void;
 }): ReactElement {
   const listId = useId();
   const wrapper = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
+  const own = useRef<HTMLButtonElement>(null);
+  const trigger = given ?? own;
   const [open, setOpen] = useState(false);
   const [above, setAbove] = useState(false);
+  const [end, setEnd] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
 
@@ -68,6 +83,11 @@ export function Picker({
     setOpen(false);
     setQuery("");
     setActive(0);
+  };
+
+  const dismiss = (): void => {
+    close();
+    trigger.current?.focus();
   };
 
   const choose = (value: string): void => {
@@ -141,14 +161,17 @@ export function Picker({
           if (open) {
             close();
           } else {
-            const { top, bottom } =
+            const { top, bottom, left, right } =
               trigger.current?.getBoundingClientRect() ?? {
                 top: 0,
                 bottom: 0,
+                left: 0,
+                right: 0,
               };
 
             // The list opens toward the side with more room.
             setAbove(innerHeight - bottom < top);
+            setEnd(innerWidth - left < right);
             setOpen(true);
           }
         }}
@@ -157,7 +180,12 @@ export function Picker({
             keys(event);
           }
         }}
-        className="inline-flex h-8 max-w-64 cursor-pointer items-center gap-1.5 rounded-full border border-line bg-elevated px-3 text-label text-fg shadow-xs transition-colors duration-150 hover:border-line-strong hover:bg-hover aria-expanded:border-line-focus aria-expanded:bg-hover"
+        className={cn(
+          "inline-flex max-w-64 cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:bg-hover aria-expanded:bg-hover",
+          quiet
+            ? "h-7 rounded-md px-2 text-caption text-fg-dim hover:text-fg aria-expanded:text-fg"
+            : "h-8 rounded-full border border-line bg-elevated px-3 text-label text-fg shadow-xs hover:border-line-strong aria-expanded:border-line-focus",
+        )}
       >
         <span className="truncate">{children}</span>
         <Icon name="chevron-down" className="size-3 shrink-0 text-fg-dim" />
@@ -165,8 +193,9 @@ export function Picker({
       {open && (
         <div
           className={cn(
-            "absolute left-0 z-30 flex w-80 max-w-[calc(100vw-32px)] animate-pop-in flex-col gap-1 rounded-lg border border-line bg-elevated p-1.5 shadow-pop",
+            "absolute z-30 flex w-80 max-w-[calc(100vw-32px)] animate-pop-in flex-col gap-1 rounded-lg border border-line bg-elevated p-1.5 shadow-pop",
             above ? "bottom-full mb-1" : "top-full mt-1",
+            end ? "right-0" : "left-0",
           )}
         >
           {placeholder !== undefined && (
@@ -254,6 +283,23 @@ export function Picker({
           {footer !== undefined && (
             <div className="border-t border-line px-2 pt-2 pb-1 text-caption text-fg-dim">
               {footer}
+            </div>
+          )}
+          {actions.length > 0 && (
+            <div className="flex flex-col border-t border-line pt-1">
+              {actions.map(({ label: action, run }) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => {
+                    dismiss();
+                    run();
+                  }}
+                  className="cursor-pointer rounded-md px-2 py-1.5 text-left text-label text-fg-dim hover:bg-hover hover:text-fg"
+                >
+                  {action}
+                </button>
+              ))}
             </div>
           )}
         </div>

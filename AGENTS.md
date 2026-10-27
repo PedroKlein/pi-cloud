@@ -55,7 +55,7 @@ plugins/         features built on the kernel, such as projects (ADR 0015)
 - Mock only at system boundaries: HTTP, database, filesystem and processes.
 - Work in vertical slices: one failing test, the code to pass it, then the next. Don't write all the tests first.
 - Bugs: reproduce with the exact reported command first. Then write a test that fails because of the bug, fix it, and keep the test. No test, no fix, unless an existing test already covers that exact failure (say which one).
-- Web UI follows [docs/design-system.md](docs/design-system.md): tokens and `@pipoca/ui` components, no hex colours, no native `<select>`.
+- Web UI follows [docs/design-system.md](docs/design-system.md): tokens and `@pipoca/ui` components, no hex colours, no bare `<select>` or file input.
 - A bug in the web UI gets its test in `apps/pipoca/src/web.e2e.ts` (`bun run test:e2e`) when it shows only in a browser: focus, keys, layout or a phone viewport.
 - Tests that open Pi's own terminal UI need `fd` on `PATH`. Without it Pi tries to download `fd` at startup, and offline the test times out.
 

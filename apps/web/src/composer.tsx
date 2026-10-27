@@ -5,7 +5,7 @@ import {
   type ModelRef,
 } from "@pipoca/protocol";
 import type { MountedSession } from "@pipoca/plugins/web";
-import { Button, Icon, isComposing } from "@pipoca/ui";
+import { Button, cn, Icon, isComposing, Picker } from "@pipoca/ui";
 import {
   type ReactElement,
   type RefObject,
@@ -51,8 +51,7 @@ export function Composer({
   const promptId = usePrimaryId("prompt");
   const generatedId = useId();
   const textId = usePrimaryId("prompt-text") ?? generatedId;
-  const modelMenu = useRef<HTMLSelectElement>(null);
-  const reasoningMenu = useRef<HTMLSelectElement>(null);
+  const modelMenu = useRef<HTMLButtonElement>(null);
   const [images, setImages] = useState<readonly Attached[]>([]);
   const suggestions = useSuggestions(feed);
   const running = feed.session?.status === "running";
@@ -123,14 +122,7 @@ export function Composer({
       return;
     }
 
-    const menu = (name === "model" ? modelMenu : reasoningMenu).current;
-    menu?.focus();
-
-    try {
-      menu?.showPicker();
-    } catch {
-      // Focus is enough where a browser can't open a select's picker.
-    }
+    modelMenu.current?.click();
   };
 
   const send = (delivery: "steer" | "followUp"): void => {
@@ -344,11 +336,10 @@ export function Composer({
               />
             </label>
             {feed.settings && (
-              <SettingsPickers
+              <ModelMenu
                 settings={feed.settings}
                 models={models}
                 modelMenu={modelMenu}
-                reasoningMenu={reasoningMenu}
                 onModel={(model) => {
                   command(sessionId, { type: "set_model", model }).catch(
                     report,
@@ -501,95 +492,87 @@ function Widgets({
   return shown;
 }
 
-const picker =
-  "h-7 max-w-48 field-sizing-content cursor-pointer truncate rounded-md bg-transparent px-1.5 text-caption text-fg-dim hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-line-focus";
-
-// Claude Code's model and effort menus, on Pi's model and reasoning level
+// Claude Code's model menu with its effort levels, on Pi's model and reasoning level
 // (ADR 0023).
-const login = "login";
-
-function SettingsPickers({
+function ModelMenu({
   settings,
   models,
   modelMenu,
-  reasoningMenu,
   onModel,
   onLogin,
   onThinking,
 }: {
   readonly settings: Settings;
   readonly models: readonly ModelRef[];
-  readonly modelMenu: RefObject<HTMLSelectElement | null>;
-  readonly reasoningMenu: RefObject<HTMLSelectElement | null>;
+  readonly modelMenu: RefObject<HTMLButtonElement | null>;
   readonly onModel: (model: ModelRef) => void;
   readonly onLogin: () => void;
   readonly onThinking: (level: Settings["thinking"]) => void;
 }): ReactElement {
   const current = settings.model ? modelName(settings.model) : "";
 
-  const names = [
-    ...new Set([
-      current,
-      ...models.map(modelName),
-      ...settings.models.map(modelName),
-    ]),
-  ].filter((name) => name !== "");
+  const known = [
+    ...new Map(
+      [settings.model, ...models, ...settings.models].flatMap((model) =>
+        model ? [[modelName(model), model] as const] : [],
+      ),
+    ).values(),
+  ];
 
   return (
-    <>
-      <select
-        ref={modelMenu}
-        aria-label="Model"
-        value={current}
-        onChange={(event) => {
-          if (event.target.value === login) {
-            onLogin();
+    <Picker
+      label="Model"
+      quiet
+      trigger={modelMenu}
+      options={known.map((model) => ({
+        value: modelName(model),
+        label: model.id,
+        group: model.provider,
+      }))}
+      selected={[current]}
+      {...(known.length > 6 && { placeholder: "Search models" })}
+      actions={[{ label: "Log in to a provider…", run: onLogin }]}
+      {...(settings.levels.length > 1 && {
+        footer: (
+          <div
+            role="radiogroup"
+            aria-label="Reasoning"
+            className="flex flex-wrap items-center gap-1"
+          >
+            <span className="mr-1">Reasoning</span>
+            {settings.levels.map((level) => (
+              <button
+                key={level}
+                type="button"
+                role="radio"
+                aria-checked={settings.thinking === level}
+                onClick={() => {
+                  onThinking(level);
+                }}
+                className={cn(
+                  "cursor-pointer rounded-md px-1.5 py-0.5 hover:bg-hover",
+                  settings.thinking === level &&
+                    "bg-accent-tint text-fg-strong",
+                )}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+        ),
+      })}
+      onChange={([name]) => {
+        const model = modelRef(name ?? "");
 
-            return;
-          }
-
-          const model = modelRef(event.target.value);
-          if (model) {
-            onModel(model);
-          }
-        }}
-        className={picker}
-      >
-        {current === "" && (
-          <option value="" disabled>
-            Choose a model
-          </option>
-        )}
-        {names.map((name) => (
-          <option key={name} value={name}>
-            {name}
-          </option>
-        ))}
-        <option value={login}>Log in to a provider…</option>
-      </select>
-      {settings.levels.length > 1 && (
-        <select
-          ref={reasoningMenu}
-          aria-label="Reasoning"
-          value={settings.thinking}
-          onChange={(event) => {
-            const level = settings.levels.find(
-              (known) => known === event.target.value,
-            );
-
-            if (level) {
-              onThinking(level);
-            }
-          }}
-          className={picker}
-        >
-          {settings.levels.map((level) => (
-            <option key={level} value={level}>
-              {level === "off" ? "No reasoning" : `Reasoning: ${level}`}
-            </option>
-          ))}
-        </select>
-      )}
-    </>
+        if (model) {
+          onModel(model);
+        }
+      }}
+    >
+      {settings.model?.id ?? "Choose a model"}
+      {settings.levels.length > 1 &&
+        settings.thinking !== "off" &&
+        ` · ${settings.thinking}`}
+    </Picker>
   );
 }

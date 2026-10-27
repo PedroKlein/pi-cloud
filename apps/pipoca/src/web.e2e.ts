@@ -349,13 +349,13 @@ test("asks the assistant with the model picked last time", async () => {
   await page.goto(server.url.href);
 
   const ask = page.getByLabel("Ask the Pipoca assistant");
-  const model = page.locator("form", { has: ask }).getByLabel("Model");
 
-  const deep = model.locator("option", { hasText: /\/faux-deep$/ });
-  await deep.waitFor({ state: "attached" });
-  const name = await deep.textContent();
+  const model = page
+    .locator("form", { has: ask })
+    .getByRole("button", { name: "Model" });
 
-  await model.selectOption({ label: name ?? "missing" });
+  await model.click();
+  await page.getByRole("option", { name: "faux-deep" }).click();
 
   await ask.fill("Think hard");
   await ask.press("Enter");
@@ -377,9 +377,10 @@ test("asks the assistant with the model picked last time", async () => {
       ?.id,
   ).toBe("faux-deep");
 
-  expect(await model.inputValue()).toBe(name ?? "");
+  await model.filter({ hasText: "faux-deep" }).waitFor();
 
-  await model.selectOption({ label: "Default model" });
+  await model.click();
+  await page.getByRole("option", { name: "Default model" }).click();
 }, 30_000);
 
 test("goes where the assistant opens on a wide screen, and offers it on a phone", async () => {
@@ -2002,15 +2003,17 @@ test("switches a session's model and reasoning level from the composer", async (
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
   const composer = page.locator("form#prompt");
-  const model = composer.getByLabel("Model");
-  const reasoning = composer.getByLabel("Reasoning");
+  const model = composer.getByRole("button", { name: "Model" });
+  const reasoning = composer.getByRole("radiogroup", { name: "Reasoning" });
 
-  expect(await model.inputValue()).toBe("faux/faux-1");
+  await model.filter({ hasText: "faux-1" }).waitFor();
+  await model.click();
   expect(await reasoning.count()).toBe(0);
 
-  await model.selectOption("faux/faux-deep");
-  await reasoning.waitFor();
-  await reasoning.selectOption("high");
+  await composer.getByRole("option", { name: "faux-deep" }).click();
+  await model.click();
+  await reasoning.getByRole("radio", { name: "high", exact: true }).click();
+  await model.filter({ hasText: "faux-deep · high" }).waitFor();
 
   let asked: { model: string; reasoning: unknown } | undefined;
 
@@ -2049,13 +2052,9 @@ test("starts a session at the reasoning level picked in the New session form", a
   const composer = page.locator("form#prompt");
 
   await composer
-    .getByLabel("Reasoning")
-    .and(page.locator(":has(option:checked[value=high])"))
+    .getByRole("button", { name: "Model" })
+    .filter({ hasText: "faux-deep · high" })
     .waitFor();
-
-  expect(await composer.getByLabel("Model").inputValue()).toBe(
-    "faux/faux-deep",
-  );
 }, 30_000);
 
 test("runs Pi's built-in commands from the composer", async () => {
@@ -2097,9 +2096,10 @@ test("logs in to a provider from the model menu", async () => {
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 
-  const model = page.locator("form#prompt").getByLabel("Model");
+  const composer = page.locator("form#prompt");
 
-  await model.selectOption({ label: "Log in to a provider…" });
+  await composer.getByRole("button", { name: "Model" }).click();
+  await composer.getByRole("button", { name: "Log in to a provider…" }).click();
   await page.getByRole("button", { name: "Sign in with an API key" }).click();
   await page.getByRole("button", { name: "OpenAI", exact: true }).click();
   await page.locator("input[type=password]").fill("sk-e2e");
@@ -2109,9 +2109,9 @@ test("logs in to a provider from the model menu", async () => {
     .locator("#chat", { hasText: "Saved the API key for OpenAI." })
     .waitFor();
 
-  await model.locator("option[value^='openai/']").first().waitFor({
-    state: "attached",
-  });
+  await composer.getByRole("button", { name: "Model" }).click();
+  await composer.getByText("openai", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
 
   const box = page.locator("#prompt-text");
 
