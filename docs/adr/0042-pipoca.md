@@ -39,9 +39,9 @@ The product is **Pipoca**, Portuguese for popcorn. Pi is in the word, and the id
 ### What renames
 
 - The repository, the binary, the `apps/pi-cloud` folder, the `@pi-cloud/*` packages, the `piCloud` field in a plugin's `package.json`, the `PI_CLOUD_*` environment variables, the image, the Helm chart and every name shown to people all become `pipoca`, `@pipoca/*`, `pipoca` and `PIPOCA_*`.
-- The data folder moves from `~/.pi-cloud` to `~/.pipoca`, and the config file from `pi-cloud.json` to `pipoca.json`. On start, if the new one is missing and the old one exists, Pipoca renames the old one and logs it, so the Mac, the VM and the cluster keep their data.
+- New installs keep their data in `~/.pipoca`. An install that has only `~/.pi-cloud` keeps using it, since the database and git worktrees hold absolute paths into it. On start, the server renames a config file still called `pi-cloud.json` to `pipoca.json` and logs it.
 - Everything else changes name with no fallback, since the only installs are the maintainer's own. Old names stored in transcripts, git config and pod labels stay as they are.
-- The Helm chart keeps naming its resources after the release, so the cluster install keeps its release name and volume.
+- The Helm chart keeps naming its resources after the release, so the cluster install keeps its release name and volume. Its selector label changes, and a Deployment's selector can't, so the Deployment is deleted once before the upgrade.
 
 ## Consequences
 
