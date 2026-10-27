@@ -1,5 +1,14 @@
 import type { PluginInfo, SettingSpec, SettingValue } from "@pipoca/protocol";
-import { Badge, Button, cn, Field, fieldClass, PageTitle } from "@pipoca/ui";
+import {
+  Badge,
+  Button,
+  cn,
+  Field,
+  fieldClass,
+  PageTitle,
+  Select,
+  Switch,
+} from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { usePlugins } from "./hooks";
@@ -374,7 +383,7 @@ function Controls({
 
   return (
     <div className="flex flex-wrap items-center gap-3 text-ui">
-      <Button onClick={turn}>{plugin.turnedOn ? "Turn off" : "Turn on"}</Button>
+      <Switch label="On" checked={plugin.turnedOn} onChange={turn} />
       {plugin.installedFrom !== undefined && (
         <Button onClick={update}>Update</Button>
       )}
@@ -496,17 +505,13 @@ function SettingField({
     case "choice":
       return (
         <Field label={label}>
-          <select
-            name={name}
-            defaultValue={String(value)}
-            className={fieldClass}
-          >
+          <Select name={name} defaultValue={String(value)}>
             {spec.options.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       );
     case "strings":

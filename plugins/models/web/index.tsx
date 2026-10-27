@@ -5,7 +5,15 @@ import {
   type WebPlugin,
 } from "@pipoca/plugins/web";
 import { availability, type Environment } from "@pipoca/protocol";
-import { Badge, Button, cn, fieldClass, PageTitle, Section } from "@pipoca/ui";
+import {
+  Badge,
+  Button,
+  cn,
+  fieldClass,
+  PageTitle,
+  Section,
+  Select,
+} from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import {
   aliasesOf,
@@ -243,7 +251,7 @@ function Editor({
     <div className="flex flex-col gap-4">
       <label className="flex flex-wrap items-center gap-3 text-label text-fg-dim">
         Model for sessions that name none
-        <select
+        <Select
           value={draft.defaultAlias ?? ""}
           onChange={(event) => {
             const { defaultAlias: _, ...rest } = draft;
@@ -254,7 +262,6 @@ function Editor({
                 : { ...rest, defaultAlias: event.target.value },
             );
           }}
-          className={fieldClass}
         >
           <option value="">The machine&apos;s Pi default</option>
           {aliasesOf(draft).map((alias) => (
@@ -262,7 +269,7 @@ function Editor({
               {gatewayProvider}/{alias}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <h3 className="text-ui font-semibold text-fg-strong">
@@ -417,7 +424,7 @@ function ProviderEditor({
         </label>
         <label className="flex items-center gap-2">
           Reset
-          <select
+          <Select
             value={settings.resetSchedule ?? ""}
             onChange={(event) => {
               const { resetSchedule: _, ...rest } = settings;
@@ -428,14 +435,13 @@ function ProviderEditor({
                   : { ...rest, resetSchedule: event.target.value },
               );
             }}
-            className={fieldClass}
           >
             {schedules.map((value) => (
               <option key={value} value={value}>
                 {value === "" ? "1 hour after a cap" : value}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
     </fieldset>

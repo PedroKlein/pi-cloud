@@ -5,6 +5,7 @@ import {
   Button,
   cn,
   Field,
+  FileButton,
   fieldClass,
   Icon,
   ListInput,
@@ -61,7 +62,7 @@ function base64(bytes: Uint8Array): string {
 // themselves, such as auth.json, is never sent (ADR 0041).
 async function upload(
   id: string,
-  picked: FileList,
+  picked: readonly File[],
   folder: boolean,
 ): Promise<void> {
   const files: Record<string, string> = {};
@@ -343,21 +344,15 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
   };
 
   const picker = (folder: boolean): ReactElement => (
-    <label className="inline-flex h-control cursor-pointer items-center rounded-md border border-line px-3 text-ui font-medium text-fg hover:bg-hover">
+    <FileButton
+      multiple
+      {...(folder && { webkitdirectory: "" })}
+      onFiles={(picked) => {
+        run(async () => upload(profile.id, picked, folder));
+      }}
+    >
       {folder ? "Upload a folder" : "Upload files"}
-      <input
-        type="file"
-        multiple
-        className="sr-only"
-        {...(folder && { webkitdirectory: "" })}
-        onChange={(event) => {
-          const picked = event.target.files;
-          if (picked) {
-            run(async () => upload(profile.id, picked, folder));
-          }
-        }}
-      />
-    </label>
+    </FileButton>
   );
 
   return (
@@ -518,7 +513,7 @@ function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
     );
   };
 
-  const fromFolder = async (picked: FileList): Promise<Profile> => {
+  const fromFolder = async (picked: readonly File[]): Promise<Profile> => {
     const name = picked[0]?.webkitRelativePath.split("/")[0] ?? "Imported";
     const profile = await json<Profile>(api("/api/profiles", { name }));
     await upload(profile.id, picked, true);
@@ -529,33 +524,40 @@ function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
   return (
     <Section title="Import a Profile">
       <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
-        <Field label="From a folder, such as your ~/.pi/agent. Logins and Session history stay behind.">
-          <input
-            type="file"
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-label font-medium text-fg">
+              From a folder
+            </span>
+            <span className="text-caption text-fg-dim">
+              Such as your ~/.pi/agent. Logins and Session history stay behind.
+            </span>
+          </div>
+          <FileButton
             multiple
             {...{ webkitdirectory: "" }}
-            onChange={(event) => {
-              const picked = event.target.files;
-              if (picked && picked.length > 0) {
-                imported(async () => fromFolder(picked));
-              }
+            onFiles={(picked) => {
+              imported(async () => fromFolder(picked));
             }}
-            className="text-ui text-fg-dim"
-          />
-        </Field>
-        <Field label="From an exported .tar.gz">
-          <input
-            type="file"
+          >
+            Choose a folder
+          </FileButton>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-label font-medium text-fg">
+            From an exported .tar.gz
+          </span>
+          <FileButton
             accept=".gz,.tgz,.json,application/gzip,application/json"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
+            onFiles={([file]) => {
               if (file) {
                 imported(async () => fromFile(file));
               }
             }}
-            className="text-ui text-fg-dim"
-          />
-        </Field>
+          >
+            Choose a file
+          </FileButton>
+        </div>
         <form
           onSubmit={(event) => {
             event.preventDefault();
