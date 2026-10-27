@@ -40,13 +40,14 @@ The product is **Pipoca**, Portuguese for popcorn. Pi is in the word, and the id
 
 - The repository, the binary, the `apps/pi-cloud` folder, the `@pi-cloud/*` packages, the `piCloud` field in a plugin's `package.json`, the `PI_CLOUD_*` environment variables, the image, the Helm chart and every name shown to people all become `pipoca`, `@pipoca/*`, `pipoca` and `PIPOCA_*`.
 - The data folder moves from `~/.pi-cloud` to `~/.pipoca`, and the config file from `pi-cloud.json` to `pipoca.json`. On start, if the new one is missing and the old one exists, Pipoca renames the old one and logs it, so the Mac, the VM and the cluster keep their data.
-- Transcripts that carry the old custom message types still render, and branches made under `pi-cloud/` keep their stored base and pull request.
+- Everything else changes name with no fallback, since the only installs are the maintainer's own. Old names stored in transcripts, git config and pod labels stay as they are.
 - The Helm chart keeps naming its resources after the release, so the cluster install keeps its release name and volume.
 
 ## Consequences
 
 - Users sign in again, since the cookie names change, and the web UI forgets its local preferences once.
 - A runner on the old binary can't join a new server, as with any protocol change. Each machine needs the new binary.
+- In Sessions made before the change, plugin notices show as plain notes, the Changes view counts from the branch's current commit, and a pull request opened earlier isn't remembered.
 - Runner pods made before the change keep the old labels, and the server doesn't clean them up. They are deleted by hand once.
 - GitHub redirects the old repository URL after the rename, but the old image name stops getting new builds.
 - The `@pipoca` scope and `pipoca.dev` still have to be claimed before someone else takes them.
