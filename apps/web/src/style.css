@@ -16,6 +16,13 @@
     outline-offset: 2px;
   }
 
+  textarea {
+    field-sizing: content;
+    min-height: calc(var(--spacing) * 18);
+    max-height: calc(var(--spacing) * 96);
+    resize: none;
+  }
+
   ::selection {
     background: var(--accent-tint);
   }

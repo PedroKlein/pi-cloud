@@ -58,6 +58,7 @@ test("sums tokens and cost per model and in total", () => {
     summary: "2.5k in · 1.4k out · $0.0130",
     detail:
       "faux/small: 2.0k in · 150 out · $0.0030\nfaux/large: 500 in · 1.2k out · $0.0100",
+    cost: "$0.01",
   });
 });
 
@@ -74,7 +75,21 @@ test("ignores entries without usage", () => {
     }),
   ];
 
-  expect(describeUsage(totals(lines))).toEqual({ summary: "", detail: "" });
+  expect(describeUsage(totals(lines))).toEqual({
+    summary: "",
+    detail: "",
+    cost: "$0.00",
+  });
+});
+
+test("shows a cost under a cent as less than a cent", () => {
+  const usage = describeUsage(
+    totals([
+      assistant("small", { input: 10, output: 5, cacheRead: 0, cost: 0.004 }),
+    ]),
+  );
+
+  expect(usage.cost).toBe("<$0.01");
 });
 
 test("shows how full the context is, or a question mark when Pi can't tell", () => {

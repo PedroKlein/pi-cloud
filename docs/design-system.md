@@ -73,7 +73,7 @@ Hanken Grotesk is the interface face, Newsreader Light (`font-serif`) is for the
 Every new input follows these patterns, and older screens move over as they're touched. They're the patterns Claude's own apps use:
 
 - **A quiet resting state.** A field is `elevated` with a `line` border. Hovering darkens the border, and focus adds a 4px `focus` ring. It never turns solid black.
-- **Grow with the text.** Composers and textareas use `field-sizing-content`, between a minimum and a maximum height. Nobody should have to drag a resize handle.
+- **Grow with the text.** Every textarea grows with what is typed, between a minimum and a maximum height (a base style in `style.css`; composers set their own heights). Nobody should have to drag a resize handle.
 - **Enter sends, Shift+Enter makes a new line.** On a phone, Enter makes a new line and the Send button sends. The hint under the composer says which keys do what.
 - **Chips, not forms.** The composer's chips pick where a Session runs, its branch and its model. Each one remembers the last choice.
 - **Paste and drop.** Images can be pasted or dropped into a Session's composer.

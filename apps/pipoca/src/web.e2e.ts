@@ -1299,7 +1299,7 @@ test("shows the session's changes and usage from their plugins", async () => {
   await changes.waitFor({ state: "hidden" });
 
   await page
-    .locator('#plugin-header [data-plugin="usage"]', { hasText: "out" })
+    .locator('#plugin-header [data-plugin="usage"] [title*=" out "]')
     .waitFor();
 }, 30_000);
 
