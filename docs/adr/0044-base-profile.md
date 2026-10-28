@@ -29,14 +29,16 @@ The base is to the Profile what Pi's `~/.pi/agent` is to a repository's `.pi/` (
 - Packages from both load. When both list the same package, the Profile's entry wins.
 - Extensions, skills, prompts and themes from both load. When two have the same name, the Profile's wins.
 - The base's `AGENTS.md` comes first, then the Profile's.
+- MCP servers from both load. When both name the same server, the Profile's wins.
 - `SYSTEM.md` and `APPEND_SYSTEM.md` from the Profile replace the base's.
 - The other keys of `settings.json` are merged with Pi's own deep merge, the Profile's values over the base's.
 - A trusted repository's `.pi` still layers over both ([ADR 0031](0031-profiles.md)).
 
 ### On the runner
 
-- The server sends the base's hash with each assignment, next to the Profile's. The runner fetches and keeps the base the way it keeps a Profile, and installs its packages once per machine.
+- The server layers the base into each Profile's files before a runner downloads them. A Profile's hash covers the base, so an edit to either reaches runners the way a Profile edit does, and runners need nothing new. A runner installs the base's packages with each Profile's, once per Profile and machine.
 - The 20 MB cap applies to the base on its own.
+- The built-in meta Profile ([ADR 0035](0035-meta-sessions.md)) isn't layered, so meta-sessions stay read-only.
 - A base package that fails to install or load stops the Session with an error that names it, as a Profile package does.
 - The runner's `--extension` flag stays for a single machine.
 
@@ -56,5 +58,5 @@ The base is to the Profile what Pi's `~/.pi/agent` is to a repository's `.pi/` (
 - An admin installs a provider once and every Session can use it, so aliases that name it work everywhere.
 - Shared skills and instructions live in one place instead of in every Profile.
 - The Models page can suggest a provider's models after one Session has run with the base, even when every runner has since gone.
-- Every runner downloads and installs the base, so a big base slows each first Session on a fresh runner.
+- Every runner downloads and installs the base with each Profile, so a big base slows each first Session of a Profile on a fresh runner.
 - A remembered model can be gone by the time a Session asks for it. An alias already skips a model its machine doesn't have.
