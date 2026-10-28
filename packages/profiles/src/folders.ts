@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   type PiPackage,
   type Profile,
@@ -21,6 +21,7 @@ import {
   contentFiles,
   folderEntries,
   folderFiles,
+  layered,
   maxProfileBytes,
   tooBig,
 } from "./files";
@@ -52,10 +53,20 @@ interface Meta {
 export class ProfileFolders {
   readonly #root: string;
   readonly #log: Log;
+  readonly #base: BaseProfile | undefined;
 
-  constructor(root: string, log: Log) {
+  // The admin's base Profile, which every Profile layers over (ADR 0044),
+  // lives in its own folder outside root, so nobody picks it.
+  constructor(root: string, log: Log, baseDir?: string) {
     this.#root = root;
     this.#log = log;
+
+    this.#base =
+      baseDir === undefined ? undefined : new BaseProfile(baseDir, log);
+  }
+
+  get base(): BaseProfile | undefined {
+    return this.#base;
   }
 
   ids(): readonly string[] {
@@ -125,9 +136,14 @@ export class ProfileFolders {
 
     const dir = join(this.#root, id);
 
-    return statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
-      ? folderFiles(dir, profile.name)
-      : contentFiles(profile);
+    const own =
+      statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
+        ? folderFiles(dir, profile.name)
+        : contentFiles(profile);
+
+    const base = this.#base?.files();
+
+    return base ? layered(base, own) : own;
   }
 
   entries(
@@ -309,6 +325,42 @@ export class ProfileFolders {
     this.#log("profile file unreadable", { file: path });
 
     return {};
+  }
+}
+
+// The admin's base Profile: a Pi agent folder like a Profile's, with no
+// owner or name of its own, that starts empty.
+export class BaseProfile {
+  readonly #dir: string;
+  readonly #folder: ProfileFolders;
+  readonly #id: string;
+
+  constructor(dir: string, log: Log) {
+    this.#dir = dir;
+    this.#folder = new ProfileFolders(dirname(dir), log);
+    this.#id = basename(dir);
+  }
+
+  files(): ProfileFiles | undefined {
+    return this.#folder.files(this.#id);
+  }
+
+  entries(): readonly { readonly path: string; readonly size: number }[] {
+    return this.#folder.entries(this.#id);
+  }
+
+  file(path: string): Buffer | undefined {
+    return this.#folder.file(this.#id, path);
+  }
+
+  // Throws InvalidProfile for a path a Profile can't hold, and ProfileTooBig.
+  writeFiles(files: ReadonlyMap<string, Buffer>): void {
+    mkdirSync(this.#dir, { recursive: true });
+    this.#folder.writeFiles(this.#id, files);
+  }
+
+  deleteFile(path: string): boolean {
+    return this.#folder.deleteFile(this.#id, path);
   }
 }
 

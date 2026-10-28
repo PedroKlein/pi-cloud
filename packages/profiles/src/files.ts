@@ -97,6 +97,109 @@ export function contentFiles(content: ProfileContent): ProfileFiles {
   );
 }
 
+// A Profile's files over the admin's base Profile, layered as Pi layers its
+// global and project config (ADR 0044).
+export function layered(base: ProfileFiles, own: ProfileFiles): ProfileFiles {
+  const files = new Map([...decoded(base), ...decoded(own)]);
+
+  const json = (
+    path: string,
+    merge: (a: Settings, b: Settings) => Settings,
+  ) => {
+    const under = jsonOf(base, path);
+    const over = jsonOf(own, path);
+    if (under !== undefined && over !== undefined) {
+      files.set(path, Buffer.from(JSON.stringify(merge(under, over))));
+    }
+  };
+
+  json("settings.json", (under, over) => {
+    const packages = packagesOver(under["packages"], over["packages"]);
+    const { packages: _, ...merged } = deepMerge(under, over);
+
+    return { ...merged, ...(packages.length > 0 && { packages }) };
+  });
+
+  json("mcp.json", deepMerge);
+
+  const agents = [base, own].flatMap((layer) => {
+    const text = layer.files["AGENTS.md"];
+
+    return text === undefined ? [] : [Buffer.from(text, "base64").toString()];
+  });
+
+  if (agents.length > 0) {
+    files.set("AGENTS.md", Buffer.from(agents.join("\n\n")));
+  }
+
+  return encoded(files);
+}
+
+type Settings = Record<string, unknown>;
+
+function decoded(files: ProfileFiles): Map<string, Buffer> {
+  return new Map(
+    Object.entries(files.files).map(([path, content]) => [
+      path,
+      Buffer.from(content, "base64"),
+    ]),
+  );
+}
+
+// Pi reports a file it can't read when the Session starts, so one that isn't
+// a JSON object is taken as it is.
+function jsonOf(files: ProfileFiles, path: string): Settings | undefined {
+  const content = files.files[path];
+  if (content === undefined) {
+    return undefined;
+  }
+
+  try {
+    const value: unknown = JSON.parse(
+      Buffer.from(content, "base64").toString(),
+    );
+
+    return isObject(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Pi's own merge of its global and project settings.
+function deepMerge(under: Settings, over: Settings): Settings {
+  const merged = { ...under };
+
+  for (const [key, value] of Object.entries(over)) {
+    const below = under[key];
+
+    merged[key] =
+      isObject(below) && isObject(value) ? deepMerge(below, value) : value;
+  }
+
+  return merged;
+}
+
+// Packages from both load, and a Profile's entry for a source replaces the
+// base's.
+function packagesOver(under: unknown, over: unknown): unknown[] {
+  const listed = (value: unknown): unknown[] =>
+    Array.isArray(value) ? (value as unknown[]) : [];
+
+  const sourceOf = (pkg: unknown): unknown =>
+    isObject(pkg) ? pkg["source"] : pkg;
+
+  const own = new Set(listed(over).map(sourceOf));
+
+  return [
+    ...listed(under).filter((pkg) => !own.has(sourceOf(pkg))),
+    ...listed(over),
+  ];
+}
+
+function isObject(value: unknown): value is Settings {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function encoded(files: ReadonlyMap<string, Buffer>): ProfileFiles {
   const paths = [...files.keys()].sort((a, b) => (a < b ? -1 : 1));
   const hash = createHash("sha256");
