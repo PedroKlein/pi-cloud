@@ -2,6 +2,7 @@ import {
   availability,
   type Environment,
   type Profile,
+  type RepositoryChoice,
   type Session,
   type ThinkingLevel,
   thinkingLevels,
@@ -18,11 +19,16 @@ import {
   type ReactElement,
   type SubmitEvent,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
 } from "react";
 import { api } from "./api";
 import { modelName, modelRef } from "./names";
+import { searchRepositories } from "./plugins";
+
+// Typing searches the git hosts once it pauses for this long.
+const searchDelayMs = 250;
 
 // The New session composer remembers its last choices in this browser, like
 // Claude Code's (ADR 0040).
@@ -148,11 +154,38 @@ export function NewSessionDialog({
   const [startPoint, setStartPoint] = useState("");
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [found, setFound] = useState<readonly RepositoryChoice[]>([]);
+  const searches = useRef(0);
+
+  // Only the latest search's answer is shown, whichever arrives first.
+  const search = (query: string): void => {
+    const ticket = ++searches.current;
+
+    setTimeout(
+      () => {
+        if (ticket !== searches.current) {
+          return;
+        }
+
+        void searchRepositories(query).then((repositories) => {
+          if (ticket === searches.current) {
+            setFound(repositories);
+          }
+        });
+      },
+      query === "" ? 0 : searchDelayMs,
+    );
+  };
+
+  const opened = useEffectEvent(() => {
+    search("");
+  });
 
   useEffect(() => {
     if (open) {
       dialog.current?.showModal();
       message.current?.focus();
+      opened();
     } else {
       dialog.current?.close();
     }
@@ -184,6 +217,18 @@ export function NewSessionDialog({
           !(chosen?.folders.includes(where) ?? false),
       )
       .map((where) => placeOption(where, "Picked")),
+  ];
+
+  const offered = [
+    ...places,
+    ...found
+      .filter(({ url }) => !places.some(({ value }) => value === url))
+      .map(({ url, name, group }) => ({
+        value: url,
+        label: name,
+        detail: URL.parse(url)?.host ?? url,
+        group,
+      })),
   ];
 
   const models = (chosen?.models ?? []).map(modelName);
@@ -293,9 +338,10 @@ export function NewSessionDialog({
         <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
           <Picker
             label="Folder or repository"
-            options={places}
+            options={offered}
             selected={choices.where}
             multiple
+            onSearch={search}
             placeholder="Search, or paste a path or repository URL"
             create={(query) => ({
               value: query,

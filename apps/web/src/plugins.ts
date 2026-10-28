@@ -12,7 +12,12 @@ import type {
   WebPlugin,
   WidgetProps,
 } from "@pipoca/plugins/web";
-import type { PluginInfo, PluginSettings, Session } from "@pipoca/protocol";
+import type {
+  PluginInfo,
+  PluginSettings,
+  RepositoryChoice,
+  Session,
+} from "@pipoca/protocol";
 import { projects } from "@pipoca/projects/web";
 import { subagents } from "@pipoca/subagents/web";
 import { usage } from "@pipoca/usage/web";
@@ -192,6 +197,20 @@ export interface NavEntry {
   readonly name: string;
   readonly label: string;
   readonly Items?: ComponentType<NavItemsProps>;
+}
+
+// A plugin whose search fails offers nothing, so the others still show.
+export async function searchRepositories(
+  query: string,
+): Promise<readonly RepositoryChoice[]> {
+  const found = await Promise.all(
+    enabled.map(
+      async ({ name, repositories }) =>
+        repositories?.(pluginContext(name), query).catch(() => []) ?? [],
+    ),
+  );
+
+  return found.flat();
 }
 
 export function navEntries(): readonly NavEntry[] {

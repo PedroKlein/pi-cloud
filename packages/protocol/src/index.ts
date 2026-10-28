@@ -236,6 +236,15 @@ export interface GitLogin {
   readonly token: string;
 }
 
+// A repository New Session offers (ADR 0043).
+export interface RepositoryChoice {
+  // What git clones.
+  readonly url: string;
+  readonly name: string;
+  // The heading it is listed under, such as its host.
+  readonly group: string;
+}
+
 export type SettingValue = string | number | boolean | readonly string[];
 
 export type PluginSettings = Readonly<Record<string, SettingValue>>;

@@ -31,6 +31,7 @@ export function Picker({
   actions = [],
   quiet = false,
   trigger: given,
+  onSearch,
   onChange,
 }: {
   readonly label: string;
@@ -52,6 +53,8 @@ export function Picker({
   readonly quiet?: boolean;
   // Lets a command such as /model open the list.
   readonly trigger?: RefObject<HTMLButtonElement | null>;
+  // Hears what is typed, for a list that a search somewhere else fills in.
+  readonly onSearch?: (query: string) => void;
   readonly onChange: (values: readonly string[]) => void;
 }): ReactElement {
   const listId = useId();
@@ -79,10 +82,15 @@ export function Picker({
       ? [made, ...matching]
       : matching;
 
+  const search = (text: string): void => {
+    setQuery(text);
+    setActive(0);
+    onSearch?.(text.trim());
+  };
+
   const close = (): void => {
     setOpen(false);
-    setQuery("");
-    setActive(0);
+    search("");
   };
 
   const dismiss = (): void => {
@@ -105,7 +113,7 @@ export function Picker({
         : [...selected, value],
     );
 
-    setQuery("");
+    search("");
   };
 
   const keys = (event: KeyboardEvent): void => {
@@ -209,8 +217,7 @@ export function Picker({
               value={query}
               placeholder={placeholder}
               onChange={(event) => {
-                setQuery(event.target.value);
-                setActive(0);
+                search(event.target.value);
               }}
               onKeyDown={keys}
               className="h-9 rounded-md border-0 border-b border-line bg-transparent px-2 text-ui text-fg placeholder:text-fg-dim focus:outline-none"

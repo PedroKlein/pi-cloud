@@ -97,6 +97,75 @@ export async function redeem(
   return answer.access_token;
 }
 
+export interface Repository {
+  // What git clones.
+  readonly url: string;
+  // owner/name
+  readonly name: string;
+}
+
+// The repositories the token's account pushed to last, those of them whose
+// name holds the query, and with a query, the matching ones anywhere on the
+// host it can see.
+export async function repositoriesOf(
+  host: HostConfig,
+  token: string,
+  query: string,
+): Promise<readonly Repository[]> {
+  const get = async (path: string): Promise<unknown> => {
+    const response = await reach(host, `${host.api}${path}`, {
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new HostRefused(
+        `${host.host} answered ${String(response.status)} to ${path}`,
+      );
+    }
+
+    return response.json();
+  };
+
+  const needle = query.toLowerCase();
+
+  const [mine, searched] = await Promise.all([
+    get("/user/repos?sort=pushed&per_page=100"),
+    query.length < 2
+      ? { items: [] }
+      : get(
+          `/search/repositories?per_page=30&q=${encodeURIComponent(`${query} in:name`)}`,
+        ),
+  ]);
+
+  const found = [
+    ...repositoriesIn(mine).filter(({ name }) =>
+      name.toLowerCase().includes(needle),
+    ),
+    ...repositoriesIn((searched as { items?: unknown }).items),
+  ];
+
+  return found.filter(
+    (repository, index) =>
+      found.findIndex(({ url }) => url === repository.url) === index,
+  );
+}
+
+function repositoriesIn(list: unknown): readonly Repository[] {
+  return (Array.isArray(list) ? list : []).flatMap((item: unknown) => {
+    const { clone_url: url, full_name: name } = (item ?? {}) as {
+      clone_url?: unknown;
+      full_name?: unknown;
+    };
+
+    return typeof url === "string" && typeof name === "string"
+      ? [{ url, name }]
+      : [];
+  });
+}
+
 async function reach(
   host: HostConfig,
   url: string,

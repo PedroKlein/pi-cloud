@@ -1,6 +1,7 @@
 import type {
   Environment,
   PluginSettings,
+  RepositoryChoice,
   Session,
   SessionEvent,
 } from "@pipoca/protocol";
@@ -140,6 +141,12 @@ export interface WebPlugin {
   readonly tools?: Readonly<Record<string, ComponentType<ToolCallProps>>>;
   // Extension widgets the plugin draws in their place, by widget key.
   readonly widgets?: Readonly<Record<string, ComponentType<WidgetProps>>>;
+  // Repositories New Session offers for what the person typed, such as the
+  // ones on the git hosts they connected (ADR 0043).
+  readonly repositories?: (
+    context: WebContext,
+    query: string,
+  ) => Promise<readonly RepositoryChoice[]>;
 }
 
 // Rejects with the server's error message when the response isn't ok.

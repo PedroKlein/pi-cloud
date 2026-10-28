@@ -28,11 +28,37 @@ beforeEach(() => {
   // The host's REST API, which knows one token.
   host = Bun.serve({
     port: 0,
-    fetch: (request) =>
-      new URL(request.url).pathname === "/api/v3/user" &&
-      request.headers.get("authorization") === `Bearer ${goodToken}`
-        ? Response.json({ login: "pedro-sap" })
-        : Response.json({ message: "Bad credentials" }, { status: 401 }),
+    fetch: (request) => {
+      const url = new URL(request.url);
+
+      if (request.headers.get("authorization") !== `Bearer ${goodToken}`) {
+        return Response.json({ message: "Bad credentials" }, { status: 401 });
+      }
+
+      const repository = (name: string): unknown => ({
+        full_name: name,
+        clone_url: `https://${enterprise}/${name}.git`,
+      });
+
+      switch (url.pathname) {
+        case "/api/v3/user":
+          return Response.json({ login: "pedro-sap" });
+        case "/api/v3/user/repos":
+          return Response.json([
+            repository("I572543/pi-aicore-provider"),
+            repository("I572543/dotfiles"),
+          ]);
+        case "/api/v3/search/repositories":
+          return Response.json({
+            items: [
+              repository("I572543/pi-aicore-provider"),
+              repository("ai-core/aicore-sdk"),
+            ],
+          });
+        default:
+          return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+    },
   });
 
   configDir = mkdtempSync(join(tmpdir(), "pipoca-config-"));
@@ -248,4 +274,28 @@ test("sends a sign-in to the host's authorize page, and refuses a callback in an
   );
 
   expect(elsewhere.status).toBe(400);
+});
+
+test("finds the repositories of each connected host for what the person typed", async () => {
+  await api("POST", "/api/plugins/git-hosts/connect", {
+    host: enterprise,
+    token: goodToken,
+  });
+
+  const found = await (
+    await api("GET", "/api/plugins/git-hosts/repositories?q=aicore")
+  ).json();
+
+  expect(found).toEqual([
+    {
+      url: `https://${enterprise}/I572543/pi-aicore-provider.git`,
+      name: "I572543/pi-aicore-provider",
+      group: "SAP GitHub",
+    },
+    {
+      url: `https://${enterprise}/ai-core/aicore-sdk.git`,
+      name: "ai-core/aicore-sdk",
+      group: "SAP GitHub",
+    },
+  ]);
 });
