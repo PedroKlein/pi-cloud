@@ -18,6 +18,7 @@ ADRs [0031](0031-profiles.md), [0032](0032-environments-and-runners.md) and [003
 
 - A runner gets git credentials from its Environment's secrets. A token secret, such as `GH_TOKEN`, is set up as a git credential helper for the Session, so it can clone private repositories and push its branch.
 - The agent can read the token, like any Environment secret ([ADR 0032](0032-environments-and-runners.md#variables-and-secrets)). A GitHub App that mints short-lived tokens can replace it later, with brokered secrets.
+- Amended 2026-10-28: per-person connections from the `git-hosts` plugin win for their host, and `GH_TOKEN` stays a github.com fallback ([ADR 0043](0043-git-hosts.md)).
 
 ### The server on Kyma
 
