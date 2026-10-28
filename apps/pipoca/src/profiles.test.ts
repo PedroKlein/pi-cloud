@@ -638,3 +638,140 @@ test("fails a Session whose Profile is too big for runners", async () => {
     { status: "failed", error: "Profile Huge is over 20 MB" },
   );
 });
+
+test("layers the admin's base Profile under every Profile runners get", async () => {
+  const environment = await vmEnvironment();
+
+  const put = async (path: string, text: string): Promise<number> =>
+    (
+      await fetch(new URL(`/api/base/files/${path}`, server.url), {
+        method: "PUT",
+        headers: { cookie: await signedIn() },
+        body: text,
+      })
+    ).status;
+
+  expect(await put("AGENTS.md", "Use the team's style.")).toBe(204);
+  expect(await put("skills%2Fshared%2FSKILL.md", "# Shared")).toBe(204);
+  expect(await put("skills%2Freview%2FSKILL.md", "# Team review")).toBe(204);
+
+  expect(
+    await put(
+      "settings.json",
+      JSON.stringify({
+        packages: ["npm:ai-provider", "npm:pi-goal-x"],
+        defaultThinkingLevel: "low",
+        retry: { enabled: true, maxRetries: 2 },
+      }),
+    ),
+  ).toBe(204);
+
+  expect(await put("auth.json", "{}")).toBe(400);
+
+  expect(await json<unknown>(api("/api/base/files"))).toEqual([
+    { path: "AGENTS.md", size: 21 },
+    { path: "settings.json", size: 117 },
+    { path: "skills/review/SKILL.md", size: 13 },
+    { path: "skills/shared/SKILL.md", size: 8 },
+  ]);
+
+  await api("/api/profiles", {
+    body: {
+      name: "Work",
+      agentsMd: "Be brief.",
+      packages: [{ source: "npm:pi-goal-x", skills: [] }],
+      settings: { defaultThinkingLevel: "high", retry: { maxRetries: 5 } },
+    },
+  });
+
+  await mkdir(join(root, "config", "profiles", "work", "skills", "review"), {
+    recursive: true,
+  });
+
+  await writeFile(
+    join(root, "config", "profiles", "work", "skills", "review", "SKILL.md"),
+    "# My review",
+  );
+
+  const filesOf = async (
+    profile: string,
+  ): Promise<{ hash: string; files: Record<string, string> }> => {
+    const session = await json<Session>(
+      api("/api/sessions", {
+        body: {
+          environment,
+          workspace: { kind: "folder", path: root },
+          profile,
+        },
+      }),
+    );
+
+    const assigned = (await poll()).start.find(
+      ({ sessionId }) => sessionId === session.id,
+    );
+
+    const files = await json<ProfileFiles>(
+      fetch(new URL(`/agent/sessions/${session.id}/profile`, server.url), {
+        headers: {
+          "pipoca-protocol": "4",
+          authorization: `Bearer ${await runners.token("vm")}`,
+        },
+      }),
+    );
+
+    expect(files.hash).toBe(assigned?.profile.hash ?? "");
+
+    return {
+      hash: files.hash,
+      files: Object.fromEntries(
+        Object.entries(files.files).map(([path, encoded]) => [
+          path,
+          Buffer.from(encoded, "base64").toString("utf8"),
+        ]),
+      ),
+    };
+  };
+
+  const work = await filesOf("work");
+
+  expect<Record<string, unknown>>({
+    ...work.files,
+    "settings.json": JSON.parse(work.files["settings.json"] ?? "{}") as unknown,
+  }).toEqual({
+    "AGENTS.md": "Use the team's style.\n\nBe brief.",
+    "settings.json": {
+      packages: ["npm:ai-provider", { source: "npm:pi-goal-x", skills: [] }],
+      defaultThinkingLevel: "high",
+      retry: { enabled: true, maxRetries: 5 },
+    },
+    "skills/review/SKILL.md": "# My review",
+    "skills/shared/SKILL.md": "# Shared",
+  });
+
+  const plain = await filesOf("default");
+
+  expect(Object.keys(plain.files)).toEqual([
+    "AGENTS.md",
+    "settings.json",
+    "skills/review/SKILL.md",
+    "skills/shared/SKILL.md",
+  ]);
+
+  expect(await put("skills%2Fshared%2FSKILL.md", "# Shared, edited")).toBe(204);
+  expect((await filesOf("default")).hash).not.toBe(plain.hash);
+});
+
+test("only admins change the base Profile", async () => {
+  const db = new DatabaseSync(join(root, "server.db"));
+  await signedIn();
+  db.exec("update users set admin = 0");
+  db.close();
+
+  const response = await fetch(
+    new URL("/api/base/files/AGENTS.md", server.url),
+    { method: "PUT", headers: { cookie: await signedIn() }, body: "x" },
+  );
+
+  expect(response.status).toBe(403);
+  expect(await json<unknown>(api("/api/base/files"))).toEqual([]);
+});

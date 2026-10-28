@@ -83,7 +83,11 @@ export function serve(options: ServeOptions): {
 
   const config = configFolder(configDir, options.log);
 
-  const profiles = new ProfileFolders(join(configDir, "profiles"), options.log);
+  const profiles = new ProfileFolders(
+    join(configDir, "profiles"),
+    options.log,
+    join(configDir, "base"),
+  );
 
   const store = openStore(options.database, options.secretKey, profiles);
   const disabled = options.disabledPlugins ?? [];

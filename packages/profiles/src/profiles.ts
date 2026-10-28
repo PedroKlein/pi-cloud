@@ -219,6 +219,44 @@ export class Profiles {
       : { ok: false, reason: "not_found" };
   }
 
+  // The admin's base Profile, which every Profile layers over (ADR 0044).
+  baseFiles(): readonly ProfileEntry[] {
+    return this.#folders.base?.entries() ?? [];
+  }
+
+  baseFile(path: string): Buffer | undefined {
+    return this.#folders.base?.file(path);
+  }
+
+  // Throws InvalidProfile for a path a Profile can't hold, and ProfileTooBig.
+  writeBaseFiles(
+    files: ReadonlyMap<string, Buffer>,
+    admin: boolean,
+  ): Result<undefined> {
+    const base = this.#folders.base;
+    if (!base) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (!admin) {
+      return { ok: false, reason: "admin_only" };
+    }
+
+    base.writeFiles(files);
+
+    return { ok: true, value: undefined };
+  }
+
+  deleteBaseFile(path: string, admin: boolean): Result<undefined> {
+    if (!admin) {
+      return { ok: false, reason: "admin_only" };
+    }
+
+    return this.#folders.base?.deleteFile(path) === true
+      ? { ok: true, value: undefined }
+      : { ok: false, reason: "not_found" };
+  }
+
   // A .tar.gz of a Pi agent folder, such as an exported Profile or someone's
   // own ~/.pi/agent. What machines keep for themselves, such as auth.json,
   // is left out.

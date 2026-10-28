@@ -1189,6 +1189,64 @@ function profileRoutes(
         });
       },
     ],
+    // The admin's base Profile, file by file (ADR 0044).
+    ["GET", /^\/api\/base\/files$/, () => Response.json(profiles.baseFiles())],
+    [
+      "POST",
+      /^\/api\/base\/files$/,
+      async (request, _params, actor) => {
+        const files = uploadedFiles(await readJson(request));
+        const written = profiles.writeBaseFiles(files, isAdmin(actor));
+        if (written.ok) {
+          log("base profile files uploaded", { files: files.size });
+        }
+
+        return replied(written, 204);
+      },
+    ],
+    [
+      "GET",
+      /^\/api\/base\/files\/(.+)$/,
+      (_request, [path = ""]) => {
+        const file = profiles.baseFile(decodeURIComponent(path));
+
+        return file ? new Response(file) : notFound();
+      },
+    ],
+    [
+      "PUT",
+      /^\/api\/base\/files\/(.+)$/,
+      async (request, [path = ""], actor) => {
+        const written = profiles.writeBaseFiles(
+          new Map([
+            [decodeURIComponent(path), Buffer.from(await request.bytes())],
+          ]),
+          isAdmin(actor),
+        );
+
+        if (written.ok) {
+          log("base profile file written");
+        }
+
+        return replied(written, 204);
+      },
+    ],
+    [
+      "DELETE",
+      /^\/api\/base\/files\/(.+)$/,
+      (_request, [path = ""], actor) => {
+        const removed = profiles.deleteBaseFile(
+          decodeURIComponent(path),
+          isAdmin(actor),
+        );
+
+        if (removed.ok) {
+          log("base profile file deleted");
+        }
+
+        return replied(removed, 204);
+      },
+    ],
     // A Profile's folder, file by file (ADR 0041).
     [
       "GET",
@@ -1205,21 +1263,7 @@ function profileRoutes(
       "POST",
       /^\/api\/profiles\/([^/]+)\/files$/,
       async (request, [id = ""], actor) => {
-        const { files } = fieldsOf(await readJson(request));
-        if (
-          typeof files !== "object" ||
-          files === null ||
-          Object.values(files).some((content) => typeof content !== "string")
-        ) {
-          throw new BadRequest("files must map paths to base64 contents");
-        }
-
-        const decoded = new Map(
-          Object.entries(files as Record<string, string>).map(
-            ([path, content]) => [path, Buffer.from(content, "base64")],
-          ),
-        );
-
+        const decoded = uploadedFiles(await readJson(request));
         const written = profiles.writeFiles(id, decoded, isAdmin(actor));
         if (written.ok) {
           log("profile files uploaded", {
@@ -1277,6 +1321,24 @@ function profileRoutes(
       },
     ],
   ];
+}
+
+function uploadedFiles(body: unknown): Map<string, Buffer> {
+  const { files } = fieldsOf(body);
+  if (
+    typeof files !== "object" ||
+    files === null ||
+    Object.values(files).some((content) => typeof content !== "string")
+  ) {
+    throw new BadRequest("files must map paths to base64 contents");
+  }
+
+  return new Map(
+    Object.entries(files as Record<string, string>).map(([path, content]) => [
+      path,
+      Buffer.from(content, "base64"),
+    ]),
+  );
 }
 
 async function pluginChange(

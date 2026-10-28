@@ -61,7 +61,7 @@ function base64(bytes: Uint8Array): string {
 // ~/.pi/agent, leaves its own name out, and what machines keep for
 // themselves, such as auth.json, is never sent (ADR 0041).
 async function upload(
-  id: string,
+  url: string,
   picked: readonly File[],
   folder: boolean,
 ): Promise<void> {
@@ -77,8 +77,11 @@ async function upload(
     }
   }
 
-  await api(`/api/profiles/${id}/files`, { files });
+  await api(url, { files });
 }
+
+// Not a Profile id, so no Profile's page can take it.
+const baseHash = ":base";
 
 export function ProfilesPage({
   profiles,
@@ -115,6 +118,14 @@ export function ProfilesPage({
           </a>
         ))}
         <a
+          href={`#profiles/${baseHash}`}
+          aria-current={selected === baseHash ? "page" : undefined}
+          className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:border-accent aria-[current=page]:text-fg-strong"
+        >
+          Base
+          <Badge state="offline">Under every Profile</Badge>
+        </a>
+        <a
           href="#profiles/new"
           aria-current={selected === "new" ? "page" : undefined}
           className="flex items-center gap-1 rounded-md border border-dashed border-line px-3 py-1.5 text-ui text-fg-dim hover:bg-hover aria-[current=page]:border-accent"
@@ -134,8 +145,18 @@ export function ProfilesPage({
             }}
             onChange={onChange}
           />
-          <Files key={`${profile.id}-files`} profile={profile} />
+          <Files
+            key={`${profile.id}-files`}
+            url={`/api/profiles/${profile.id}/files`}
+          />
         </>
+      )}
+      {selected === baseHash && (
+        <Files
+          url="/api/base/files"
+          title="Base Profile"
+          empty="No files yet. Every Session loads what an admin puts here under its own Profile: provider extensions, skills, AGENTS.md and settings, with the Profile winning where both set something."
+        />
       )}
       {selected === "new" && <Editor key="new" onChange={onChange} />}
       {selected === "" && <Import onChange={onChange} />}
@@ -308,13 +329,19 @@ function Editor({
   );
 }
 
-// Every file in the Profile's folder, as Pi reads them from ~/.pi/agent.
-function Files({ profile }: { readonly profile: Profile }): ReactElement {
-  const base = `/api/profiles/${profile.id}/files`;
-
+// Every file in a Profile's folder, as Pi reads them from ~/.pi/agent.
+function Files({
+  url,
+  title = "Files",
+  empty = "No files yet, so this is plain Pi.",
+}: {
+  readonly url: string;
+  readonly title?: string;
+  readonly empty?: string;
+}): ReactElement {
   const { value: files = [], reload } = useLoaded(
-    async () => json<ProfileFile[]>(fetch(base)),
-    profile.id,
+    async () => json<ProfileFile[]>(fetch(url)),
+    url,
     { topics: ["profiles"] },
   );
 
@@ -334,7 +361,7 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
   };
 
   const fileUrl = (path: string): string =>
-    `${base}/${encodeURIComponent(path)}`;
+    `${url}/${encodeURIComponent(path)}`;
 
   const show = (path: string): void => {
     run(async () => {
@@ -348,7 +375,7 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
       multiple
       {...(folder && { webkitdirectory: "" })}
       onFiles={(picked) => {
-        run(async () => upload(profile.id, picked, folder));
+        run(async () => upload(url, picked, folder));
       }}
     >
       {folder ? "Upload a folder" : "Upload files"}
@@ -356,7 +383,7 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
   );
 
   return (
-    <Section title="Files">
+    <Section title={title}>
       <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
         <ul className="flex flex-col divide-y divide-line">
           {files.map(({ path, size }) => (
@@ -374,9 +401,7 @@ function Files({ profile }: { readonly profile: Profile }): ReactElement {
             </li>
           ))}
           {files.length === 0 && (
-            <li className="py-1.5 text-caption text-fg-dim">
-              No files yet, so this is plain Pi.
-            </li>
+            <li className="py-1.5 text-caption text-fg-dim">{empty}</li>
           )}
         </ul>
         <form
