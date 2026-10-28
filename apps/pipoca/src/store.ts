@@ -89,6 +89,13 @@ create table if not exists environments (
   secrets text not null default '{}',
   key_hash text unique
 );
+create table if not exists runner_models (
+  provider text not null,
+  runner text not null,
+  models text not null,
+  reported_at text not null,
+  primary key (provider, runner)
+);
 `;
 
 const profileTables = `
@@ -600,6 +607,21 @@ export function openStore(
     "select * from environments order by created_at, name",
   );
 
+  const selectRunnerModels = db.prepare(
+    "select models from runner_models where provider = ? order by reported_at",
+  );
+
+  const upsertRunnerModels = db.prepare(
+    `insert into runner_models (provider, runner, models, reported_at) values (?, ?, ?, ?)
+     on conflict (provider, runner) do update set models = excluded.models, reported_at = excluded.reported_at`,
+  );
+
+  // Runners started on demand each have a name of their own, so what the
+  // ones gone for a month reported is dropped.
+  const deleteOldRunnerModels = db.prepare(
+    "delete from runner_models where reported_at < ?",
+  );
+
   const countTranscript = db.prepare(
     "select count(*) as n from transcript where session_id = ?",
   );
@@ -721,6 +743,24 @@ export function openStore(
       (selectEnvironments.all() as unknown as EnvironmentRow[]).map(
         toEnvironment,
       ),
+    registeredModels: (provider) =>
+      (selectRunnerModels.all(provider) as { models: string }[]).flatMap(
+        ({ models }) => JSON.parse(models) as ModelRef[],
+      ),
+    setRegisteredModels: (provider, runner, models) => {
+      const now = new Date();
+
+      upsertRunnerModels.run(
+        provider,
+        runner,
+        JSON.stringify(models),
+        now.toISOString(),
+      );
+
+      deleteOldRunnerModels.run(
+        new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+      );
+    },
     updateEnvironment: (environment) => {
       updateEnvironment.run(
         environment.name,

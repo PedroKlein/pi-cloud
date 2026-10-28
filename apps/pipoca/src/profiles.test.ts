@@ -18,6 +18,7 @@ import type {
   Profile,
   ProfileFiles,
   Session,
+  WorkPoll,
 } from "@pipoca/protocol";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
@@ -72,7 +73,9 @@ async function json<T>(response: Promise<Response>): Promise<T> {
   return (await (await response).json()) as T;
 }
 
-async function poll(): Promise<{ readonly start: readonly Assignment[] }> {
+async function poll(
+  models: Pick<WorkPoll, "models" | "registeredModels"> = { models: [] },
+): Promise<{ readonly start: readonly Assignment[] }> {
   return json(
     fetch(new URL("/agent/work", server.url), {
       method: "POST",
@@ -81,7 +84,7 @@ async function poll(): Promise<{ readonly start: readonly Assignment[] }> {
         authorization: `Bearer ${await runners.token("vm")}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ running: [], folders: [], models: [] }),
+      body: JSON.stringify({ running: [], folders: [], ...models }),
     }),
   );
 }
@@ -774,4 +777,33 @@ test("only admins change the base Profile", async () => {
 
   expect(response.status).toBe(403);
   expect(await json<unknown>(api("/api/base/files"))).toEqual([]);
+});
+
+test("remembers every model runners reported, logged in or not, after a restart", async () => {
+  const gemini = { provider: "google", id: "gemini-flash" };
+  const aiCore = { provider: "aicore", id: "gpt-x" };
+
+  await poll({ models: [gemini], registeredModels: [gemini, aiCore] });
+
+  const environmentOf = async (): Promise<Environment | undefined> =>
+    (await json<Environment[]>(api("/api/environments")))[0];
+
+  expect((await environmentOf())?.models).toEqual([gemini]);
+  expect((await environmentOf())?.registeredModels).toEqual([gemini, aiCore]);
+
+  await server.stop();
+
+  const logs: string[] = [];
+
+  server = serve({
+    port: 0,
+    database: join(root, "server.db"),
+    configDir: join(root, "config"),
+    log: (message, fields) => {
+      logs.push(`${message} ${JSON.stringify(fields)}`);
+    },
+  });
+
+  expect((await environmentOf())?.models).toEqual([]);
+  expect((await environmentOf())?.registeredModels).toEqual([gemini, aiCore]);
 });

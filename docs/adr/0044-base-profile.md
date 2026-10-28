@@ -44,9 +44,9 @@ The base is to the Profile what Pi's `~/.pi/agent` is to a repository's `.pi/` (
 
 ### Models while no runner is online
 
-- A runner reports every model its providers register, from the base and from each Profile it holds, and marks the ones logged in on that machine (decided 2026-10-28).
-- The server keeps the last list each Environment's runners reported, so it outlives runners that exit. A runner's newer report replaces what it reported before.
-- The Models page suggests every model in that list. Model pickers show the logged-in models first, and the others as needing a login.
+- A runner reports every model its providers register, from the base and from each Profile it holds, next to the ones logged in on that machine (decided 2026-10-28). Pi's own providers register over a thousand models, which people reach through `/login`, so only the providers that extensions and `models.json` add are reported this way.
+- The server keeps the last list each runner reported, so it outlives runners that exit and server restarts. A runner's newer report replaces what it reported before, and a runner gone for a month is forgotten.
+- The Models page suggests every model in that list. Model pickers keep listing the models logged in on the Environment's runners, since a Session can't start on the others.
 
 ### Credentials
 

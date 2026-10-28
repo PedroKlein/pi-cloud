@@ -8,6 +8,6 @@ export {
   type TerminalPeer,
 } from "./host";
 export type { PreviewExchange } from "./pages";
-export { modelLister, type SessionOptions } from "./session";
+export { type ListedModels, modelLister, type SessionOptions } from "./session";
 export { type InstallPackage, installPackage, syncProfile } from "./profile";
 export { restoreTranscript } from "./restore";
