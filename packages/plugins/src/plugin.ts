@@ -7,6 +7,7 @@ import type {
   Actor,
   CreateSession,
   Environment,
+  GitLogin,
   ModelRef,
   PluginSettings,
   ProfileContent,
@@ -275,6 +276,11 @@ export interface ServerPluginContext {
       userId: string,
       request: Request,
     ) => string | undefined;
+    // The git hosts a user connected, which the runner signs in to for the
+    // user's Sessions (ADR 0043).
+    readonly gitLogins: (
+      logins: (userId: string) => readonly GitLogin[],
+    ) => void;
   };
   readonly models: { readonly offer: (offer: ModelOffer) => void };
   readonly store: PluginStore;

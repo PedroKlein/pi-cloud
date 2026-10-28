@@ -3,6 +3,8 @@ import askPackage from "@pipoca/ask/package.json";
 import { ask } from "@pipoca/ask/session";
 import changesPackage from "@pipoca/changes/package.json";
 import { changes } from "@pipoca/changes/session";
+import gitHostsPackage from "@pipoca/git-hosts/package.json";
+import { gitHosts } from "@pipoca/git-hosts/server";
 import kubernetesPackage from "@pipoca/kubernetes/package.json";
 import { kubernetesPlugin } from "@pipoca/kubernetes/server";
 import libraryPackage from "@pipoca/library/package.json";
@@ -46,6 +48,7 @@ import {
   type Capability,
   capabilities,
   type Command,
+  type GitLogin,
   type PluginInfo,
   type PluginManifest,
   type PluginSettings,
@@ -80,6 +83,7 @@ export const builtInPlugins: readonly PluginManifest[] = [
   kubernetesPackage,
   metaPackage,
   oidcPackage,
+  gitHostsPackage,
 ].map(({ pipoca }) => pipoca as PluginManifest);
 
 export const serverPlugins: readonly ServerPlugin[] = [
@@ -89,6 +93,7 @@ export const serverPlugins: readonly ServerPlugin[] = [
   kubernetesPlugin,
   meta,
   oidc,
+  gitHosts,
 ];
 
 const sessionPlugins: readonly SessionPlugin[] = [
@@ -209,6 +214,7 @@ export interface PluginHost {
   ) => Promise<ToolResult>;
   readonly offeredModels: (environmentId: string) => OfferedModels;
   readonly startsRunners: (environmentId: string) => boolean;
+  readonly gitLogins: (userId: string) => readonly GitLogin[];
   readonly route: (
     request: Request,
     name: string,
@@ -293,6 +299,7 @@ export function startPlugins(
   const publicRoutes = new Map<string, PublicRoute>();
   const logins: { plugin: string; offered: () => readonly Login[] }[] = [];
   const offers: ModelOffer[] = [];
+  const gitLogins: ((userId: string) => readonly GitLogin[])[] = [];
   const starters: ((environmentId: string) => boolean)[] = [];
 
   const failures = new Map<string, string>(
@@ -474,6 +481,7 @@ export function startPlugins(
       publicRoute: undefined as PublicRoute | undefined,
       logins: [] as (() => readonly Login[])[],
       offers: [] as ModelOffer[],
+      gitLogins: [] as ((userId: string) => readonly GitLogin[])[],
       starters: [] as ((environmentId: string) => boolean)[],
       profiles: new Map<string, PluginProfile>(),
       loadOnly: undefined as readonly string[] | undefined,
@@ -579,6 +587,9 @@ export function startPlugins(
             createUser: deps.auth.createUser,
             setAdmin: deps.auth.setAdmin,
             startSession: deps.auth.startSession,
+            gitLogins: (loginsOf) => {
+              staged.gitLogins.push(loginsOf);
+            },
           },
           models: {
             offer: (offer) => {
@@ -635,6 +646,7 @@ export function startPlugins(
     );
 
     offers.push(...staged.offers);
+    gitLogins.push(...staged.gitLogins);
     starters.push(...staged.starters);
 
     for (const [id, profile] of staged.profiles) {
@@ -968,6 +980,7 @@ export function startPlugins(
     },
     startsRunners: (environmentId) =>
       starters.some((starts) => starts(environmentId)),
+    gitLogins: (userId) => gitLogins.flatMap((loginsOf) => loginsOf(userId)),
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),
     publicRoute: async (request, name, path) =>

@@ -24,6 +24,7 @@ const session = (waiting: boolean, change: Partial<Session> = {}): Session => ({
   archivedAt: null,
   workspaceRemoval: null,
   workspaceKeptReason: null,
+  startedBy: null,
   online: true,
   waiting,
   ...change,

@@ -131,6 +131,7 @@ export function serve(options: ServeOptions): {
     offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
     startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),
     pluginProfile: (id) => pluginHost.profile(id),
+    gitLogins: (userId) => pluginHost.gitLogins(userId),
   });
 
   const pluginsStop = new AbortController();
