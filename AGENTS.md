@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Pipoca is a self-hosted control plane for durable Pi sessions and Projects on your own machines. Start with [README.md](README.md), then [docs/vision.md](docs/vision.md) for scope and [docs/adr/](docs/adr/) for decisions.
+Pipoca is a self-hosted control plane for durable Pi sessions and Projects on your own machines. Start with [README.md](README.md) and [docs/guide.md](docs/guide.md), then [docs/vision.md](docs/vision.md) for scope and [docs/adr/](docs/adr/) for decisions.
 
 ## Where things stand
 
