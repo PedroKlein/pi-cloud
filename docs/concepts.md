@@ -14,7 +14,7 @@ Deterministic infrastructure software that stores desired state, assigns work, e
 
 ### Profile
 
-A Pi agent folder in the server's config folder, at `profiles/<id>/`: Pi packages, instructions and system prompt, MCP servers, model configuration, and preferences, without credentials. A Profile belongs to one user or is shared by an admin, and every user has the shared `default` Profile, which is plain Pi until an admin edits it. It has no revisions: a Session's Pi process loads its current content each time it starts. Trusted project configuration and the Session's own picks layer over it ([ADR 0031](adr/0031-profiles.md), [ADR 0041](adr/0041-profiles-as-folders.md)).
+A Pi agent folder in the server's config folder, at `profiles/<id>/`: Pi packages, instructions and system prompt, MCP servers, model configuration, and preferences, without credentials. A Profile belongs to one user or is shared by an admin, and every user has the shared `default` Profile, which is plain Pi until an admin edits it. It has no revisions: a Session's Pi process loads its current content each time it starts. An admin's base Profile loads under every Profile, and trusted project configuration and the Session's own picks layer over it ([ADR 0031](adr/0031-profiles.md), [ADR 0041](adr/0041-profiles-as-folders.md), [ADR 0044](adr/0044-base-profile.md)).
 
 ### Runtime Provider
 

@@ -54,6 +54,8 @@
 - Resolved for v2: a Profile is a Pi agent folder in the server's config folder, owned by a user or shared by an admin, with a shared `default` Profile that starts as plain Pi; a repository's `.pi` loads on top once trusted, and there are no Environment overlays ([ADR 0031](adr/0031-profiles.md), [ADR 0041](adr/0041-profiles-as-folders.md)).
 - Resolved for model aliases: alias config and backend health live on the server per Environment, through a `models` plugin with its own gateway ([ADR 0019](adr/0019-model-aliases.md)).
 - Resolved: credentials are never in a Profile; each machine keeps provider logins in Pipoca's own auth file ([ADR 0031](adr/0031-profiles.md)).
+- Resolved: an admin's base Profile loads under every Session's Profile, layered as Pi layers its global and project config, so provider extensions and shared skills reach every Session; the server remembers the models runners last reported ([ADR 0044](adr/0044-base-profile.md)).
+- How do people bring their own provider credentials when several share an installation? Left for v3 ([ADR 0044](adr/0044-base-profile.md#credentials)).
 - How are required packages distinguished from optional packages?
 - Resolved: Profiles have no revisions; a Session keeps its Profile and loads its current content whenever its process starts ([ADR 0031](adr/0031-profiles.md)).
 - Resolved for v2: a package that fails to install or load stops the Session from starting, with an error that names it ([ADR 0031](adr/0031-profiles.md)). Checking ahead of time is open.
