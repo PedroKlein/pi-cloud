@@ -134,6 +134,7 @@ function fakeKernel(): {
           archivedAt: null,
           workspaceRemoval: null,
           workspaceKeptReason: null,
+          startedBy: null,
           online: true,
           waiting: false,
         };
@@ -224,6 +225,7 @@ function fakeKernel(): {
       createUser: () => undefined,
       setAdmin: () => undefined,
       startSession: () => undefined,
+      gitLogins: () => undefined,
     },
     models: { offer: () => undefined },
     store: {

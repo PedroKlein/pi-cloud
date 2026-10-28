@@ -73,6 +73,7 @@ test("keeps sessions from a database that stored a working directory", () => {
     archivedAt: null,
     workspaceRemoval: null,
     workspaceKeptReason: null,
+    startedBy: null,
   });
 });
 
@@ -107,6 +108,7 @@ test("opens a migrated database again", () => {
     archivedAt: null,
     workspaceRemoval: null,
     workspaceKeptReason: null,
+    startedBy: null,
   });
 
   expect(store.environments()).toHaveLength(1);
@@ -186,6 +188,7 @@ function sessionIn(
     archivedAt: null,
     workspaceRemoval: null,
     workspaceKeptReason: null,
+    startedBy: null,
     ...fields,
   };
 }

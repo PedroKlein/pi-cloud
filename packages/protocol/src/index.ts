@@ -940,6 +940,9 @@ export interface Session {
   readonly workspaceRemoval: WorkspaceRemoval | null;
   // Why the provider kept the workspace, while workspaceRemoval is "kept".
   readonly workspaceKeptReason: string | null;
+  // The user who started the Session, or the one who started the Session
+  // that started it. Its runner signs git in as them (ADR 0043).
+  readonly startedBy: string | null;
   readonly online: boolean;
   // Pi asked a question and waits for a person to answer it (ADR 0025).
   readonly waiting: boolean;

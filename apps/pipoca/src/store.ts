@@ -50,6 +50,7 @@ interface SessionRow {
   archived_at: string | null;
   workspace_removal: WorkspaceRemoval | null;
   workspace_kept_reason: string | null;
+  started_by: string | null;
 }
 
 interface ProfileRow {
@@ -166,7 +167,8 @@ create table if not exists sessions (
   error text,
   archived_at text,
   workspace_removal text,
-  workspace_kept_reason text
+  workspace_kept_reason text,
+  started_by text
 );
 create table if not exists transcript (
   session_id text not null references sessions (id),
@@ -256,6 +258,7 @@ function migrate(db: DatabaseSync): void {
     "workspace_kept_reason",
     "owner_plugin",
     "owner_key",
+    "started_by",
   ]) {
     if (sessionsTableExists && !hasColumn(column)) {
       db.exec(`alter table sessions add column ${column} text`);
@@ -521,10 +524,11 @@ export function openStore(
     archivedAt: row.archived_at,
     workspaceRemoval: row.workspace_removal,
     workspaceKeptReason: row.workspace_kept_reason,
+    startedBy: row.started_by,
   });
 
   const insertSession = db.prepare(
-    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, runner, profile_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "insert into sessions (id, environment_id, owner_id, owner_plugin, owner_key, runner, profile_id, workspace, model, system_prompt, first_message, thinking, title, status, generation, created_at, interrupted_at, error, archived_at, workspace_removal, workspace_kept_reason, started_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
 
   const updateSession = db.prepare(
@@ -651,6 +655,7 @@ export function openStore(
         s.archivedAt,
         s.workspaceRemoval,
         s.workspaceKeptReason,
+        s.startedBy,
       );
     },
     update: (s) => {
@@ -1055,7 +1060,9 @@ function pluginSettingsStore(db: DatabaseSync): PluginSettingsStore {
   };
 }
 
-const createdTable = /create\s+table\s+(?:if\s+not\s+exists\s+)?["`]?(\w+)/gi;
+// A plugin whose id has a hyphen quotes its table names.
+const createdTable =
+  /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:["`]([\w-]+)["`]|(\w+))/gi;
 
 // Plugins are trusted in v1, so this only keeps their tables apart by name.
 function pluginStore(
@@ -1065,7 +1072,9 @@ function pluginStore(
 ): PluginStore {
   return {
     exec: (sql) => {
-      for (const [, table = ""] of sql.matchAll(createdTable)) {
+      for (const [, quoted, bare = ""] of sql.matchAll(createdTable)) {
+        const table = quoted ?? bare;
+
         if (!table.startsWith(`${name}_`)) {
           throw new Error(`plugin ${name} may only create ${name}_ tables`);
         }

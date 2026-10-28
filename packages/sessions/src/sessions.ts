@@ -7,6 +7,7 @@ import {
   type Command,
   type Environment,
   type EnvironmentUpdate,
+  type GitLogin,
   leaseMs,
   type LiveEvent,
   movable,
@@ -141,6 +142,8 @@ export interface SessionsOptions {
   readonly startsRunners?: (environmentId: string) => boolean;
   // A Profile a plugin provides, which only the plugin's own Sessions run on.
   readonly pluginProfile?: (id: string) => PluginProfile | undefined;
+  // The git hosts a user connected (ADR 0043).
+  readonly gitLogins?: (userId: string) => readonly GitLogin[];
 }
 
 export interface PluginProfile {
@@ -175,6 +178,7 @@ export class Sessions {
   readonly #offeredModels: ModelOffer;
   readonly #startsRunners: (environmentId: string) => boolean;
   readonly #pluginProfile: (id: string) => PluginProfile | undefined;
+  readonly #gitLogins: (userId: string) => readonly GitLogin[];
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
@@ -210,6 +214,7 @@ export class Sessions {
     this.#offeredModels = options.offeredModels ?? (() => ({ models: [] }));
     this.#startsRunners = options.startsRunners ?? (() => false);
     this.#pluginProfile = options.pluginProfile ?? (() => undefined);
+    this.#gitLogins = options.gitLogins ?? (() => []);
   }
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
@@ -269,6 +274,7 @@ export class Sessions {
       archivedAt: null,
       workspaceRemoval: null,
       workspaceKeptReason: null,
+      startedBy: this.#starter(request.actor),
     };
 
     this.#store.insert(session);
@@ -1092,6 +1098,7 @@ export class Sessions {
           firstMessage: session.firstMessage,
           ...this.#pluginsOf(session),
           environment: this.#sessionEnvironment(session.environmentId),
+          ...this.#gitLoginsOf(session.startedBy),
         };
       });
   }
@@ -1139,6 +1146,27 @@ export class Sessions {
         ),
       ),
     };
+  }
+
+  // A Session another one started, such as a Project's thread, acts for
+  // the user who started that one.
+  #starter(actor: Actor): string | null {
+    const [kind = "", id = ""] = actor.split(/:(.*)/);
+
+    switch (kind) {
+      case "user":
+        return id;
+      case "session":
+        return this.#store.get(id)?.startedBy ?? null;
+      default:
+        return null;
+    }
+  }
+
+  #gitLoginsOf(userId: string | null): Pick<Assignment, "gitLogins"> {
+    const logins = userId === null ? [] : this.#gitLogins(userId);
+
+    return logins.length > 0 ? { gitLogins: logins } : {};
   }
 
   // What a runner downloads for a Profile (ADR 0041).
