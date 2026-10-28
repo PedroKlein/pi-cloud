@@ -174,17 +174,41 @@ export function asksForTrust(
   return options.trusted === null && hasTrustRequiringProjectResources(cwd);
 }
 
+export interface ListedModels {
+  readonly available: readonly ModelRef[];
+  // The models of providers that extensions and models.json add, logged in
+  // or not. Pi's own providers, over a thousand models, are left to /login
+  // (ADR 0044).
+  readonly registered: readonly ModelRef[];
+}
+
 // Pi rereads its auth file, so each call sees logins made since.
 export async function modelLister(
   options: ModelOptions,
-): Promise<() => Promise<readonly ModelRef[]>> {
+): Promise<() => Promise<ListedModels>> {
   const { modelRuntime } = await loadServices(homedir(), options);
 
-  return async () =>
-    (await modelRuntime.getAvailable()).map(({ provider, id }) => ({
-      provider,
-      id,
-    }));
+  const piOwn = new Set(
+    (
+      await ModelRuntime.create({
+        authPath: options.authPath,
+        modelsPath: null,
+        allowModelNetwork: false,
+      })
+    )
+      .getProviders()
+      .map(({ id }) => id),
+  );
+
+  const refs = (models: readonly ModelRef[]): readonly ModelRef[] =>
+    models.map(({ provider, id }) => ({ provider, id }));
+
+  return async () => ({
+    available: refs(await modelRuntime.getAvailable()),
+    registered: refs(
+      modelRuntime.getModels().filter(({ provider }) => !piOwn.has(provider)),
+    ),
+  });
 }
 
 // Services register the providers extensions add before the default model is

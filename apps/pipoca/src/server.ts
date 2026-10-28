@@ -1918,7 +1918,8 @@ function createEnvironment(body: unknown): CreateEnvironment {
 }
 
 function workPoll(body: unknown): WorkPoll {
-  const { running, folders, models, capacity, session } = fieldsOf(body);
+  const { running, folders, models, registeredModels, capacity, session } =
+    fieldsOf(body);
 
   return {
     running: listOf("running", running, attemptOf),
@@ -1926,6 +1927,9 @@ function workPoll(body: unknown): WorkPoll {
       textOf("each folder", folder),
     ),
     models: listOf("models", models, modelOf),
+    ...(registeredModels !== undefined && {
+      registeredModels: listOf("registeredModels", registeredModels, modelOf),
+    }),
     ...(capacity !== undefined && { capacity: capacityOf(capacity) }),
     ...(session !== undefined && { session: textOf("session", session) }),
   };

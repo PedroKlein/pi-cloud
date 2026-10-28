@@ -40,7 +40,13 @@ export type StoredSession = Omit<Session, "online" | "waiting">;
 
 export type StoredEnvironment = Omit<
   Environment,
-  "online" | "onDemand" | "runners" | "folders" | "models" | "secrets"
+  | "online"
+  | "onDemand"
+  | "runners"
+  | "folders"
+  | "models"
+  | "registeredModels"
+  | "secrets"
 > & { readonly secrets: Readonly<Record<string, string>> };
 
 // v1 has one user, who owns every record (ADR 0015).
@@ -63,6 +69,13 @@ export interface SessionStore {
     trusted: boolean,
   ) => void;
   ensureEnvironment: (provider: string) => void;
+  // The models each runner of an Environment last reported (ADR 0044).
+  registeredModels: (provider: string) => readonly ModelRef[];
+  setRegisteredModels: (
+    provider: string,
+    runner: string,
+    models: readonly ModelRef[],
+  ) => void;
   environments: () => readonly StoredEnvironment[];
   updateEnvironment: (environment: StoredEnvironment) => void;
   insert: (session: StoredSession) => void;
@@ -187,6 +200,7 @@ export class Sessions {
   readonly #requestIds = new Map<string, Set<string>>();
   readonly #held = new Map<string, Command[]>();
   readonly #hostedGeneration = new Map<string, number>();
+  readonly #reported = new Map<string, string>();
   readonly #surfaces = new Map<
     string,
     { readonly generation: number; readonly events: Map<string, LiveEvent> }
@@ -569,6 +583,10 @@ export class Sessions {
           ...offered,
           ...runners.flatMap(({ inventory }) => inventory.models),
         ]),
+        registeredModels: uniqueModels([
+          ...this.#store.registeredModels(environment.provider),
+          ...runners.flatMap(({ inventory }) => inventory.models),
+        ]),
       };
     });
   }
@@ -662,10 +680,14 @@ export class Sessions {
   // A runner polls for the Environment whose pool it joins (ADR 0032).
   async claim(
     runner: { readonly name: string; readonly environment: string },
-    { running, folders, models, capacity, session }: WorkPoll,
+    { running, folders, models, registeredModels, capacity, session }: WorkPoll,
     signal: AbortSignal,
   ): Promise<Claim> {
     this.#store.ensureEnvironment(runner.environment);
+
+    if (registeredModels !== undefined) {
+      this.#rememberModels(runner, registeredModels);
+    }
 
     const endPoll = this.#polls.begin(runner.name, {
       environment: runner.environment,
@@ -694,6 +716,21 @@ export class Sessions {
     } finally {
       endPoll();
     }
+  }
+
+  // Written only when they change, since runners poll all the time.
+  #rememberModels(
+    runner: { readonly name: string; readonly environment: string },
+    models: readonly ModelRef[],
+  ): void {
+    const key = JSON.stringify(models);
+    if (this.#reported.get(runner.name) === key) {
+      return;
+    }
+
+    this.#reported.set(runner.name, key);
+    this.#store.setRegisteredModels(runner.environment, runner.name, models);
+    this.#runnersChanged();
   }
 
   // Kept for the repository, so later Sessions in it don't ask again.

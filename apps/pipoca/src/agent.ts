@@ -21,6 +21,7 @@ import {
   type HostedSession,
   hostSession,
   hostTerminals,
+  type ListedModels,
   modelLister,
   restoreTranscript,
   type SessionOptions,
@@ -164,10 +165,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   }
 
   // The machine's models, and those of providers its Profiles' packages add.
-  const listers = new Map<
-    string,
-    Promise<() => Promise<readonly ModelRef[]>>
-  >();
+  const listers = new Map<string, Promise<() => Promise<ListedModels>>>();
 
   const addLister = (agentDir: string): boolean => {
     if (listers.has(agentDir)) {
@@ -184,7 +182,8 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       }).catch((error: unknown) => {
         log("models not listed", { agentDir, error: String(error) });
 
-        return async (): Promise<readonly ModelRef[]> => Promise.resolve([]);
+        return async (): Promise<ListedModels> =>
+          Promise.resolve({ available: [], registered: [] });
       }),
     );
 
@@ -509,6 +508,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     };
 
   let models: readonly ModelRef[] = [];
+  let registeredModels: readonly ModelRef[] = [];
   let listings = 0;
 
   const relist = async (): Promise<void> => {
@@ -517,29 +517,39 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     const lists = await Promise.all(
       [...listers.values()].map(async (lister) =>
-        (await lister)().catch((error: unknown) => {
+        (await lister)().catch((error: unknown): ListedModels => {
           log("models not listed", { error: String(error) });
 
-          return [];
+          return { available: [], registered: [] };
         }),
       ),
     );
 
-    const listed = [
+    const unique = (all: readonly ModelRef[]): readonly ModelRef[] => [
       ...new Map(
-        lists.flat().map((model) => [`${model.provider}/${model.id}`, model]),
+        all.map((model) => [`${model.provider}/${model.id}`, model]),
       ).values(),
     ];
+
+    const listed = unique(lists.flatMap(({ available }) => available));
+    const registered = unique(lists.flatMap((list) => list.registered));
 
     if (listing !== listings) {
       return;
     }
 
-    if (listed.length !== models.length) {
-      log("models listed", { count: listed.length });
+    if (
+      listed.length !== models.length ||
+      registered.length !== registeredModels.length
+    ) {
+      log("models listed", {
+        count: listed.length,
+        registered: registered.length,
+      });
     }
 
     models = listed;
+    registeredModels = registered;
   };
 
   const profileDirs = await readdir(profilesDir).catch(() => []);
@@ -622,6 +632,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     ...(options.capacity !== undefined && { capacity: options.capacity }),
     ...(options.session !== undefined && { session: options.session }),
     models: () => models,
+    registeredModels: () => registeredModels,
     running: () =>
       [...hosted].map(([sessionId, { generation }]) => ({
         sessionId,

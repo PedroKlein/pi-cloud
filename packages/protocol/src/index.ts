@@ -402,7 +402,10 @@ export interface Attempt {
 export interface WorkPoll {
   readonly running: readonly Attempt[];
   readonly folders: readonly string[];
+  // The models logged in on the runner, and every model its providers
+  // register, logged in or not (ADR 0044).
   readonly models: readonly ModelRef[];
+  readonly registeredModels?: readonly ModelRef[];
   // How many Sessions the runner takes at once. Absent means no limit.
   readonly capacity?: number;
   // A runner started for one Session, such as a pod on that Session's own
@@ -977,7 +980,10 @@ export interface Environment {
   readonly onDemand: boolean;
   readonly runners: readonly Runner[];
   readonly folders: readonly string[];
+  // The models logged in on its online runners, and every model any of its
+  // runners reported, kept after they go (ADR 0044).
   readonly models: readonly ModelRef[];
+  readonly registeredModels: readonly ModelRef[];
   readonly isolation: Isolation;
   // Null runs containers from the default image.
   readonly image: string | null;

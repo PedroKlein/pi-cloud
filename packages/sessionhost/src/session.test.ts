@@ -228,7 +228,8 @@ export default (pi) => {
   );
 });
 
-async function proxyExtension(): Promise<string> {
+// Without a key the provider waits for a login.
+async function proxyExtension({ loggedIn = true } = {}): Promise<string> {
   const extension = join(root, "proxy.ts");
 
   const model = (id: string): string => `{
@@ -246,7 +247,7 @@ async function proxyExtension(): Promise<string> {
     `export default (pi) => {
   pi.registerProvider("proxy", {
     baseUrl: "http://127.0.0.1:9/v1",
-    apiKey: "test-key",
+    ${loggedIn ? 'apiKey: "test-key",' : ""}
     api: "openai-completions",
     models: [${model("proxy-small")}, ${model("proxy-large")}],
   });
@@ -381,9 +382,20 @@ test("lists the models Pi can use, with the ones extensions register and later l
   });
 
   const before = await list();
-  expect(before).toContainEqual({ provider: "proxy", id: "proxy-small" });
-  expect(before).toContainEqual({ provider: "proxy", id: "proxy-large" });
-  expect(before.some(({ provider }) => provider === "openai")).toBe(false);
+
+  expect(before.available).toContainEqual({
+    provider: "proxy",
+    id: "proxy-small",
+  });
+
+  expect(before.available).toContainEqual({
+    provider: "proxy",
+    id: "proxy-large",
+  });
+
+  expect(before.available.some(({ provider }) => provider === "openai")).toBe(
+    false,
+  );
 
   await writeFile(
     join(root, "auth.json"),
@@ -391,7 +403,28 @@ test("lists the models Pi can use, with the ones extensions register and later l
   );
 
   const after = await list();
-  expect(after.some(({ provider }) => provider === "openai")).toBe(true);
+
+  expect(after.available.some(({ provider }) => provider === "openai")).toBe(
+    true,
+  );
+});
+
+test("lists the models an extension's provider registers even before a login", async () => {
+  const list = await modelLister({
+    agentDir: join(root, "agent"),
+    authPath: join(root, "auth.json"),
+    modelsPath: join(root, "models.json"),
+    extensionPaths: [await proxyExtension({ loggedIn: false })],
+  });
+
+  const { available, registered } = await list();
+
+  expect(registered).toEqual([
+    { provider: "proxy", id: "proxy-small" },
+    { provider: "proxy", id: "proxy-large" },
+  ]);
+
+  expect(available.some(({ provider }) => provider === "proxy")).toBe(false);
 });
 
 test("records an interrupted result for a tool call cut off by a crash", async () => {
