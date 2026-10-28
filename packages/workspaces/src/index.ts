@@ -1,6 +1,6 @@
+export { ghConfig, gitCredentials, hostLogins } from "./credentials";
 export {
   findCheckouts,
-  gitCredentials,
   type PreparedWorkspace,
   prepareWorkspace,
   removeWorkspace,

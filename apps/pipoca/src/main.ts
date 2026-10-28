@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { homedir, hostname } from "node:os";
 import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
+import { installPackage } from "@pipoca/sessionhost";
 import { runAgent } from "./agent";
 import { dataFolder } from "./data-folder";
 import { fauxModels } from "./faux";
@@ -215,6 +216,23 @@ switch (command) {
   case "session":
     await runSessionProcess();
     break;
+
+  // The agent runs this to install a Profile's package with the git logins of
+  // the Session's owner, which only this process's environment holds.
+  case "install-package": {
+    const [dir, source] = rest;
+    if (dir === undefined || source === undefined) {
+      process.stderr.write("usage: pipoca install-package <dir> <source>\n");
+      process.exit(2);
+    }
+
+    await installPackage(dir, source).catch((error: unknown) => {
+      process.stderr.write(`${String(error)}\n`);
+      process.exit(1);
+    });
+
+    break;
+  }
 
   // BROWSER in a Session runs this to hand a URL to its Session host.
   case "open": {

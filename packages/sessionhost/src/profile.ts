@@ -33,6 +33,7 @@ export async function syncProfile(
   hash: string,
   download: () => Promise<ProfileFiles>,
   log: Log,
+  install: InstallPackage = installPackage,
 ): Promise<void> {
   await mkdir(dir, { recursive: true });
 
@@ -49,7 +50,7 @@ export async function syncProfile(
 
   const paths = files.map(([path]) => path);
 
-  await installPackages(dir, packagesOf(profile), log);
+  await installPackages(dir, packagesOf(profile), log, install);
 
   for (const [path, content] of files) {
     await mkdir(dirname(join(dir, path)), { recursive: true });
@@ -72,10 +73,28 @@ export async function syncProfile(
   log("profile files written", { files: paths.length });
 }
 
+export type InstallPackage = (dir: string, source: string) => Promise<void>;
+
+// Installs one package into a Profile's folder, with the git credentials of
+// this process's environment.
+export async function installPackage(
+  dir: string,
+  source: string,
+): Promise<void> {
+  const packageManager = new DefaultPackageManager({
+    cwd: dir,
+    agentDir: dir,
+    settingsManager: SettingsManager.create(dir, dir),
+  });
+
+  await packageManager.install(source);
+}
+
 async function installPackages(
   dir: string,
   packages: readonly PiPackage[],
   log: Log,
+  install: InstallPackage,
 ): Promise<void> {
   const installed = await installedSources(dir);
 
@@ -87,16 +106,10 @@ async function installPackages(
     return;
   }
 
-  const packageManager = new DefaultPackageManager({
-    cwd: dir,
-    agentDir: dir,
-    settingsManager: SettingsManager.create(dir, dir),
-  });
-
   for (const source of missing) {
     log("installing profile package", { source });
 
-    await packageManager.install(source).catch((error: unknown) => {
+    await install(dir, source).catch((error: unknown) => {
       throw new Error(`package ${source} failed to install: ${String(error)}`, {
         cause: error,
       });

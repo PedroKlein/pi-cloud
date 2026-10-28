@@ -1130,32 +1130,3 @@ async function exists(path: string): Promise<boolean> {
     () => false,
   );
 }
-
-// A GH_TOKEN variable lets git authenticate to GitHub over https, for the
-// workspace's clone and for the Session's own pushes (ADR 0034). The empty
-// helper first stops the machine's own helpers, so none answers with another
-// login or keeps the token. The entries follow any the environment already
-// has.
-export function gitCredentials(
-  variables: Readonly<Record<string, string>>,
-  environment: Readonly<Record<string, string | undefined>>,
-): Readonly<Record<string, string>> {
-  const token = variables["GH_TOKEN"];
-  if (token === undefined || token === "") {
-    return {};
-  }
-
-  const count = Number(environment["GIT_CONFIG_COUNT"] ?? 0);
-  const first = Number.isSafeInteger(count) && count > 0 ? count : 0;
-  const key = "credential.https://github.com.helper";
-
-  return {
-    GH_TOKEN: token,
-    GIT_CONFIG_COUNT: String(first + 2),
-    [`GIT_CONFIG_KEY_${String(first)}`]: key,
-    [`GIT_CONFIG_VALUE_${String(first)}`]: "",
-    [`GIT_CONFIG_KEY_${String(first + 1)}`]: key,
-    [`GIT_CONFIG_VALUE_${String(first + 1)}`]:
-      '!f() { test "$1" = get && echo username=x-access-token && echo "password=$GH_TOKEN"; }; f',
-  };
-}

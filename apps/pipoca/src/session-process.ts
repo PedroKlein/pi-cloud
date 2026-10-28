@@ -109,6 +109,35 @@ export async function spawnSession(
   });
 }
 
+// Installs a Profile's package in a child process, so git signs in with the
+// Session owner's logins without them reaching this process's environment.
+// git's own words end the error, since its exit code alone says little.
+export async function installPackageApart(
+  dir: string,
+  source: string,
+  env: Readonly<Record<string, string | undefined>>,
+): Promise<void> {
+  const [executable = process.execPath, ...args] = pipoca;
+
+  const child = spawn(executable, [...args, "install-package", dir, source], {
+    env: { ...env, GIT_TERMINAL_PROMPT: "0" },
+    stdio: ["ignore", process.stderr, "pipe"],
+  });
+
+  let errors = "";
+
+  child.stderr.on("data", (chunk: Buffer) => {
+    process.stderr.write(chunk);
+    errors = (errors + chunk.toString()).slice(-2000);
+  });
+
+  const [code] = (await once(child, "close")) as [number | null];
+
+  if (code !== 0) {
+    throw new Error(errors.trim() || `exited with code ${String(code)}`);
+  }
+}
+
 export async function runSessionProcess(): Promise<void> {
   // The agent stops a Session by closing stdin, so SIGTERM here means the
   // whole host is going down, its tools included. Exiting before a killed

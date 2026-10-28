@@ -226,6 +226,14 @@ export interface Assignment {
   // required too, so a runner from before them doesn't start the Session.
   readonly installedParts?: Readonly<Record<string, string>>;
   readonly environment: SessionEnvironment;
+  // The git hosts the Session's owner connected (ADR 0043). Older servers
+  // leave it out.
+  readonly gitLogins?: readonly GitLogin[];
+}
+
+export interface GitLogin {
+  readonly host: string;
+  readonly token: string;
 }
 
 export type SettingValue = string | number | boolean | readonly string[];

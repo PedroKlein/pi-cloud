@@ -18,12 +18,8 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Workspace } from "@pipoca/protocol";
-import {
-  findCheckouts,
-  gitCredentials,
-  prepareWorkspace,
-  removeWorkspace,
-} from "./workspace";
+import { gitCredentials, hostLogins } from "./credentials";
+import { findCheckouts, prepareWorkspace, removeWorkspace } from "./workspace";
 
 const run = promisify(execFile);
 
@@ -360,7 +356,11 @@ test("answers git's credential requests for GitHub with a GH_TOKEN, ahead of the
     GIT_CONFIG_VALUE_0: "kept",
   };
 
-  const env = { ...base, ...gitCredentials({ GH_TOKEN: "t0ken" }, base) };
+  const env = {
+    ...base,
+    ...gitCredentials(hostLogins([], { GH_TOKEN: "t0ken" }), base),
+  };
+
   const request = "protocol=https\nhost=github.com\n\n";
 
   const filled = await credential("fill", request, env);
@@ -379,7 +379,49 @@ test("answers git's credential requests for GitHub with a GH_TOKEN, ahead of the
   );
 
   expect(name.trim()).toBe("kept");
-  expect(gitCredentials({}, base)).toEqual({});
+  expect(gitCredentials(hostLogins([], {}), base)).toEqual({});
+});
+
+test("answers each host with the owner's own login, ahead of the Environment's GH_TOKEN", async () => {
+  const logins = hostLogins(
+    [
+      { host: "github.tools.sap", token: "sap-token" },
+      { host: "github.com", token: "own-token" },
+    ],
+    { GH_TOKEN: "environment-token" },
+  );
+
+  const credentials = gitCredentials(logins, process.env);
+
+  const env = {
+    ...process.env,
+    HOME: join(root, "home"),
+    GIT_TERMINAL_PROMPT: "0",
+    ...credentials,
+  };
+
+  const sap = await credential(
+    "fill",
+    "protocol=https\nhost=github.tools.sap\n\n",
+    env,
+  );
+
+  const github = await credential(
+    "fill",
+    "protocol=https\nhost=github.com\n\n",
+    env,
+  );
+
+  const other = await credential(
+    "fill",
+    "protocol=https\nhost=gitlab.com\n\n",
+    env,
+  );
+
+  expect(sap).toContain("password=sap-token");
+  expect(github).toContain("password=own-token");
+  expect(other).not.toContain("token");
+  expect(credentials["GH_TOKEN"]).toBe("own-token");
 });
 
 test("keeps an existing clone and its changes on a later attempt", async () => {

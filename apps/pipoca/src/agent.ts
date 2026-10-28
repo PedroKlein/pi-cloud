@@ -10,6 +10,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
+  GitLogin,
   SessionStart,
   ModelRef,
   Removal,
@@ -27,7 +28,9 @@ import {
 } from "@pipoca/sessionhost";
 import {
   findCheckouts,
+  ghConfig,
   gitCredentials,
+  hostLogins,
   prepareWorkspace,
   removeWorkspace,
 } from "@pipoca/workspaces";
@@ -44,7 +47,11 @@ import { sessionParts } from "./plugins";
 import { installedSessionParts } from "./session-parts";
 import { containerSession } from "./container";
 import { environmentSetup } from "./setup";
-import { pageOpener, spawnSession } from "./session-process";
+import {
+  installPackageApart,
+  pageOpener,
+  spawnSession,
+} from "./session-process";
 
 export interface AgentOptions {
   readonly server: string;
@@ -199,6 +206,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
   const syncProfileOf = async (
     assignment: SessionStart,
+    gitLogins: readonly GitLogin[],
     sessionLog: Log,
   ): Promise<string> => {
     const { profile } = assignment;
@@ -212,6 +220,15 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           profile.hash,
           async () => fetchProfile(options.server, assignment),
           sessionLog,
+          async (into, source) =>
+            installPackageApart(into, source, {
+              ...process.env,
+              ...gitCredentials(gitLogins, process.env),
+            }).catch((error: unknown) => {
+              throw new Error(
+                unconnectedHint(String(error), source, gitLogins),
+              );
+            }),
         ),
       );
 
@@ -284,15 +301,29 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       report?.outcome === "removed" ? report.restore : assignment.workspace;
 
     try {
-      const agentDir = await syncProfileOf(assignment, sessionLog);
       const environment = assignment.environment.variables;
+      const gitLogins = hostLogins(assignment.gitLogins ?? [], environment);
+      const agentDir = await syncProfileOf(assignment, gitLogins, sessionLog);
+      const sessionDir = join(options.dataDir, "sessions", sessionId);
 
       const variables = {
         ...environment,
-        ...gitCredentials(environment, { ...process.env, ...environment }),
+        ...gitCredentials(gitLogins, { ...process.env, ...environment }),
+        ...(await writeGhConfig(join(sessionDir, "gh"), gitLogins)),
       };
 
-      const image = await setUp({ ...assignment.environment, variables });
+      // Every Session of the Environment shares what its setup script makes,
+      // so the script signs in only with the Environment's own token.
+      const image = await setUp({
+        ...assignment.environment,
+        variables: {
+          ...environment,
+          ...gitCredentials(hostLogins([], environment), {
+            ...process.env,
+            ...environment,
+          }),
+        },
+      });
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
@@ -300,7 +331,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           dir: workspaceDir(sessionId),
           folders: options.folders,
           mirrors: join(options.dataDir, "mirrors"),
-          remoteEnv: gitCredentials(environment, process.env),
+          remoteEnv: gitCredentials(gitLogins, process.env),
         },
         sessionLog,
       );
@@ -310,8 +341,6 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       if (hosted.get(sessionId)?.generation !== generation) {
         return undefined;
       }
-
-      const sessionDir = join(options.dataDir, "sessions", sessionId);
 
       const restored = await restoreTranscript(sessionDir, cwd, async () =>
         fetchTranscript(agent, sessionId),
@@ -730,4 +759,41 @@ function idleExit(
       clearInterval(timer);
     },
   };
+}
+
+// gh's own config folder for the Session, when it has hosts besides
+// github.com, which gh reads from GH_TOKEN.
+async function writeGhConfig(
+  dir: string,
+  logins: readonly GitLogin[],
+): Promise<Readonly<Record<string, string>>> {
+  const files = ghConfig(logins);
+  if (files === undefined) {
+    return {};
+  }
+
+  await mkdir(dir, { recursive: true });
+
+  for (const [name, content] of Object.entries(files)) {
+    await writeFile(join(dir, name), content, { mode: 0o600 });
+  }
+
+  return { GH_CONFIG_DIR: dir };
+}
+
+// Pi reads a git package as git:host/path, an https or ssh URL, or
+// git@host:path.
+function unconnectedHint(
+  error: string,
+  source: string,
+  logins: readonly GitLogin[],
+): string {
+  const host =
+    /^(?:git:(?:git@)?|(?:https?|ssh):\/\/(?:[^@/]+@)?|git@)([^/:]+)/.exec(
+      source,
+    )?.[1];
+
+  return host === undefined || logins.some((login) => login.host === host)
+    ? error
+    : `${error}. If the repository is private, connect ${host} in Settings`;
 }
