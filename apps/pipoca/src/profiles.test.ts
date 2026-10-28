@@ -779,7 +779,7 @@ test("only admins change the base Profile", async () => {
   expect(await json<unknown>(api("/api/base/files"))).toEqual([]);
 });
 
-test("remembers every model runners reported, logged in or not, after a restart", async () => {
+test("remembers the models extension providers registered on runners, after a restart", async () => {
   const gemini = { provider: "google", id: "gemini-flash" };
   const aiCore = { provider: "aicore", id: "gpt-x" };
 
