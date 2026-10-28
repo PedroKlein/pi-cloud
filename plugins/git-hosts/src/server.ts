@@ -1,7 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { PluginStore, ServerPlugin, User } from "@pipoca/plugins";
-import type { GitLogin } from "@pipoca/protocol";
-import { authorizationUrl, HostRefused, loginOf, redeem } from "./github";
+import type { GitLogin, RepositoryChoice } from "@pipoca/protocol";
+import {
+  authorizationUrl,
+  HostRefused,
+  loginOf,
+  redeem,
+  repositoriesOf,
+} from "./github";
 import { type HostConfig, hostStore, InvalidHost, viewOf } from "./hosts";
 import type { Account, Connection } from "./model";
 
@@ -50,6 +56,40 @@ export const gitHosts: ServerPlugin = {
         host: host.host,
         login,
       });
+    };
+
+    // A host that can't be reached offers nothing, so the others still show.
+    const repositories = async (
+      userId: string,
+      query: string,
+    ): Promise<readonly RepositoryChoice[]> => {
+      const found = await Promise.all(
+        connections.logins(userId).map(async ({ host: name, token }) => {
+          const host = hosts.get(name);
+          if (host === undefined) {
+            return [];
+          }
+
+          try {
+            return (await repositoriesOf(host, token, query)).map(
+              ({ url, name: full }) => ({ url, name: full, group: host.label }),
+            );
+          } catch (failure) {
+            if (!(failure instanceof HostRefused)) {
+              throw failure;
+            }
+
+            context.log("repository search failed", {
+              host: name,
+              error: failure.message,
+            });
+
+            return [];
+          }
+        }),
+      );
+
+      return found.flat();
     };
 
     const account = (user: User): Account => ({
@@ -219,6 +259,15 @@ export const gitHosts: ServerPlugin = {
 
         if (route === "account" && request.method === "GET") {
           return Response.json(account(user));
+        }
+
+        if (route === "repositories" && request.method === "GET") {
+          return Response.json(
+            await repositories(
+              user.id,
+              new URL(request.url).searchParams.get("q")?.trim() ?? "",
+            ),
+          );
         }
 
         if (route === "sign-in" && name !== undefined) {

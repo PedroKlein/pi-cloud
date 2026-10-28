@@ -11,6 +11,8 @@ import type { Account, HostInput, HostView } from "../src/model";
 export const gitHosts: WebPlugin = {
   name: "git-hosts",
   SettingsSection,
+  repositories: async (context, query) =>
+    json(context.request(`repositories?q=${encodeURIComponent(query)}`)),
 };
 
 function SettingsSection({
