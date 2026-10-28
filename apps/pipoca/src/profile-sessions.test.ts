@@ -315,3 +315,14 @@ test("moves a machine's login files into its logins folder", async () => {
   expect(await exists(join(dataDir, "logins", "models-store.json"))).toBe(true);
   expect(await exists(join(dataDir, "models-store.json"))).toBe(false);
 });
+
+test("a git package that fails says what git said, and which host to connect", async () => {
+  const source = "https://127.0.0.1:1/team/kit";
+  const session = await sessionWith({ packages: [source] });
+
+  const failed = await until(session.id, ({ status }) => status === "failed");
+
+  expect(failed.error).toContain(`package ${source} failed to install`);
+  expect(failed.error).toContain("unable to access");
+  expect(failed.error).toContain("connect 127.0.0.1 in Settings");
+});
