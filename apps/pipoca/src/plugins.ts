@@ -792,6 +792,9 @@ export function startPlugins(
 
         updated.add(name);
 
+        // Why the version before failed doesn't hold for this one.
+        failures.delete(name);
+
         if (!fetched.on) {
           switchedOn.delete(name);
         }
