@@ -36,6 +36,9 @@ Description=Pipoca server
 # A login shell gives Sessions the same PATH and tools as your SSH sessions.
 ExecStart=/bin/bash -lc 'exec %h/.local/bin/pipoca server --provider vm'
 Restart=on-failure
+# Only the server gets SIGTERM, so it stops its Sessions before their tools.
+KillMode=mixed
+TimeoutStopSec=30
 
 [Install]
 WantedBy=default.target
@@ -68,7 +71,7 @@ scp dist/pipoca-linux <vm>:~/.local/bin/pipoca.new
 ssh <vm> 'chmod +x ~/.local/bin/pipoca.new && mv ~/.local/bin/pipoca.new ~/.local/bin/pipoca && systemctl --user restart pipoca'
 ```
 
-Running Sessions are interrupted and reload idle from their transcript. A tool that was running when the service stopped is recorded as interrupted by a restart. `/healthz` shows the new version once the server is back.
+Running Sessions are interrupted and reload idle from their transcript. A tool that was running when the service stopped is recorded as interrupted by a restart. A unit without `KillMode=mixed` sends SIGTERM to every process at once, so a tool can end first and be recorded by its exit code; add the line and run `systemctl --user daemon-reload`. `/healthz` shows the new version once the server is back.
 
 ## From the laptop
 

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -45,7 +45,13 @@ export async function spawnSession(
   log: Log,
   openTerminal: (command: TerminalCommand) => void,
   container?: ContainerSession,
-): Promise<HostedSession & { readonly exited: Promise<number | null> }> {
+): Promise<
+  HostedSession & {
+    // Stops the Session at once, leaving its running tools unanswered.
+    readonly halt: () => Promise<void>;
+    readonly exited: Promise<number | null>;
+  }
+> {
   const [executable = process.execPath, ...args] =
     container?.run ?? sessionCommand;
 
@@ -81,11 +87,19 @@ export async function spawnSession(
     }
   };
 
-  const stop = async (): Promise<void> => {
-    child.stdin.end();
+  const ended = async (ask: () => void): Promise<void> => {
+    ask();
     const timer = setTimeout(kill, stopTimeoutMs);
     await exited;
     clearTimeout(timer);
+  };
+
+  const stop = async (): Promise<void> => {
+    await ended(() => child.stdin.end());
+  };
+
+  const halt = async (): Promise<void> => {
+    await ended(() => child.kill("SIGTERM"));
   };
 
   return new Promise((resolve, reject) => {
@@ -94,7 +108,7 @@ export async function spawnSession(
       if (message === undefined) {
         log("session process output", { line });
       } else if (message.type === "ready") {
-        resolve({ stop, exited });
+        resolve({ stop, halt, exited });
       } else if (message.type === "failed") {
         reject(new Error(message.error));
       } else {
@@ -138,12 +152,16 @@ export async function installPackageApart(
 }
 
 export async function runSessionProcess(): Promise<void> {
-  // The agent stops a Session by closing stdin, so SIGTERM here means the
-  // whole host is going down, its tools included. Exiting before a killed
-  // tool's result is saved leaves the call unanswered, and the reload records
-  // it as interrupted rather than as a failed command.
+  // The agent sends SIGTERM when it is going down itself. Killing the tools
+  // and exiting in one step leaves no turn of the event loop to save a killed
+  // tool's result, so the reload records the call as interrupted rather than
+  // as a failed command.
   process.once("SIGTERM", () => {
-    process.exit(143);
+    try {
+      killChildren();
+    } finally {
+      process.exit(143);
+    }
   });
 
   const input = createInterface({ input: process.stdin });
@@ -221,6 +239,30 @@ export async function runSessionProcess(): Promise<void> {
   }
 
   await stop();
+}
+
+// Pi starts each command in its own process group, which a group kill ends
+// along with whatever the command started.
+function killChildren(): void {
+  const found = spawnSync("pgrep", ["-P", String(process.pid)], {
+    encoding: "utf8",
+  });
+
+  for (const pid of found.stdout.split("\n").filter(Boolean).map(Number)) {
+    if (!killed(-pid)) {
+      killed(pid);
+    }
+  }
+}
+
+function killed(target: number): boolean {
+  try {
+    process.kill(target, "SIGKILL");
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function childMessage(line: string): ChildMessage | undefined {

@@ -3351,7 +3351,7 @@ function fakeModelServer(
 async function startProcessAgent(
   model: ReturnType<typeof Bun.serve>,
   extensionPaths: readonly string[] = [],
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const dataDir = join(root, "process");
   await mkdir(dataDir, { recursive: true });
 
@@ -3384,10 +3384,14 @@ async function startProcessAgent(
     signal: controller.signal,
   });
 
-  agents.push(async () => {
+  const stop = async (): Promise<void> => {
     controller.abort();
     await done;
-  });
+  };
+
+  agents.push(stop);
+
+  return stop;
 }
 
 function sessionPids(sessionId: string): number[] {
@@ -3413,6 +3417,16 @@ function alive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+// A killed process whose parent is gone may wait a while for its new parent
+// to collect it.
+async function stillRunning(pid: number): Promise<boolean> {
+  const { stdout } = await run("ps", ["-o", "stat=", "-p", String(pid)]).catch(
+    () => ({ stdout: "" }),
+  );
+
+  return stdout.trim() !== "" && !stdout.trim().startsWith("Z");
 }
 
 test("runs each session in its own process and reloads it when the process dies", async () => {
@@ -3477,7 +3491,7 @@ test("runs each session in its own process and reloads it when the process dies"
 test("records a tool cut off by its host going down as interrupted, not by its exit code", async () => {
   const pidFile = join(root, "tool.pid");
   const model = fakeModelServer("done", `echo $$ > ${pidFile}; exec sleep 30`);
-  await startProcessAgent(model);
+  const stopAgent = await startProcessAgent(model);
 
   try {
     const session = (await (
@@ -3504,18 +3518,18 @@ test("records a tool cut off by its host going down as interrupted, not by its e
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
 
-    // systemd stops a service by sending SIGTERM to every process in it.
+    // systemd's KillMode=mixed and a pod's stop send SIGTERM only to the
+    // main process, which stops its agent.
     const [sessionPid] = sessionPids(session.id);
-    process.kill(sessionPid ?? 0, "SIGTERM");
-    process.kill(toolPid, "SIGTERM");
+    await stopAgent();
+
+    expect(alive(sessionPid ?? 0)).toBe(false);
+    expect(await stillRunning(toolPid)).toBe(false);
+
+    await startProcessAgent(model);
 
     const events = await follow(session.id, (seen) =>
-      seen.some(
-        (e) =>
-          e.type === "entry" &&
-          (e.entry.includes("interrupted by a restart") ||
-            e.entry.includes("exited with code 143")),
-      ),
+      seen.some((e) => e.type === "entry" && e.entry.includes('"toolResult"')),
     );
 
     const results = events.filter(

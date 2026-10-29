@@ -83,10 +83,14 @@ export interface AgentOptions {
 
 const relistMs = 60_000;
 
+interface Running extends HostedSession {
+  readonly halt: () => Promise<void>;
+}
+
 interface Hosted {
   readonly generation: number;
   readonly profileId: string;
-  readonly session: Promise<HostedSession | undefined>;
+  readonly session: Promise<Running | undefined>;
 }
 
 interface Unreported {
@@ -241,9 +245,16 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     return dir;
   };
 
-  const retire = async (sessionId: string, entry: Hosted): Promise<void> => {
+  const retire = async (
+    sessionId: string,
+    entry: Hosted,
+    halt = false,
+  ): Promise<void> => {
     const stopped = (stopping.get(sessionId) ?? Promise.resolve())
-      .then(async () => (await entry.session)?.stop())
+      .then(async () => {
+        const session = await entry.session;
+        await (halt ? session?.halt() : session?.stop());
+      })
       .catch((error: unknown) => {
         log("session failed to stop", { sessionId, error: String(error) });
       })
@@ -274,7 +285,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   const hostAssignment = async (
     assignment: SessionStart,
     sessionLog: Log,
-  ): Promise<HostedSession | undefined> => {
+  ): Promise<Running | undefined> => {
     const { sessionId, generation } = assignment;
 
     const fenced = (): void => {
@@ -405,12 +416,12 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           terminals.open,
         );
 
-        return {
-          stop: async () => {
-            terminals.close();
-            await session.stop();
-          },
+        const stop = async (): Promise<void> => {
+          terminals.close();
+          await session.stop();
         };
+
+        return { stop, halt: stop };
       }
 
       const child = await spawnSession(
@@ -438,6 +449,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         stop: async () => {
           terminals.close();
           await child.stop();
+        },
+        halt: async () => {
+          terminals.close();
+          await child.halt();
         },
       };
     } catch (error) {
@@ -694,10 +709,15 @@ export async function runAgent(options: AgentOptions): Promise<void> {
     clearInterval(relisting);
   });
 
-  log("stopping sessions", { count: hosted.size });
+  // A process going down halts its Sessions before their tools, so a tool
+  // cut off by it is recorded as interrupted when its Session next loads.
+  const halt = options.signal.aborted;
+  log("stopping sessions", { count: hosted.size, halt });
 
   await Promise.all(
-    [...hosted].map(async ([sessionId, entry]) => retire(sessionId, entry)),
+    [...hosted].map(async ([sessionId, entry]) =>
+      retire(sessionId, entry, halt),
+    ),
   );
 
   await Promise.all([...stopping.values(), ...removing.values()]);
