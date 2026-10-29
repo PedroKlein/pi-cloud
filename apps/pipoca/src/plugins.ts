@@ -1,28 +1,11 @@
 import { basename } from "node:path";
-import askPackage from "@pipoca/ask/package.json";
-import { ask } from "@pipoca/ask/session";
-import changesPackage from "@pipoca/changes/package.json";
-import { changes } from "@pipoca/changes/session";
-import gitHostsPackage from "@pipoca/git-hosts/package.json";
 import { gitHosts } from "@pipoca/git-hosts/server";
-import kubernetesPackage from "@pipoca/kubernetes/package.json";
 import { kubernetesPlugin } from "@pipoca/kubernetes/server";
-import libraryPackage from "@pipoca/library/package.json";
 import { library } from "@pipoca/library/server";
-import { library as librarySession } from "@pipoca/library/session";
-import metaPackage from "@pipoca/meta/package.json";
 import { meta } from "@pipoca/meta/server";
-import { metaSession } from "@pipoca/meta/session";
-import modelsPackage from "@pipoca/models/package.json";
 import { models } from "@pipoca/models/server";
-import { models as modelsSession } from "@pipoca/models/session";
-import oidcPackage from "@pipoca/oidc/package.json";
 import { oidc } from "@pipoca/oidc/server";
-import projectsPackage from "@pipoca/projects/package.json";
 import { projects } from "@pipoca/projects/server";
-import subagentsPackage from "@pipoca/subagents/package.json";
-import { subagents } from "@pipoca/subagents/session";
-import usagePackage from "@pipoca/usage/package.json";
 import {
   checkedSettings,
   type EventBus,
@@ -33,18 +16,15 @@ import {
   type PluginRoute,
   type PluginStore,
   type PublicRoute,
-  type RouteTool,
   type ServerPlugin,
   type ServerPluginContext,
   type ServerTool,
-  type SessionPlugin,
   settingValues,
   type ToolCaller,
   type Toolset,
 } from "@pipoca/plugins";
 import {
   type Actor,
-  type Assignment,
   type Capability,
   capabilities,
   type Command,
@@ -54,10 +34,8 @@ import {
   type PluginSettings,
   type Session,
   type ToolCall,
-  type ToolNamespace,
   type ToolResult,
   type ToolSpec,
-  type UiAction,
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import {
@@ -67,24 +45,9 @@ import {
   type SessionPlugins,
   type Sessions,
 } from "@pipoca/sessions";
+import { sessionPlugins } from "./session-parts";
+import { runRouteTool, type ToolsetTool, toolsetTools } from "./toolsets";
 import type { PluginSettingsStore } from "./store";
-
-// The plugins built into this binary (ADR 0015), described by the pipoca
-// field of their package.json (ADR 0036). Each app imports its own parts
-// statically, so the compiled binary needs no dynamic loading.
-export const builtInPlugins: readonly PluginManifest[] = [
-  askPackage,
-  changesPackage,
-  usagePackage,
-  projectsPackage,
-  libraryPackage,
-  modelsPackage,
-  subagentsPackage,
-  kubernetesPackage,
-  metaPackage,
-  oidcPackage,
-  gitHostsPackage,
-].map(({ pipoca }) => pipoca as PluginManifest);
 
 export const serverPlugins: readonly ServerPlugin[] = [
   projects,
@@ -96,69 +59,7 @@ export const serverPlugins: readonly ServerPlugin[] = [
   gitHosts,
 ];
 
-const sessionPlugins: readonly SessionPlugin[] = [
-  ask,
-  changes,
-  librarySession,
-  modelsSession,
-  subagents,
-  metaSession,
-];
-
-// The Session parts an assignment names, each with its settings. A server
-// from before settings sends none, so they take their defaults. An installed
-// plugin's part comes from installed, by its bundle's hash.
-export async function sessionParts(
-  assignment: Pick<
-    Assignment,
-    "plugins" | "pluginSettings" | "requiredPlugins" | "installedParts"
-  >,
-  installed: (name: string, hash: string) => Promise<SessionPlugin>,
-): Promise<{
-  readonly plugins: readonly SessionPlugin[];
-  readonly pluginSettings: Readonly<Record<string, PluginSettings>>;
-}> {
-  const parts = Object.entries(assignment.installedParts ?? {}).filter(
-    ([name]) => assignment.plugins.includes(name),
-  );
-
-  const unknown = (assignment.requiredPlugins ?? []).filter(
-    (name) =>
-      !sessionPlugins.some((plugin) => plugin.name === name) &&
-      !parts.some(([part]) => part === name),
-  );
-
-  if (unknown.length > 0) {
-    throw new Error(
-      `this runner has no ${unknown.join(", ")} plugin, so it needs an update`,
-    );
-  }
-
-  const builtIn = sessionPlugins.filter(({ name }) =>
-    assignment.plugins.includes(name),
-  );
-
-  const fetched = await Promise.all(
-    parts.map(async ([name, hash]) => installed(name, hash)),
-  );
-
-  return {
-    plugins: [...builtIn, ...fetched],
-    pluginSettings: Object.fromEntries<PluginSettings>([
-      ...builtIn.map(({ name }): [string, PluginSettings] => [
-        name,
-        settingValues(
-          builtInPlugins.find(({ id }) => id === name)?.settings,
-          assignment.pluginSettings?.[name],
-        ),
-      ]),
-      ...fetched.map(({ name }): [string, PluginSettings] => [
-        name,
-        assignment.pluginSettings?.[name] ?? {},
-      ]),
-    ]),
-  };
-}
+export type UserActor = `user:${string}`;
 
 export interface PluginHost {
   // The plugins that are on, without any that failed to register.
@@ -1025,144 +926,6 @@ export function startPlugins(
         })),
       ),
   };
-}
-
-type UserActor = `user:${string}`;
-
-interface ToolsetTool {
-  // Undefined for the kernel's own toolsets.
-  readonly plugin: string | undefined;
-  readonly spec: ToolSpec;
-  readonly tool: RouteTool;
-}
-
-function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
-  const namespace: ToolNamespace = toolset.namespace;
-
-  return toolset.tools.map((tool) => {
-    const { request: _request, result: _result, opens: _opens, ...spec } = tool;
-
-    return {
-      plugin,
-      tool,
-      spec: {
-        ...spec,
-        name: `${namespace.name}_${tool.name}`,
-        exposure: tool.exposure ?? "deferred",
-        namespace,
-      },
-    };
-  });
-}
-
-// A route of the web app such as a Session id or <project id>/<thread id>,
-// so what a tool opens stays a page of Pipoca.
-const appRoute = /^[\w-]+(\/[\w-]+)*$/;
-
-// Never sent anywhere: the request goes straight to the server's handler.
-const internalOrigin = "http://pipoca.internal";
-
-async function runRouteTool(
-  found: ToolsetTool,
-  input: unknown,
-  actor: UserActor,
-  deps: {
-    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
-  },
-  open: (action: UiAction) => void,
-): Promise<ToolResult> {
-  const { method, path, body } = found.tool.request(
-    typeof input === "object" && input !== null && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {},
-  );
-
-  const base =
-    found.plugin === undefined ? "/api/" : `/api/plugins/${found.plugin}/`;
-
-  const url = routeUrl(found.plugin === undefined ? path : base + path, base);
-
-  if (url === undefined) {
-    return { text: `${path} isn't one of its routes`, isError: true };
-  }
-
-  const response = await deps.api(
-    actor,
-    new Request(
-      url,
-      body === undefined
-        ? { method }
-        : {
-            method,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          },
-    ),
-  );
-
-  const text = await response.text();
-
-  if (!response.ok) {
-    return {
-      text: text || `failed with ${String(response.status)}`,
-      isError: true,
-    };
-  }
-
-  if (text === "") {
-    return { text: "Done.", isError: false };
-  }
-
-  // The change is made by now, so a reply the tool can't read is still a
-  // success; an error would make the model try again.
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { text, isError: false };
-  }
-
-  try {
-    const opened = found.tool.opens?.(parsed);
-
-    if (opened !== undefined && appRoute.test(opened.route)) {
-      open({
-        kind: "open",
-        route:
-          found.plugin === undefined
-            ? opened.route
-            : `plugin/${found.plugin}/${opened.route}`,
-        label: opened.label,
-      });
-    }
-
-    return {
-      text: JSON.stringify(
-        found.tool.result ? found.tool.result(parsed) : parsed,
-      ),
-      isError: false,
-    };
-  } catch {
-    return { text: "Done, with a reply it couldn't show.", isError: false };
-  }
-}
-
-// A tool's path stays under its own routes: dot segments, plain or
-// percent-encoded, would let input such as an id name another route.
-function routeUrl(path: string, base: string): string | undefined {
-  const [pathname = ""] = path.split("?");
-
-  const dotted = pathname.split("/").some((segment) => {
-    try {
-      return [".", ".."].includes(decodeURIComponent(segment));
-    } catch {
-      return true;
-    }
-  });
-
-  const url = new URL(path, internalOrigin);
-
-  return dotted || !url.pathname.startsWith(base) ? undefined : url.href;
 }
 
 function pluginSessions(

@@ -58,7 +58,7 @@ import {
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
 import { mcpHandler } from "./mcp";
-import type { PluginHost } from "./plugins";
+import type { PluginHost, UserActor } from "./plugins";
 import { sseResponse } from "./sse";
 
 const rejectionStatus = {
@@ -79,8 +79,6 @@ type Route = (
 ) => Response | Promise<Response>;
 
 type RouteTable = readonly (readonly [string, RegExp, Route])[];
-
-type UserActor = `user:${string}`;
 
 // Requests a toolset tool makes as a user (ADR 0035). They never come from
 // the network, so they carry no sign-in cookie.

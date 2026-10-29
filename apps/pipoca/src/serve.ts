@@ -25,7 +25,8 @@ import {
   turnOn,
   update,
 } from "./installed";
-import { builtInPlugins, serverPlugins, startPlugins } from "./plugins";
+import { serverPlugins, startPlugins } from "./plugins";
+import { builtInPlugins } from "./session-parts";
 import { previewBroker } from "./previews";
 import { changeFeed } from "./changes";
 import { createHandler, onBehalfOf } from "./server";

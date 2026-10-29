@@ -21,7 +21,7 @@ import {
 } from "@pipoca/plugins";
 import type { Environment, Session, SessionEvent } from "@pipoca/protocol";
 import { runAgent } from "./agent";
-import { sessionParts } from "./plugins";
+import { sessionParts } from "./session-parts";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
