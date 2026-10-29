@@ -31,6 +31,7 @@ import {
   stopSession,
 } from "./session";
 import type { McpLoginState, McpLoginStore } from "@pipoca/plugins";
+import { fetchingProviderExtension } from "./testdata/fetching-provider";
 import { fauxModels } from "./testdata/models";
 import { sessionOptions } from "./testdata/options";
 
@@ -569,6 +570,57 @@ test("lists the models an extension's provider registers even before a login", a
 
   expect(available.some(({ provider }) => provider === "proxy")).toBe(false);
 });
+
+test("fetches an extension provider's models with the host's login, and the runner lists them", async () => {
+  const extension = await fetchingProviderExtension(root);
+
+  const options = sessionOptions(root, { extensionPaths: [extension] });
+  const list = await modelLister(options);
+
+  delete process.env["PI_OFFLINE"];
+
+  try {
+    const session = await startSession(options, {
+      ui: {} as SessionHost["ui"],
+      tools: [],
+      extensions: [],
+      packages: [],
+      onError: () => undefined,
+      logins: {
+        models: memoryLogins([
+          ["vault", { type: "api_key", key: "vault-key" }],
+        ]),
+        mcp: noMcpLogins,
+      },
+    });
+
+    await until(() =>
+      session.modelRuntime
+        .getModels()
+        .some(({ provider }) => provider === "vault"),
+    );
+
+    await stopSession(session);
+  } finally {
+    process.env["PI_OFFLINE"] = "1";
+  }
+
+  expect((await list()).registered).toEqual([
+    { provider: "vault", id: "vault-large" },
+  ]);
+}, 20_000);
+
+async function until(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5000;
+
+  while (!condition()) {
+    if (Date.now() > deadline) {
+      throw new Error("timed out");
+    }
+
+    await Bun.sleep(20);
+  }
+}
 
 test("records an interrupted result for a tool call cut off by a crash", async () => {
   const crashing = spawn(

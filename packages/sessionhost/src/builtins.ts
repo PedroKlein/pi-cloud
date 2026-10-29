@@ -9,7 +9,7 @@ import {
   type SlashCommand,
   thinkingLevels,
 } from "@pipoca/protocol";
-import { availableModel } from "./session";
+import { availableModel, refreshModels } from "./session";
 import type { remoteUI } from "./ui";
 
 // Pi's TUI commands that make sense in the web (ADR 0023). The browser runs
@@ -227,6 +227,7 @@ async function login(
   const name = offered.find((choice) => choice.id === id)?.name ?? id;
 
   await runtime.login(id, type, interaction(context));
+  refreshModels(runtime, [id]);
 
   return type === "oauth"
     ? `Logged in to ${name}.`
