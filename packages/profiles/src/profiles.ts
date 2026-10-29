@@ -44,26 +44,29 @@ const gitTimeoutMs = 60_000;
 const maxExportBytes = 1024 * 1024;
 const run = promisify(execFile);
 
-// The Profiles a user sees: their own and the shared ones, which only admins
-// change (ADR 0041).
+// Each user sees their own Profiles and the shared ones, which only admins
+// change, and picks their own default (ADR 0041).
 export class Profiles {
   readonly #folders: ProfileFolders;
   readonly #store: ProfileStore;
-  readonly #ownerId: string;
 
-  constructor(folders: ProfileFolders, store: ProfileStore, ownerId: string) {
+  constructor(folders: ProfileFolders, store: ProfileStore) {
     this.#folders = folders;
     this.#store = store;
-    this.#ownerId = ownerId;
   }
 
-  list(): readonly Profile[] {
+  // Every user's Profiles, which runners keep.
+  ids(): readonly string[] {
+    return this.#folders.ids();
+  }
+
+  list(userId: string): readonly Profile[] {
     return this.#folders
       .ids()
       .flatMap((id) => {
-        const profile = this.#visible(id);
+        const profile = this.#visible(userId, id);
 
-        return profile ? [this.#view(profile)] : [];
+        return profile ? [this.#view(userId, profile)] : [];
       })
       .sort(
         (a, b) =>
@@ -72,14 +75,14 @@ export class Profiles {
       );
   }
 
-  get(id: string): Profile | undefined {
-    const profile = this.#visible(id);
+  get(userId: string, id: string): Profile | undefined {
+    const profile = this.#visible(userId, id);
 
-    return profile && this.#view(profile);
+    return profile && this.#view(userId, profile);
   }
 
   // Throws InvalidProfile when the body isn't a name with Profile content.
-  create(body: unknown, admin: boolean): Result<Profile> {
+  create(userId: string, body: unknown, admin: boolean): Result<Profile> {
     const fields = fieldsOf(body);
     const name = nameOf(fields["name"]);
     const content = contentOf(fields);
@@ -91,19 +94,24 @@ export class Profiles {
     const profile: StoredProfile = {
       id: this.#folders.freeId(name),
       name,
-      ownerId: fields["shared"] === true ? null : this.#ownerId,
+      ownerId: fields["shared"] === true ? null : userId,
       createdAt: new Date().toISOString(),
       ...content,
     };
 
     this.#folders.write(profile.id, profile, content);
 
-    return { ok: true, value: this.#view(profile) };
+    return { ok: true, value: this.#view(userId, profile) };
   }
 
   // Edits reach a Session the next time its Pi process starts (ADR 0031).
-  update(id: string, body: unknown, admin: boolean): Result<Profile> {
-    const profile = this.#visible(id);
+  update(
+    userId: string,
+    id: string,
+    body: unknown,
+    admin: boolean,
+  ): Result<Profile> {
+    const profile = this.#visible(userId, id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
@@ -127,11 +135,11 @@ export class Profiles {
 
     this.#folders.write(id, updated, given);
 
-    return { ok: true, value: this.#view(updated) };
+    return { ok: true, value: this.#view(userId, updated) };
   }
 
-  remove(id: string, admin: boolean): Result<undefined> {
-    const profile = this.#visible(id);
+  remove(userId: string, id: string, admin: boolean): Result<undefined> {
+    const profile = this.#visible(userId, id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
@@ -142,7 +150,7 @@ export class Profiles {
 
     if (
       id === defaultProfileId ||
-      this.#store.defaultProfileId(this.#ownerId) === id
+      this.#store.defaultProfileId(userId) === id
     ) {
       return { ok: false, reason: "default" };
     }
@@ -156,21 +164,21 @@ export class Profiles {
     return { ok: true, value: undefined };
   }
 
-  makeDefault(id: string): Result<Profile> {
-    const profile = this.#visible(id);
+  makeDefault(userId: string, id: string): Result<Profile> {
+    const profile = this.#visible(userId, id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
 
-    this.#store.setDefaultProfile(this.#ownerId, id);
+    this.#store.setDefaultProfile(userId, id);
 
-    return { ok: true, value: this.#view(profile) };
+    return { ok: true, value: this.#view(userId, profile) };
   }
 
   // A Profile's own files, without the admin's base Profile, as a .tar.gz
   // runners would unpack to the same folder (ADR 0041).
-  async archive(id: string): Promise<Uint8Array | undefined> {
-    const files = this.#visible(id) && this.#folders.ownFiles(id);
+  async archive(userId: string, id: string): Promise<Uint8Array | undefined> {
+    const files = this.#visible(userId, id) && this.#folders.ownFiles(id);
     if (!files) {
       return undefined;
     }
@@ -185,21 +193,22 @@ export class Profiles {
     return new Bun.Archive(decoded, { compress: "gzip" }).bytes();
   }
 
-  files(id: string): readonly ProfileEntry[] | undefined {
-    return this.#visible(id) && this.#folders.entries(id);
+  files(userId: string, id: string): readonly ProfileEntry[] | undefined {
+    return this.#visible(userId, id) && this.#folders.entries(id);
   }
 
-  file(id: string, path: string): Buffer | undefined {
-    return this.#visible(id) && this.#folders.file(id, path);
+  file(userId: string, id: string, path: string): Buffer | undefined {
+    return this.#visible(userId, id) && this.#folders.file(id, path);
   }
 
   // Throws InvalidProfile for a path a Profile can't hold, and ProfileTooBig.
   writeFiles(
+    userId: string,
     id: string,
     files: ReadonlyMap<string, Buffer>,
     admin: boolean,
   ): Result<undefined> {
-    const denied = this.#denied(id, admin);
+    const denied = this.#denied(userId, id, admin);
     if (denied) {
       return denied;
     }
@@ -209,8 +218,13 @@ export class Profiles {
     return { ok: true, value: undefined };
   }
 
-  deleteFile(id: string, path: string, admin: boolean): Result<undefined> {
-    const denied = this.#denied(id, admin);
+  deleteFile(
+    userId: string,
+    id: string,
+    path: string,
+    admin: boolean,
+  ): Result<undefined> {
+    const denied = this.#denied(userId, id, admin);
     if (denied) {
       return denied;
     }
@@ -226,9 +240,11 @@ export class Profiles {
   }
 
   // The MCP servers that Sessions may connect to: the base Profile's and
-  // each Profile's, as their mcp.json files configure them.
+  // every user's Profiles', as their mcp.json files configure them.
   mcpServers(): readonly { readonly name: string; readonly config: unknown }[] {
-    return [this.base(), ...this.list()].flatMap(({ mcpServers }) =>
+    const profiles = this.ids().flatMap((id) => this.#folders.read(id) ?? []);
+
+    return [this.base(), ...profiles].flatMap(({ mcpServers }) =>
       Object.entries(mcpServers).map(([name, config]) => ({ name, config })),
     );
   }
@@ -296,7 +312,11 @@ export class Profiles {
   // A .tar.gz of a Pi agent folder, such as an exported Profile or someone's
   // own ~/.pi/agent. What machines keep for themselves, such as auth.json,
   // is left out.
-  async importArchive(name: string, archive: Uint8Array): Promise<Profile> {
+  async importArchive(
+    userId: string,
+    name: string,
+    archive: Uint8Array,
+  ): Promise<Profile> {
     const entries = await new Bun.Archive(archive).files().catch(() => {
       throw new InvalidProfile("that file isn't a .tar.gz");
     });
@@ -309,18 +329,18 @@ export class Profiles {
       }
     }
 
-    return this.#createWith(name, files);
+    return this.#createWith(userId, name, files);
   }
 
   // An import is a copy the importer owns (ADR 0031).
-  import(file: unknown): Profile {
+  import(userId: string, file: unknown): Profile {
     const fields = fieldsOf(file);
     if (fields["pipocaProfile"] !== 1) {
       throw new InvalidProfile("not a Pipoca Profile file");
     }
 
     const { shared: _ignored, ...owned } = fields;
-    const created = this.create(owned, false);
+    const created = this.create(userId, owned, false);
     if (!created.ok) {
       throw new InvalidProfile(created.reason);
     }
@@ -331,7 +351,7 @@ export class Profiles {
   // The server clones with its own git setup, so only remote https and ssh
   // URLs are taken, with no stored credentials, and the file must be a small
   // regular file.
-  async importFromGit(url: string): Promise<Profile> {
+  async importFromGit(userId: string, url: string): Promise<Profile> {
     if (!/^(https:\/\/|ssh:\/\/)[^\s]+$/.test(url)) {
       throw new InvalidProfile("url must be an https:// or ssh:// git URL");
     }
@@ -368,7 +388,7 @@ export class Profiles {
       const file = join(dir, exportFile);
       const info = await lstat(file).catch(() => undefined);
       if (info?.isFile() === true && info.size <= maxExportBytes) {
-        return this.import(parsedJson(await readFile(file, "utf8")));
+        return this.import(userId, parsedJson(await readFile(file, "utf8")));
       }
 
       const files = new Map(
@@ -378,14 +398,22 @@ export class Profiles {
         ]),
       );
 
-      return this.#createWith(basename(url).replace(/\.git$/, ""), files);
+      return this.#createWith(
+        userId,
+        basename(url).replace(/\.git$/, ""),
+        files,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   }
 
-  #createWith(name: string, files: ReadonlyMap<string, Buffer>): Profile {
-    const created = this.create({ name }, false);
+  #createWith(
+    userId: string,
+    name: string,
+    files: ReadonlyMap<string, Buffer>,
+  ): Profile {
+    const created = this.create(userId, { name }, false);
     if (!created.ok) {
       throw new InvalidProfile(created.reason);
     }
@@ -397,14 +425,18 @@ export class Profiles {
       throw error;
     }
 
-    return this.#view(this.#folders.read(created.value.id) ?? created.value);
+    return this.#view(
+      userId,
+      this.#folders.read(created.value.id) ?? created.value,
+    );
   }
 
   #denied(
+    userId: string,
     id: string,
     admin: boolean,
   ): { readonly ok: false; readonly reason: Rejection } | undefined {
-    const profile = this.#visible(id);
+    const profile = this.#visible(userId, id);
     if (!profile) {
       return { ok: false, reason: "not_found" };
     }
@@ -414,18 +446,18 @@ export class Profiles {
       : undefined;
   }
 
-  #visible(id: string): StoredProfile | undefined {
+  #visible(userId: string, id: string): StoredProfile | undefined {
     const profile = this.#folders.read(id);
 
-    return profile?.ownerId === null || profile?.ownerId === this.#ownerId
+    return profile?.ownerId === null || profile?.ownerId === userId
       ? profile
       : undefined;
   }
 
-  #view(profile: StoredProfile): Profile {
+  #view(userId: string, profile: StoredProfile): Profile {
     return {
       ...profile,
-      isDefault: this.#store.defaultProfileId(this.#ownerId) === profile.id,
+      isDefault: this.#store.defaultProfileId(userId) === profile.id,
     };
   }
 }

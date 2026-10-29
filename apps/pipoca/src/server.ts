@@ -27,7 +27,12 @@ import {
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
 import { mcpHandler } from "./mcp";
-import type { OnBehalf, PluginHost, UserActor } from "./plugins";
+import {
+  type OnBehalf,
+  type PluginHost,
+  type UserActor,
+  userIdOf,
+} from "./plugins";
 import { type AgentRoute, agentRoutes } from "./agent-routes";
 import { profileRoutes } from "./profile-routes";
 import { errorReply, notFound, reply } from "./replies";
@@ -885,10 +890,6 @@ async function pluginChange(
   return change.enabled === undefined
     ? plugins.saveSettings(name, change.settings)
     : plugins.turnOn(name, change.enabled, change.digest);
-}
-
-function userIdOf(actor: UserActor): string {
-  return actor.slice("user:".length);
 }
 
 function mcpTokenView({

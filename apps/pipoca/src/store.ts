@@ -381,6 +381,45 @@ function moveProfilesToFolders(
   });
 }
 
+// Profiles and the default Profile belonged to one server-wide owner before
+// each user had their own (ADR 0041). A sole user takes them over. With
+// several users nobody knows whose a Profile was, so it becomes shared, and
+// each user keeps the old default until they pick another.
+function giveProfilesToUsers(
+  db: DatabaseSync,
+  folders: ProfileFolders | undefined,
+): void {
+  const users = db
+    .prepare("select id from users order by created_at")
+    .all() as { id: string }[];
+
+  if (users.length === 0) {
+    return;
+  }
+
+  const sole = users.length === 1 ? (users[0]?.id ?? null) : null;
+
+  for (const id of folders?.ids() ?? []) {
+    const profile = folders?.read(id);
+
+    if (profile?.ownerId === owner) {
+      folders?.write(
+        id,
+        { name: profile.name, ownerId: sole, createdAt: profile.createdAt },
+        {},
+      );
+    }
+  }
+
+  transaction(db, () => {
+    db.prepare(
+      "insert or ignore into profile_defaults (owner_id, profile_id) select users.id, old.profile_id from users, profile_defaults old where old.owner_id = ?",
+    ).run(owner);
+
+    db.prepare("delete from profile_defaults where owner_id = ?").run(owner);
+  });
+}
+
 function moveProfile(row: ProfileRow, folders: ProfileFolders): string {
   const content = JSON.parse(row.content) as ProfileContent;
   if (row.name === "Default" && isEmpty(content)) {
@@ -504,6 +543,7 @@ export function openStore(
   db.exec("pragma journal_mode = wal");
   migrate(db);
   moveProfilesToFolders(db, profiles);
+  giveProfilesToUsers(db, profiles);
   sealSecrets(db, box);
 
   const toSession = (row: SessionRow): StoredSession => ({

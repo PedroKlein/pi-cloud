@@ -1,6 +1,7 @@
 import { BadRequest, fieldsOf, readJson } from "@pipoca/plugins";
 import type { Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
+import { userIdOf } from "./plugins";
 import { errorReply, notFound, reply } from "./replies";
 import type { BrowserRoute } from "./server";
 
@@ -34,12 +35,21 @@ export function profileRoutes(
         );
 
   return [
-    ["GET", /^\/api\/profiles$/, () => Response.json(profiles.list())],
+    [
+      "GET",
+      /^\/api\/profiles$/,
+      (_request, _params, actor) =>
+        Response.json(profiles.list(userIdOf(actor))),
+    ],
     [
       "POST",
       /^\/api\/profiles$/,
-      async (request, _params, _actor, admin) => {
-        const created = profiles.create(await readJson(request), admin);
+      async (request, _params, actor, admin) => {
+        const created = profiles.create(
+          userIdOf(actor),
+          await readJson(request),
+          admin,
+        );
 
         if (created.ok) {
           log("profile created", { profileId: created.value.id });
@@ -53,11 +63,12 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/profiles\/import$/,
-      async (request) => {
+      async (request, _params, actor) => {
         if (request.headers.get("content-type") === "application/gzip") {
           const name = new URL(request.url).searchParams.get("name") ?? "";
 
           const imported = await profiles.importArchive(
+            userIdOf(actor),
             name.trim() === "" ? "Imported" : name,
             await request.bytes(),
           );
@@ -77,8 +88,8 @@ export function profileRoutes(
 
         const profile =
           url === undefined
-            ? profiles.import(body)
-            : await profiles.importFromGit(url);
+            ? profiles.import(userIdOf(actor), body)
+            : await profiles.importFromGit(userIdOf(actor), url);
 
         log("profile imported", { profileId: profile.id });
 
@@ -88,8 +99,8 @@ export function profileRoutes(
     [
       "GET",
       /^\/api\/profiles\/([^/]+)$/,
-      (_request, [id = ""]) => {
-        const profile = profiles.get(id);
+      (_request, [id = ""], actor) => {
+        const profile = profiles.get(userIdOf(actor), id);
 
         return profile ? Response.json(profile) : notFound();
       },
@@ -97,8 +108,13 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/profiles\/([^/]+)$/,
-      async (request, [id = ""], _actor, admin) => {
-        const updated = profiles.update(id, await readJson(request), admin);
+      async (request, [id = ""], actor, admin) => {
+        const updated = profiles.update(
+          userIdOf(actor),
+          id,
+          await readJson(request),
+          admin,
+        );
 
         if (updated.ok) {
           log("profile updated", { profileId: id });
@@ -110,8 +126,8 @@ export function profileRoutes(
     [
       "DELETE",
       /^\/api\/profiles\/([^/]+)$/,
-      (_request, [id = ""], _actor, admin) => {
-        const removed = profiles.remove(id, admin);
+      (_request, [id = ""], actor, admin) => {
+        const removed = profiles.remove(userIdOf(actor), id, admin);
         if (removed.ok) {
           log("profile deleted", { profileId: id });
         }
@@ -122,13 +138,14 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/profiles\/([^/]+)\/default$/,
-      (_request, [id = ""]) => replied(profiles.makeDefault(id), 200),
+      (_request, [id = ""], actor) =>
+        replied(profiles.makeDefault(userIdOf(actor), id), 200),
     ],
     [
       "GET",
       /^\/api\/profiles\/([^/]+)\/export$/,
-      async (_request, [id = ""]) => {
-        const archive = await profiles.archive(id);
+      async (_request, [id = ""], actor) => {
+        const archive = await profiles.archive(userIdOf(actor), id);
         if (!archive) {
           return notFound();
         }
@@ -212,8 +229,8 @@ export function profileRoutes(
     [
       "GET",
       /^\/api\/profiles\/([^/]+)\/files$/,
-      (_request, [id = ""]) => {
-        const files = profiles.files(id);
+      (_request, [id = ""], actor) => {
+        const files = profiles.files(userIdOf(actor), id);
 
         return files ? Response.json(files) : notFound();
       },
@@ -223,9 +240,16 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/profiles\/([^/]+)\/files$/,
-      async (request, [id = ""], _actor, admin) => {
+      async (request, [id = ""], actor, admin) => {
         const decoded = uploadedFiles(await readJson(request));
-        const written = profiles.writeFiles(id, decoded, admin);
+
+        const written = profiles.writeFiles(
+          userIdOf(actor),
+          id,
+          decoded,
+          admin,
+        );
+
         if (written.ok) {
           log("profile files uploaded", {
             profileId: id,
@@ -239,8 +263,8 @@ export function profileRoutes(
     [
       "GET",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
-      (_request, [id = "", path = ""]) => {
-        const file = profiles.file(id, filePath(path));
+      (_request, [id = "", path = ""], actor) => {
+        const file = profiles.file(userIdOf(actor), id, filePath(path));
 
         return file ? new Response(file) : notFound();
       },
@@ -248,8 +272,9 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
-      async (request, [id = "", path = ""], _actor, admin) => {
+      async (request, [id = "", path = ""], actor, admin) => {
         const written = profiles.writeFiles(
+          userIdOf(actor),
           id,
           new Map([[filePath(path), Buffer.from(await request.bytes())]]),
           admin,
@@ -265,8 +290,13 @@ export function profileRoutes(
     [
       "DELETE",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
-      (_request, [id = "", path = ""], _actor, admin) => {
-        const removed = profiles.deleteFile(id, filePath(path), admin);
+      (_request, [id = "", path = ""], actor, admin) => {
+        const removed = profiles.deleteFile(
+          userIdOf(actor),
+          id,
+          filePath(path),
+          admin,
+        );
 
         if (removed.ok) {
           log("profile file deleted", { profileId: id });
