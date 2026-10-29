@@ -736,6 +736,66 @@ test("makes an Environment named after the first runner that joins with a join k
   ]);
 });
 
+async function joinAs(
+  name: string,
+  environment = "laptops",
+): Promise<Response> {
+  return fetch(new URL("/agent/join", server.url), {
+    method: "POST",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      authorization: `Bearer ${await runners.key(environment)}`,
+    },
+    body: JSON.stringify({ name }),
+  });
+}
+
+test("refuses a runner that joins under the name of one online there", async () => {
+  const token = await runners.token("mac-1", "laptops");
+
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+
+  const refused = await joinAs("mac-1");
+
+  expect(refused.status).toBe(409);
+
+  expect(await refused.json()).toEqual({
+    error: "runner_online",
+    message: "a runner named mac-1 is online here",
+  });
+
+  expect((await joinAs("mac-1", "builders")).status).toBe(200);
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+});
+
+test("gives an offline runner's name to the next runner that joins under it, and lets the old one go", async () => {
+  await server.stop();
+  startServer({ offlineAfterMs: 100 });
+  const old = await runners.token("mac-1", "laptops");
+
+  expect((await asRunner(old, "/agent/work", emptyPoll)).status).toBe(200);
+  await sleep(150);
+
+  const joined = await joinAs("mac-1");
+  const { token } = (await joined.json()) as Joined;
+
+  expect(joined.status).toBe(200);
+  expect((await asRunner(old, "/agent/work", emptyPoll)).status).toBe(401);
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+});
+
+test("keeps a runner that comes back with its own token, since that is no join", async () => {
+  await server.stop();
+  startServer({ offlineAfterMs: 100 });
+  const token = await runners.token("mac-1", "laptops");
+
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+  await sleep(150);
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+  expect((await joinAs("mac-1")).status).toBe(409);
+  expect((await asRunner(token, "/agent/work", emptyPoll)).status).toBe(200);
+});
+
 test("tells open pages when a runner comes online, so its Environment shows it", async () => {
   await runners.key("laptops");
 

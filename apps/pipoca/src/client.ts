@@ -43,16 +43,21 @@ const maxTerminalBufferedBytes = 64 * 1024 * 1024;
 
 class HttpError extends Error {
   readonly status: number;
+  readonly body: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, body: string) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
 // A runner and a server of other protocol versions can't work together, so
 // retrying never helps.
 export class UnsupportedVersion extends Error {}
+
+// The server refused the runner's name, which no retry changes (ADR 0032).
+export class JoinRefused extends Error {}
 
 // A runner's token, or one of its Sessions' (ADR 0033).
 interface Agent {
@@ -98,6 +103,10 @@ export async function joinPool(
         });
       }
 
+      if (error instanceof HttpError && error.status === 409) {
+        throw new JoinRefused(reasonOf(error.body), { cause: error });
+      }
+
       if (error instanceof UnsupportedVersion) {
         throw error;
       }
@@ -115,6 +124,16 @@ export async function joinPool(
   }
 
   return undefined;
+}
+
+function reasonOf(body: string): string {
+  try {
+    const { message } = JSON.parse(body) as { message?: unknown };
+
+    return typeof message === "string" ? message : body;
+  } catch {
+    return body;
+  }
 }
 
 async function call(
@@ -147,6 +166,7 @@ async function call(
     throw new HttpError(
       response.status,
       `${init.method ?? "GET"} ${path}: ${String(response.status)} ${text}`,
+      text,
     );
   }
 

@@ -212,6 +212,15 @@ export function createHandler(
     return provider;
   };
 
+  const runnerOnline = (environment: string, runner: string): boolean =>
+    sessions
+      .environments()
+      .some(
+        ({ provider, runners }) =>
+          provider === environment &&
+          runners.some(({ name, online }) => name === runner && online),
+      );
+
   const publicRoutes: RouteTable = [
     [
       "GET",
@@ -266,7 +275,10 @@ export function createHandler(
 
         const joined =
           scheme === "Bearer" && key !== undefined
-            ? auth.join(key, name, environmentFor)
+            ? auth.join(key, name, {
+                create: environmentFor,
+                online: runnerOnline,
+              })
             : undefined;
 
         if (joined === undefined) {
@@ -276,6 +288,16 @@ export function createHandler(
             401,
             "unknown_key",
             "The server doesn't know this join key.",
+          );
+        }
+
+        if (joined === "online") {
+          log("runner refused", { runner: name, reason: "online" });
+
+          throw new HttpError(
+            409,
+            `a runner named ${name} is online here`,
+            "runner_online",
           );
         }
 
