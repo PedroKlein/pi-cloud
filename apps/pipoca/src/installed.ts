@@ -19,7 +19,7 @@ import {
   pluginEngine,
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
-import { bundleParts, type PluginParts } from "./bundle";
+import { bundleParts, type PluginParts, provideSdk } from "./bundle";
 import { builtInPlugins } from "./session-parts";
 import { fetchSource, type PluginSource } from "./sources";
 
@@ -392,6 +392,8 @@ async function load(
 
   try {
     const bundles = await builtParts(folder, manifest);
+
+    provideSdk();
 
     const part =
       bundles.server === undefined

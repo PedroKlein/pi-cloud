@@ -1,5 +1,6 @@
 import { readFile, realpath, rm } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import * as sdk from "@pipoca/plugins";
 
 export interface PluginParts {
   readonly server?: string;
@@ -18,6 +19,16 @@ const sharedWebModules = [
   "@pipoca/ui",
   "@pipoca/plugins/web",
 ];
+
+// The plugin SDK a server or Session part imports is the running server's
+// own, versioned with it (ADR 0046), so the errors it throws are the ones the
+// server answers.
+const sdkKey = "pipoca.plugins";
+
+// Called before importing a server or Session part's bundle.
+export function provideSdk(): void {
+  Object.assign(globalThis, { [Symbol.for(sdkKey)]: sdk });
+}
 
 // Installs an installed plugin's dependencies and bundles its parts into
 // .build in its folder, so their bare imports resolve from the plugin's own
@@ -63,10 +74,9 @@ async function bundle(
     naming: `${part}-[hash].[ext]`,
     throw: false,
     ...noMacros,
-    ...(part === "web" && {
-      plugins: [sharedWithShell],
-      jsx: { development: false },
-    }),
+    ...(part === "web"
+      ? { plugins: [sharedWithShell], jsx: { development: false } }
+      : { plugins: [sdkFromServer] }),
   });
 
   const [output, ...others] = result.outputs;
@@ -101,6 +111,21 @@ const sharedWithShell: Bun.BunPlugin = {
 
     build.onLoad({ filter: /.*/, namespace: "pipoca-shared" }, ({ path }) => ({
       contents: `module.exports = globalThis.pipocaShared[${JSON.stringify(path)}];`,
+      loader: "js",
+    }));
+  },
+};
+
+const sdkFromServer: Bun.BunPlugin = {
+  name: "sdk-from-server",
+  setup: (build) => {
+    build.onResolve({ filter: /^@pipoca\/plugins$/ }, ({ path }) => ({
+      path,
+      namespace: "pipoca-sdk",
+    }));
+
+    build.onLoad({ filter: /.*/, namespace: "pipoca-sdk" }, () => ({
+      contents: `module.exports = globalThis[Symbol.for(${JSON.stringify(sdkKey)})];`,
       loader: "js",
     }));
   },

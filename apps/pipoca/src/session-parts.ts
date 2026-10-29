@@ -25,6 +25,7 @@ import type {
   PluginSettings,
   SessionStart,
 } from "@pipoca/protocol";
+import { provideSdk } from "./bundle";
 import { fetchSessionPart } from "./client";
 
 // The plugins built into this binary (ADR 0015), described by the pipoca
@@ -135,6 +136,8 @@ export function installedSessionParts(
       await writeFile(partial, code);
       await rename(partial, path);
     }
+
+    provideSdk();
 
     const { default: plugin } = (await import(path)) as {
       default?: SessionPlugin;

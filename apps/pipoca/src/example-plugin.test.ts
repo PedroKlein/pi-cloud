@@ -79,3 +79,13 @@ test("runs the guide's example plugin with all three parts", async () => {
     await (await api("GET", "/api/plugins/greeter/greeting")).json(),
   ).toEqual({ greeting: "Hi" });
 });
+
+test("answers the example's unknown routes with the server's 404", async () => {
+  const missing = await api("GET", "/api/plugins/greeter/farewell");
+
+  expect(missing.status).toBe(404);
+
+  expect(await missing.json()).toEqual({
+    error: "the greeter has no farewell",
+  });
+});

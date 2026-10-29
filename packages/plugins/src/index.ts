@@ -3,6 +3,7 @@ export {
   BadRequest,
   fieldsOf,
   HttpError,
+  isHttpError,
   isObject,
   NotFound,
   readJson,

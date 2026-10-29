@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { $ } from "bun";
 import { join } from "node:path";
 import {
@@ -414,6 +415,78 @@ test("shows why a plugin doesn't build", async () => {
   expect(broken?.error).toMatch(/broken\/server\.ts:1:\d+: /);
 });
 
+// A plugin whose route refuses what it is sent with errors from the SDK it
+// imports from.
+async function writeRefusingPlugin(id: string, sdk: string): Promise<void> {
+  await writePlugin(id);
+
+  await writeFile(
+    join(plugins, id, "server.ts"),
+    `import { BadRequest, requireAdmin } from ${JSON.stringify(sdk)};
+
+export default {
+  name: ${JSON.stringify(id)},
+  register: (context) => {
+    context.routes.handle(async (request, path, caller) => {
+      if (path.endsWith("names")) {
+        requireAdmin(caller, "only admins change names");
+      }
+
+      throw new BadRequest("say something");
+    });
+  },
+};
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify([id]));
+}
+
+test("answers the errors a plugin throws from the server's plugin SDK", async () => {
+  await writeRefusingPlugin("strict", "@pipoca/plugins");
+  await start();
+
+  const refused = await api("POST", "/api/plugins/strict/hi");
+
+  expect(await listed("strict")).toMatchObject({ state: "on" });
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toEqual({ error: "say something" });
+});
+
+test("lets only an admin through a plugin's route that requires one", async () => {
+  await writeRefusingPlugin("strict", "@pipoca/plugins");
+  await start();
+
+  expect((await api("POST", "/api/plugins/strict/names")).status).toBe(400);
+
+  const db = new DatabaseSync(join(root, "server.db"));
+  db.exec("update users set admin = 0");
+  db.close();
+
+  const refused = await api("POST", "/api/plugins/strict/names");
+
+  expect(refused.status).toBe(403);
+  expect(await refused.json()).toEqual({ error: "only admins change names" });
+});
+
+test("answers the errors of a plugin that bundles its own copy of the SDK", async () => {
+  await writeRefusingPlugin("vendored", "./sdk");
+
+  await writeFile(
+    join(plugins, "vendored", "sdk.ts"),
+    await readFile(
+      join(import.meta.dir, "../../../packages/plugins/src/http.ts"),
+    ),
+  );
+
+  await start();
+
+  const refused = await api("POST", "/api/plugins/vendored/hi");
+
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toEqual({ error: "say something" });
+});
+
 test("serves a running plugin's web part, built against the page's modules", async () => {
   await writePlugin("pages", { parts: { web: "web.tsx" } });
 
@@ -557,6 +630,28 @@ test("runs an installed plugin's Session part in a Session, fetched by its hash"
   expect(cached).toHaveLength(1);
   expect(cached[0]).toMatch(/^slash-[0-9a-f]{64}\.js$/);
 });
+
+test("runs a Session part that imports the server's plugin SDK", async () => {
+  await writeSlashPlugin();
+
+  await writeFile(
+    join(plugins, "slash", "session.ts"),
+    `import { isObject } from "@pipoca/plugins";
+
+export default {
+  name: "slash",
+  extension: () => (pi) => {
+    pi.registerCommand(isObject({}) ? "sdk-hello" : "no-sdk", {
+      description: "Says hi through the plugin SDK",
+      handler: async () => undefined,
+    });
+  },
+};
+`,
+  );
+
+  expect(await commandsOf(await startSession())).toContain("sdk-hello");
+}, 30_000);
 
 test("keeps a Session part meant for its own Sessions out of others", async () => {
   await writeSlashPlugin({ ownSessionsOnly: true });

@@ -1,5 +1,9 @@
 import type { RouteCaller } from "./plugin";
 
+// Every copy of this module brands its errors alike, so the server answers
+// one thrown from a plugin that bundles its own copy too (ADR 0046).
+const brand = Symbol.for("pipoca.http-error");
+
 // Thrown from a route, the server answers it with its status and
 // { error: message }, as it does for its own routes.
 export class HttpError extends Error {
@@ -8,7 +12,17 @@ export class HttpError extends Error {
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
+    Object.defineProperty(this, brand, { value: true });
   }
+}
+
+// Also true of an error from another copy of this module.
+export function isHttpError(error: unknown): error is HttpError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    Reflect.get(error, brand) === true
+  );
 }
 
 export class BadRequest extends HttpError {

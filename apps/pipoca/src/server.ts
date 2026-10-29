@@ -9,7 +9,7 @@ import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
   fieldsOf,
-  HttpError,
+  isHttpError,
   NotFound,
   readJson,
 } from "@pipoca/plugins";
@@ -682,7 +682,7 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
-          if (error instanceof HttpError) {
+          if (isHttpError(error)) {
             return Response.json(
               { error: error.message },
               { status: error.status },
