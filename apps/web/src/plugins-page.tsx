@@ -9,6 +9,7 @@ import {
   Select,
   Switch,
 } from "@pipoca/ui";
+import { ok } from "@pipoca/plugins/web";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
 import { usePlugins } from "./hooks";
@@ -245,12 +246,7 @@ function Restart(): ReactElement {
       return;
     }
 
-    if (!response.ok) {
-      setError(((await response.json()) as { error: string }).error);
-
-      return;
-    }
-
+    await ok(Promise.resolve(response));
     setState("restarting");
     await back(before);
     location.reload();
@@ -267,7 +263,9 @@ function Restart(): ReactElement {
         <Button
           onClick={() => {
             restart(false).catch((reason: unknown) => {
-              setError(String(reason));
+              setError(
+                reason instanceof Error ? reason.message : String(reason),
+              );
             });
           }}
         >

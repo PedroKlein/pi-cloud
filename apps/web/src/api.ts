@@ -1,3 +1,4 @@
+import { ok } from "@pipoca/plugins/web";
 import type { Command } from "@pipoca/protocol";
 
 // The server adds the actor to everything a browser sends.
@@ -8,20 +9,15 @@ export type BrowserCommand = Command extends infer C
   : never;
 
 export async function api(path: string, body?: unknown): Promise<Response> {
-  const response = await fetch(path, {
-    method: body === undefined ? "GET" : "POST",
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+  return await ok(
+    fetch(path, {
+      method: body === undefined ? "GET" : "POST",
+      ...(body !== undefined && {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     }),
-  });
-
-  if (!response.ok) {
-    const { error } = (await response.json()) as { error: string };
-    throw new Error(error);
-  }
-
-  return response;
+  );
 }
 
 export async function send(
@@ -29,20 +25,15 @@ export async function send(
   method: "PUT" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<Response> {
-  const response = await fetch(path, {
-    method,
-    ...(body !== undefined && {
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+  return await ok(
+    fetch(path, {
+      method,
+      ...(body !== undefined && {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
     }),
-  });
-
-  if (!response.ok) {
-    const { error } = (await response.json()) as { error: string };
-    throw new Error(error);
-  }
-
-  return response;
+  );
 }
 
 export async function command(
