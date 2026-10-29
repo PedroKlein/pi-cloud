@@ -1,124 +1,31 @@
 import { expect, test } from "bun:test";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import {
-  eventBus,
-  type PluginRoute,
-  type PluginStore,
-  type ToolCaller,
-} from "@pipoca/plugins";
+import type { PluginRoute, ToolCaller } from "@pipoca/plugins";
+import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
 import type { PluginSettings } from "@pipoca/protocol";
 import { library } from "./server";
 
 const member: ToolCaller = {
-  session: {
-    id: "session-1",
-    environmentId: "environment-1",
-    ownerId: "owner",
-    owner: null,
-    provider: "local",
-    runner: null,
-    profileId: "profile-1",
-    workspace: { kind: "folder", path: "/work" },
-    model: null,
-    thinking: null,
-    systemPrompt: null,
-    firstMessage: null,
-    title: null,
-    status: "idle",
-    generation: 1,
-    createdAt: "2026-10-22T00:00:00.000Z",
-    interruptedAt: null,
-    error: null,
-    archivedAt: null,
-    workspaceRemoval: null,
-    workspaceKeptReason: null,
-    startedBy: null,
-    online: true,
-    waiting: false,
-  },
+  session: fakeSession(),
   actor: "session:session-1",
 };
-
-function memoryStore(): PluginStore {
-  const db = new DatabaseSync(":memory:");
-
-  return {
-    exec: (sql) => {
-      db.exec(sql);
-    },
-    all: (sql, ...params) =>
-      db.prepare(sql).all(...(params as SQLInputValue[])),
-    run: (sql, ...params) => {
-      db.prepare(sql).run(...(params as SQLInputValue[]));
-    },
-    seal: (text) => text,
-    open: (sealed) => sealed,
-  };
-}
 
 function registered(
   settings: () => PluginSettings = () => ({ fileLimitMb: 10 }),
 ): PluginRoute {
   const routes: PluginRoute[] = [];
 
-  const events = eventBus((_type, error) => {
-    throw error;
-  });
-
-  const unused = (): never => {
-    throw new Error("not used by the library plugin");
-  };
-
-  library.register({
-    owner: "owner",
-    tools: { register: unused },
-    events,
-    changes: { publish: () => undefined },
-    environments: {
-      list: unused,
-      unplaced: unused,
-      runnerToken: unused,
-      revokeRunner: unused,
-      startsRunners: unused,
-    },
-    sessions: {
-      loadOnly: unused,
-      start: unused,
-      get: unused,
-      owned: unused,
-      adopt: unused,
-      archive: unused,
-      unarchive: unused,
-      send: unused,
-      notify: unused,
-      transcript: unused,
-      transcriptLength: unused,
-    },
-    profiles: { provide: unused },
-    toolsets: { register: unused, loadInOwnSessions: unused },
+  const context = fakeContext({
     routes: {
       handle: (route) => {
         routes.push(route);
       },
     },
-    auth: {
-      offer: unused,
-      handlePublic: unused,
-      userOf: unused,
-      createUser: unused,
-      setAdmin: unused,
-      startSession: unused,
-      gitLogins: unused,
-    },
-    models: { offer: unused },
-    store: memoryStore(),
     settings: { get: settings },
-    config: { get: () => undefined, set: () => undefined, dir: "" },
-    signal: new AbortController().signal,
-    log: () => undefined,
   });
 
-  events.publish({
+  library.register(context);
+
+  context.events.publish({
     type: "projects.MemberAdded",
     sessionId: member.session.id,
     projectId: "p1",
