@@ -36,7 +36,7 @@ spec:
     - path: /api/changes
       methods: [GET]
       noAuth: true
-    {{- range list "sessions" "environments" "profiles" "plugins" "plugin-files" "plugin-builds" "plugin-parts" "pinned-pages" "mcp-tokens" "join-key" "restart" }}
+    {{- range list "sessions" "environments" "profiles" "base" "plugins" "plugin-files" "plugin-builds" "plugin-parts" "pinned-pages" "mcp-tokens" "join-key" "restart" }}
     - path: /api/{{ . }}
       methods: {{ toJson $methods }}
       noAuth: true
