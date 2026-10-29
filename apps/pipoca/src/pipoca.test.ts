@@ -3060,6 +3060,28 @@ test("rejects a repository whose URL leaves no name for its folder", async () =>
   }
 });
 
+test("rejects a repository URL that carries credentials", async () => {
+  const environment = await environmentOf("laptop");
+
+  for (const workspace of [
+    { kind: "clone", repository: "https://ghp_secret@github.com/org/app.git" },
+    { kind: "clone", repository: "https://me:secret@example.com/org/app" },
+    {
+      kind: "repositories",
+      repositories: [{ repository: "ssh://git:secret@example.com/org/app" }],
+    },
+  ]) {
+    const response = await api("/api/sessions", { environment, workspace });
+
+    expect(response.status).toBe(400);
+
+    expect(await response.json()).toEqual({
+      error:
+        "repository URLs can't hold credentials: connect the git host instead",
+    });
+  }
+});
+
 test("keeps a worktree with unpushed work on archive until the user forces removal", async () => {
   const checkout = await pushedCheckout();
 
