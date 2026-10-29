@@ -6,12 +6,20 @@ import {
   fauxAssistantMessage,
   fauxProvider,
   fauxText,
+  fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { Environment, Session } from "@pipoca/protocol";
+import type {
+  Environment,
+  Prompt,
+  Session,
+  SessionEvent,
+} from "@pipoca/protocol";
 import { runAgent } from "./agent";
 import { supervised } from "./restart";
 import { serve, type ServeOptions } from "./serve";
+import { readSse } from "./sse";
+import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
 let root: string | undefined;
@@ -267,6 +275,133 @@ test("counts a Session its own runner is starting, and none of another runner's"
   finish();
   stopOther.abort();
   await otherRunner;
+}, 30_000);
+
+test("shows a waiting Session's open prompt again after the server restarts", async () => {
+  root = await realpath(await mkdtemp(join(tmpdir(), "pipoca-restart-")));
+  const database = join(root, "server.db");
+  const extension = join(root, "ask.ts");
+
+  await writeFile(
+    extension,
+    `export default (pi) => pi.registerTool({
+      name: "ask",
+      label: "Ask",
+      description: "Asks the user",
+      parameters: { type: "object", properties: {} },
+      execute: async (_id, _params, _signal, _update, ctx) => {
+        const picked = await ctx.ui.select("Which one?", ["red", "blue"]);
+        return { content: [{ type: "text", text: "picked " + picked }], details: {} };
+      },
+    });`,
+  );
+
+  const faux = fauxProvider();
+
+  const runtime = await ModelRuntime.create({
+    authPath: join(root, "auth.json"),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+
+  runtime.registerNativeProvider(faux.provider);
+
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("ask", {})], { stopReason: "toolUse" }),
+    fauxAssistantMessage([fauxText("done")]),
+  ]);
+
+  await start({ database });
+  const port = Number(server?.url.port);
+
+  const runners = runnerCredentials(
+    { url: server?.url ?? new URL("http://localhost") },
+    async () => Promise.resolve(cookie),
+  );
+
+  const stopAgent = new AbortController();
+
+  const agent = runAgent({
+    server: server?.url.href ?? "",
+    provider: "laptop",
+    credential: { key: await runners.key("laptop") },
+    dataDir: join(root, "laptop"),
+    extensionPaths: [extension],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+    log: () => undefined,
+    signal: stopAgent.signal,
+  });
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        workspace: { kind: "folder", path: root },
+        firstMessage: "Pick a colour",
+      })
+    ).json()) as Session;
+
+    const firstPrompt = async (): Promise<Prompt | undefined> => {
+      const response = await api(`/api/sessions/${session.id}/events`);
+      for await (const data of readSse(response)) {
+        const event = data as SessionEvent;
+        if (event.type === "live" && event.event.type === "prompt") {
+          return event.event.prompt;
+        }
+      }
+
+      return undefined;
+    };
+
+    await firstPrompt();
+    await server?.stop();
+
+    server = serve({
+      port,
+      database,
+      sessions: { pollWaitMs: 100 },
+      log: () => undefined,
+    });
+
+    const asked = await Promise.race([
+      firstPrompt(),
+      Bun.sleep(5_000).then(() => undefined),
+    ]);
+
+    let restarted = (await (
+      await api(`/api/sessions/${session.id}`)
+    ).json()) as Session;
+
+    while (!restarted.online) {
+      await Bun.sleep(20);
+
+      restarted = (await (
+        await api(`/api/sessions/${session.id}`)
+      ).json()) as Session;
+    }
+
+    expect(asked?.title).toBe("Which one?");
+    expect(restarted).toMatchObject({ status: "running", waiting: true });
+
+    const answered = await api(`/api/sessions/${session.id}/commands`, {
+      type: "answer",
+      id: asked?.id,
+      value: "blue",
+    });
+
+    expect(answered.status).toBe(202);
+
+    const response = await api(`/api/sessions/${session.id}/events`);
+    for await (const data of readSse(response)) {
+      const event = data as SessionEvent;
+      if (event.type === "entry" && event.entry.includes("picked blue")) {
+        break;
+      }
+    }
+  } finally {
+    stopAgent.abort();
+    await agent;
+  }
 }, 30_000);
 
 test("leaves no supervisor mark for a server started inside a Session", () => {
