@@ -60,15 +60,23 @@ const profileFields = {
 const pluginInstructions = `An in-place plugin is a folder in the server's plugins folder, named by its id (lowercase letters, digits and dashes). Write its files with plugins_write_file, then plugins_build to check it builds. You never turn a plugin on: tell the user to turn it on on the Plugins page and restart the server, since its code then runs in the server and on runners. A plugin that is turned on can't be changed until the user turns it off. After writing, always build, then tell the user in a sentence what you wrote, whether it builds, and that they turn it on on the Plugins page; if a tool refuses, say why.
 
 Its package.json has "type": "module", any npm "dependencies" its parts import, and a "pipoca" field:
-- id (the folder's name), title, description, engine: 1;
+- id (the folder's name), title, description, engine: 1, and an optional version;
 - capabilities: the parts of the server context its server part uses, some of tools, toolsets, events, sessions, environments, profiles, routes, models;
 - parts: server, web and session, each a TypeScript or JavaScript file, all optional;
 - ownSessionsOnly: true to load its Session part only in the Sessions its server part owns;
 - settings: optional, by name, each { type: "string" | "number" | "boolean" | "choice" | "strings", title, description?, default, options? for choice, min?/max? for number }.
 
-The server part's default export is { name: <id>, register(context) }. context.routes.handle(async (request, path) => Response) answers /api/plugins/<id>/<path>, so it needs no web framework such as Express; context.settings.get() returns its settings; context.tools, context.toolsets and context.events register tools, meta toolsets and event listeners.
-The web part's default export is a WebPlugin { name: <id>, nav?: { label, Page } , SessionPanel?, SessionHeader?, tools?, widgets? }. It imports react, react-dom, @pipoca/ui and @pipoca/plugins/web from the page, can't import CSS or other files, and styles itself with @pipoca/ui components.
-The Session part's default export is a SessionPlugin { name: <id>, extension?: (cloud) => Pi extension factory, packages?: Pi packages, tools?: (cloud) => Pi tool definitions }. It can't import files other than code.`;
+Type each part with import type from @pipoca/plugins (ServerPlugin, SessionPlugin) or @pipoca/plugins/web (WebPlugin) and check its default export with satisfies.
+
+The server part's default export is a ServerPlugin { name: <id>, register(context) }. Reaching a context member whose capability isn't declared fails the plugin when it registers.
+- context.routes.handle((request, path, caller) => Response | Promise<Response>) answers /api/plugins/<id>/<path>, so it needs no web framework such as Express; caller is { session, actor } when its Session part sent the request.
+- context.store is its SQLite database: exec(sql), all(sql, ...params), run(sql, ...params), and seal(text, context)/open(sealed, context) for secrets. Name its tables <id>_<table>.
+- context.settings.get() returns its settings. context.config.get() and set(value) read and replace its key in the server's pipoca.json, and context.config.dir is a folder of its own.
+- context.changes.publish(name) tells open pages that something changed; they hear the topic "<id>.<name>".
+- context.tools, toolsets, events, sessions, environments, profiles and models each need their capability: they register tools, meta toolsets and event listeners, start and message Sessions, give runners tokens, provide Profiles, and offer models.
+- context.owner, context.signal (aborted when the server stops) and context.log(message, fields?) need no capability.
+The web part's default export is a WebPlugin { name: <id>, nav?: { label, Page, Items?, fills? }, Home?, sessionPath?, SessionPanel?, SessionHeader?, EnvironmentSection?, SettingsSection?, tools?, widgets?, notices?, links?, repositories? }. Page gets { context, path }: context.request(path, body?) calls its own routes, a GET or, with a body, a JSON POST, and context.settings holds its settings. useLoaded(load, key, { topics, everyMs }) from @pipoca/plugins/web loads data and loads it again when a topic such as "<id>.<name>" changes. It imports react, react-dom, @pipoca/ui and @pipoca/plugins/web from the page, can't import CSS or other files, and styles itself with @pipoca/ui components.
+The Session part's default export is a SessionPlugin { name: <id>, extension?: (cloud) => Pi extension factory, packages?: Pi packages, tools?: (cloud) => Pi tool definitions }. cloud.request(path, init?) calls its own routes as the Session, cloud.settings holds its settings when the Session started, cloud.publish(key, data) shares a value with everyone watching the Session, and cloud.log(message, fields?) logs. It can't import files other than code.`;
 
 // The kernel's meta toolsets (ADR 0035). Each tool is a request to the route
 // the web UI uses for the same change.

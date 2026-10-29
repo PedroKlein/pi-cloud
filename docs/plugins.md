@@ -31,7 +31,7 @@ A plugin is a folder with a `package.json`. The `pipoca` field is its manifest:
 }
 ```
 
-Every part is optional. Write them in TypeScript or JavaScript. The server bundles each one with its npm `dependencies`, so there's no build step of your own.
+Every part is optional. Write them in TypeScript or JavaScript. `version` is optional and shows on the Plugins page. The server bundles each one with its npm `dependencies`, so there's no build step of your own.
 
 ## The server part
 
@@ -50,7 +50,7 @@ export default {
 } satisfies ServerPlugin;
 ```
 
-`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
+`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there, and `auth` is only for built-in plugins. `context.store` is the plugin's own SQLite database, with `exec`, `all` and `run` for SQL and `seal` and `open` for secrets it keeps in a table. Name its tables `<id>_<table>`. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 
 | Capability     | What it gives                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------- |
@@ -97,7 +97,9 @@ export default {
 } satisfies WebPlugin;
 ```
 
-The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
+`Page` gets `{ context, path }`, where `path` is the rest of the address after the plugin's page. `context.request(path, body)` calls the plugin's own routes, as a GET, or a JSON POST when it has a body, and `context.settings` holds its settings. `nav` can also list links under the entry with `Items`, and say with `fills` which paths fill the window.
+
+The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, `links`, `sessionPath` for where a Session the plugin owns opens, and `repositories` for the repositories New Session offers.
 
 `useLoaded(load, key, { topics })` from `@pipoca/plugins/web` loads data and loads it again when one of the topics changes, such as `sessions`, `profiles`, `environments`, `plugins` or your own `<id>.<name>`. Pass `everyMs` instead for data that changes outside Pipoca.
 
@@ -105,7 +107,7 @@ The part shares `react`, `react-dom`, `@pipoca/ui` and `@pipoca/plugins/web` wit
 
 ## The Session part
 
-The Session part runs in every Session's process, on whichever machine runs it, including a laptop. Set `ownSessionsOnly` to load it only in the Sessions your server part starts. Its default export is a `SessionPlugin`:
+The Session part runs in every Session's process, on whichever machine runs it, including a laptop. Set `ownSessionsOnly` in the manifest to load it only in the Sessions your server part starts. Its default export is a `SessionPlugin`:
 
 ```ts
 import type { SessionPlugin } from "@pipoca/plugins";
@@ -126,7 +128,7 @@ export default {
 } satisfies SessionPlugin;
 ```
 
-`extension` returns a Pi extension (Pi's `docs/extensions.md`). `cloud.request` calls the plugin's own routes on behalf of the Session, and `cloud.settings` holds its settings as they were when the Session started. Instead of an extension, a part can list Pi `packages` to load, or return `tools`. Runners fetch the bundle by its hash when a Session starts. The part can't import files other than code.
+`extension` returns a Pi extension (Pi's `docs/extensions.md`). `cloud.request` calls the plugin's own routes on behalf of the Session, and `cloud.settings` holds its settings as they were when the Session started. `cloud.publish(key, data)` shares a value with everyone watching the Session, `cloud.checkouts` lists the git checkouts in its workspace, `cloud.askQuestions` asks the user questions, and `cloud.log` logs a message with fields. Instead of an extension, a part can list Pi `packages` to load, or return `tools`. Runners fetch the bundle by its hash when a Session starts. The part can't import files other than code.
 
 ## Install it
 
