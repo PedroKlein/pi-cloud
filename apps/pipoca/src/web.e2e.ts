@@ -799,6 +799,33 @@ test("puts a pin back when the server doesn't save it", async () => {
   await page.unroute("**/api/pinned-pages");
 });
 
+test("connects a model provider from Settings by answering its prompts", async () => {
+  await page.goto(server.url.href);
+  await openSettings("Logins");
+
+  await page.getByRole("button", { name: "Connect a provider" }).click();
+
+  const form = page.getByRole("form", { name: "Connect a model provider" });
+  await form.getByLabel("Provider").selectOption({ label: "Mistral" });
+  await form.getByLabel("Log in with").selectOption({ label: "API key" });
+  await form.getByRole("button", { name: "Connect" }).click();
+
+  const card = page.getByRole("region", { name: "Connecting Mistral" });
+  await card.locator('input[type="password"]').fill("sk-mistral");
+  await card.getByRole("button", { name: "Continue" }).click();
+
+  await card.getByText("Connected to Mistral.").waitFor();
+
+  await page
+    .getByRole("list", { name: "Your model logins" })
+    .getByText("mistral")
+    .waitFor();
+
+  await card.getByRole("button", { name: "Close" }).click();
+  await card.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Log out of mistral" }).click();
+});
+
 test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.goto(server.url.href);
   await openSettings("MCP clients");

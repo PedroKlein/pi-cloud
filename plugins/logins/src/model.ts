@@ -1,4 +1,4 @@
-import type { Credential } from "@earendil-works/pi-ai";
+import type { AuthEvent, AuthType, Credential } from "@earendil-works/pi-ai";
 import type { McpLoginState } from "@pipoca/plugins";
 
 // What the plugin's routes send and take, shared with its Session and web
@@ -20,6 +20,36 @@ export interface Account {
   readonly mcp: readonly {
     readonly server: string;
     readonly updatedAt: string;
+  }[];
+  // The sign-in the person started from Settings, until they dismiss it.
+  readonly connection?: Connection;
+}
+
+export interface Connection {
+  readonly provider: string;
+  readonly name: string;
+  readonly type: AuthType;
+  readonly state: "running" | "done" | "failed";
+  readonly events: readonly AuthEvent[];
+  readonly prompt?: ConnectionPrompt;
+  readonly error?: string;
+}
+
+export interface ConnectionPrompt {
+  readonly id: string;
+  readonly type: "text" | "secret" | "manual_code" | "select";
+  readonly message: string;
+  readonly placeholder?: string;
+  readonly options?: readonly { readonly id: string; readonly label: string }[];
+}
+
+// A provider that the server can sign a person in to, by the ways it takes.
+export interface Connectable {
+  readonly id: string;
+  readonly name: string;
+  readonly methods: readonly {
+    readonly type: AuthType;
+    readonly label: string;
   }[];
 }
 

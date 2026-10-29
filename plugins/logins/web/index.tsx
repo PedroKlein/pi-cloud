@@ -5,8 +5,9 @@ import {
   type WebPlugin,
 } from "@pipoca/plugins/web";
 import { Button, Section } from "@pipoca/ui";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import type { Account } from "../src/model";
+import { ConnectForm, ConnectionCard } from "./connect";
 
 export const logins: WebPlugin = {
   name: "logins",
@@ -26,17 +27,62 @@ function SettingsSection({
     { topics: ["logins.logins"] },
   );
 
+  const [choosing, setChoosing] = useState(false);
+  const [error, setError] = useState<string>();
+
   if (value === undefined) {
     return null;
   }
 
+  const send = (path: string, init: RequestInit): void => {
+    json(context.request(path, init)).then(
+      () => {
+        setChoosing(false);
+        setError(undefined);
+        reload();
+      },
+      (reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+        reload();
+      },
+    );
+  };
+
   return (
     <Section title="Logins">
       <p className="text-ui text-fg-dim">
-        Your Sessions use these logins on every runner. Log in to a model
-        provider with /login and to an MCP server with /mcp login in any
-        Session.
+        Your Sessions use these logins on every runner. Connect a model provider
+        here or with /login in any Session, and an MCP server with /mcp login.
       </p>
+      {value.connection !== undefined && (
+        <ConnectionCard connection={value.connection} send={send} />
+      )}
+      {value.connection === undefined && choosing && (
+        <ConnectForm
+          context={context}
+          send={send}
+          onClose={() => {
+            setChoosing(false);
+          }}
+        />
+      )}
+      {value.connection === undefined && !choosing && (
+        <div>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setChoosing(true);
+            }}
+          >
+            Connect a provider
+          </Button>
+        </div>
+      )}
+      {error !== undefined && (
+        <p role="alert" className="text-caption text-failed">
+          {error}
+        </p>
+      )}
       <ul
         aria-label="Your model logins"
         className="flex flex-col gap-2 rounded-lg border border-line bg-elevated shadow-xs p-3 text-ui"

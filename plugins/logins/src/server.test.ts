@@ -6,6 +6,7 @@ import {
   fakeUser,
   served,
 } from "@pipoca/plugins/testing";
+import type { Account, Connectable } from "./model";
 import { logins } from "./server";
 
 function registered(): {
@@ -176,4 +177,139 @@ test("a person is offered Pi's models of the providers they logged in to", async
   expect(offered.every(({ provider }) => provider === "anthropic")).toBe(true);
   expect(offer("environment-1", "bo").models).toEqual([]);
   expect(offer("environment-1").models).toEqual([]);
+});
+
+async function connectable(route: PluginRoute): Promise<void> {
+  // Pi's providers load in the background.
+  for (let tries = 0; tries < 100; tries++) {
+    const providers = (await (
+      await call(route, fakeUser({ id: "ana" }), "providers")
+    ).json()) as unknown[];
+
+    if (providers.length > 0) {
+      return;
+    }
+
+    await Bun.sleep(20);
+  }
+}
+
+async function connection(
+  route: PluginRoute,
+  userId: string,
+  until: (account: Account) => boolean,
+): Promise<Account> {
+  for (let tries = 0; ; tries++) {
+    const account = (await (
+      await call(route, fakeUser({ id: userId }), "account")
+    ).json()) as Account;
+
+    if (until(account) || tries === 100) {
+      return account;
+    }
+
+    await Bun.sleep(20);
+  }
+}
+
+test("a person connects a provider from Settings by answering Pi's prompts", async () => {
+  const { route } = registered();
+  await connectable(route);
+
+  const providers = (await (
+    await call(route, fakeUser({ id: "ana" }), "providers")
+  ).json()) as Connectable[];
+
+  expect(providers.find(({ id }) => id === "openai")?.methods).toContainEqual({
+    type: "api_key",
+    label: "API key",
+  });
+
+  await call(route, fakeUser({ id: "ana" }), "connect", {
+    provider: "openai",
+    type: "api_key",
+  });
+
+  const asked = await connection(
+    route,
+    "ana",
+    ({ connection: current }) => current?.prompt !== undefined,
+  );
+
+  const prompt = asked.connection?.prompt;
+  expect(prompt).toMatchObject({ type: "secret" });
+
+  const answered = await call(
+    route,
+    fakeUser({ id: "ana" }),
+    "connection/answer",
+    { prompt: prompt?.id, answer: "sk-ana" },
+  );
+
+  expect(answered.status).toBe(200);
+
+  const done = await connection(
+    route,
+    "ana",
+    ({ connection: current }) => current?.state !== "running",
+  );
+
+  expect(done.connection?.state).toBe("done");
+  expect(done.logins).toMatchObject([{ provider: "openai", type: "api_key" }]);
+
+  const read = await route(
+    new Request("http://logins/credentials?values"),
+    "credentials",
+    runnerOf("ana"),
+  );
+
+  expect(await read.json()).toEqual({
+    openai: { type: "api_key", key: "sk-ana" },
+  });
+
+  const other = await call(route, fakeUser({ id: "bo" }), "account");
+  expect(await other.json()).toEqual({ logins: [], mcp: [] });
+});
+
+test("a person dismisses a sign-in and it stops asking", async () => {
+  const { route } = registered();
+  await connectable(route);
+
+  await call(route, fakeUser({ id: "ana" }), "connect", {
+    provider: "openai",
+    type: "api_key",
+  });
+
+  const asked = await connection(
+    route,
+    "ana",
+    ({ connection: current }) => current?.prompt !== undefined,
+  );
+
+  const dismissed = await route(
+    new Request("http://logins/connection", { method: "DELETE" }),
+    "connection",
+    fakeUser({ id: "ana" }),
+  );
+
+  expect(await dismissed.json()).toEqual({ logins: [], mcp: [] });
+
+  const late = await call(route, fakeUser({ id: "ana" }), "connection/answer", {
+    prompt: asked.connection?.prompt?.id,
+    answer: "sk-ana",
+  });
+
+  expect(late.status).toBe(409);
+});
+
+test("a sign-in a provider doesn't take is refused", async () => {
+  const { route } = registered();
+  await connectable(route);
+
+  const refused = await call(route, fakeUser({ id: "ana" }), "connect", {
+    provider: "openai-codex",
+    type: "api_key",
+  });
+
+  expect(refused.status).toBe(400);
 });
