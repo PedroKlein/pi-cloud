@@ -20,9 +20,19 @@ export interface PickerOption {
 
 const gutter = 16;
 
+type Row =
+  | { readonly kind: "option"; readonly option: PickerOption }
+  | {
+      readonly kind: "group";
+      readonly group: string;
+      readonly count: number;
+      readonly open: boolean;
+    };
+
 // A chip that opens a searchable list, like Claude Code's composer pickers.
 // Options come grouped in the order given.
 export function Picker({
+  openGroups,
   label,
   children,
   options,
@@ -38,6 +48,10 @@ export function Picker({
   onChange,
   chip = true,
 }: {
+  // Folds every other group to its name until it is opened or searched, so a
+  // long list such as many providers' models stays short. A group with a
+  // selected option stays open.
+  readonly openGroups?: readonly string[];
   readonly label: string;
   readonly children: ReactNode;
   readonly options: readonly PickerOption[];
@@ -72,6 +86,7 @@ export function Picker({
   const [end, setEnd] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [unfolded, setUnfolded] = useState<readonly string[]>([]);
   const panel = useRef<HTMLDivElement>(null);
 
   // A chip in the middle of a phone screen has room on neither side, so the
@@ -94,11 +109,22 @@ export function Picker({
   }, [open]);
 
   const needle = query.trim().toLowerCase();
+  const words = needle.split(/\s+/).filter((word) => word !== "");
 
+  // Each word may match the label, the detail, the group or the value, so
+  // "sap sonnet" finds a provider's model. A search shows an option listed
+  // twice, such as a recent model, only where it is listed last.
   const matching = options.filter(
-    ({ label: name, detail }) =>
-      name.toLowerCase().includes(needle) ||
-      (detail?.toLowerCase().includes(needle) ?? false),
+    (option, index) =>
+      (needle === "" ||
+        !options
+          .slice(index + 1)
+          .some(({ value }) => value === option.value)) &&
+      words.every((word) =>
+        [option.label, option.detail, option.group, option.value].some(
+          (text) => text?.toLowerCase().includes(word) ?? false,
+        ),
+      ),
   );
 
   const made = needle === "" ? undefined : create?.(query.trim());
@@ -108,6 +134,53 @@ export function Picker({
       ? [made, ...matching]
       : matching;
 
+  const folding = openGroups !== undefined && needle === "";
+
+  const opened = (group: string): boolean =>
+    !folding ||
+    openGroups.includes(group) ||
+    unfolded.includes(group) ||
+    shown.some(
+      (option) => option.group === group && selected.includes(option.value),
+    );
+
+  const rows: Row[] = [];
+
+  for (const [index, option] of shown.entries()) {
+    const { group } = option;
+
+    if (folding && group !== undefined && group !== shown[index - 1]?.group) {
+      rows.push({
+        kind: "group",
+        group,
+        count: shown.filter((other) => other.group === group).length,
+        open: opened(group),
+      });
+    }
+
+    if (group === undefined || opened(group)) {
+      rows.push({ kind: "option", option });
+    }
+  }
+
+  // An opened group moves to the top of the list, so its models show even
+  // when it was the last one.
+  const toggle = (group: string, index: number): void => {
+    const opening = !opened(group);
+
+    setUnfolded((groups) =>
+      opening ? [...groups, group] : groups.filter((known) => known !== group),
+    );
+
+    if (opening) {
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`${listId}-${String(index)}`)
+          ?.scrollIntoView({ block: "start" });
+      });
+    }
+  };
+
   const search = (text: string): void => {
     setQuery(text);
     setActive(0);
@@ -116,6 +189,7 @@ export function Picker({
 
   const close = (): void => {
     setOpen(false);
+    setUnfolded([]);
     search("");
   };
 
@@ -146,7 +220,7 @@ export function Picker({
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
-        setActive((index) => Math.min(index + 1, shown.length - 1));
+        setActive((index) => Math.min(index + 1, rows.length - 1));
         break;
       case "ArrowUp":
         event.preventDefault();
@@ -154,9 +228,11 @@ export function Picker({
         break;
       case "Enter": {
         event.preventDefault();
-        const option = shown[active];
-        if (option) {
-          choose(option.value);
+        const row = rows[active];
+        if (row?.kind === "group") {
+          toggle(row.group, active);
+        } else if (row) {
+          choose(row.option.value);
         }
 
         break;
@@ -164,7 +240,7 @@ export function Picker({
     }
   };
 
-  const activeId = shown[active] ? `${listId}-${String(active)}` : undefined;
+  const activeId = rows[active] ? `${listId}-${String(active)}` : undefined;
 
   return (
     <div
@@ -264,57 +340,97 @@ export function Picker({
                 Nothing matches.
               </li>
             )}
-            {shown.map((option, index) => (
-              <li key={option.value} className="contents">
-                {option.group !== undefined &&
-                  option.group !== shown[index - 1]?.group && (
-                    <span
-                      aria-hidden
-                      className="block px-2 pt-2.5 pb-1 text-caption font-medium text-fg-dim"
-                    >
-                      {option.group}
-                    </span>
-                  )}
-                <div
-                  id={`${listId}-${String(index)}`}
-                  role="option"
-                  aria-selected={selected.includes(option.value)}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onMouseEnter={() => {
-                    setActive(index);
-                  }}
-                  onClick={() => {
-                    choose(option.value);
-                  }}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-ui transition-colors duration-100",
-                    index === active && "bg-hover",
-                  )}
-                >
-                  <Icon
-                    name="check"
+            {rows.map((row, index) =>
+              row.kind === "group" ? (
+                <li key={`group ${row.group}`} className="contents">
+                  <div
+                    id={`${listId}-${String(index)}`}
+                    role="option"
+                    aria-label={`${row.group} (${String(row.count)})`}
+                    aria-selected={false}
+                    aria-expanded={row.open}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    onMouseEnter={() => {
+                      setActive(index);
+                    }}
+                    onClick={() => {
+                      toggle(row.group, index);
+                    }}
                     className={cn(
-                      "size-3.5 shrink-0 text-accent",
-                      !selected.includes(option.value) && "invisible",
+                      "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-caption font-medium text-fg-dim transition-colors duration-100",
+                      index === active && "bg-hover text-fg",
                     )}
-                  />
-                  <span
-                    title={option.label}
-                    className="min-w-0 flex-1 truncate text-fg"
                   >
-                    {option.label}
-                  </span>
-                  {option.detail !== undefined && (
-                    // Right to left keeps the end of a long path in view.
-                    <span className="max-w-[55%] truncate text-caption text-fg-dim [direction:rtl]">
-                      <bdi>{option.detail}</bdi>
+                    <Icon
+                      name="chevron-down"
+                      className={cn(
+                        "size-3.5 shrink-0 transition-transform duration-150",
+                        !row.open && "-rotate-90",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{row.group}</span>
+                    <span className="font-normal">{row.count}</span>
+                  </div>
+                </li>
+              ) : (
+                <li
+                  key={`${row.option.group ?? ""} ${row.option.value}`}
+                  className="contents"
+                >
+                  {!folding &&
+                    row.option.group !== undefined &&
+                    row.option.group !== optionBefore(rows, index)?.group && (
+                      <span
+                        aria-hidden
+                        className="block px-2 pt-2.5 pb-1 text-caption font-medium text-fg-dim"
+                      >
+                        {row.option.group}
+                      </span>
+                    )}
+                  <div
+                    id={`${listId}-${String(index)}`}
+                    role="option"
+                    aria-selected={selected.includes(row.option.value)}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    onMouseEnter={() => {
+                      setActive(index);
+                    }}
+                    onClick={() => {
+                      choose(row.option.value);
+                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-ui transition-colors duration-100",
+                      folding && row.option.group !== undefined && "pl-5",
+                      index === active && "bg-hover",
+                    )}
+                  >
+                    <Icon
+                      name="check"
+                      className={cn(
+                        "size-3.5 shrink-0 text-accent",
+                        !selected.includes(row.option.value) && "invisible",
+                      )}
+                    />
+                    <span
+                      title={row.option.label}
+                      className="min-w-0 flex-1 truncate text-fg"
+                    >
+                      {row.option.label}
                     </span>
-                  )}
-                </div>
-              </li>
-            ))}
+                    {row.option.detail !== undefined && (
+                      // Right to left keeps the end of a long path in view.
+                      <span className="max-w-[55%] truncate text-caption text-fg-dim [direction:rtl]">
+                        <bdi>{row.option.detail}</bdi>
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ),
+            )}
           </ul>
           {footer !== undefined && (
             <div className="border-t border-line px-2 pt-2 pb-1 text-caption text-fg-dim">
@@ -342,4 +458,13 @@ export function Picker({
       )}
     </div>
   );
+}
+
+function optionBefore(
+  rows: readonly Row[],
+  index: number,
+): PickerOption | undefined {
+  const row = rows[index - 1];
+
+  return row?.kind === "option" ? row.option : undefined;
 }

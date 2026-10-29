@@ -10,4 +10,5 @@ export { ListInput } from "./list-input";
 export { PageTitle, Section } from "./page";
 export { Picker, type PickerOption } from "./picker";
 export { Select } from "./select";
+export { Slider } from "./slider";
 export { Switch } from "./switch";
