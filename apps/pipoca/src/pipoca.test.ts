@@ -1905,12 +1905,17 @@ test("lists an Environment for each provider with the folders and models its age
     ).json()) as Environment[];
   }
 
+  const { user } = (await (await api("/api/auth")).json()) as {
+    user: { id: string };
+  };
+
+  // A runner made it, so it is the first user's (ADR 0049).
   expect(environments).toMatchObject([
     {
       id: expect.any(String) as unknown,
       name: "laptop",
       provider: "laptop",
-      ownerId: "local",
+      ownerId: user.id,
       online: true,
       folders: [root, join(root, "origin")],
     },

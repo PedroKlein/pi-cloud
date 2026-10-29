@@ -1,5 +1,7 @@
 import {
+  type Environment,
   type PluginInfo,
+  type Session,
   type SessionEvent,
   protocolVersion,
   type EnvironmentKey,
@@ -191,6 +193,22 @@ export function createHandler(
       auth.userById(userIdOf(actor))?.admin === true
         ? await route(request, params, actor, isAdmin)
         : errorReply(403, "admin_only", "Only admins write and build plugins.");
+
+  // A person reaches only their own Sessions. An admin also reaches
+  // everyone's outline, and stops, archives or deletes them (ADR 0049).
+  const own =
+    (route: BrowserRoute): BrowserRoute =>
+    async (request, params, actor, isAdmin) =>
+      sessions.belongsTo(params[0] ?? "", userIdOf(actor))
+        ? await route(request, params, actor, isAdmin)
+        : notFound();
+
+  const ownOrAdmin =
+    (route: BrowserRoute): BrowserRoute =>
+    async (request, params, actor, isAdmin) =>
+      isAdmin
+        ? await route(request, params, actor, isAdmin)
+        : await own(route)(request, params, actor, isAdmin);
 
   const sessionAction =
     (message: string, act: (id: string) => Result<unknown>): Route =>
@@ -525,15 +543,28 @@ export function createHandler(
     [
       "GET",
       /^\/api\/environments$/,
-      (_request, _params, actor) =>
-        Response.json(sessions.environments(userIdOf(actor))),
+      (request, _params, actor, isAdmin) => {
+        const person = userIdOf(actor);
+        const everyone = isAdmin && peopleAll(request);
+
+        return Response.json(
+          sessions
+            .environments(person)
+            .filter(({ ownerId }) => everyone || ownerId === person)
+            .map((environment) =>
+              environment.ownerId === person
+                ? environment
+                : environmentOutline(environment),
+            ),
+        );
+      },
     ],
     [
       "POST",
       /^\/api\/environments$/,
-      async (request) => {
+      async (request, _params, actor) => {
         const { name } = createEnvironment(await readJson(request));
-        const created = sessions.createEnvironment(name);
+        const created = sessions.createEnvironment(name, userIdOf(actor));
         if (!created.ok) {
           return reply(created, 201);
         }
@@ -559,10 +590,10 @@ export function createHandler(
     [
       "POST",
       /^\/api\/environments\/([^/]+)\/key$/,
-      (_request, [id = ""]) => {
+      (_request, [id = ""], actor) => {
         const environment = sessions
           .environments()
-          .find((each) => each.id === id);
+          .find((each) => each.id === id && each.ownerId === userIdOf(actor));
 
         if (!environment) {
           return notFound();
@@ -580,7 +611,15 @@ export function createHandler(
     [
       "PATCH",
       /^\/api\/environments\/([^/]+)$/,
-      async (request, [id = ""]) => {
+      async (request, [id = ""], actor) => {
+        if (
+          !sessions
+            .environments()
+            .some((each) => each.id === id && each.ownerId === userIdOf(actor))
+        ) {
+          return notFound();
+        }
+
         const updated = sessions.updateEnvironment(
           id,
           environmentUpdate(await readJson(request)),
@@ -599,11 +638,14 @@ export function createHandler(
     [
       "GET",
       /^\/api\/sessions$/,
-      (request) => {
+      (request, _params, actor, isAdmin) => {
         const query = new URL(request.url).searchParams;
 
         const all = sessions.list({
           archived: query.get("archived") === "true",
+          ...(!(isAdmin && peopleAll(request)) && {
+            person: userIdOf(actor),
+          }),
         });
 
         // An owned Session shows only inside its plugin, unless that plugin
@@ -622,7 +664,7 @@ export function createHandler(
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/fork$/,
-      async (request, [id = ""], actor) => {
+      own(async (request, [id = ""], actor) => {
         const forked = sessions.fork(id, {
           ...createFork(await readJson(request)),
           actor,
@@ -638,7 +680,7 @@ export function createHandler(
         }
 
         return reply(forked, 201);
-      },
+      }),
     ],
     [
       "POST",
@@ -663,16 +705,23 @@ export function createHandler(
     [
       "GET",
       /^\/api\/sessions\/([^/]+)$/,
-      (_request, [id = ""]) => {
+      ownOrAdmin((_request, [id = ""], actor) => {
         const session = sessions.get(id);
+        if (session === undefined) {
+          return notFound();
+        }
 
-        return session ? Response.json(session) : notFound();
-      },
+        return Response.json(
+          sessions.belongsTo(id, userIdOf(actor))
+            ? session
+            : sessionOutline(session),
+        );
+      }),
     ],
     [
       "GET",
       /^\/api\/sessions\/([^/]+)\/events$/,
-      (request, [id = ""]) => {
+      own((request, [id = ""]) => {
         let send: (event: SessionEvent) => void = () => undefined;
 
         const watch = sessions.watch(
@@ -696,33 +745,43 @@ export function createHandler(
 
           return watch.value.stop;
         });
-      },
+      }),
     ],
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/archive$/,
-      sessionAction("session archived", (id) => sessions.archive(id)),
+      ownOrAdmin(
+        sessionAction("session archived", (id) => sessions.archive(id)),
+      ),
     ],
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/unarchive$/,
-      sessionAction("session unarchived", (id) => sessions.unarchive(id)),
+      ownOrAdmin(
+        sessionAction("session unarchived", (id) => sessions.unarchive(id)),
+      ),
     ],
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/remove-workspace$/,
-      sessionAction("workspace removal forced", (id) =>
-        sessions.forceRemoval(id),
+      ownOrAdmin(
+        sessionAction("workspace removal forced", (id) =>
+          sessions.forceRemoval(id),
+        ),
       ),
     ],
     [
       "POST",
       /^\/api\/sessions\/([^/]+)\/commands$/,
-      async (request, [id = ""], actor) =>
-        reply(
-          sessions.send(id, browserCommand(await readJson(request), actor)),
-          202,
-        ),
+      async (request, [id = ""], actor, isAdmin) => {
+        const command = browserCommand(await readJson(request), actor);
+
+        const allowed =
+          sessions.belongsTo(id, userIdOf(actor)) ||
+          (isAdmin && command.type === "abort");
+
+        return allowed ? reply(sessions.send(id, command), 202) : notFound();
+      },
     ],
   ];
 
@@ -933,4 +992,18 @@ function unsupportedVersion(request: Request): Response | undefined {
         "unsupported_version",
         `unsupported protocol version ${String(version)}`,
       );
+}
+
+function peopleAll(request: Request): boolean {
+  return new URL(request.url).searchParams.get("people") === "all";
+}
+
+// What an admin sees of someone else's Environment and Session: never
+// their variable values, folders or what they first asked (ADR 0049).
+function environmentOutline(environment: Environment): Environment {
+  return { ...environment, variables: {}, folders: [], models: [] };
+}
+
+function sessionOutline(session: Session): Session {
+  return { ...session, systemPrompt: null, firstMessage: null };
 }

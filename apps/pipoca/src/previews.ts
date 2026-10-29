@@ -307,7 +307,7 @@ export function previewBroker(options: {
 
       const sessionId = match[1] ?? "";
       const port = Number(match[2]);
-      if (sessions.get(sessionId) === undefined || port < 1 || port > 65535) {
+      if (!sessions.belongsTo(sessionId, user.id) || port < 1 || port > 65535) {
         return notFound();
       }
 
