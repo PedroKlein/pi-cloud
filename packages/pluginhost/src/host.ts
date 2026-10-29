@@ -189,7 +189,7 @@ export function startPlugins(
     >;
     readonly installed?: InstalledPlugins;
     // The Session parts built into the binary, besides installed ones.
-    readonly sessionParts?: readonly SessionPlugin[];
+    readonly sessionParts: readonly SessionPlugin[];
     readonly mcpServers?: ServerPluginContext["profiles"]["mcpServers"];
     readonly signal: AbortSignal;
     readonly log: Log;
@@ -815,7 +815,7 @@ export function startPlugins(
           running.map((name) => [name, values(name)]),
         ),
         ownSessionsOnly: [
-          ...(deps.sessionParts ?? [])
+          ...deps.sessionParts
             .filter(({ ownSessionsOnly: own }) => own === true)
             .map(({ name }) => name),
           ...[...sessionBundles.keys()].filter(
