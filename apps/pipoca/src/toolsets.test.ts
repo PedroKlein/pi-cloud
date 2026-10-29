@@ -248,6 +248,7 @@ test("creates a Project through the Projects plugin's route", async () => {
   faux.setResponses([
     call("projects_create", {
       name: "Shop",
+      goal: "Sell more shoes",
       repositories: ["https://example.com/shop.git"],
     }),
     fauxAssistantMessage([fauxText("created the Project")]),
@@ -257,11 +258,16 @@ test("creates a Project through the Projects plugin's route", async () => {
   await answerNext(metaSession.id, true);
   await follow(metaSession.id, entriesInclude("created the Project"));
 
-  const projects = await json<{ name: string }[]>(
+  const projects = await json<{ id: string; name: string }[]>(
     api("/api/plugins/projects/projects"),
   );
 
+  const project = await json<{ goal: string }>(
+    api(`/api/plugins/projects/projects/${projects[0]?.id ?? ""}`),
+  );
+
   expect(projects.map(({ name }) => name)).toEqual(["Shop"]);
+  expect(project.goal).toBe("Sell more shoes");
 });
 
 test("gives an ordinary Session none of the toolsets", async () => {

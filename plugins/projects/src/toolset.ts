@@ -3,6 +3,11 @@ import type { ProjectView } from "./model";
 
 const settingsFields = {
   name: { type: "string" },
+  goal: {
+    type: "string",
+    description:
+      "The outcome the Project works toward, given to its coordinator",
+  },
   instructions: {
     type: "string",
     description: "What the coordinator should know about the Project's goal",
