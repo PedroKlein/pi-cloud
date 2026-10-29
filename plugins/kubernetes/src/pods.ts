@@ -8,6 +8,7 @@ export interface PodOptions {
   readonly image: string;
   // The Pipoca image, which the binary is copied from.
   readonly binaryImage: string;
+  readonly binaryPullPolicy: string | undefined;
   // The server's in-cluster address.
   readonly server: string;
   // Added to the agent's own environment.
@@ -58,6 +59,9 @@ export function runnerPod(options: PodOptions): object {
         {
           name: "pipoca",
           image: options.binaryImage,
+          ...(options.binaryPullPolicy !== undefined && {
+            imagePullPolicy: options.binaryPullPolicy,
+          }),
           command: ["cp", "/usr/local/bin/pipoca", `${binaryDir}/pipoca`],
           volumeMounts: [{ name: "pipoca", mountPath: binaryDir }],
         },

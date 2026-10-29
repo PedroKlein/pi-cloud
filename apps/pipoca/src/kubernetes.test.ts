@@ -138,6 +138,7 @@ function startServer(database = ":memory:"): void {
       kubernetes(() => ({
         api: { url: api.url, namespace: "pi", token: () => "t" },
         image: "pipoca:test",
+        imagePullPolicy: "Always",
         server: "http://pipoca:7420",
         variables: { PIPOCA_FAUX_REPLY: "hi" },
         intervalMs: 20,
@@ -440,6 +441,18 @@ test("keeps a pod patch from giving runner pods a service account token", async 
   });
 
   expect(pod?.spec["serviceAccountName"]).toBeUndefined();
+});
+
+test("copies the binary from the Pipoca image pulled as the server's own", async () => {
+  const environment = await kubernetesEnvironment({});
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [pod] = api.pods.values();
+
+  expect(pod?.spec["initContainers"]).toMatchObject([
+    { image: "pipoca:test", imagePullPolicy: "Always" },
+  ]);
 });
 
 test("gives runner pods a home their user can write and leaves the mesh sidecar to the namespace", async () => {
