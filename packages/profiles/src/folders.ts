@@ -15,6 +15,7 @@ import {
   type Profile,
   type ProfileContent,
   type ProfileFiles,
+  emptyProfile,
   profilePath,
 } from "@pipoca/protocol";
 import {
@@ -260,6 +261,13 @@ export class ProfileFolders {
       } satisfies Meta),
     );
 
+    this.writeContent(id, content);
+  }
+
+  writeContent(id: string, content: Partial<ProfileContent>): void {
+    const dir = join(this.#root, id);
+    mkdirSync(dir, { recursive: true });
+
     if (content.settings !== undefined || content.packages !== undefined) {
       const { packages: old, ...settings } = this.#json(
         join(dir, "settings.json"),
@@ -339,6 +347,30 @@ export class BaseProfile {
     this.#dir = dir;
     this.#folder = new ProfileFolders(dirname(dir), log);
     this.#id = basename(dir);
+  }
+
+  read(): ProfileContent {
+    const {
+      packages,
+      agentsMd,
+      systemMd,
+      appendSystemMd,
+      mcpServers,
+      settings,
+    } = this.#folder.read(this.#id) ?? emptyProfile;
+
+    return {
+      packages,
+      agentsMd,
+      systemMd,
+      appendSystemMd,
+      mcpServers,
+      settings,
+    };
+  }
+
+  write(content: Partial<ProfileContent>): void {
+    this.#folder.writeContent(this.#id, content);
   }
 
   files(): ProfileFiles | undefined {

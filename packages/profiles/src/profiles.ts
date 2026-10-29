@@ -8,6 +8,7 @@ import {
   type PiPackage,
   type Profile,
   type ProfileContent,
+  emptyProfile,
   profilePath,
 } from "@pipoca/protocol";
 import {
@@ -220,6 +221,33 @@ export class Profiles {
   }
 
   // The admin's base Profile, which every Profile layers over (ADR 0044).
+  base(): ProfileContent {
+    return this.#folders.base?.read() ?? emptyProfile;
+  }
+
+  // Throws InvalidProfile when the body isn't Profile content.
+  updateBase(body: unknown, admin: boolean): Result<ProfileContent> {
+    const base = this.#folders.base;
+    if (!base) {
+      return { ok: false, reason: "not_found" };
+    }
+
+    if (!admin) {
+      return { ok: false, reason: "admin_only" };
+    }
+
+    const fields = fieldsOf(body);
+    const content = contentOf({ ...base.read(), ...fields });
+
+    base.write(
+      Object.fromEntries(
+        Object.entries(content).filter(([key]) => key in fields),
+      ),
+    );
+
+    return { ok: true, value: content };
+  }
+
   baseFiles(): readonly ProfileEntry[] {
     return this.#folders.base?.entries() ?? [];
   }
