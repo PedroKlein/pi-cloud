@@ -32,7 +32,7 @@ import {
   type WorkPoll,
   type WorkspaceRequest,
 } from "@pipoca/protocol";
-import { contentFiles, ProfileTooBig } from "@pipoca/profiles";
+import { contentFiles } from "@pipoca/profiles";
 import { placesOn, placesOnNewRunner, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
 
@@ -1099,11 +1099,11 @@ export class Sessions {
         try {
           profile = this.profileFiles(next.profileId);
         } catch (error) {
-          if (!(error instanceof ProfileTooBig)) {
-            throw error;
-          }
-
-          this.#update({ ...next, status: "failed", error: error.message });
+          this.#update({
+            ...next,
+            status: "failed",
+            error: error instanceof Error ? error.message : String(error),
+          });
 
           return [];
         }
