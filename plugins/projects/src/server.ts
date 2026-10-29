@@ -113,7 +113,14 @@ export const projects: ServerPlugin = {
       const project = coordinated(store, session.id);
       if (project) {
         for (const owned of context.sessions.owned(project.id)) {
-          context.sessions.archive(owned.id);
+          try {
+            context.sessions.archive(owned.id);
+          } catch (error) {
+            context.log("could not archive a Session with its Project", {
+              sessionId: owned.id,
+              error: String(error),
+            });
+          }
         }
       }
     });
@@ -125,8 +132,17 @@ export const projects: ServerPlugin = {
         for (const owned of context.sessions.owned(project.id, {
           archived: true,
         })) {
-          if (owned.archivedAt !== null && owned.archivedAt >= archivedAt) {
+          if (owned.archivedAt === null || owned.archivedAt < archivedAt) {
+            continue;
+          }
+
+          try {
             context.sessions.unarchive(owned.id);
+          } catch (error) {
+            context.log("could not bring back a Session with its Project", {
+              sessionId: owned.id,
+              error: String(error),
+            });
           }
         }
       }
