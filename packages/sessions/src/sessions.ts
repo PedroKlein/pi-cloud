@@ -581,7 +581,9 @@ export class Sessions {
         ],
         models: uniqueModels([
           ...offered,
-          ...runners.flatMap(({ inventory }) => inventory.models),
+          ...runners
+            .filter(({ online }) => online)
+            .flatMap(({ inventory }) => inventory.models),
           ...this.#store.registeredModels(environment.provider),
         ]),
       };

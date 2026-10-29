@@ -67,6 +67,7 @@ async function poll(
   runner: string,
   {
     folders = [],
+    models = [],
     running = [],
     capacity,
     session,
@@ -75,6 +76,7 @@ async function poll(
     readonly environment?: string;
     readonly session?: string;
     readonly folders?: readonly string[];
+    readonly models?: WorkPoll["models"];
     readonly running?: readonly Attempt[];
     readonly capacity?: number;
   } = {},
@@ -85,7 +87,7 @@ async function poll(
   const body: WorkPoll = {
     running,
     folders,
-    models: [],
+    models,
     ...(capacity !== undefined && { capacity }),
     ...(session !== undefined && { session }),
   };
@@ -170,6 +172,26 @@ test("lists every runner that joined an Environment's pool", async () => {
       ],
     },
   ]);
+});
+
+test("offers only the models logged in on online runners", async () => {
+  await server.stop();
+  startServer({ offlineAfterMs: 100 });
+
+  const gone = { provider: "anthropic", id: "claude-gone" };
+  const here = { provider: "openai", id: "gpt-here" };
+
+  await claimed("mac-1", { models: [gone] });
+  await sleep(150);
+  await claimed("mac-2", { models: [here] });
+
+  const [environment] = await json<Environment[]>(
+    fetch(new URL("/api/environments", server.url), {
+      headers: { cookie: await signedIn() },
+    }),
+  );
+
+  expect(environment?.models).toEqual([here]);
 });
 
 test("places a folder Session on the runner that lists the folder", async () => {
