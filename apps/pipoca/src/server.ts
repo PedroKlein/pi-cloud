@@ -1628,6 +1628,8 @@ function workspaceRequest(workspace: unknown): WorkspaceRequest {
   }
 
   if (kind === "clone" && typeof repository === "string" && repository !== "") {
+    refuseCredentials(repository);
+
     return { kind, repository, ...start };
   }
 
@@ -1660,7 +1662,25 @@ function repositoryCheckout(checkout: unknown): RepositoryCheckout {
     throw new BadRequest("each repository needs a URL");
   }
 
+  refuseCredentials(repository);
+
   return { repository, ...startPointOf(startPoint) };
+}
+
+// A token or password in a URL would be stored with the Session and logged.
+// An ssh user name alone, such as git@, is not a credential.
+function refuseCredentials(repository: string): void {
+  const url = URL.parse(repository);
+
+  if (
+    url !== null &&
+    (url.password !== "" ||
+      (url.username !== "" && url.protocol.startsWith("http")))
+  ) {
+    throw new BadRequest(
+      "repository URLs can't hold credentials: connect the git host instead",
+    );
+  }
 }
 
 // Terminal and preview commands come from the server's own sockets and
