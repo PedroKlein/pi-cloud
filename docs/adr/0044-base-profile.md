@@ -1,6 +1,6 @@
 # 0044: Base Profile
 
-- Status: accepted
+- Status: accepted, amended 2026-10-29 (per-person model and MCP logins on the server, [ADR 0045](0045-server-kept-logins.md))
 - Date: 2026-10-28
 
 ## Context
