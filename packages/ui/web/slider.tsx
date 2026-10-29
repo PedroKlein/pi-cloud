@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactElement } from "react";
+import { type KeyboardEvent, type ReactElement, useState } from "react";
 import { cn } from "./cn";
 
 // A row of stops to slide along, like Claude Code's effort slider: arrow
@@ -14,9 +14,18 @@ export function Slider<T extends string>({
   readonly value: T;
   readonly onChange: (value: T) => void;
 }): ReactElement {
+  // A level saved elsewhere arrives after the next key press, so the slider
+  // moves on from the level it last asked for until value catches up.
+  const [moved, setMoved] = useState<{ readonly from: T; readonly to: T }>();
+  if (moved !== undefined && moved.from !== value) {
+    setMoved(undefined);
+  }
+
+  const shown = moved?.from === value ? moved.to : value;
+
   const at = Math.max(
     0,
-    stops.findIndex((stop) => stop.value === value),
+    stops.findIndex((stop) => stop.value === shown),
   );
 
   const current = stops[at];
@@ -25,7 +34,8 @@ export function Slider<T extends string>({
   const move = (index: number): void => {
     const stop = stops[Math.min(Math.max(index, 0), last)];
 
-    if (stop && stop.value !== value) {
+    if (stop && stop.value !== shown) {
+      setMoved({ from: value, to: stop.value });
       onChange(stop.value);
     }
   };
