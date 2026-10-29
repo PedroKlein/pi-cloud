@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+const timeoutMs = 15_000;
+
 export interface Provider {
   readonly issuer: string;
   readonly authorizationEndpoint: string;
@@ -37,14 +39,16 @@ export async function discover(issuer: string): Promise<Provider> {
   const base = issuer.replace(/\/+$/, "");
   checkSecure(base);
 
-  const response = await fetch(`${base}/.well-known/openid-configuration`);
-  if (!response.ok) {
-    throw new LoginFailed(
-      `discovery at ${base} answered ${String(response.status)}`,
-    );
+  const {
+    ok,
+    status,
+    body: found,
+  } = await reach(`${base}/.well-known/openid-configuration`);
+
+  if (!ok) {
+    throw new LoginFailed(`discovery at ${base} answered ${String(status)}`);
   }
 
-  const found = (await response.json()) as Record<string, unknown>;
   const authorization = found["authorization_endpoint"];
   const token = found["token_endpoint"];
 
@@ -106,7 +110,7 @@ export async function redeem(
   attempt: Attempt,
   code: string,
 ): Promise<Identity> {
-  const response = await fetch(provider.tokenEndpoint, {
+  const { ok, status, body } = await reach(provider.tokenEndpoint, {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
@@ -124,16 +128,11 @@ export async function redeem(
     }),
   });
 
-  const body = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-
   const idToken = body["id_token"];
 
-  if (!response.ok || typeof idToken !== "string") {
+  if (!ok || typeof idToken !== "string") {
     throw new LoginFailed(
-      `the token endpoint answered ${String(response.status)}: ${typeof body["error"] === "string" ? body["error"] : "no ID token"}`,
+      `the token endpoint answered ${String(status)}: ${typeof body["error"] === "string" ? body["error"] : "no ID token"}`,
     );
   }
 
@@ -200,6 +199,45 @@ function claimsOf(idToken: string): Record<string, unknown> {
   }
 
   throw new LoginFailed("the ID token can't be read");
+}
+
+// A provider that hangs would otherwise hold the sign-in, and the cached
+// discovery every later one waits on, forever.
+async function reach(
+  url: string,
+  init: RequestInit = {},
+): Promise<{
+  readonly ok: boolean;
+  readonly status: number;
+  readonly body: Readonly<Record<string, unknown>>;
+}> {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    const body: unknown = await response.json().catch((error: unknown) => {
+      if (error instanceof SyntaxError) {
+        return {};
+      }
+
+      throw error;
+    });
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      body:
+        typeof body === "object" && body !== null
+          ? (body as Record<string, unknown>)
+          : {},
+    };
+  } catch (failure) {
+    throw new LoginFailed(
+      `couldn't reach ${new URL(url).host}: ${failure instanceof Error ? failure.message : String(failure)}`,
+    );
+  }
 }
 
 // RFC 6749, section 2.3.1: both parts are form-encoded first.
