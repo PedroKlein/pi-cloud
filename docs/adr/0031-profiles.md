@@ -1,6 +1,6 @@
 # 0031: Profiles
 
-- Status: accepted, amended 2026-10-25 (a built-in read-only meta Profile for meta-sessions, [ADR 0035](0035-meta-sessions.md)), amended 2026-10-26 (a Profile is a Pi agent folder in the config folder, owned or shared, [ADR 0041](0041-profiles-as-folders.md))
+- Status: accepted, amended 2026-10-25 (a built-in read-only meta Profile for meta-sessions, [ADR 0035](0035-meta-sessions.md)), amended 2026-10-26 (a Profile is a Pi agent folder in the config folder, owned or shared, [ADR 0041](0041-profiles-as-folders.md)), amended 2026-10-29 (provider logins are kept per person on the server, [ADR 0045](0045-server-kept-logins.md))
 - Date: 2026-10-24
 
 ## Context
