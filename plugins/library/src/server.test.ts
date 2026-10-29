@@ -9,7 +9,8 @@ import {
 import type { PluginSettings } from "@pipoca/protocol";
 import { library } from "./server";
 
-const session = fakeSession();
+const session = fakeSession({ startedBy: "owner" });
+const other = fakeSession({ id: "session-2", startedBy: "owner" });
 
 const member: RouteCaller = {
   kind: "session",
@@ -29,6 +30,10 @@ function registered(
       },
     },
     settings: { get: settings },
+    sessions: {
+      ...fakeContext().sessions,
+      get: (id) => [session, other].find((each) => each.id === id),
+    },
   });
 
   library.register(context);
@@ -37,6 +42,12 @@ function registered(
     type: "projects.MemberAdded",
     sessionId: session.id,
     projectId: "p1",
+  });
+
+  context.events.publish({
+    type: "projects.MemberAdded",
+    sessionId: other.id,
+    projectId: "p2",
   });
 
   const [route] = routes;
@@ -207,4 +218,26 @@ test("refuses a file over the size limit in the settings as they are now", async
   settings = { fileLimitMb: 2 };
 
   expect((await putBig()).status).toBe(200);
+});
+
+test("keeps a Project's library to the person who started it (ADR 0049)", async () => {
+  const route = registered();
+  await put(route, "projects/p1/files/notes.md", "mine");
+
+  const ana = fakeUser({ id: "ana", admin: true });
+
+  const answers = await Promise.all([
+    route(
+      new Request("http://library/projects/p1/files"),
+      "projects/p1/files",
+      ana,
+    ),
+    route(
+      new Request("http://library/projects/p1/files/notes.md"),
+      "projects/p1/files/notes.md",
+      ana,
+    ),
+  ]);
+
+  expect(answers.map(({ status }) => status)).toEqual([404, 404]);
 });

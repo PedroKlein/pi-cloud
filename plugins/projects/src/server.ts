@@ -371,10 +371,13 @@ async function route(
       throw new NotFound(`no route ${path.join("/")}`);
     }
 
-    return Response.json(summaries(store, context));
+    return Response.json(summaries(store, context, caller));
   }
 
-  const project = resource === "projects" ? store.get(id ?? "") : undefined;
+  const project =
+    resource === "projects"
+      ? theirs(store.get(id ?? ""), context, caller)
+      : undefined;
 
   if (project && child === undefined && request.method === "GET") {
     return Response.json(view(project, store, context));
@@ -401,7 +404,12 @@ async function route(
     return Response.json({ name, content });
   }
 
-  const thread = resource === "threads" ? store.member(id ?? "") : undefined;
+  const member = resource === "threads" ? store.member(id ?? "") : undefined;
+
+  const thread =
+    member && theirs(store.get(member.projectId), context, caller)
+      ? member
+      : undefined;
 
   if (thread?.role === "thread" && child === undefined) {
     return Response.json({
@@ -566,27 +574,48 @@ function create(
   return project;
 }
 
+// A Project is its starter's alone (ADR 0049). One from before Projects
+// had a person is an admin's.
+function theirs(
+  project: Project | undefined,
+  { owner }: ServerPluginContext,
+  caller: RouteCaller & { readonly kind: "user" },
+): Project | undefined {
+  const person = caller.actor.slice("user:".length);
+
+  return project?.ownerId === person ||
+    (project?.ownerId === owner && caller.admin)
+    ? project
+    : undefined;
+}
+
 function summaries(
   store: ProjectStore,
-  { sessions }: ServerPluginContext,
+  context: ServerPluginContext,
+  caller: RouteCaller & { readonly kind: "user" },
 ): ProjectSummary[] {
-  return store.list().map((project) => {
-    const threads = store.threads(project.id);
+  const { sessions } = context;
 
-    return {
-      id: project.id,
-      name: project.name,
-      coordinatorId: project.coordinatorId,
-      coordinatorState: runState(sessions.get(project.coordinatorId)),
-      repositories: project.repositories.length,
-      threads: threads.length,
-      needsYou: threads.filter(
-        (thread) =>
-          thread.workState === "blocked" ||
-          runState(sessions.get(thread.sessionId)) === "waiting",
-      ).length,
-    };
-  });
+  return store
+    .list()
+    .filter((project) => theirs(project, context, caller) !== undefined)
+    .map((project) => {
+      const threads = store.threads(project.id);
+
+      return {
+        id: project.id,
+        name: project.name,
+        coordinatorId: project.coordinatorId,
+        coordinatorState: runState(sessions.get(project.coordinatorId)),
+        repositories: project.repositories.length,
+        threads: threads.length,
+        needsYou: threads.filter(
+          (thread) =>
+            thread.workState === "blocked" ||
+            runState(sessions.get(thread.sessionId)) === "waiting",
+        ).length,
+      };
+    });
 }
 
 function view(

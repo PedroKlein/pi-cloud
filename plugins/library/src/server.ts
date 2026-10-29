@@ -4,6 +4,7 @@ import {
   NotFound,
   type RouteCaller,
   type ServerPlugin,
+  type ServerPluginContext,
 } from "@pipoca/plugins";
 import type { Actor } from "@pipoca/protocol";
 import { type LibraryStore, libraryStore } from "./library";
@@ -22,7 +23,7 @@ export const library: ServerPlugin = {
     });
 
     context.routes.handle(async (request, path, caller) => {
-      const target = resolve(path.split("/"), caller, store);
+      const target = resolve(path.split("/"), caller, store, context);
 
       if (target === undefined) {
         throw new NotFound(`no route ${path}`);
@@ -61,6 +62,7 @@ function resolve(
   path: readonly string[],
   caller: RouteCaller,
   store: LibraryStore,
+  { sessions }: ServerPluginContext,
 ): Target | undefined {
   if (caller.kind === "session") {
     const projectId = store.projectOf(caller.session.id);
@@ -73,7 +75,16 @@ function resolve(
 
   const [projects, projectId, resource, name] = path;
 
-  return projects === "projects" && projectId !== undefined
+  // A Project's library is its starter's, as the Project is (ADR 0049).
+  const theirs =
+    projectId !== undefined &&
+    store
+      .members(projectId)
+      .some(
+        (id) => caller.actor === `user:${sessions.get(id)?.startedBy ?? ""}`,
+      );
+
+  return projects === "projects" && theirs
     ? { projectId, resource, name: decoded(name) }
     : undefined;
 }
