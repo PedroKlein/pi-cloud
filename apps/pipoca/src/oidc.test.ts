@@ -540,6 +540,16 @@ test("makes a user for a member of the access group and signs them in", async ()
   expect(users[1]).toEqual(users[0]);
 });
 
+test("names a user it makes without the spaces around the provider's email", async () => {
+  const { cookie } = await signIn({ ...ana, email: " ana@example.com " });
+
+  const status = (await (await api("GET", "/api/auth", cookie)).json()) as {
+    user: unknown;
+  };
+
+  expect(status.user).toMatchObject({ name: "ana@example.com" });
+});
+
 test("refuses someone outside the access group", async () => {
   const { response, cookie } = await signIn({ ...ana, groups: ["others"] });
 

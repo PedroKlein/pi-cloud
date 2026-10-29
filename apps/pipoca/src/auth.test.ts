@@ -153,6 +153,23 @@ test("signs in with a password and out again", async () => {
   expect((await get("/api/sessions", cookie)).status).toBe(401);
 });
 
+test("keeps a user's name without the spaces around it, and signs in with or without them", async () => {
+  const created = await post("/api/auth/setup", {
+    ...pedro,
+    name: " pedro ",
+    token: setupTokenOf(logs),
+  });
+
+  const signedIn = await Promise.all(
+    ["pedro", " pedro "].map(async (name) =>
+      post("/api/auth/login", { ...pedro, name }),
+    ),
+  );
+
+  expect(await created.json()).toMatchObject({ name: "pedro" });
+  expect(signedIn.map(({ status }) => status)).toEqual([200, 200]);
+});
+
 test("locks a name after repeated failed sign-ins", async () => {
   await setUp();
 

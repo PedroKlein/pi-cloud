@@ -390,17 +390,19 @@ export class Auth {
 
   // A user without a password, or undefined when the name is taken.
   createUser(name: string, admin: boolean): User | undefined {
-    if (name.trim() === "" || name.length > maxNameLength) {
+    const trimmed = name.trim();
+
+    if (trimmed === "" || trimmed.length > maxNameLength) {
       throw new InvalidCredentials(
         `name must be 1 to ${String(maxNameLength)} characters`,
       );
     }
 
-    if (this.#store.userByName(name) !== undefined) {
+    if (this.#store.userByName(trimmed) !== undefined) {
       return undefined;
     }
 
-    const user = { id: randomUUID(), name, admin };
+    const user = { id: randomUUID(), name: trimmed, admin };
 
     this.#store.insertUser({
       ...user,
