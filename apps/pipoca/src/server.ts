@@ -223,7 +223,7 @@ export function createHandler(
 
   // A runner that joins with a join key gets an Environment of its own name,
   // numbered when another Environment has it.
-  const environmentFor = (runner: string): string => {
+  const environmentFor = (runner: string, ownerId: string): string => {
     const taken = new Set(
       sessions.environments().map(({ provider }) => provider),
     );
@@ -233,7 +233,7 @@ export function createHandler(
       provider = `${runner.slice(0, 60)}-${String(n)}`;
     }
 
-    const created = sessions.createEnvironment(provider);
+    const created = sessions.createEnvironment(provider, ownerId);
     if (!created.ok) {
       throw new Error(`environment ${provider} was not made`);
     }
@@ -581,10 +581,13 @@ export function createHandler(
     [
       "POST",
       /^\/api\/join-key$/,
-      () => {
+      (_request, _params, actor) => {
         log("join key made", {});
 
-        return Response.json({ key: auth.newJoinKey() }, { status: 201 });
+        return Response.json(
+          { key: auth.newJoinKey(userIdOf(actor)) },
+          { status: 201 },
+        );
       },
     ],
     [
