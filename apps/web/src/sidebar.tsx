@@ -2,7 +2,7 @@ import { ThemeSwitch } from "./theme";
 import { availability, type Environment, type Session } from "@pipoca/protocol";
 import { Badge, Button, cn, fieldClass, Icon } from "@pipoca/ui";
 import { type ReactElement, useEffect, useState } from "react";
-import { useNow } from "@pipoca/plugins/web";
+import { json, useNow } from "@pipoca/plugins/web";
 import { api, send } from "./api";
 import { Mark } from "./mark";
 import { matches } from "./notices";
@@ -368,11 +368,7 @@ function PluginNav({
   const page = pluginRoute(route);
 
   useEffect(() => {
-    void fetch("/api/pinned-pages")
-      .then(
-        async (response) =>
-          (await response.json()) as { readonly pages: string[] | null },
-      )
+    void json<{ readonly pages: string[] | null }>(fetch("/api/pinned-pages"))
       .then(({ pages }) => {
         setPins(pages ?? pinnedAtFirst);
       })
