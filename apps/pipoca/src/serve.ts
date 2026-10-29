@@ -94,6 +94,8 @@ export interface ServeOptions {
   // Seconds a connection may go quiet before the server closes it; 30 when
   // unset.
   readonly idleTimeout?: number;
+  // The clock runner tokens expire by; the system's when unset.
+  readonly now?: () => number;
   readonly log: Log;
 }
 
@@ -184,7 +186,7 @@ export function serve(options: ServeOptions): {
   });
 
   const pluginsStop = new AbortController();
-  const auth = new Auth(store.auth, options.passwordLogin);
+  const auth = new Auth(store.auth, options.passwordLogin, options.now);
 
   const userProfiles = new Profiles(profiles, store);
 

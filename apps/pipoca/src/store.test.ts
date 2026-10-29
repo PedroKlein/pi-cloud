@@ -123,6 +123,38 @@ test("opens a migrated database again", () => {
   store.close();
 });
 
+test("counts a runner token from before tokens expired as used when the database opens", () => {
+  const path = join(root, "server.db");
+  const old = new DatabaseSync(path);
+
+  old.exec(`
+    create table agent_tokens (
+      token_hash text primary key,
+      environment text not null,
+      runner text not null,
+      session_id text,
+      joined integer not null default 1
+    );
+    insert into agent_tokens values ('h1', 'pool', 'mac', null, 1);
+  `);
+
+  old.close();
+
+  const opened = new Date().toISOString();
+  const store = openStore(path);
+  const token = store.auth.agentToken("h1");
+  store.close();
+
+  expect(token?.agent).toEqual({
+    environment: "pool",
+    runner: "mac",
+    sessionId: null,
+    joined: true,
+  });
+
+  expect((token?.lastUsed ?? "") >= opened).toBe(true);
+});
+
 test("lists the Sessions one owner holds and keeps an owner once given", () => {
   const store = openStore(":memory:");
   defaultProfile = store.defaultProfileId("local");

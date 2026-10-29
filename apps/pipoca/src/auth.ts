@@ -47,8 +47,17 @@ export interface AuthStore {
   readonly hasJoinKey: (keyHash: string) => boolean;
   readonly claimJoinKey: (keyHash: string, provider: string) => void;
   // A Session holds one token, for its current attempt.
-  readonly insertAgentToken: (tokenHash: string, holder: Agent) => void;
-  readonly agentToken: (tokenHash: string) => Agent | undefined;
+  readonly insertAgentToken: (
+    tokenHash: string,
+    holder: Agent,
+    now: string,
+  ) => void;
+  readonly agentToken: (
+    tokenHash: string,
+  ) => { readonly agent: Agent; readonly lastUsed: string } | undefined;
+  readonly useAgentToken: (tokenHash: string, now: string) => void;
+  // Runner tokens last used before the time, and their Sessions' tokens.
+  readonly deleteUnusedAgentTokens: (usedBefore: string) => void;
   readonly insertMcpToken: (token: McpToken, tokenHash: string) => void;
   readonly mcpTokens: (userId: string) => readonly McpToken[];
   readonly mcpTokenUser: (tokenHash: string) => User | undefined;
@@ -105,6 +114,10 @@ interface Failures {
 
 const cookieName = "pipoca-session";
 const sessionDays = 30;
+const runnerTokenDays = 30;
+// How stale a token's last use may get before it is written again, so a
+// poll seldom writes to the database.
+const lastUsedStepMs = 60 * 60_000;
 const minPasswordLength = 8;
 const maxNameLength = 64;
 const maxPasswordLength = 1024;
@@ -124,10 +137,16 @@ export class Auth {
   readonly #ownTokens = new Map<string, Agent>();
   #setupToken: string | undefined;
   readonly #passwordLogin: boolean;
+  readonly #now: () => number;
 
-  constructor(store: AuthStore, passwordLogin = true) {
+  constructor(
+    store: AuthStore,
+    passwordLogin = true,
+    now: () => number = () => Date.now(),
+  ) {
     this.#store = store;
     this.#passwordLogin = passwordLogin;
+    this.#now = now;
 
     this.#setupToken =
       store.userCount() === 0
@@ -360,6 +379,8 @@ export class Auth {
     );
   }
 
+  // A runner token nobody used for runnerTokenDays stops working, and the
+  // tokens of that runner's Sessions with it (ADR 0032).
   agentOf(request: Request): Agent | undefined {
     const [scheme, token] = (request.headers.get("authorization") ?? "").split(
       " ",
@@ -370,8 +391,32 @@ export class Auth {
     }
 
     const hashed = hash(token);
+    const own = this.#ownTokens.get(hashed);
+    if (own !== undefined) {
+      return own;
+    }
 
-    return this.#ownTokens.get(hashed) ?? this.#store.agentToken(hashed);
+    const stored = this.#store.agentToken(hashed);
+    if (stored?.agent.sessionId !== null) {
+      return stored?.agent;
+    }
+
+    const now = this.#now();
+    const lastUsed = Date.parse(stored.lastUsed);
+    if (now - lastUsed < lastUsedStepMs) {
+      return stored.agent;
+    }
+
+    const usedBefore = now - runnerTokenDays * 24 * 60 * 60_000;
+    const expired = lastUsed < usedBefore;
+
+    if (!expired) {
+      this.#store.useAgentToken(hashed, new Date(now).toISOString());
+    }
+
+    this.#store.deleteUnusedAgentTokens(new Date(usedBefore).toISOString());
+
+    return expired ? undefined : stored.agent;
   }
 
   #agentToken(holder: Agent, own = false): string {
@@ -379,7 +424,11 @@ export class Auth {
     const hashed = hash(token);
 
     if (!own) {
-      this.#store.insertAgentToken(hashed, holder);
+      this.#store.insertAgentToken(
+        hashed,
+        holder,
+        new Date(this.#now()).toISOString(),
+      );
 
       return token;
     }
