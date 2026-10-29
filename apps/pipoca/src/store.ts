@@ -125,7 +125,8 @@ create table if not exists agent_tokens (
   environment text not null,
   runner text not null,
   session_id text,
-  joined integer not null default 1
+  joined integer not null default 1,
+  last_used text not null
 );
 create table if not exists join_keys (
   key_hash text primary key,
@@ -217,6 +218,19 @@ function migrate(db: DatabaseSync): void {
     db.exec(
       "alter table agent_tokens add column joined integer not null default 1",
     );
+  }
+
+  // Tokens from before runner tokens expired count as used now.
+  if (!tokenColumns.some(({ name }) => name === "last_used")) {
+    transaction(db, () => {
+      db.exec(
+        "alter table agent_tokens add column last_used text not null default ''",
+      );
+
+      db.prepare("update agent_tokens set last_used = ?").run(
+        new Date().toISOString(),
+      );
+    });
   }
 
   const environmentColumns = db
@@ -921,11 +935,15 @@ function authStore(db: DatabaseSync): AuthStore {
   );
 
   const insertAgentToken = db.prepare(
-    "insert into agent_tokens (token_hash, environment, runner, session_id, joined) values (?, ?, ?, ?, ?)",
+    "insert into agent_tokens (token_hash, environment, runner, session_id, joined, last_used) values (?, ?, ?, ?, ?, ?)",
   );
 
   const selectAgentToken = db.prepare(
-    "select environment, runner, session_id, joined from agent_tokens where token_hash = ?",
+    "select environment, runner, session_id, joined, last_used from agent_tokens where token_hash = ?",
+  );
+
+  const updateLastUsed = db.prepare(
+    "update agent_tokens set last_used = ? where token_hash = ?",
   );
 
   const deleteJoinedTokens = db.prepare(
@@ -939,6 +957,19 @@ function authStore(db: DatabaseSync): AuthStore {
   const deleteSessionTokens = db.prepare(
     "delete from agent_tokens where session_id = ?",
   );
+
+  const deleteUnusedRunnerTokens = db.prepare(
+    "delete from agent_tokens where session_id is null and last_used < ?",
+  );
+
+  const deleteOrphanedSessionTokens = db.prepare(`
+    delete from agent_tokens where session_id is not null and not exists (
+      select 1 from agent_tokens runners
+      where runners.session_id is null
+        and runners.environment = agent_tokens.environment
+        and runners.runner = agent_tokens.runner
+    )
+  `);
 
   const insertMcpToken = db.prepare(
     "insert into mcp_tokens (id, token_hash, user_id, name, created_at) values (?, ?, ?, ?, ?)",
@@ -1030,7 +1061,7 @@ function authStore(db: DatabaseSync): AuthStore {
     keyEnvironment: (keyHash) =>
       (selectKeyEnvironment.get(keyHash) as { provider: string } | undefined)
         ?.provider,
-    insertAgentToken: (tokenHash, holder) => {
+    insertAgentToken: (tokenHash, holder, now) => {
       transaction(db, () => {
         if (holder.sessionId !== null) {
           deleteSessionTokens.run(holder.sessionId);
@@ -1042,7 +1073,17 @@ function authStore(db: DatabaseSync): AuthStore {
           holder.runner,
           holder.sessionId,
           holder.joined ? 1 : 0,
+          now,
         );
+      });
+    },
+    useAgentToken: (tokenHash, now) => {
+      updateLastUsed.run(now, tokenHash);
+    },
+    deleteUnusedAgentTokens: (usedBefore) => {
+      transaction(db, () => {
+        deleteUnusedRunnerTokens.run(usedBefore);
+        deleteOrphanedSessionTokens.run();
       });
     },
     deleteRunnerTokens: (provider, runner) => {
@@ -1095,15 +1136,19 @@ function authStore(db: DatabaseSync): AuthStore {
             runner: string;
             session_id: string | null;
             joined: number;
+            last_used: string;
           }
         | undefined;
 
       return (
         row && {
-          environment: row.environment,
-          runner: row.runner,
-          sessionId: row.session_id,
-          joined: row.joined === 1,
+          agent: {
+            environment: row.environment,
+            runner: row.runner,
+            sessionId: row.session_id,
+            joined: row.joined === 1,
+          },
+          lastUsed: row.last_used,
         }
       );
     },

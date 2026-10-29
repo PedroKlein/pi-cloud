@@ -28,12 +28,21 @@ let logged: string[];
 
 let machines: ServerPluginContext["environments"] | undefined;
 
-function startServer({ pollWaitMs = 0, offlineAfterMs = 30_000 } = {}): void {
+function startServer({
+  pollWaitMs = 0,
+  offlineAfterMs = 30_000,
+  now,
+}: {
+  readonly pollWaitMs?: number;
+  readonly offlineAfterMs?: number;
+  readonly now?: () => number;
+} = {}): void {
   logged = [];
 
   server = serve({
     port: 0,
     database: ":memory:",
+    ...(now !== undefined && { now }),
     sessions: { pollWaitMs, offlineAfterMs, leaseMs },
     plugins: [
       {
@@ -634,6 +643,37 @@ test("lets go of runners that joined with an Environment's earlier key", async (
   expect(
     (await asRunner(sessionToken, `/agent/sessions/${id}/transcript`)).status,
   ).toBe(401);
+});
+
+test("keeps a Session's token while its runner polls, and drops it with the runner's", async () => {
+  const day = 24 * 60 * 60_000;
+  let now = Date.now();
+  await server.stop();
+  startServer({ now: () => now });
+
+  const token = await runners.token("mac-1", "laptops");
+  const id = await startSession("/srv/a");
+
+  const work = await json<Work>(
+    asRunner(token, "/agent/work", { ...emptyPoll, folders: ["/srv/a"] }),
+  );
+
+  const [assignment] = work.start;
+  const running = { ...emptyPoll, running: [...work.start] };
+
+  const transcript = async (): Promise<number> =>
+    (await asRunner(assignment?.token, `/agent/sessions/${id}/transcript`))
+      .status;
+
+  now += 29 * day;
+  expect((await asRunner(token, "/agent/work", running)).status).toBe(200);
+
+  now += 29 * day;
+  expect(await transcript()).toBe(200);
+
+  now += 31 * day;
+  expect((await asRunner(token, "/agent/work", running)).status).toBe(401);
+  expect(await transcript()).toBe(401);
 });
 
 test("gives each Session a token that reaches only that Session", async () => {

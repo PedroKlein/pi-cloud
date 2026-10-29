@@ -79,10 +79,14 @@ async function startAgent(
   return stop;
 }
 
-function startServer(builtInProvider?: string): ReturnType<typeof serve> {
+function startServer(
+  builtInProvider?: string,
+  now?: () => number,
+): ReturnType<typeof serve> {
   const started = serve({
     port: 0,
     database: ":memory:",
+    ...(now !== undefined && { now }),
     sessions: { pollWaitMs: 100, offlineAfterMs: 200 },
     ...(builtInProvider !== undefined && {
       agent: {
@@ -1744,37 +1748,35 @@ test("stops a runner the server let go when its Environment got a new key", asyn
   expect(stopped).toEqual(new Error("the server let this runner go"));
 });
 
-test("joins again when the server no longer knows the token an agent saved", async () => {
-  const key = await runners.key("pool");
-  const logs: string[] = [];
+// An agent on runner mac that joins the pool Environment with its key.
+function startMac(key: string, logs: string[]): () => Promise<void> {
+  const controller = new AbortController();
 
-  const start = (): (() => Promise<void>) => {
-    const controller = new AbortController();
+  const done = runAgent({
+    server: server.url.href,
+    provider: "mac",
+    credential: { key },
+    dataDir: join(root, "mac"),
+    extensionPaths: [],
+    folders: [root],
+    models: { runtime, model: faux.getModel() },
+    log: (message) => {
+      logs.push(message);
+    },
+    signal: controller.signal,
+  });
 
-    const done = runAgent({
-      server: server.url.href,
-      provider: "mac",
-      credential: { key },
-      dataDir: join(root, "mac"),
-      extensionPaths: [],
-      folders: [root],
-      models: { runtime, model: faux.getModel() },
-      log: (message) => {
-        logs.push(message);
-      },
-      signal: controller.signal,
-    });
-
-    const stop = async (): Promise<void> => {
-      controller.abort();
-      await done;
-    };
-
-    agents.push(stop);
-
-    return stop;
+  const stop = async (): Promise<void> => {
+    controller.abort();
+    await done;
   };
 
+  agents.push(stop);
+
+  return stop;
+}
+
+async function untilMacOnline(wanted: boolean): Promise<void> {
   const macOnline = async (): Promise<boolean> =>
     ((await (await api("/api/environments")).json()) as Environment[]).some(
       ({ provider, runners: polled }) =>
@@ -1782,21 +1784,74 @@ test("joins again when the server no longer knows the token an agent saved", asy
         polled.some(({ name, online }) => name === "mac" && online),
     );
 
-  const stop = start();
-  while (!(await macOnline())) {
+  while ((await macOnline()) !== wanted) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+}
 
+test("joins again when the server no longer knows the token an agent saved", async () => {
+  const key = await runners.key("pool");
+  const logs: string[] = [];
+
+  const stop = startMac(key, logs);
+  await untilMacOnline(true);
   await stop();
-  while (await macOnline()) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  await untilMacOnline(false);
 
   await runners.token("mac", "pool");
-  start();
-  while (!(await macOnline())) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+  startMac(key, logs);
+  await untilMacOnline(true);
+
+  expect(logs).toContain("saved runner token refused, joining again");
+});
+
+const day = 24 * 60 * 60_000;
+
+test("refuses a runner token nobody used for 30 days, but not one used since", async () => {
+  let now = Date.now();
+  await server.stop();
+  server = startServer(undefined, () => now);
+
+  const poll = async (): Promise<number> =>
+    (
+      await asAgent("mac", "/agent/work", {
+        running: [],
+        folders: [],
+        models: [],
+      })
+    ).status;
+
+  expect(await poll()).toBe(200);
+
+  now += 29 * day;
+  expect(await poll()).toBe(200);
+
+  now += 29 * day;
+  expect(await poll()).toBe(200);
+
+  now += 31 * day;
+  expect(await poll()).toBe(401);
+
+  now -= 31 * day;
+  expect(await poll()).toBe(401);
+});
+
+test("joins again with its key when its saved token expired", async () => {
+  let now = Date.now();
+  await server.stop();
+  server = startServer(undefined, () => now);
+
+  const key = await runners.key("pool");
+  const logs: string[] = [];
+
+  const stop = startMac(key, logs);
+  await untilMacOnline(true);
+  await stop();
+  await untilMacOnline(false);
+
+  now += 31 * day;
+  startMac(key, logs);
+  await untilMacOnline(true);
 
   expect(logs).toContain("saved runner token refused, joining again");
 });
