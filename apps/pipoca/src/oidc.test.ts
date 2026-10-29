@@ -707,10 +707,65 @@ test("sends no client secret when none is set, and proves the code with PKCE", a
   ]);
 });
 
+test("fails a sign-in with a page while discovery isn't JSON, and discovers again after", async () => {
+  provider.broken = true;
+
+  const failed = await fetch(
+    new URL(`/api/plugins/oidc/start/${providerId}`, server.url),
+    { redirect: "manual" },
+  );
+
+  expect(failed.status).toBe(502);
+  expect(await failed.text()).toContain("Sign-in failed");
+
+  provider.broken = false;
+  const { response } = await signIn(ana);
+
+  expect(response.status).toBe(200);
+});
+
+test("fails a sign-in with a page when the token endpoint can't be reached", async () => {
+  const started = await fetch(
+    new URL(`/api/plugins/oidc/start/${providerId}`, server.url),
+    { redirect: "manual" },
+  );
+
+  const authorized = await fetch(started.headers.get("location") ?? "", {
+    redirect: "manual",
+  });
+
+  await provider.stop();
+
+  const response = await fetch(authorized.headers.get("location") ?? "", {
+    redirect: "manual",
+    headers: { cookie: cookieOf(started) },
+  });
+
+  expect(response.status).toBe(502);
+  expect(await response.text()).toContain("Sign-in failed");
+});
+
+test("fails a sign-in with a page when the provider can't be reached", async () => {
+  await provider.stop();
+
+  const failed = await fetch(
+    new URL(`/api/plugins/oidc/start/${providerId}`, server.url),
+    { redirect: "manual" },
+  );
+
+  expect(failed.status).toBe(502);
+
+  expect(await failed.text()).toContain(
+    `couldn&#39;t reach ${new URL(provider.issuer).host}`,
+  );
+});
+
 // An OpenID provider that signs in whoever next is.
 function fakeProvider(): {
   readonly issuer: string;
   next: Account | undefined;
+  // Discovery and the token endpoint answer with a web page instead.
+  broken: boolean;
   readonly tokenRequests: unknown[];
   readonly stop: () => Promise<void>;
 } {
@@ -722,6 +777,7 @@ function fakeProvider(): {
   const state = {
     issuer: "",
     next: undefined as Account | undefined,
+    broken: false,
     tokenRequests: [] as unknown[],
     stop: async () => {
       await listener.stop(true);
@@ -732,6 +788,12 @@ function fakeProvider(): {
     port: 0,
     fetch: async (request) => {
       const url = new URL(request.url);
+
+      if (state.broken && url.pathname !== "/authorize") {
+        return new Response("<h1>Bad gateway</h1>", {
+          headers: { "content-type": "text/html" },
+        });
+      }
 
       if (url.pathname === "/.well-known/openid-configuration") {
         return Response.json({
