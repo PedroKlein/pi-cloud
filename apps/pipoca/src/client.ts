@@ -4,6 +4,7 @@ import {
   type Joined,
   type SessionStart,
   type Command,
+  type LiveEvent,
   type LivePost,
   type PreviewRequest,
   type ProfileFiles,
@@ -17,6 +18,7 @@ import {
   type TerminalControl,
   type TranscriptAck,
   type TranscriptBatch,
+  liveSurface,
   versionHeader,
   type Work,
 } from "@pipoca/protocol";
@@ -278,6 +280,34 @@ export function httpSessionStream(
     }
   };
 
+  const open = new Map<string, LiveEvent>();
+  let sending = Promise.resolve();
+
+  // No one follows a fenced attempt live, such as one whose Session was just
+  // archived, so its events are dropped without a retry. Posts go one at a
+  // time, so surfaces sent again never overtake a newer event.
+  const postLive = async (
+    events: () => readonly LiveEvent[],
+  ): Promise<void> => {
+    const sent = sending.then(async () => {
+      const live: LivePost = { generation, events: events() };
+
+      if (live.events.length === 0) {
+        return;
+      }
+
+      await post("live", live).catch((error: unknown) => {
+        if (!rejected(error)) {
+          throw error;
+        }
+      });
+    });
+
+    sending = sent.catch(() => undefined);
+
+    return sent;
+  };
+
   return {
     uploadTranscript: async (start, lines) => {
       const batch: TranscriptBatch = { generation, start, lines };
@@ -285,24 +315,35 @@ export function httpSessionStream(
 
       return ((await response.json()) as TranscriptAck).acked;
     },
-    // No one follows a fenced attempt live, such as one whose Session was
-    // just archived, so its events are dropped without a retry.
     publish: async (events) => {
-      const live: LivePost = { generation, events };
-
-      await post("live", live).catch((error: unknown) => {
-        if (!rejected(error)) {
-          throw error;
+      for (const event of events) {
+        const surface = liveSurface(event);
+        if (surface) {
+          open.delete(surface.key);
+          if (surface.open) {
+            open.set(surface.key, event);
+          }
         }
-      });
+      }
+
+      await postLive(() => events);
     },
     commands: (listener) => {
       const controller = new AbortController();
+
+      // A server that restarted lost the open surfaces, such as a prompt that
+      // waits on the user.
+      const republish = (): void => {
+        postLive(() => [...open.values()]).catch((error: unknown) => {
+          log("open surfaces not sent again", { error: String(error) });
+        });
+      };
 
       void followCommands(
         agent,
         `${base}/commands?generation=${String(generation)}`,
         listener,
+        republish,
         log,
         controller.signal,
       ).then((stoppedByServer) => {
@@ -542,14 +583,21 @@ async function followCommands(
   agent: Agent,
   path: string,
   listener: (command: Command) => void,
+  reconnected: () => void,
   log: Log,
   signal: AbortSignal,
 ): Promise<boolean> {
   let delayMs = reconnectMs.initial;
+  let connected = false;
   while (!signal.aborted) {
     try {
       const response = await call(agent, path, { signal });
       delayMs = reconnectMs.initial;
+      if (connected) {
+        reconnected();
+      }
+
+      connected = true;
       for await (const command of readSse(response)) {
         listener(command as Command);
       }
