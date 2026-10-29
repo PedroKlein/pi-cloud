@@ -389,6 +389,34 @@ test("reads, writes, uploads and deletes a Profile's files", async () => {
   expect((await api("/api/profiles/work/files/AGENTS.md")).status).toBe(404);
 });
 
+test("refuses a file path that isn't valid percent-encoding", async () => {
+  await api("/api/profiles", { body: { name: "Work" } });
+
+  const statuses = await Promise.all(
+    ["/api/profiles/work/files/%E0%A4%A", "/api/base/files/%E0%A4%A"].flatMap(
+      (path) =>
+        ["GET", "PUT", "DELETE"].map(async (method) => {
+          const response = await fetch(new URL(path, server.url), {
+            method,
+            headers: { cookie: await signedIn() },
+            ...(method === "PUT" && { body: "x" }),
+          });
+
+          return `${method} ${path} ${String(response.status)}`;
+        }),
+    ),
+  );
+
+  expect(statuses).toEqual([
+    "GET /api/profiles/work/files/%E0%A4%A 400",
+    "PUT /api/profiles/work/files/%E0%A4%A 400",
+    "DELETE /api/profiles/work/files/%E0%A4%A 400",
+    "GET /api/base/files/%E0%A4%A 400",
+    "PUT /api/base/files/%E0%A4%A 400",
+    "DELETE /api/base/files/%E0%A4%A 400",
+  ]);
+});
+
 test("only admins change a shared Profile's files", async () => {
   const db = new DatabaseSync(join(root, "server.db"));
   await signedIn();

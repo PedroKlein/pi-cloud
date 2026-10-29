@@ -1228,7 +1228,7 @@ function profileRoutes(
       "GET",
       /^\/api\/base\/files\/(.+)$/,
       (_request, [path = ""]) => {
-        const file = profiles.baseFile(decodeURIComponent(path));
+        const file = profiles.baseFile(filePath(path));
 
         return file ? new Response(file) : notFound();
       },
@@ -1238,9 +1238,7 @@ function profileRoutes(
       /^\/api\/base\/files\/(.+)$/,
       async (request, [path = ""], actor) => {
         const written = profiles.writeBaseFiles(
-          new Map([
-            [decodeURIComponent(path), Buffer.from(await request.bytes())],
-          ]),
+          new Map([[filePath(path), Buffer.from(await request.bytes())]]),
           isAdmin(actor),
         );
 
@@ -1255,10 +1253,7 @@ function profileRoutes(
       "DELETE",
       /^\/api\/base\/files\/(.+)$/,
       (_request, [path = ""], actor) => {
-        const removed = profiles.deleteBaseFile(
-          decodeURIComponent(path),
-          isAdmin(actor),
-        );
+        const removed = profiles.deleteBaseFile(filePath(path), isAdmin(actor));
 
         if (removed.ok) {
           log("base profile file deleted");
@@ -1299,7 +1294,7 @@ function profileRoutes(
       "GET",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
       (_request, [id = "", path = ""]) => {
-        const file = profiles.file(id, decodeURIComponent(path));
+        const file = profiles.file(id, filePath(path));
 
         return file ? new Response(file) : notFound();
       },
@@ -1310,9 +1305,7 @@ function profileRoutes(
       async (request, [id = "", path = ""], actor) => {
         const written = profiles.writeFiles(
           id,
-          new Map([
-            [decodeURIComponent(path), Buffer.from(await request.bytes())],
-          ]),
+          new Map([[filePath(path), Buffer.from(await request.bytes())]]),
           isAdmin(actor),
         );
 
@@ -1327,11 +1320,7 @@ function profileRoutes(
       "DELETE",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
       (_request, [id = "", path = ""], actor) => {
-        const removed = profiles.deleteFile(
-          id,
-          decodeURIComponent(path),
-          isAdmin(actor),
-        );
+        const removed = profiles.deleteFile(id, filePath(path), isAdmin(actor));
 
         if (removed.ok) {
           log("profile file deleted", { profileId: id });
@@ -2076,6 +2065,15 @@ function fieldsOf(value: unknown): Record<string, unknown> {
   const fields = typeof value === "object" && value !== null ? value : {};
 
   return fields as Record<string, unknown>;
+}
+
+// A file's path as it arrives in a URL, percent-encoded.
+function filePath(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    throw new BadRequest("path isn't valid percent-encoding");
+  }
 }
 
 function textOf(key: string, value: unknown): string {
