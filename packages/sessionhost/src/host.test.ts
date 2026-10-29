@@ -32,6 +32,7 @@ import {
   type SessionStream,
   type TerminalPeer,
 } from "./index";
+import { fetchingProviderExtension } from "./testdata/fetching-provider";
 import { fauxModels } from "./testdata/models";
 import { sessionOptions } from "./testdata/options";
 
@@ -3427,6 +3428,61 @@ test("runs Pi's built-in commands instead of sending them to the model", async (
     description: "Compact the context now, with optional instructions",
     source: "builtin",
   });
+});
+
+test("lists the models a provider fetches once the user logs in to it", async () => {
+  const fake = fakeStream();
+
+  const answer = async (kind: string, value: string): Promise<void> => {
+    await fake.waitFor(() =>
+      fake.events.some(
+        (event) => event.type === "prompt" && event.prompt.kind === kind,
+      ),
+    );
+
+    const prompt = fake.events.find(
+      (event) => event.type === "prompt" && event.prompt.kind === kind,
+    );
+
+    fake.send({
+      actor: "user:local",
+      type: "answer",
+      id: prompt?.type === "prompt" ? prompt.prompt.id : "",
+      value,
+    });
+  };
+
+  // Pi decides whether a model runtime may go online when it creates it.
+  delete process.env["PI_OFFLINE"];
+
+  try {
+    const { models } = await fauxModels(root);
+
+    const hosted = await hostSession(
+      sessionOptions(root, {
+        models,
+        extensionPaths: [await fetchingProviderExtension(root)],
+      }),
+      fake.stream,
+      () => undefined,
+      noTerminal,
+    );
+
+    fake.send({ actor: "user:local", type: "message", text: "/login vault" });
+    await answer("secret", "vault-key");
+
+    await fake.waitFor(() =>
+      fake.events.some(
+        (event) =>
+          event.type === "settings" &&
+          event.models.some(({ provider }) => provider === "vault"),
+      ),
+    );
+
+    await hosted.stop();
+  } finally {
+    process.env["PI_OFFLINE"] = "1";
+  }
 });
 
 test("logs in to a provider with an API key, and keeps the key out of events and logs", async () => {

@@ -69,6 +69,9 @@ export interface SessionHost {
   readonly openUrl?: (url: string) => void;
 }
 
+// As long as Pi's TUI gives a model list to load.
+const refreshMs = 15_000;
+
 // The tool that lets the model reach tools of each exposure it isn't
 // declared with.
 const finderOf: Partial<Record<ToolExposure, string>> = {
@@ -181,7 +184,26 @@ export async function startSession(
       : {},
   );
 
+  refreshModels(services.modelRuntime);
+
   return session;
+}
+
+// Pi's own sessions fetch the providers' model lists in the background once
+// extensions have registered theirs, with the logins they have. Providers
+// that list their models only this way, like SAP AI Core, have none
+// otherwise. The lists are kept in the machine's models store for the
+// runner to list.
+export function refreshModels(
+  runtime: ModelRuntime,
+  providers?: readonly string[],
+): void {
+  void runtime
+    .refresh({
+      signal: AbortSignal.timeout(refreshMs),
+      ...(providers && { providers: [...providers] }),
+    })
+    .catch(() => undefined);
 }
 
 // A repository's .pi can run code, so Pi loads it only once the user trusts
@@ -222,12 +244,16 @@ export async function modelLister(
   const refs = (models: readonly ModelRef[]): readonly ModelRef[] =>
     models.map(({ provider, id }) => ({ provider, id }));
 
-  return async () => ({
-    available: refs(await modelRuntime.getAvailable()),
-    registered: refs(
-      modelRuntime.getModels().filter(({ provider }) => !piOwn.has(provider)),
-    ),
-  });
+  return async () => {
+    await modelRuntime.refresh({ allowNetwork: false });
+
+    return {
+      available: refs(await modelRuntime.getAvailable()),
+      registered: refs(
+        modelRuntime.getModels().filter(({ provider }) => !piOwn.has(provider)),
+      ),
+    };
+  };
 }
 
 // Services register the providers extensions add before the default model is
