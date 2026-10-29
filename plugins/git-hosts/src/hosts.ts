@@ -73,6 +73,10 @@ export function hostStore(
   let read = JSON.stringify(config.get());
   let entries = parse(config.get());
 
+  // Why the hosts in the file stopped fitting. A save would write the last
+  // ones that fit over what someone wrote there by hand.
+  let unfit: string | undefined;
+
   const current = (): readonly Entry[] => {
     const value = config.get();
     const serialized = JSON.stringify(value);
@@ -82,9 +86,12 @@ export function hostStore(
 
       try {
         entries = parse(value);
+        unfit = undefined;
       } catch (failure) {
+        unfit = failure instanceof Error ? failure.message : String(failure);
+
         log("hosts in the config file don't fit", {
-          error: failure instanceof Error ? failure.message : String(failure),
+          error: unfit,
         });
       }
     }
@@ -93,6 +100,11 @@ export function hostStore(
   };
 
   const save = (next: readonly Entry[]): void => {
+    current();
+    if (unfit !== undefined) {
+      throw new InvalidHost(`fix git-hosts in pipoca.json first: ${unfit}`);
+    }
+
     const value = config.get();
 
     try {
