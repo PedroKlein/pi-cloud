@@ -3,6 +3,7 @@ import type {
   SettingSpec,
   SettingValue,
 } from "@pipoca/protocol";
+import { isObject } from "./http";
 
 type Schema = Readonly<Record<string, SettingSpec>>;
 
@@ -13,7 +14,7 @@ export function settingValues(
   schema: Schema | undefined,
   stored: unknown,
 ): PluginSettings {
-  const given = isRecord(stored) ? stored : {};
+  const given = isObject(stored) ? stored : {};
 
   return Object.fromEntries(
     Object.entries(schema ?? {}).map(([name, spec]) => {
@@ -30,7 +31,7 @@ export function checkedSettings(
   schema: Schema | undefined,
   body: unknown,
 ): PluginSettings | string {
-  if (!isRecord(body)) {
+  if (!isObject(body)) {
     return "settings must be an object";
   }
 
@@ -48,7 +49,7 @@ export function checkedSettings(
 // The settings a plugin's manifest declares, or throws with what is wrong
 // with them.
 export function settingSpecs(settings: unknown): Schema {
-  if (!isRecord(settings)) {
+  if (!isObject(settings)) {
     throw new Error("pipoca.settings must name each setting the plugin has");
   }
 
@@ -72,7 +73,7 @@ const types: readonly unknown[] = [
 ] satisfies readonly SettingSpec["type"][];
 
 function isSpec(spec: unknown): spec is SettingSpec {
-  if (!isRecord(spec)) {
+  if (!isObject(spec)) {
     return false;
   }
 
@@ -149,8 +150,4 @@ function rule(spec: SettingSpec): string {
     case "strings":
       return "must be a list of text";
   }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

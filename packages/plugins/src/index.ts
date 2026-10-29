@@ -1,4 +1,12 @@
 export { type EventBus, eventBus } from "./events";
+export {
+  BadRequest,
+  fieldsOf,
+  HttpError,
+  isObject,
+  NotFound,
+  readJson,
+} from "./http";
 export { checkedSettings, settingSpecs, settingValues } from "./settings";
 export type {
   AskQuestions,

@@ -1,4 +1,10 @@
-import type { PluginConfig, PluginStore } from "@pipoca/plugins";
+import {
+  BadRequest,
+  fieldsOf,
+  isObject,
+  type PluginConfig,
+  type PluginStore,
+} from "@pipoca/plugins";
 import type { ProviderInput, ProviderView } from "./model";
 
 // A provider as the plugin uses it. Lists are lower case.
@@ -17,8 +23,6 @@ export interface ProviderConfig {
   readonly allowedDomains: readonly string[];
   readonly adminEmails: readonly string[];
 }
-
-export class InvalidProvider extends Error {}
 
 export interface ProviderStore {
   readonly list: () => readonly ProviderConfig[];
@@ -101,7 +105,7 @@ export function providerStore(
   const save = (next: readonly Entry[]): void => {
     current();
     if (unfit !== undefined) {
-      throw new InvalidProvider(`fix oidc in pipoca.json first: ${unfit}`);
+      throw new BadRequest(`fix oidc in pipoca.json first: ${unfit}`);
     }
 
     const value = config.get();
@@ -112,7 +116,7 @@ export function providerStore(
         providers: next.map(fileEntry),
       });
     } catch (failure) {
-      throw new InvalidProvider(
+      throw new BadRequest(
         failure instanceof Error ? failure.message : String(failure),
       );
     }
@@ -130,10 +134,10 @@ export function providerStore(
     before: Entry | undefined,
   ): Entry => {
     const fields = fieldsOf(input);
-    const secret = fields.clientSecret;
+    const secret = fields["clientSecret"];
 
     if (secret !== undefined && secret !== null && typeof secret !== "string") {
-      throw new InvalidProvider("clientSecret must be text");
+      throw new BadRequest("clientSecret must be text");
     }
 
     const provider = providerFrom(id, fields);
@@ -166,7 +170,7 @@ export function providerStore(
       const taken = new Set(current().map(({ provider }) => provider.id));
 
       const entry = changed(
-        freeId(fieldsOf(input).label, taken),
+        freeId(fieldsOf(input)["label"], taken),
         input,
         undefined,
       );
@@ -222,13 +226,13 @@ function entriesOf(
   }
 
   if (!isObject(value)) {
-    throw new InvalidProvider("oidc in pipoca.json must be an object");
+    throw new BadRequest("oidc in pipoca.json must be an object");
   }
 
   const { providers = [] } = value;
 
   if (!Array.isArray(providers)) {
-    throw new InvalidProvider("oidc.providers must be a list");
+    throw new BadRequest("oidc.providers must be a list");
   }
 
   const ids = new Set<string>();
@@ -238,17 +242,17 @@ function entriesOf(
 
     try {
       if (!isObject(item)) {
-        throw new InvalidProvider("must be an object");
+        throw new BadRequest("must be an object");
       }
 
       const { id, clientSecret, clientSecretEnv } = item;
 
       if (typeof id !== "string" || !/^[\w-]+$/.test(id)) {
-        throw new InvalidProvider("id must be letters, digits, - or _");
+        throw new BadRequest("id must be letters, digits, - or _");
       }
 
       if (ids.has(id)) {
-        throw new InvalidProvider(`id ${id} is used twice`);
+        throw new BadRequest(`id ${id} is used twice`);
       }
 
       ids.add(id);
@@ -262,7 +266,7 @@ function entriesOf(
             : undefined;
 
         if (typeof clientSecretEnv !== "string" || secret === undefined) {
-          throw new InvalidProvider(
+          throw new BadRequest(
             "clientSecretEnv names no environment variable that is set",
           );
         }
@@ -278,7 +282,7 @@ function entriesOf(
       }
 
       if (typeof clientSecret !== "string") {
-        throw new InvalidProvider("clientSecret must be text");
+        throw new BadRequest("clientSecret must be text");
       }
 
       return {
@@ -286,8 +290,8 @@ function entriesOf(
         sealed: clientSecret,
       };
     } catch (failure) {
-      if (failure instanceof InvalidProvider) {
-        throw new InvalidProvider(`${where}: ${failure.message}`);
+      if (failure instanceof BadRequest) {
+        throw new BadRequest(`${where}: ${failure.message}`);
       }
 
       throw failure;
@@ -303,7 +307,7 @@ function opened(
   try {
     return open(sealed, id);
   } catch {
-    throw new InvalidProvider(
+    throw new BadRequest(
       "clientSecret must be sealed by Settings; name an environment variable in clientSecretEnv instead",
     );
   }
@@ -409,16 +413,6 @@ function moveTable(config: PluginConfig, store: PluginStore): void {
   store.exec("drop table oidc_providers");
 }
 
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function fieldsOf(
-  input: unknown,
-): Partial<Record<keyof ProviderInput, unknown>> {
-  return isObject(input) ? input : {};
-}
-
 function providerFrom(id: string, input: unknown): ProviderConfig {
   const fields = fieldsOf(input);
 
@@ -426,7 +420,7 @@ function providerFrom(id: string, input: unknown): ProviderConfig {
     const value = fields[name] ?? "";
 
     if (typeof value !== "string") {
-      throw new InvalidProvider(`${name} must be text`);
+      throw new BadRequest(`${name} must be text`);
     }
 
     return value.trim() === "" ? fallback : value.trim();
@@ -439,7 +433,7 @@ function providerFrom(id: string, input: unknown): ProviderConfig {
       !Array.isArray(value) ||
       !value.every((each) => typeof each === "string")
     ) {
-      throw new InvalidProvider(`${name} must be a list of text`);
+      throw new BadRequest(`${name} must be a list of text`);
     }
 
     return value.flatMap((each: string) =>
@@ -451,11 +445,11 @@ function providerFrom(id: string, input: unknown): ProviderConfig {
   const clientId = text("clientId");
 
   if (!URL.canParse(issuer)) {
-    throw new InvalidProvider("issuer must be a URL");
+    throw new BadRequest("issuer must be a URL");
   }
 
   if (clientId === "") {
-    throw new InvalidProvider("clientId is needed");
+    throw new BadRequest("clientId is needed");
   }
 
   return {

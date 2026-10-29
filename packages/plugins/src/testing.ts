@@ -1,7 +1,8 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { Session } from "@pipoca/protocol";
 import { eventBus } from "./events";
-import type { PluginStore, ServerPluginContext } from "./plugin";
+import { HttpError } from "./http";
+import type { PluginRoute, PluginStore, ServerPluginContext } from "./plugin";
 
 // A store in memory that seals nothing, for a plugin's tests.
 export function memoryStore(): PluginStore {
@@ -110,5 +111,24 @@ export function fakeSession(fields: Partial<Session> = {}): Session {
     online: true,
     waiting: false,
     ...fields,
+  };
+}
+
+// A plugin's route that answers what it throws as the server does, for a
+// test that calls the route itself.
+export function served(route: PluginRoute): PluginRoute {
+  return async (...request) => {
+    try {
+      return await route(...request);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return Response.json(
+          { error: error.message },
+          { status: error.status },
+        );
+      }
+
+      throw error;
+    }
   };
 }

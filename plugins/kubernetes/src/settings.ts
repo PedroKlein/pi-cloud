@@ -1,4 +1,4 @@
-import type { PluginStore } from "@pipoca/plugins";
+import { isObject, type PluginStore } from "@pipoca/plugins";
 
 // A Kubernetes Environment's runner pods (ADR 0032). With "claim", each
 // Session gets a pod of its own that mounts a claim of claimSize, so its
@@ -141,8 +141,4 @@ export function settingsStore(store: PluginStore): SettingsStore {
       );
     },
   };
-}
-
-export function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

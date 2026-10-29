@@ -732,6 +732,16 @@ test("refuses a null body and a file name that does not decode", async () => {
   expect(responses.map(({ status }) => status)).toEqual([400, 400, 400, 400]);
 });
 
+test("answers a method the Project list has no route for as not found", async () => {
+  const response = await fetch(
+    new URL("/api/plugins/projects/projects", server?.url),
+    { method: "DELETE", headers: { cookie: await signedIn() } },
+  );
+
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ error: "not_found" });
+});
+
 test("lists memory file sizes in UTF-8 bytes", async () => {
   const a = await repository("app");
 

@@ -1,3 +1,5 @@
+import { isObject } from "@pipoca/plugins";
+
 interface Message {
   readonly role: string;
   readonly content: string | readonly Part[];
@@ -96,11 +98,11 @@ function messageOf(line: string): Message | undefined {
   }
 
   const message =
-    isRecord(entry) && entry["type"] === "message"
+    isObject(entry) && entry["type"] === "message"
       ? entry["message"]
       : undefined;
 
-  if (!isRecord(message)) {
+  if (!isObject(message)) {
     return undefined;
   }
 
@@ -114,12 +116,8 @@ function messageOf(line: string): Message | undefined {
 
   return {
     role,
-    content: typeof content === "string" ? content : content.filter(isRecord),
+    content: typeof content === "string" ? content : content.filter(isObject),
     stopReason: typeof stopReason === "string" ? stopReason : undefined,
     errorMessage: typeof errorMessage === "string" ? errorMessage : undefined,
   };
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null;
 }

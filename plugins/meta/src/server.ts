@@ -1,4 +1,10 @@
-import type { ServerPlugin, ServerPluginContext } from "@pipoca/plugins";
+import {
+  BadRequest,
+  fieldsOf,
+  readJson,
+  type ServerPlugin,
+  type ServerPluginContext,
+} from "@pipoca/plugins";
 import type { Actor, ModelRef, Session } from "@pipoca/protocol";
 import { metaPrompt } from "./prompt";
 
@@ -31,21 +37,18 @@ export const meta: ServerPlugin = {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
 
-      if (request.method !== "POST") {
+      if (request.method === "GET") {
         return Response.json(context.sessions.owned(context.owner));
       }
 
-      try {
-        return Response.json(
-          start(context, user, profile, await request.json()),
-          { status: 201 },
-        );
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          { status: 400 },
-        );
+      if (request.method !== "POST") {
+        return Response.json({ error: "not_found" }, { status: 404 });
       }
+
+      return Response.json(
+        start(context, user, profile, await readJson(request)),
+        { status: 201 },
+      );
     });
   },
 };
@@ -56,24 +59,30 @@ function start(
   profile: string,
   body: unknown,
 ): Session {
-  const { text, model } = (body ?? {}) as { text?: unknown; model?: unknown };
+  const { text, model } = fieldsOf(body);
 
   if (typeof text !== "string" || text.trim() === "") {
-    throw new Error("text must be a non-empty string");
+    throw new BadRequest("text must be a non-empty string");
   }
 
   const ref = modelRef(model);
 
-  return context.sessions.start(
-    {
-      actor: user,
-      profile,
-      workspace: { kind: "repositories", repositories: [] },
-      firstMessage: text,
-      ...(ref && { model: ref }),
-    },
-    context.owner,
-  );
+  try {
+    return context.sessions.start(
+      {
+        actor: user,
+        profile,
+        workspace: { kind: "repositories", repositories: [] },
+        firstMessage: text,
+        ...(ref && { model: ref }),
+      },
+      context.owner,
+    );
+  } catch (error) {
+    throw new BadRequest(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function modelRef(value: unknown): ModelRef | undefined {
@@ -81,7 +90,7 @@ function modelRef(value: unknown): ModelRef | undefined {
     return undefined;
   }
 
-  const { provider, id } = value as { provider?: unknown; id?: unknown };
+  const { provider, id } = fieldsOf(value);
 
   if (
     typeof provider !== "string" ||
@@ -89,7 +98,7 @@ function modelRef(value: unknown): ModelRef | undefined {
     typeof id !== "string" ||
     id === ""
   ) {
-    throw new Error("model must have a provider and an id");
+    throw new BadRequest("model must have a provider and an id");
   }
 
   return { provider, id };

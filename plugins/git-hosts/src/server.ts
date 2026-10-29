@@ -1,5 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { PluginStore, ServerPlugin, User } from "@pipoca/plugins";
+import {
+  BadRequest,
+  fieldsOf,
+  type PluginStore,
+  readJson,
+  type ServerPlugin,
+  type User,
+} from "@pipoca/plugins";
 import type { GitLogin, RepositoryChoice } from "@pipoca/protocol";
 import {
   authorizationUrl,
@@ -8,7 +15,7 @@ import {
   redeem,
   repositoriesOf,
 } from "./github";
-import { type HostConfig, hostStore, InvalidHost, viewOf } from "./hosts";
+import { type HostConfig, hostStore, viewOf } from "./hosts";
 import type { Account, Connection } from "./model";
 
 // A browser has this long to come back from the host.
@@ -212,7 +219,7 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (name === undefined && request.method === "POST") {
-        const created = hosts.create(await request.json());
+        const created = hosts.create(await readJson(request));
         context.log("host added", { host: created.host });
 
         return Response.json(viewOf(created), { status: 201 });
@@ -225,7 +232,7 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (name !== undefined && request.method === "POST") {
-        const updated = hosts.update(name, await request.json());
+        const updated = hosts.update(name, await readJson(request));
 
         return updated === undefined
           ? Response.json({ error: "not_found" }, { status: 404 })
@@ -250,82 +257,63 @@ export const gitHosts: ServerPlugin = {
       const parts = path.split("/");
       const [route, name] = parts;
 
-      try {
-        if (route === "hosts") {
-          return user.admin
-            ? await manage(request, parts)
-            : Response.json({ error: "admin_only" }, { status: 403 });
+      if (route === "hosts") {
+        return user.admin
+          ? await manage(request, parts)
+          : Response.json({ error: "admin_only" }, { status: 403 });
+      }
+
+      if (route === "account" && request.method === "GET") {
+        return Response.json(account(user));
+      }
+
+      if (route === "repositories" && request.method === "GET") {
+        return Response.json(
+          await repositories(
+            user.id,
+            new URL(request.url).searchParams.get("q")?.trim() ?? "",
+          ),
+        );
+      }
+
+      if (route === "sign-in" && name !== undefined) {
+        return start(request, user, name);
+      }
+
+      if (route === "connect" && request.method === "POST") {
+        const { host, token } = fieldsOf(await readJson(request));
+        const listed = typeof host === "string" ? hosts.get(host) : undefined;
+
+        if (listed === undefined) {
+          throw new BadRequest("that host isn't listed");
         }
 
-        if (route === "account" && request.method === "GET") {
-          return Response.json(account(user));
+        if (typeof token !== "string" || token.trim() === "") {
+          throw new BadRequest("paste a personal access token");
         }
 
-        if (route === "repositories" && request.method === "GET") {
-          return Response.json(
-            await repositories(
-              user.id,
-              new URL(request.url).searchParams.get("q")?.trim() ?? "",
-            ),
-          );
+        await connect(user.id, listed, token.trim()).catch(
+          (failure: unknown) => {
+            throw failure instanceof HostRefused
+              ? new BadRequest(failure.message)
+              : failure;
+          },
+        );
+
+        return Response.json(account(user));
+      }
+
+      if (route === "disconnect" && request.method === "POST") {
+        const { host } = fieldsOf(await readJson(request));
+
+        if (typeof host !== "string") {
+          throw new BadRequest("host must be text");
         }
 
-        if (route === "sign-in" && name !== undefined) {
-          return start(request, user, name);
-        }
+        connections.remove(user.id, host);
+        context.log("host disconnected", { userId: user.id, host });
 
-        if (route === "connect" && request.method === "POST") {
-          const { host, token } = (await request.json()) as {
-            host?: unknown;
-            token?: unknown;
-          };
-
-          const listed = typeof host === "string" ? hosts.get(host) : undefined;
-
-          if (listed === undefined) {
-            return Response.json(
-              { error: "that host isn't listed" },
-              { status: 400 },
-            );
-          }
-
-          if (typeof token !== "string" || token.trim() === "") {
-            return Response.json(
-              { error: "paste a personal access token" },
-              { status: 400 },
-            );
-          }
-
-          await connect(user.id, listed, token.trim());
-
-          return Response.json(account(user));
-        }
-
-        if (route === "disconnect" && request.method === "POST") {
-          const { host } = (await request.json()) as { host?: unknown };
-
-          if (typeof host !== "string") {
-            return Response.json(
-              { error: "host must be text" },
-              { status: 400 },
-            );
-          }
-
-          connections.remove(user.id, host);
-          context.log("host disconnected", { userId: user.id, host });
-
-          return Response.json(account(user));
-        }
-      } catch (failure) {
-        if (
-          failure instanceof InvalidHost ||
-          failure instanceof HostRefused ||
-          failure instanceof SyntaxError
-        ) {
-          return Response.json({ error: failure.message }, { status: 400 });
-        }
-
-        throw failure;
+        return Response.json(account(user));
       }
 
       return Response.json({ error: "not_found" }, { status: 404 });

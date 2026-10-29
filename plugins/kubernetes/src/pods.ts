@@ -1,5 +1,6 @@
+import { isObject } from "@pipoca/plugins";
 import { environmentLabel, sessionLabel } from "./cluster";
-import { isObject, type KubernetesSettings } from "./settings";
+import type { KubernetesSettings } from "./settings";
 
 export interface PodOptions {
   readonly name: string;

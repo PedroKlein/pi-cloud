@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { getEventListeners } from "node:events";
 import type { PluginRoute, ToolCaller } from "@pipoca/plugins";
-import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
+import { fakeContext, fakeSession, served } from "@pipoca/plugins/testing";
 import { models } from "./server";
 
 const environmentId = "environment-1";
@@ -18,7 +18,7 @@ function registered(signal: AbortSignal): PluginRoute {
     fakeContext({
       routes: {
         handle: (route) => {
-          routes.push(route);
+          routes.push(served(route));
         },
       },
       models: { offer: () => undefined },

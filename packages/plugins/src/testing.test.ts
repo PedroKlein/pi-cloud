@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { BadRequest } from "./http";
 import type { PluginRoute } from "./plugin";
-import { fakeContext, fakeSession, memoryStore } from "./testing";
+import { fakeContext, fakeSession, memoryStore, served } from "./testing";
 
 test("a memory store keeps rows and seals nothing", () => {
   const store = memoryStore();
@@ -57,4 +58,19 @@ test("a fake Session takes the fields a test sets", () => {
     status: "running",
     archivedAt: null,
   });
+});
+
+test("a served route answers what it throws as the server does", async () => {
+  const route = served(() => {
+    throw new BadRequest("name must be text");
+  });
+
+  const response = await route(
+    new Request("http://plugin/names"),
+    "names",
+    undefined,
+  );
+
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "name must be text" });
 });
