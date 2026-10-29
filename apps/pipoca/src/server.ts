@@ -1043,7 +1043,7 @@ function signedInAs(
 
 function credentialsOf(fields: Record<string, unknown>): Credentials {
   return {
-    name: textOf("name", fields["name"]),
+    name: textOf("name", fields["name"]).trim(),
     password: textOf("password", fields["password"]),
   };
 }
