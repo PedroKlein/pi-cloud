@@ -52,12 +52,15 @@ function fakeApi(): {
   readonly claims: Map<string, Labelled>;
   // Objects whose delete fails, as on an API server that is down for them.
   readonly undeletable: Set<string>;
+  // Objects whose delete answers only after a while, as on a busy API server.
+  readonly slow: Set<string>;
   readonly stop: () => Promise<void>;
 } {
   const pods = new Map<string, FakePod>();
   const secrets = new Map<string, FakeSecret>();
   const claims = new Map<string, Labelled>();
   const undeletable = new Set<string>();
+  const slow = new Set<string>();
   const prefix = "/api/v1/namespaces/pi";
 
   const stores: Record<string, Map<string, unknown>> = {
@@ -113,6 +116,10 @@ function fakeApi(): {
       }
 
       if (request.method === "DELETE" && name !== undefined) {
+        if (slow.has(name)) {
+          await sleep(200);
+        }
+
         return store.delete(name)
           ? Response.json({})
           : Response.json({}, { status: 404 });
@@ -128,6 +135,7 @@ function fakeApi(): {
     secrets,
     claims,
     undeletable,
+    slow,
     stop: async () => api.stop(true),
   };
 }
@@ -574,6 +582,7 @@ test("counts a runner pod whose agent never reached the server as failed", async
 
   const [pod] = api.pods.values();
   if (pod) {
+    api.slow.add(pod.metadata.name);
     pod.status = { phase: "Succeeded" };
   }
 
@@ -688,17 +697,19 @@ test("keeps starting runner pods while one stopped pod can't be deleted", async 
     status: { phase: "Succeeded" },
   });
 
-  await startSession(environment);
-  await eventually(() => api.pods.size === 2);
-
-  expect(api.pods.has("pi-runner-stuck")).toBe(true);
-
-  expect(
+  // A pass that listed pods before this one was added could start the next
+  // pod without ever trying to delete it.
+  await eventually(() =>
     logs.some(
       (line) =>
         line.includes("pi-runner-stuck") && line.includes("not removed"),
     ),
-  ).toBe(true);
+  );
+
+  await startSession(environment);
+  await eventually(() => api.pods.size === 2);
+
+  expect(api.pods.has("pi-runner-stuck")).toBe(true);
 });
 
 test("removes stopped runner pods of an Environment whose settings were removed", async () => {

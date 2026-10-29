@@ -227,7 +227,12 @@ async function reconcile(
   // Pods of an Environment without settings run until their agent stops.
   // Pods of an Environment this server doesn't know belong to another server
   // in the namespace.
-  const removed = new Set<string>();
+  const removing: {
+    readonly pod: RunnerPod;
+    readonly reason: string;
+    readonly problem: string | undefined;
+  }[] = [];
+
   const failed: FailedPod[] = [];
 
   for (const pod of all) {
@@ -242,6 +247,7 @@ async function reconcile(
       environment.runners.some(({ name }) => name === pod.name);
 
     const problem = failureOf(pod, reason, joined, pods.server);
+    removing.push({ pod, reason, problem });
 
     if (problem !== undefined) {
       failed.push({
@@ -251,8 +257,14 @@ async function reconcile(
         problem,
       });
     }
+  }
 
-    removed.add(pod.name);
+  // Before any delete, so no pod is gone while its failure is unknown.
+  failures.record(failed, now);
+
+  const removed = new Set(removing.map(({ pod }) => pod.name));
+
+  for (const { pod, reason, problem } of removing) {
     context.environments.revokeRunner(pod.environmentId, pod.name);
 
     // One pod the API won't delete holds back no other Environment.
@@ -277,8 +289,6 @@ async function reconcile(
       ...(problem !== undefined && { problem }),
     });
   }
-
-  failures.record(failed, now);
 
   // A pod deleted from outside leaves its Secret, and its token valid.
   for (const secret of await pods.cluster.runnerSecrets()) {
