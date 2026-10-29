@@ -1,6 +1,6 @@
 # 0038: Single Sign-On and Admins
 
-- Status: accepted
+- Status: accepted, amended 2026-10-29 (plugin routes and meta-sessions act as the user who calls or starts them, never as an admin from a meta-session; admin-only shared config in plugins)
 - Date: 2026-10-25
 
 ## Context
@@ -32,12 +32,13 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 ### Admins
 
 - The kernel's users get an admin flag. The setup link's user is an admin.
-- Only admins install, update, remove or turn on plugins, change plugin settings and restart the server. Only admins change an Environment's Kubernetes settings too, since a pod patch can mount the namespace's Secrets or run a pod privileged (amended 2026-10-26). Everything else stays open to every signed-in user, since v2 has no per-user isolation ([vision.md](../vision.md#v3-a-teams-control-center)).
+- Only admins install, update, remove or turn on plugins, change plugin settings and restart the server. Only admins change an Environment's Kubernetes settings too, since a pod patch can mount the namespace's Secrets or run a pod privileged (amended 2026-10-26). Only admins change an Environment's model aliases, since every user shares them. A Project's own settings, such as its goal, stay open to everyone (amended 2026-10-29). Everything else stays open to every signed-in user, since v2 has no per-user isolation ([vision.md](../vision.md#v3-a-teams-control-center)).
 
 ### The plugin seam
 
 - A built-in plugin's server part gets `ctx.auth`: it offers a link on the sign-in page, answers some of its routes without a signed-in browser, makes users without a password, sets their admin flag and starts a browser session. Installed plugins don't get it, whatever capabilities they declare.
 - A web part can draw a section on the Settings page.
+- Every plugin route gets its caller: the user, also when a toolset tool acts for them, and whether they are an admin, or the plugin's own Session. A route acts as its caller, so a Session it starts for someone, such as a Project's coordinator, is theirs. `requireAdmin` in `@pipoca/plugins` answers 403 to anyone but an admin, for a route that changes config every user shares (amended 2026-10-29).
 
 ## Consequences
 
@@ -45,4 +46,4 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 - Everyone in the access group sees every Session, Environment and secret until v3 brings roles and per-user ownership, so the group should hold only the people who would get the password.
 - The server's `--sso-only` flag (`oidc.ssoOnly` in the Helm chart) turns the password login off, for a public host. The setup link still works, so the first user can link their provider account from Settings.
 - A sign-in started before a restart has to start again, since its state lives in memory.
-- Sessions still act as the installation's owner, not as the user who started them, so a meta-session can't do anything that needs an admin.
+- A meta-session's toolset tools act as the user who started it, but never as an admin, even when that user is one, so a meta-session still can't do anything that needs an admin. A Session a plugin route starts belongs to the user who called the route, and gets their git logins ([ADR 0043](0043-git-hosts.md)), also when a meta-session called it (amended 2026-10-29).

@@ -262,12 +262,77 @@ test("creates a Project through the Projects plugin's route", async () => {
     api("/api/plugins/projects/projects"),
   );
 
-  const project = await json<{ goal: string }>(
+  const project = await json<{ goal: string; coordinatorId: string }>(
     api(`/api/plugins/projects/projects/${projects[0]?.id ?? ""}`),
   );
 
+  const coordinator = await json<Session>(
+    api(`/api/sessions/${project.coordinatorId}`),
+  );
+
+  const { user } = await json<{ user: { id: string } }>(api("/api/auth"));
+
   expect(projects.map(({ name }) => name)).toEqual(["Shop"]);
   expect(project.goal).toBe("Sell more shoes");
+  expect(coordinator.startedBy).toBe(user.id);
+});
+
+test("never acts as an admin from a meta-session, even one an admin started", async () => {
+  await environmentReady();
+
+  const [shared] = await json<{ id: string; name: string }[]>(
+    api("/api/profiles"),
+  );
+
+  const id = shared?.id ?? "";
+
+  faux.setResponses([
+    call("tool_search", { query: "change a Profile" }),
+    call("profiles_update", { id, name: "Renamed" }),
+    fauxAssistantMessage([fauxText("tried it")]),
+  ]);
+
+  const metaSession = await startMeta("Rename the shared Profile");
+  await answerNext(metaSession.id, true);
+  const events = await follow(metaSession.id, entriesInclude("tried it"));
+
+  const after = await json<{ name: string }>(api(`/api/profiles/${id}`));
+
+  expect(transcriptOf(events)).toContain("admin_only");
+  expect(after.name).toBe(shared?.name ?? "");
+});
+
+test("changes a Project's goal from a meta-session", async () => {
+  await environmentReady();
+
+  // On an Environment without runners, so its coordinator takes no turn.
+  const { environment } = await json<{ environment: { id: string } }>(
+    api("/api/environments", { name: "nowhere" }),
+  );
+
+  const { id } = await json<{ id: string }>(
+    api("/api/plugins/projects/projects", {
+      name: "Shop",
+      repositories: ["https://example.com/shop.git"],
+      environment: environment.id,
+    }),
+  );
+
+  faux.setResponses([
+    call("tool_search", { query: "change a Project's settings" }),
+    call("projects_update", { id, goal: "Sell boots too" }),
+    fauxAssistantMessage([fauxText("changed the goal")]),
+  ]);
+
+  const metaSession = await startMeta("Add boots to the shop's goal");
+  await answerNext(metaSession.id, true);
+  await follow(metaSession.id, entriesInclude("changed the goal"));
+
+  const project = await json<{ goal: string }>(
+    api(`/api/plugins/projects/projects/${id}`),
+  );
+
+  expect(project.goal).toBe("Sell boots too");
 });
 
 test("gives an ordinary Session none of the toolsets", async () => {

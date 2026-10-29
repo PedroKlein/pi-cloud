@@ -3,6 +3,7 @@ import {
   type OfferedModels,
   type PluginStore,
   readJson,
+  requireAdmin,
   type ServerPlugin,
 } from "@pipoca/plugins";
 import { aliasesOf, gatewayProvider } from "./gateway";
@@ -34,7 +35,7 @@ export const models: ServerPlugin = {
     context.routes.handle(async (request, path, caller) => {
       const method = request.method;
 
-      if (caller) {
+      if (caller.kind === "session") {
         const { environmentId } = caller.session;
 
         if (method === "GET" && path === "config") {
@@ -96,6 +97,8 @@ export const models: ServerPlugin = {
       }
 
       if (method === "POST" && environmentId !== undefined) {
+        requireAdmin(caller, "only admins change model aliases");
+
         const body = await readJson(request);
         if (!isObject(body) || !("aliases" in body)) {
           return Response.json(

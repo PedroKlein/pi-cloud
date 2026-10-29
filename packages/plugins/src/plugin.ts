@@ -98,11 +98,21 @@ export interface RouteRequest {
   readonly body?: unknown;
 }
 
-// caller is set when a Session's own plugin part sent the request.
+// Who sent a request to a plugin's routes: a signed-in user, also through a
+// toolset tool that acts for them (ADR 0035), or a Session through the
+// plugin's own Session part. A route acts as its caller (ADR 0038).
+export type RouteCaller =
+  | {
+      readonly kind: "user";
+      readonly actor: `user:${string}`;
+      readonly admin: boolean;
+    }
+  | ({ readonly kind: "session" } & ToolCaller);
+
 export type PluginRoute = (
   request: Request,
   path: string,
-  caller: ToolCaller | undefined,
+  caller: RouteCaller,
 ) => Response | Promise<Response>;
 
 // Undefined passes the request on to the plugin's routes, which need a

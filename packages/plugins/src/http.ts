@@ -1,3 +1,5 @@
+import type { RouteCaller } from "./plugin";
+
 // Thrown from a route, the server answers it with its status and
 // { error: message }, as it does for its own routes.
 export class HttpError extends Error {
@@ -18,6 +20,14 @@ export class BadRequest extends HttpError {
 export class NotFound extends HttpError {
   constructor(message: string) {
     super(404, message);
+  }
+}
+
+// For a route that changes config every user shares (ADR 0038). The
+// message is what the user who isn't an admin reads.
+export function requireAdmin(caller: RouteCaller, message: string): void {
+  if (caller.kind !== "user" || !caller.admin) {
+    throw new HttpError(403, message);
   }
 }
 

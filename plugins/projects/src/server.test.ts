@@ -8,7 +8,12 @@ import {
   type ServerPluginContext,
   type ServerTool,
 } from "@pipoca/plugins";
-import { fakeContext, fakeSession, served } from "@pipoca/plugins/testing";
+import {
+  fakeContext,
+  fakeSession,
+  fakeUser,
+  served,
+} from "@pipoca/plugins/testing";
 import type { Actor, Session } from "@pipoca/protocol";
 import type { ProjectView } from "./model";
 import { projects } from "./server";
@@ -36,6 +41,7 @@ afterEach(() => {
 });
 
 const user: Actor = "user:pedro";
+const pedro = fakeUser({ id: "pedro", admin: true });
 
 function fakeKernel(): {
   readonly context: ServerPluginContext;
@@ -257,7 +263,7 @@ async function startProject(
       }),
     }),
     "projects",
-    undefined,
+    pedro,
   );
 
   const { coordinatorId } = (await response.json()) as ProjectView;
@@ -380,7 +386,7 @@ test("owns its coordinator and threads, and those started before owners existed"
   const listed = await kernel.route()(
     new Request("http://pipoca/projects"),
     "projects",
-    undefined,
+    pedro,
   );
 
   const [project] = (await listed.json()) as ProjectView[];
@@ -838,7 +844,7 @@ async function projectView(kernel: FakeKernel): Promise<ProjectView> {
   const list = await kernel.route()(
     new Request("http://pipoca/projects"),
     "projects",
-    undefined,
+    pedro,
   );
 
   const [summary] = (await list.json()) as { id: string }[];
@@ -846,7 +852,7 @@ async function projectView(kernel: FakeKernel): Promise<ProjectView> {
   const response = await kernel.route()(
     new Request(`http://pipoca/projects/${summary?.id ?? ""}`),
     `projects/${summary?.id ?? ""}`,
-    undefined,
+    pedro,
   );
 
   return (await response.json()) as ProjectView;
@@ -864,7 +870,7 @@ async function editProject(
       body: JSON.stringify(changes),
     }),
     `projects/${id}/settings`,
-    undefined,
+    pedro,
   );
 }
 
@@ -926,7 +932,7 @@ test("keeps a Project's goal in the context of the coordinator and its threads w
       }),
     }),
     "projects",
-    undefined,
+    pedro,
   );
 
   const { coordinatorId, goal } = (await response.json()) as ProjectView;
@@ -966,7 +972,7 @@ test("starts the coordinator and new threads with the Project's Profile", async 
       }),
     }),
     "projects",
-    undefined,
+    pedro,
   );
 
   const { coordinatorId, profileId } = (await response.json()) as ProjectView;
@@ -1028,7 +1034,7 @@ test("lists each Project with its repositories, coordinator state and the thread
   const list = await kernel.route()(
     new Request("http://pipoca/projects"),
     "projects",
-    undefined,
+    pedro,
   );
 
   expect(await list.json()).toMatchObject([
@@ -1117,7 +1123,7 @@ test("shows one thread's state and Project for a link to it", async () => {
     kernel.route()(
       new Request(`http://pipoca/threads/${id}`),
       `threads/${id}`,
-      undefined,
+      pedro,
     );
 
   expect(await (await thread(threadId)).json()).toMatchObject({

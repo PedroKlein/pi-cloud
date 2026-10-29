@@ -114,13 +114,21 @@ async function api(
 
 // What a runner gets for a new Session of Pedro's.
 async function assignment(): Promise<Assignment | undefined> {
-  const runners = runnerCredentials(server, pedro);
-  const token = await runners.token("laptop", "laptops");
+  const token = await runnerToken();
 
   await api("POST", "/api/sessions", {
     workspace: { kind: "folder", path: "/srv/a" },
   });
 
+  return polled(token);
+}
+
+async function runnerToken(): Promise<string> {
+  return runnerCredentials(server, pedro).token("laptop", "laptops");
+}
+
+// What the runner gets for the first Session it can start.
+async function polled(token: string): Promise<Assignment | undefined> {
   const poll: WorkPoll = { running: [], folders: ["/srv/a"], models: [] };
 
   const work = (await (
@@ -168,6 +176,26 @@ test("connects a host with a token and signs the person's Sessions in with it", 
   ]);
 
   expect(logs.join("\n")).not.toContain(goodToken);
+});
+
+test("signs the coordinator of a Project in with the git logins of the person who started it", async () => {
+  await api("POST", "/api/plugins/git-hosts/connect", {
+    host: enterprise,
+    token: goodToken,
+  });
+
+  const token = await runnerToken();
+
+  const created = await api("POST", "/api/plugins/projects/projects", {
+    name: "Release",
+    repositories: [`https://${enterprise}/I572543/pi-aicore-provider.git`],
+  });
+
+  expect(created.status).toBe(200);
+
+  expect((await polled(token))?.gitLogins).toEqual([
+    { host: enterprise, token: goodToken },
+  ]);
 });
 
 test("sends no login for a host after the person disconnects it", async () => {

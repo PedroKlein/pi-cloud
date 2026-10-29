@@ -1634,7 +1634,7 @@ test("creates a Project and shares a file through its library", async () => {
   });
 
   await page.getByRole("link", { name: "brief.txt" }).waitFor();
-  await page.getByText("user:local wrote brief.txt (10 bytes)").waitFor();
+  await page.getByText(/user:\S+ wrote brief\.txt \(10 bytes\)$/).waitFor();
 
   const nav = page.locator("#project-nav").getByRole("link", { name: /^Site/ });
   await nav.click();

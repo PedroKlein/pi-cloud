@@ -856,8 +856,12 @@ test("shares files between the user and Project sessions through the library", a
     ),
   ).toBe("the brief\n");
 
+  const { user } = (await (await api("/api/auth")).json()) as {
+    user: { id: string };
+  };
+
   expect(await (await api(files)).json()).toMatchObject([
-    { name: "brief.txt", size: 10, actor: "user:local" },
+    { name: "brief.txt", size: 10, actor: `user:${user.id}` },
     { name: "readme.md", size: 4, actor: `session:${coordinatorId}` },
   ]);
 

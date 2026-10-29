@@ -4,6 +4,7 @@ import {
   fieldsOf,
   type PluginStore,
   readJson,
+  type RouteCaller,
   type SendOutcome,
   type ServerPlugin,
   type ServerPluginContext,
@@ -51,8 +52,6 @@ export const projects: ServerPlugin = {
         projectId: member.projectId,
       });
     });
-
-    const user: Actor = `user:${context.owner}`;
 
     // Projects from before Sessions had owners (ADR 0028).
     for (const project of store.list()) {
@@ -161,8 +160,8 @@ export const projects: ServerPlugin = {
       clearInterval(timer);
     });
 
-    context.routes.handle(async (request, path) =>
-      route(request, path.split("/"), store, context, user),
+    context.routes.handle(async (request, path, caller) =>
+      route(request, path.split("/"), store, context, caller),
     );
   },
 };
@@ -321,15 +320,20 @@ async function route(
   path: readonly string[],
   store: ProjectStore,
   context: ServerPluginContext,
-  user: Actor,
+  caller: RouteCaller,
 ): Promise<Response> {
   const [resource, id, child, name] = path;
+
+  // The plugin has no Session part that sends requests.
+  if (caller.kind !== "user") {
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
 
   if (resource === "projects" && id === undefined) {
     if (request.method === "POST") {
       return Response.json(
         view(
-          create(await readJson(request), store, context, user),
+          create(await readJson(request), store, context, caller.actor),
           store,
           context,
         ),
@@ -463,7 +467,7 @@ function create(
   body: unknown,
   store: ProjectStore,
   { sessions, log }: ServerPluginContext,
-  user: Actor,
+  user: `user:${string}`,
 ): Project {
   const {
     name,

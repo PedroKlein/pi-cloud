@@ -47,6 +47,7 @@ export function agentRoutes(
 
         return (
           (await plugins.route(request, name, path, {
+            kind: "session",
             session,
             actor: `session:${id}`,
           })) ?? notFound()

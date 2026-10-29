@@ -1,7 +1,7 @@
 import {
   BadRequest,
+  type RouteCaller,
   type ServerPlugin,
-  type ToolCaller,
 } from "@pipoca/plugins";
 import type { Actor } from "@pipoca/protocol";
 import { type LibraryStore, libraryStore } from "./library";
@@ -11,7 +11,6 @@ export const library: ServerPlugin = {
   name: "library",
   register: (context) => {
     const store = libraryStore(context.store);
-    const user: Actor = `user:${context.owner}`;
 
     context.events.subscribe("projects.MemberAdded", (event) => {
       const { sessionId, projectId } = event;
@@ -30,7 +29,7 @@ export const library: ServerPlugin = {
       const response = await serve(
         request,
         target,
-        caller?.actor ?? user,
+        caller.actor,
         store,
         fileLimit(context.settings.get()),
       );
@@ -39,7 +38,7 @@ export const library: ServerPlugin = {
         context.log("library file written", {
           project: target.projectId,
           name: target.name,
-          actor: caller?.actor ?? user,
+          actor: caller.actor,
         });
       }
 
@@ -58,10 +57,10 @@ interface Target {
 // names the Project: projects/<id>/files/...
 function resolve(
   path: readonly string[],
-  caller: ToolCaller | undefined,
+  caller: RouteCaller,
   store: LibraryStore,
 ): Target | undefined {
-  if (caller) {
+  if (caller.kind === "session") {
     const projectId = store.projectOf(caller.session.id);
     const [resource, name] = path;
 

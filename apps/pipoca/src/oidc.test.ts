@@ -687,6 +687,32 @@ test("only admins change an Environment's Kubernetes settings", async () => {
   expect(statuses).toEqual([200, 403, 403, 200]);
 });
 
+test("only admins change model aliases, and anyone changes a Project's goal", async () => {
+  const { cookie } = await signIn(ana);
+
+  const { environment } = (await (
+    await api("POST", "/api/environments", cookie, { name: "laptop" })
+  ).json()) as { environment: { id: string } };
+
+  const project = (await (
+    await api("POST", "/api/plugins/projects/projects", cookie, {
+      name: "Release",
+      repositories: ["https://example.com/app.git"],
+    })
+  ).json()) as { id: string };
+
+  const aliases = `/api/plugins/models/environments/${environment.id}`;
+  const settings = `/api/plugins/projects/projects/${project.id}/settings`;
+
+  const statuses = [
+    (await api("POST", aliases, cookie, { aliases: null })).status,
+    (await api("POST", aliases, await pedro(), { aliases: null })).status,
+    (await api("POST", settings, cookie, { goal: "Ship it" })).status,
+  ];
+
+  expect(statuses).toEqual([403, 200, 200]);
+});
+
 test("refuses a callback in a browser that didn't start the sign-in", async () => {
   const { response, cookie } = await signIn(ana, { browser: "" });
 
