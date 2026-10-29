@@ -518,3 +518,59 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
   sessions.close();
   store.close();
 });
+
+test("fails only the Session whose Profile can't be read when a runner claims work", async () => {
+  const store = openStore(":memory:", undefined, noProfiles);
+  let reads = 0;
+
+  const sessions = new Sessions(
+    {
+      ...store,
+      profileFiles: (id) => {
+        reads++;
+        if (reads === 1) {
+          throw new Error("EIO: i/o error, read");
+        }
+
+        return store.profileFiles(id);
+      },
+    },
+    { pollWaitMs: 0 },
+  );
+
+  const runner = { name: "vm", environment: "local" };
+  store.ensureEnvironment("local");
+
+  const start = (path: string): string => {
+    const started = sessions.start({
+      workspace: { kind: "clone", repository: `https://example.com/${path}` },
+      actor: "user:local",
+    });
+
+    if (!started.ok) {
+      throw new Error(started.reason);
+    }
+
+    return started.value.id;
+  };
+
+  const broken = start("broken.git");
+  const fine = start("fine.git");
+
+  const claimed = await sessions.claim(
+    runner,
+    poll,
+    new AbortController().signal,
+  );
+
+  const failed = sessions.get(broken);
+  sessions.close();
+  store.close();
+
+  expect(claimed.start.map(({ sessionId }) => sessionId)).toEqual([fine]);
+
+  expect(failed).toMatchObject({
+    status: "failed",
+    error: "EIO: i/o error, read",
+  });
+});
