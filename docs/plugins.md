@@ -35,17 +35,19 @@ Every part is optional. Write them in TypeScript or JavaScript. The server bundl
 
 ## The server part
 
-The server part runs inside the server's process. Its default export has the plugin's id as its `name`, and a `register` function that gets the plugin's context:
+The server part runs inside the server's process. Its default export is a `ServerPlugin` from `@pipoca/plugins`, with the plugin's id as its `name` and a `register` function that gets the plugin's context. Import the types with `import type` and check the export with `satisfies`, so nothing from Pipoca ends up in the bundle:
 
 ```ts
+import type { ServerPlugin } from "@pipoca/plugins";
+
 export default {
   name: "greeter",
   register: (context) => {
-    context.routes.handle(async () =>
-      Response.json({ greeting: context.settings.get().greeting }),
+    context.routes.handle(() =>
+      Response.json({ greeting: context.settings.get()["greeting"] }),
     );
   },
-};
+} satisfies ServerPlugin;
 ```
 
 `context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and the calling Session when the plugin's Session part sent it. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
@@ -66,6 +68,7 @@ export default {
 The web part's default export is a `WebPlugin`, the same object a built-in exports from `@pipoca/plugins/web`. `nav` adds a sidebar entry and its page:
 
 ```tsx
+import type { WebPlugin } from "@pipoca/plugins/web";
 import { Button, PageTitle } from "@pipoca/ui";
 import { useState } from "react";
 
@@ -74,19 +77,24 @@ function Page() {
 
   const greet = async () => {
     const response = await fetch("/api/plugins/greeter/greeting");
-    setGreeting((await response.json()).greeting);
+    const body = (await response.json()) as { greeting: string };
+
+    setGreeting(body.greeting);
   };
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-8">
       <PageTitle description="An example plugin.">Greeter</PageTitle>
-      <Button onClick={greet}>Greet me</Button>
+      <Button onClick={() => void greet()}>Greet me</Button>
       <p>{greeting}</p>
     </div>
   );
 }
 
-export default { name: "greeter", nav: { label: "Greeter", Page } };
+export default {
+  name: "greeter",
+  nav: { label: "Greeter", Page },
+} satisfies WebPlugin;
 ```
 
 The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, and `links`.
@@ -100,6 +108,8 @@ The part shares `react`, `react-dom`, `@pipoca/ui` and `@pipoca/plugins/web` wit
 The Session part runs in every Session's process, on whichever machine runs it, including a laptop. Set `ownSessionsOnly` to load it only in the Sessions your server part starts. Its default export is a `SessionPlugin`:
 
 ```ts
+import type { SessionPlugin } from "@pipoca/plugins";
+
 export default {
   name: "greeter",
   extension: (cloud) => (pi) => {
@@ -107,13 +117,13 @@ export default {
       description: "Say the greeting from the Greeter plugin's settings",
       handler: async (_args, ctx) => {
         const response = await cloud.request("greeting");
-        const { greeting } = await response.json();
+        const { greeting } = (await response.json()) as { greeting: string };
 
         ctx.ui.notify(`${greeting} from ${ctx.cwd}`, "info");
       },
     });
   },
-};
+} satisfies SessionPlugin;
 ```
 
 `extension` returns a Pi extension (Pi's `docs/extensions.md`). `cloud.request` calls the plugin's own routes on behalf of the Session, and `cloud.settings` holds its settings as they were when the Session started. Instead of an extension, a part can list Pi `packages` to load, or return `tools`. Runners fetch the bundle by its hash when a Session starts. The part can't import files other than code.

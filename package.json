@@ -5,7 +5,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "plugins/*"
+    "plugins/*",
+    "examples"
   ],
   "scripts": {
     "build": "bun run --cwd apps/pipoca build",
@@ -14,7 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web && tsc --noEmit -p examples",
     "test:e2e": "bun test ./apps/pipoca/src/web.e2e.ts"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/", "**/node_modules/", "examples/"] },
+  { ignores: ["**/dist/", "**/node_modules/"] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
@@ -92,6 +92,12 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    // An installed plugin's parts are loaded by their default export
+    // (docs/plugins.md).
+    files: ["examples/plugins/**/*.ts", "examples/plugins/**/*.tsx"],
+    rules: { "no-restricted-exports": "off" },
   },
   {
     // Built-in plugins use only what a third-party plugin gets (ADR 0038).
