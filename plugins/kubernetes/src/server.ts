@@ -255,8 +255,19 @@ async function reconcile(
     removed.add(pod.name);
     context.environments.revokeRunner(pod.environmentId, pod.name);
 
-    await pods.cluster.deletePod(pod.name);
-    await pods.cluster.deleteSecret(pod.name);
+    // One pod the API won't delete holds back no other Environment.
+    try {
+      await pods.cluster.deletePod(pod.name);
+      await pods.cluster.deleteSecret(pod.name);
+    } catch (error) {
+      context.log("runner pod not removed", {
+        environmentId: pod.environmentId,
+        pod: pod.name,
+        error: String(error),
+      });
+
+      continue;
+    }
 
     context.log("runner pod removed", {
       environmentId: pod.environmentId,
@@ -301,7 +312,17 @@ async function reconcile(
       session.workspaceRemoval !== "kept" &&
       session.workspaceRemoval !== "pending"
     ) {
-      await pods.cluster.deleteClaim(claim.name);
+      try {
+        await pods.cluster.deleteClaim(claim.name);
+      } catch (error) {
+        context.log("session claim not removed", {
+          sessionId: claim.sessionId,
+          claim: claim.name,
+          error: String(error),
+        });
+
+        continue;
+      }
 
       context.log("session claim removed", {
         sessionId: claim.sessionId,
