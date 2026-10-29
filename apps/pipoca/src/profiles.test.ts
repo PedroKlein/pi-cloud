@@ -298,6 +298,24 @@ test("exports a Profile's folder and imports it as a copy", async () => {
   ).toBe("# Review");
 });
 
+test("exports a Profile's own files without the admin's base Profile", async () => {
+  await fetch(
+    new URL("/api/base/files/skills%2Fshared%2FSKILL.md", server.url),
+    {
+      method: "PUT",
+      headers: { cookie: await signedIn() },
+      body: "# Shared",
+    },
+  );
+
+  await api("/api/profiles", { body: { name: "Work", agentsMd: "Be brief." } });
+
+  const response = await api("/api/profiles/work/export");
+  const files = await new Bun.Archive(await response.arrayBuffer()).files();
+
+  expect([...files.keys()].sort()).toEqual(["AGENTS.md"]);
+});
+
 test("imports someone's own Pi folder without their logins or history", async () => {
   const archive = await new Bun.Archive(
     {

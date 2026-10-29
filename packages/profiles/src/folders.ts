@@ -130,6 +130,14 @@ export class ProfileFolders {
   // What runners download: the folder's files, or none for a default Profile
   // nobody edited. Throws ProfileTooBig for a folder runners shouldn't get.
   files(id: string): ProfileFiles | undefined {
+    const own = this.ownFiles(id);
+    const base = this.#base?.files();
+
+    return own && base ? layered(base, own) : own;
+  }
+
+  // The folder's files without the base Profile, as an export holds them.
+  ownFiles(id: string): ProfileFiles | undefined {
     const profile = this.read(id);
     if (!profile) {
       return undefined;
@@ -137,14 +145,9 @@ export class ProfileFolders {
 
     const dir = join(this.#root, id);
 
-    const own =
-      statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
-        ? folderFiles(dir, profile.name)
-        : contentFiles(profile);
-
-    const base = this.#base?.files();
-
-    return base ? layered(base, own) : own;
+    return statSync(dir, { throwIfNoEntry: false })?.isDirectory() === true
+      ? folderFiles(dir, profile.name)
+      : contentFiles(profile);
   }
 
   entries(
