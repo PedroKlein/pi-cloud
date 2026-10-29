@@ -381,13 +381,25 @@ export async function removeWorkspace(
     }
   }
 
-  const repositories = [];
-  for (const { checkout, path, workspace: single } of checkouts) {
-    const report = await removeCheckout(
-      single,
-      { dir: path, force: true },
-      log,
-    );
+  // A failure partway still reports the restore points of the checkouts
+  // already removed, whose branches are gone from this machine.
+  const repositories = checkouts.map(({ checkout }) => checkout);
+  for (const [
+    index,
+    { checkout, path, workspace: single },
+  ] of checkouts.entries()) {
+    let report: RemovalReport;
+    try {
+      report = await removeCheckout(single, { dir: path, force: true }, log);
+    } catch (error) {
+      log("workspace removal failed", { dir, error: String(error) });
+
+      return {
+        outcome: "kept",
+        reason: String(error),
+        restore: { ...workspace, repositories },
+      };
+    }
 
     const restored =
       report.outcome === "removed" &&
@@ -395,7 +407,7 @@ export async function removeWorkspace(
         ? report.restore
         : undefined;
 
-    repositories.push({
+    repositories[index] = {
       ...checkout,
       ...(restored?.restorePoint !== undefined && {
         restorePoint: restored.restorePoint,
@@ -403,7 +415,7 @@ export async function removeWorkspace(
       ...(restored?.branchConfig !== undefined && {
         branchConfig: restored.branchConfig,
       }),
-    });
+    };
   }
 
   await rm(dir, { recursive: true, force: true });

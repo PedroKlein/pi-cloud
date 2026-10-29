@@ -499,7 +499,13 @@ export type RemovalReport =
   // restore is the Workspace to prepare when the Session comes back, starting
   // from what the remotes still hold of its branch.
   | { readonly outcome: "removed"; readonly restore: Workspace }
-  | { readonly outcome: "kept"; readonly reason: string };
+  // A kept workspace has restore when some of it was removed before the rest
+  // failed, so what was removed can come back.
+  | {
+      readonly outcome: "kept";
+      readonly reason: string;
+      readonly restore?: Workspace;
+    };
 
 // A report as the agent posts it, with the generation of the Removal it
 // answers.

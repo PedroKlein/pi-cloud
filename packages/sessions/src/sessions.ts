@@ -489,8 +489,7 @@ export class Sessions {
 
     this.#update({
       ...session,
-      workspace:
-        report.outcome === "removed" ? report.restore : session.workspace,
+      workspace: report.restore ?? session.workspace,
       ...(settles && {
         workspaceRemoval: report.outcome,
         workspaceKeptReason: report.outcome === "kept" ? report.reason : null,
