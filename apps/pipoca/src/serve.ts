@@ -162,6 +162,24 @@ export function serve(options: ServeOptions): {
     ...installed.flatMap(({ manifest: { id }, on }) => (on ? [id] : [])),
   ];
 
+  // A Session on the server's own runner would share the server pod's files,
+  // its sealing key among them, so a server that can start runner pods runs
+  // no runner itself (ADR 0049). The chart names the runners' URL only when
+  // it lets the server start them.
+  const startsPods =
+    enabled.includes("kubernetes") &&
+    process.env["KUBERNETES_SERVICE_HOST"] !== undefined &&
+    process.env["PIPOCA_RUNNER_URL"] !== undefined;
+
+  const ownAgent = startsPods ? undefined : options.agent;
+
+  if (options.agent !== undefined && ownAgent === undefined) {
+    options.log(
+      "the server's own runner is off, since it starts runner pods in its cluster",
+      { runner: options.agent.provider },
+    );
+  }
+
   const events = eventBus((type, error) => {
     options.log("event listener failed", { type, error: String(error) });
   });
@@ -253,8 +271,8 @@ export function serve(options: ServeOptions): {
           .list()
           .filter(
             ({ provider, runner, status }) =>
-              provider === options.agent?.provider &&
-              runner === options.agent.provider &&
+              provider === ownAgent?.provider &&
+              runner === ownAgent.provider &&
               (status === "starting" || status === "running"),
           ).length,
       now: options.restart,
@@ -368,21 +386,18 @@ export function serve(options: ServeOptions): {
 
   // The built-in provider is the same agent a laptop runs, talking to this
   // server over loopback, so both providers share one tested path.
-  const ownRunner = options.agent?.provider;
+  const ownRunner = ownAgent?.provider;
   if (ownRunner !== undefined) {
     store.ensureEnvironment(ownRunner);
   }
 
   const agent =
-    options.agent &&
+    ownAgent &&
     runAgent({
-      ...options.agent,
+      ...ownAgent,
       server: server.url.href,
       credential: {
-        token: auth.ownRunnerToken(
-          options.agent.provider,
-          options.agent.provider,
-        ),
+        token: auth.ownRunnerToken(ownAgent.provider, ownAgent.provider),
       },
       log: options.log,
       signal: agentStop.signal,
