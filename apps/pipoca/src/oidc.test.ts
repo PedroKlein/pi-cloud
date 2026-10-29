@@ -468,6 +468,34 @@ test("keeps the last providers that fit while the file is broken, and won't over
   );
 });
 
+test("won't save over providers edited by hand into a list that doesn't fit", async () => {
+  writeConfig({
+    oidc: {
+      providers: [
+        { ...providerInput(provider.issuer), id: "ias", clientSecret: "x" },
+      ],
+    },
+  });
+
+  const edited = readFileSync(join(configDir, "pipoca.json"), "utf8");
+
+  const added = await api(
+    "POST",
+    "/api/plugins/oidc/providers",
+    await pedro(),
+    providerInput(provider.issuer, { label: "Sign in with Google" }),
+  );
+
+  expect(added.status).toBe(400);
+
+  expect(await added.json()).toEqual({
+    error:
+      "fix oidc in pipoca.json first: oidc.providers[0]: clientSecret must be sealed by Settings; name an environment variable in clientSecretEnv instead",
+  });
+
+  expect(readFileSync(join(configDir, "pipoca.json"), "utf8")).toBe(edited);
+});
+
 test("moves the providers of the table from before the config file into it", async () => {
   const database = join(configDir, "server.db");
   const db = new DatabaseSync(database);

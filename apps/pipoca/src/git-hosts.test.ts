@@ -229,6 +229,29 @@ test("keeps a host's OAuth secret sealed in pipoca.json and out of the page", as
   });
 });
 
+test("won't save over hosts edited by hand into a list that doesn't fit", async () => {
+  await api("GET", "/api/plugins/git-hosts/hosts");
+
+  const edited = JSON.stringify({
+    "git-hosts": { hosts: [{ host: enterprise, api: "ftp://nowhere" }] },
+  });
+
+  writeFileSync(join(configDir, "pipoca.json"), edited);
+
+  const added = await api("POST", "/api/plugins/git-hosts/hosts", {
+    host: "github.example.com",
+  });
+
+  expect(added.status).toBe(400);
+
+  expect(await added.json()).toEqual({
+    error:
+      "fix git-hosts in pipoca.json first: git-hosts.hosts[0]: api must be an http or https URL",
+  });
+
+  expect(readFileSync(join(configDir, "pipoca.json"), "utf8")).toBe(edited);
+});
+
 test("sends a sign-in to the host's authorize page, and refuses a callback in another browser", async () => {
   writeFileSync(
     join(configDir, "pipoca.json"),
