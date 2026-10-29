@@ -56,7 +56,7 @@ function titleOf(session: Session): string {
 
 function Home({ context, onNewSession }: HomeProps): ReactElement {
   const environments = useLoaded(
-    async () => json<Environment[]>(fetch("/api/environments")),
+    async () => json<Environment[]>(context.request("/api/environments")),
     "environments",
   ).value;
 
@@ -136,7 +136,10 @@ function Composer({
     const ref = modelRef(model);
 
     json<Session>(
-      context.request("sessions", { text, ...(ref && { model: ref }) }),
+      context.request("sessions", {
+        method: "POST",
+        body: JSON.stringify({ text, ...(ref && { model: ref }) }),
+      }),
     ).then(
       (session) => {
         started.dispatchEvent(new Event("started"));

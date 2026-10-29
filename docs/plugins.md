@@ -68,15 +68,15 @@ export default {
 The web part's default export is a `WebPlugin`, the same object a built-in exports from `@pipoca/plugins/web`. `nav` adds a sidebar entry and its page:
 
 ```tsx
-import type { WebPlugin } from "@pipoca/plugins/web";
+import type { PageProps, WebPlugin } from "@pipoca/plugins/web";
 import { Button, PageTitle } from "@pipoca/ui";
 import { useState } from "react";
 
-function Page() {
+function Page({ context }: PageProps) {
   const [greeting, setGreeting] = useState("");
 
   const greet = async () => {
-    const response = await fetch("/api/plugins/greeter/greeting");
+    const response = await context.request("greeting");
     const body = (await response.json()) as { greeting: string };
 
     setGreeting(body.greeting);
@@ -97,7 +97,7 @@ export default {
 } satisfies WebPlugin;
 ```
 
-`Page` gets `{ context, path }`, where `path` is the rest of the address after the plugin's page. `context.request(path, body)` calls the plugin's own routes, as a GET, or a JSON POST when it has a body, and `context.settings` holds its settings. `nav` can also list links under the entry with `Items`, and say with `fills` which paths fill the window.
+`Page` gets `{ context, path }`, where `path` is the rest of the address after the plugin's page. `context.request(path, init)` is `fetch` for the plugin's own routes: `context.request("greeting")` asks `/api/plugins/greeter/greeting`, and `context.request("items", { method: "PUT", body })` sends any method and body. A path that starts with `/`, such as `/api/environments`, goes to the server's own API instead. `context.settings` holds the plugin's settings. `nav` can also list links under the entry with `Items`, and say with `fills` which paths fill the window.
 
 The other slots are `SessionPanel`, `SessionHeader`, `EnvironmentSection`, `SettingsSection`, `Home`, `tools` and `widgets` for drawing tool calls and extension widgets, `notices`, `links`, `sessionPath` for where a Session the plugin owns opens, and `repositories` for the repositories New Session offers.
 

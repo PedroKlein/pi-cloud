@@ -77,7 +77,12 @@ function HostRow({
     event.preventDefault();
     const token = new FormData(event.currentTarget).get("token");
 
-    json(context.request("connect", { host: host.host, token })).then(
+    json(
+      context.request("connect", {
+        method: "POST",
+        body: JSON.stringify({ host: host.host, token }),
+      }),
+    ).then(
       () => {
         setPasting(false);
         setError(undefined);
@@ -128,7 +133,10 @@ function HostRow({
             aria-label={`Disconnect ${host.label}`}
             onClick={() => {
               void json(
-                context.request("disconnect", { host: host.host }),
+                context.request("disconnect", {
+                  method: "POST",
+                  body: JSON.stringify({ host: host.host }),
+                }),
               ).then(onChange, onChange);
             }}
           >
@@ -197,7 +205,9 @@ function Hosts({
     }
 
     void json(
-      context.request(`hosts/${encodeURIComponent(host.host)}/remove`, {}),
+      context.request(`hosts/${encodeURIComponent(host.host)}/remove`, {
+        method: "POST",
+      }),
     ).then(changed, changed);
   };
 
@@ -263,7 +273,7 @@ function Hosts({
                 editing === "new"
                   ? "hosts"
                   : `hosts/${encodeURIComponent(editing.host)}`,
-                input,
+                { method: "POST", body: JSON.stringify(input) },
               ),
             );
 

@@ -41,7 +41,7 @@ function Page({ context }: { readonly context: WebContext }): ReactElement {
   const { value, reload } = useLoaded(
     async () =>
       Promise.all([
-        json<Environment[]>(fetch("/api/environments")),
+        json<Environment[]>(context.request("/api/environments")),
         json<EnvironmentModels[]>(context.request("environments")),
       ]),
     "models",
@@ -93,7 +93,7 @@ function EnvironmentSection({
   const save = async (aliases: AliasConfig | null): Promise<void> => {
     const response = await context.request(
       `environments/${encodeURIComponent(environment.id)}`,
-      { aliases },
+      { method: "POST", body: JSON.stringify({ aliases }) },
     );
 
     if (!response.ok) {
