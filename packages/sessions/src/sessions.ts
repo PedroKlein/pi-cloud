@@ -7,6 +7,7 @@ import {
   type Command,
   type Environment,
   type EnvironmentUpdate,
+  type ForkedSession,
   type GitLogin,
   leaseMs,
   type LiveEvent,
@@ -121,7 +122,8 @@ export type Rejection =
   | "unknown_environment"
   | "environment_exists"
   | "unknown_profile"
-  | "not_movable";
+  | "not_movable"
+  | "unknown_entry";
 
 export type Result<T, R extends Rejection = Rejection> =
   | { readonly ok: true; readonly value: T }
@@ -311,13 +313,31 @@ export class Sessions {
   // (ADR 0034). Only what the Session pushed reaches another machine, so a
   // Session in a folder of its machine forks only within its Environment.
   // A fork belongs to no plugin, so a plugin's prompt stays behind.
+  // From a user message it is Pi's /fork: the transcript up to that message,
+  // whose text comes back for the new Session's composer. Without one it is
+  // Pi's /clone.
   fork(
     id: string,
-    request: { readonly environment?: string; readonly actor: Actor },
-  ): Result<Session> {
+    request: {
+      readonly environment?: string;
+      readonly entry?: string;
+      readonly actor: Actor;
+    },
+  ): Result<ForkedSession> {
     const source = this.#store.get(id);
     if (!source) {
       return { ok: false, reason: "not_found" };
+    }
+
+    const transcript = this.#store.transcript(id, 0);
+
+    const before =
+      request.entry === undefined
+        ? undefined
+        : branchBefore(transcript, request.entry);
+
+    if (request.entry !== undefined && before === undefined) {
+      return { ok: false, reason: "unknown_entry" };
     }
 
     const environment = request.environment ?? source.environmentId;
@@ -346,7 +366,7 @@ export class Sessions {
     this.#store.appendTranscript(
       forked.value.id,
       0,
-      this.#store.transcript(id, 0),
+      before?.lines ?? transcript,
     );
 
     if (source.title !== null) {
@@ -356,7 +376,13 @@ export class Sessions {
       );
     }
 
-    return { ok: true, value: this.get(forked.value.id) ?? forked.value };
+    return {
+      ok: true,
+      value: {
+        ...(this.get(forked.value.id) ?? forked.value),
+        ...(before && { editorText: before.text }),
+      },
+    };
   }
 
   list({
@@ -1450,6 +1476,8 @@ function parsed(line: string):
       message?: unknown;
       provider?: unknown;
       modelId?: unknown;
+      id?: unknown;
+      parentId?: unknown;
     }
   | undefined {
   try {
@@ -1484,8 +1512,54 @@ function userText(message: unknown): string | null {
   return typeof text === "string" && text.trim() !== "" ? text : null;
 }
 
+// The entries from the root up to a user message's parent, through Pi's
+// parentId links, so later entries and other branches stay behind. The
+// header stays first, since Pi finds a session file by it.
+function branchBefore(
+  lines: readonly string[],
+  entryId: string,
+): { readonly lines: readonly string[]; readonly text: string } | undefined {
+  const entries = lines.map(parsed);
+
+  const parents = new Map<unknown, unknown>(
+    entries.flatMap((entry) => (entry ? [[entry.id, entry.parentId]] : [])),
+  );
+
+  const target = entries.find((entry) => entry?.id === entryId);
+  const message = target?.type === "message" ? target.message : undefined;
+
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    (message as { role?: unknown }).role !== "user"
+  ) {
+    return undefined;
+  }
+
+  const kept = new Set<unknown>();
+
+  for (
+    let at = parents.get(entryId);
+    typeof at === "string" && !kept.has(at);
+    at = parents.get(at)
+  ) {
+    kept.add(at);
+  }
+
+  return {
+    lines: lines.filter((_, index) => {
+      const entry = entries[index];
+
+      return entry?.type === "session" || kept.has(entry?.id);
+    }),
+    text: userText(message) ?? "",
+  };
+}
+
 // A Session that never started has no branch yet, so its fork starts where
 // it would have. An archived one's branch lives on only at its restore point.
+// Otherwise the fork starts from the Session's branch, which a clone gets only
+// from the remote, so its runner can say when that branch isn't pushed.
 function forkedWorkspace({
   workspace,
   generation,
@@ -1494,37 +1568,36 @@ function forkedWorkspace({
     return workspace;
   }
 
+  const from = (
+    startPoint: string | undefined,
+    restorePoint: string | undefined,
+  ): { readonly startPoint?: string; readonly forked?: true } => {
+    if (generation === 0) {
+      return startPoint === undefined ? {} : { startPoint };
+    }
+
+    return restorePoint === undefined
+      ? { startPoint: workspace.branch, forked: true }
+      : { startPoint: restorePoint };
+  };
+
   if (workspace.kind === "repositories") {
     return {
       kind: "repositories",
-      repositories: workspace.repositories.map((checkout) => {
-        const startPoint =
-          generation === 0
-            ? checkout.startPoint
-            : (checkout.restorePoint ?? workspace.branch);
-
-        return {
-          repository: checkout.repository,
-          ...(startPoint !== undefined && { startPoint }),
-        };
-      }),
+      repositories: workspace.repositories.map((checkout) => ({
+        repository: checkout.repository,
+        ...from(checkout.startPoint, checkout.restorePoint),
+      })),
     };
   }
 
-  const startPoint =
-    generation === 0
-      ? workspace.startPoint
-      : (workspace.restorePoint ?? workspace.branch);
+  const start = from(workspace.startPoint, workspace.restorePoint);
 
   return workspace.kind === "worktree"
     ? {
         kind: "worktree",
         path: workspace.path,
-        ...(startPoint !== undefined && { startPoint }),
+        ...(start.startPoint !== undefined && { startPoint: start.startPoint }),
       }
-    : {
-        kind: "clone",
-        repository: workspace.repository,
-        ...(startPoint !== undefined && { startPoint }),
-      };
+    : { kind: "clone", repository: workspace.repository, ...start };
 }

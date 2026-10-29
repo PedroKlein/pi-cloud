@@ -4,6 +4,7 @@ import {
   type Assignment,
   type Attempt,
   type Environment,
+  type ForkedSession,
   type Joined,
   type Session,
   type WorkspaceRequest,
@@ -424,6 +425,141 @@ test("forks a Session that never started from where it would have, and keeps fol
       startPoint: "main",
     },
   });
+});
+
+async function forkFrom(id: string, body: unknown): Promise<Response> {
+  return fetch(new URL(`/api/sessions/${id}/fork`, server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: await signedIn() },
+    body: JSON.stringify(body),
+  });
+}
+
+test("forks from a user message with only the entries before it on its branch", async () => {
+  const runner = await runners.token("mac-1", "laptops");
+  const id = await startSession("/srv/a");
+
+  const work = await json<Work>(
+    asRunner(runner, "/agent/work", { ...emptyPoll, folders: ["/srv/a"] }),
+  );
+
+  const message = (
+    entryId: string,
+    parentId: string | null,
+    role: "user" | "assistant",
+    text: string,
+  ): string =>
+    JSON.stringify({
+      type: "message",
+      id: entryId,
+      parentId,
+      timestamp: "2026-10-29T10:00:00.000Z",
+      message: { role, content: text, timestamp: 0 },
+    });
+
+  const header = JSON.stringify({ type: "session", version: 3, id: "pi-1" });
+
+  // u3 starts a second branch from a1, after the branch through u2.
+  const lines = [
+    header,
+    message("u1", null, "user", "first"),
+    message("a1", "u1", "assistant", "one"),
+    message("u2", "a1", "user", "second"),
+    message("a2", "u2", "assistant", "two"),
+    message("u3", "a1", "user", "other"),
+    message("a3", "u3", "assistant", "three"),
+  ];
+
+  await asRunner(work.start[0]?.token, `/agent/sessions/${id}/transcript`, {
+    generation: work.start[0]?.generation,
+    start: 0,
+    lines,
+  });
+
+  const fromMessage = await forkFrom(id, { entry: "u2" });
+  const forked = await json<ForkedSession>(Promise.resolve(fromMessage));
+  const whole = await json<ForkedSession>(forkFrom(id, {}));
+  const assistant = await forkFrom(id, { entry: "a1" });
+  const unknown = await forkFrom(id, { entry: "nope" });
+
+  const claims = await json<Work>(
+    asRunner(runner, "/agent/work", {
+      ...emptyPoll,
+      folders: ["/srv/a"],
+      running: work.start.map(({ sessionId, generation }) => ({
+        sessionId,
+        generation,
+      })),
+    }),
+  );
+
+  const transcript = async (session: string): Promise<readonly string[]> =>
+    (
+      await json<{ entries: string[] }>(
+        asRunner(
+          claims.start.find(({ sessionId }) => sessionId === session)?.token,
+          `/agent/sessions/${session}/transcript`,
+        ),
+      )
+    ).entries;
+
+  expect(fromMessage.status).toBe(201);
+  expect(forked.editorText).toBe("second");
+  expect(whole.editorText).toBeUndefined();
+  expect(await transcript(forked.id)).toEqual(lines.slice(0, 3));
+  expect(await transcript(whole.id)).toEqual(lines);
+  expect(assistant.status).toBe(400);
+
+  expect(await assistant.json()).toEqual({
+    error: "unknown_entry",
+    message: "That isn't one of the Session's messages.",
+  });
+
+  expect(unknown.status).toBe(400);
+});
+
+test("forks a started clone from its branch, or from its restore point once archived", async () => {
+  const runner = await runners.token("mac-1", "laptops");
+
+  const id = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  const work = await json<Work>(asRunner(runner, "/agent/work", emptyPoll));
+  const live = await json<Session>(forkFrom(id, {}));
+
+  await fetch(new URL(`/api/sessions/${id}/archive`, server.url), {
+    method: "POST",
+    headers: { cookie: await signedIn() },
+  });
+
+  const removing = await json<Work>(asRunner(runner, "/agent/work", emptyPoll));
+
+  const removal = removing.remove.find(({ sessionId }) => sessionId === id);
+
+  await asRunner(work.start[0]?.token, `/agent/sessions/${id}/workspace`, {
+    generation: removal?.generation,
+    outcome: "removed",
+    restore: { ...removal?.workspace, restorePoint: "origin/pipoca/pushed" },
+  });
+
+  const archived = await json<Session>(forkFrom(id, {}));
+
+  expect(work.start.map(({ sessionId }) => sessionId)).toEqual([id]);
+
+  expect(live.workspace).toMatchObject({
+    kind: "clone",
+    startPoint: `pipoca/${id.slice(0, 8)}`,
+    forked: true,
+  });
+
+  expect(archived.workspace).toMatchObject({
+    kind: "clone",
+    startPoint: "origin/pipoca/pushed",
+  });
+
+  expect(archived.workspace).not.toHaveProperty("forked");
 });
 
 async function asRunner(

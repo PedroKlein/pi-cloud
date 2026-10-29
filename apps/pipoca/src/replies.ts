@@ -13,6 +13,7 @@ const rejections = {
     409,
     "The Session's workspace can't move to another Environment.",
   ],
+  unknown_entry: [400, "That isn't one of the Session's messages."],
 } as const satisfies Record<Rejection, readonly [number, string]>;
 
 // Every error the API answers has this body: a code a program can check and

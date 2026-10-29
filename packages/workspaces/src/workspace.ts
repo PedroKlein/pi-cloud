@@ -307,10 +307,18 @@ async function branchStart(
     }
   }
 
-  return {
-    startPoint: startPoint === undefined ? undefined : await named(startPoint),
-    config: {},
-  };
+  const start = startPoint === undefined ? undefined : await named(startPoint);
+
+  if (
+    workspace.kind === "clone" &&
+    workspace.forked === true &&
+    start !== undefined &&
+    !(await isCommit(repository, start))
+  ) {
+    throw new Error("Push the Session's branch first");
+  }
+
+  return { startPoint: start, config: {} };
 }
 
 async function reusedCheckout(

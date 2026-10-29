@@ -43,17 +43,26 @@ function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
   return level;
 }
 
-export function createFork(body: unknown): { readonly environment?: string } {
-  const { environment } = (body ?? {}) as Record<string, unknown>;
-  if (environment === undefined || environment === null) {
-    return {};
+export function createFork(body: unknown): {
+  readonly environment?: string;
+  readonly entry?: string;
+} {
+  const { environment, entry } = (body ?? {}) as Record<string, unknown>;
+
+  for (const [field, value] of Object.entries({ environment, entry })) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      (typeof value !== "string" || value === "")
+    ) {
+      throw new BadRequest(`${field} must be a non-empty string`);
+    }
   }
 
-  if (typeof environment !== "string" || environment === "") {
-    throw new BadRequest("environment must be a non-empty string");
-  }
-
-  return { environment };
+  return {
+    ...(typeof environment === "string" && { environment }),
+    ...(typeof entry === "string" && { entry }),
+  };
 }
 
 export function createSession(body: unknown): CreateSession {

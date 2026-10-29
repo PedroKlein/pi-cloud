@@ -1,5 +1,6 @@
 import {
   type Environment,
+  type ForkedSession,
   type OpenedPage,
   piTerminal,
   previewPort,
@@ -8,9 +9,18 @@ import {
   terminalTakenOver,
 } from "@pipoca/protocol";
 import type { EmbeddedSessionProps } from "@pipoca/plugins/web";
-import { Badge, Button, cn, Icon, type IconName } from "@pipoca/ui";
+import {
+  Badge,
+  Button,
+  cn,
+  Icon,
+  type IconName,
+  Picker,
+  type PickerOption,
+} from "@pipoca/ui";
 import {
   type ReactElement,
+  type ReactNode,
   type RefObject,
   useCallback,
   useEffect,
@@ -20,7 +30,8 @@ import {
   useState,
 } from "react";
 import { api, command } from "./api";
-import { Composer } from "./composer";
+import { ago } from "./chat";
+import { Composer, prefillComposer } from "./composer";
 import { ChatView } from "./chat-view";
 import { emptyFeed, type Feed, feedReader, followEvents } from "./feed";
 import { describe, sessionBadge, shortName, workspaceName } from "./names";
@@ -52,6 +63,8 @@ export function SessionView({
   const primary = layout === "full";
   const [feed, setFeed] = useState<Feed>(emptyFeed);
   const [view, setView] = useState<View>("chat");
+  const forkMenu = useRef<HTMLButtonElement>(null);
+  const [forkedAt, setForkedAt] = useState(0);
   const report = useRef<(error: unknown) => void>(() => undefined);
   const [channel] = useState(() => sessionChannel(sessionId));
 
@@ -138,15 +151,22 @@ export function SessionView({
   );
 
   // The fork starts from this Session's branch, so it gets what was pushed
-  // or, on the same machine, committed.
-  const forkSession = async (id: string): Promise<void> => {
+  // or, on the same machine, committed. From a message, that message comes
+  // back in the fork's composer.
+  const forkSession = async (entry?: string): Promise<void> => {
     try {
       const response = await api(
-        `/api/sessions/${encodeURIComponent(id)}/fork`,
-        {},
+        `/api/sessions/${encodeURIComponent(sessionId)}/fork`,
+        entry === undefined ? {} : { entry },
       );
 
-      location.hash = ((await response.json()) as Session).id;
+      const fork = (await response.json()) as ForkedSession;
+
+      if (fork.editorText !== undefined) {
+        prefillComposer(fork.id, fork.editorText);
+      }
+
+      location.hash = fork.id;
     } catch (error) {
       reportError(error);
     }
@@ -213,6 +233,16 @@ export function SessionView({
           {actions}
           {session && (
             <SessionMenu
+              popover={
+                <ForkPicker
+                  feed={feed}
+                  now={forkedAt}
+                  trigger={forkMenu}
+                  onFork={(entry) => {
+                    void forkSession(entry);
+                  }}
+                />
+              }
               items={[
                 archived
                   ? {
@@ -233,7 +263,8 @@ export function SessionView({
                   label: "Fork",
                   icon: "git-fork",
                   run: () => {
-                    void forkSession(sessionId);
+                    setForkedAt(Date.now());
+                    forkMenu.current?.click();
                   },
                 },
                 ...(session.workspaceRemoval === "kept"
@@ -353,6 +384,63 @@ function StateBadge({
   return badge ? <Badge state={badge.state}>{badge.label}</Badge> : null;
 }
 
+// Pi's /fork: the user messages to start a new Session from, newest first.
+// The whole Session is Pi's /clone. The Fork menu item opens it in the
+// menu's place.
+function ForkPicker({
+  feed,
+  now,
+  trigger,
+  onFork,
+}: {
+  readonly feed: Feed;
+  readonly now: number;
+  readonly trigger: RefObject<HTMLButtonElement | null>;
+  readonly onFork: (entry?: string) => void;
+}): ReactElement {
+  const options = feed.items
+    .flatMap((item): PickerOption[] =>
+      item.role === "user" && item.entryId !== undefined
+        ? [
+            {
+              value: item.entryId,
+              label:
+                item.text
+                  .split("\n")
+                  .find((line) => line.trim() !== "")
+                  ?.trim() ?? "Image",
+              ...(item.at !== undefined && { detail: ago(item.at, now) }),
+            },
+          ]
+        : [],
+    )
+    .reverse();
+
+  return (
+    <Picker
+      label="Fork from a message"
+      placeholder="Search messages"
+      chip={false}
+      trigger={trigger}
+      options={options}
+      selected={[]}
+      actions={[
+        {
+          label: "Fork the whole Session",
+          run: () => {
+            onFork();
+          },
+        },
+      ]}
+      onChange={([entry]) => {
+        onFork(entry);
+      }}
+    >
+      Fork from a message
+    </Picker>
+  );
+}
+
 interface MenuItem {
   readonly label: string;
   readonly icon: IconName;
@@ -362,8 +450,11 @@ interface MenuItem {
 
 function SessionMenu({
   items,
+  popover,
 }: {
   readonly items: readonly MenuItem[];
+  // A list an item opens where the menu was.
+  readonly popover?: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -394,6 +485,7 @@ function SessionMenu({
 
   return (
     <div ref={box} className="relative">
+      <div className="absolute top-full right-0">{popover}</div>
       <Button
         variant="ghost"
         iconOnly
