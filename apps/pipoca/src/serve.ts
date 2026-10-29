@@ -221,8 +221,10 @@ export function serve(options: ServeOptions): {
         sessions
           .list()
           .filter(
-            ({ provider, status }) =>
-              provider === options.agent?.provider && status === "running",
+            ({ provider, runner, status }) =>
+              provider === options.agent?.provider &&
+              runner === options.agent.provider &&
+              (status === "starting" || status === "running"),
           ).length,
       now: options.restart,
     },
