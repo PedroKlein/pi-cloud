@@ -21,14 +21,20 @@ export interface Account {
     readonly server: string;
     readonly updatedAt: string;
   }[];
+  // The MCP servers of the person's Profiles that Settings signs them in to.
+  readonly servers: readonly {
+    readonly key: string;
+    readonly name: string;
+    readonly url: string;
+  }[];
   // The sign-in the person started from Settings, until they dismiss it.
   readonly connection?: Connection;
 }
 
 export interface Connection {
-  readonly provider: string;
+  // The model provider, or the MCP server as Pi keys it.
+  readonly key: string;
   readonly name: string;
-  readonly type: AuthType;
   readonly state: "running" | "done" | "failed";
   readonly events: readonly AuthEvent[];
   readonly prompt?: ConnectionPrompt;

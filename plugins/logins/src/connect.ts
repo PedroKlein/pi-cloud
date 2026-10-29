@@ -1,6 +1,7 @@
 import type {
   AuthInteraction,
   AuthPrompt,
+  AuthType,
   CredentialStore,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -14,14 +15,18 @@ export interface Connections {
   // Starts the person's sign-in, in place of one still running.
   readonly start: (
     userId: string,
-    provider: Pick<Connection, "provider" | "name" | "type">,
-    credentials: CredentialStore,
+    about: Pick<Connection, "key" | "name">,
+    signIn: SignIn,
   ) => void;
   // Says false when the prompt was already answered or taken back.
   readonly answer: (userId: string, prompt: string, answer: string) => boolean;
   // Stops a running sign-in, or forgets a finished one.
   readonly dismiss: (userId: string) => void;
 }
+
+// Runs one sign-in, telling the person each step and asking through the
+// interaction.
+export type SignIn = (interaction: AuthInteraction) => Promise<void>;
 
 interface Running {
   readonly abort: AbortController;
@@ -34,9 +39,9 @@ interface Running {
     | undefined;
 }
 
-// Pi's own login flows, run on the server for the person's Settings page
-// (ADR 0045). Each change is published so the page shows the next step: a
-// link to open, a device code or a prompt to answer.
+// Sign-ins run on the server for the person's Settings page (ADR 0045). Each
+// change is published so the page shows the next step: a link to open, a
+// device code or a prompt to answer.
 export function connections(
   publish: () => void,
   log: (message: string, fields: Record<string, unknown>) => void,
@@ -103,23 +108,14 @@ export function connections(
   const run = async (
     userId: string,
     entry: Running,
-    credentials: CredentialStore,
+    signIn: SignIn,
   ): Promise<void> => {
-    const { provider, type } = entry.view;
+    const { key } = entry.view;
 
     try {
-      const runtime = await ModelRuntime.create({
-        credentials,
-        modelsPath: null,
-        allowModelNetwork: false,
-        refreshOnCreate: false,
-      });
+      await signIn(interaction(entry));
 
-      await runtime.login(provider, type, interaction(entry), {
-        agentName: "Pipoca",
-      });
-
-      log("login connected", { userId, provider, type });
+      log("login connected", { userId, key });
       ask(entry, undefined);
       update(entry, { state: "done" });
     } catch (error) {
@@ -128,7 +124,7 @@ export function connections(
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      log("login not connected", { userId, provider, type, error: message });
+      log("login not connected", { userId, key, error: message });
       ask(entry, undefined);
       update(entry, { state: "failed", error: message });
     } finally {
@@ -138,23 +134,23 @@ export function connections(
 
   return {
     current: (userId) => running.get(userId)?.view,
-    start: (userId, { provider, name, type }, credentials) => {
+    start: (userId, { key, name }, signIn) => {
       dismiss(userId);
 
       const entry: Running = {
         abort: new AbortController(),
-        view: { provider, name, type, state: "running", events: [] },
+        view: { key, name, state: "running", events: [] },
         asked: undefined,
       };
 
       running.set(userId, entry);
-      log("login started", { userId, provider, type });
+      log("login started", { userId, key });
 
       const timer = setTimeout(() => {
         entry.abort.abort(new Error("The sign-in took too long"));
       }, connectionMs);
 
-      void run(userId, entry, credentials).finally(() => {
+      void run(userId, entry, signIn).finally(() => {
         clearTimeout(timer);
       });
     },
@@ -169,6 +165,25 @@ export function connections(
       return true;
     },
     dismiss,
+  };
+}
+
+// Pi's own login for one of its model providers, saved to the person's
+// logins.
+export function modelSignIn(
+  credentials: CredentialStore,
+  provider: string,
+  type: AuthType,
+): SignIn {
+  return async (interaction) => {
+    const runtime = await ModelRuntime.create({
+      credentials,
+      modelsPath: null,
+      allowModelNetwork: false,
+      refreshOnCreate: false,
+    });
+
+    await runtime.login(provider, type, interaction, { agentName: "Pipoca" });
   };
 }
 

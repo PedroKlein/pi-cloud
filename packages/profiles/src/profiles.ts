@@ -225,6 +225,14 @@ export class Profiles {
     return this.#folders.base?.read() ?? emptyProfile;
   }
 
+  // The MCP servers that Sessions may connect to: the base Profile's and
+  // each Profile's, as their mcp.json files configure them.
+  mcpServers(): readonly { readonly name: string; readonly config: unknown }[] {
+    return [this.base(), ...this.list()].flatMap(({ mcpServers }) =>
+      Object.entries(mcpServers).map(([name, config]) => ({ name, config })),
+    );
+  }
+
   // Throws InvalidProfile when the body isn't Profile content.
   updateBase(body: unknown, admin: boolean): Result<ProfileContent> {
     const base = this.#folders.base;

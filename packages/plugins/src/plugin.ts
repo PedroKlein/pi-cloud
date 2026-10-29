@@ -161,6 +161,11 @@ export interface PluginConfig {
   readonly dir: string;
 }
 
+export interface ProfileMcpServer {
+  readonly name: string;
+  readonly config: unknown;
+}
+
 // A read-only Profile a plugin ships for the Sessions it owns, such as the
 // meta Profile (ADR 0035). Users don't list or edit it.
 export interface PluginProfile extends ProfileContent {
@@ -270,6 +275,9 @@ export interface ServerPluginContext {
   readonly profiles: {
     // Returns the id the plugin starts its Sessions with.
     readonly provide: (key: string, profile: PluginProfile) => string;
+    // The MCP servers of the base Profile and the Profiles Sessions start
+    // with, as their mcp.json files configure them.
+    readonly mcpServers: () => readonly ProfileMcpServer[];
   };
   readonly routes: { readonly handle: (route: PluginRoute) => void };
   // For a built-in plugin that signs people in without a password, such as
