@@ -763,6 +763,36 @@ test("updates a plugin to its repository's newest commit for the next start", as
   );
 });
 
+test("forgets why a plugin failed once an update replaces it", async () => {
+  const url = await gitPlugin("hello", {}, `throw new Error("broken");`);
+  const folder = join(root, "sources", "hello");
+
+  await start();
+  await install(url);
+  await api("PATCH", "/api/plugins/hello", { enabled: true });
+  await start();
+
+  expect((await listed("hello"))?.error).toContain("broken");
+
+  await writeFile(
+    join(folder, "server.ts"),
+    `export default {
+  name: "hello",
+  register: (context) => {
+    context.routes.handle(async () => new Response("fixed"));
+  },
+};
+`,
+  );
+
+  await commit(folder);
+
+  const updated = await api("PATCH", "/api/plugins/hello", { update: true });
+
+  expect(await updated.json()).not.toHaveProperty("error");
+  expect(await listed("hello")).toMatchObject({ state: "off", updated: true });
+});
+
 test("turns off an update that asks for more than was trusted", async () => {
   const url = await gitPlugin("hello");
   const folder = join(root, "sources", "hello");
