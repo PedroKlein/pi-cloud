@@ -1,7 +1,7 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { Session } from "@pipoca/protocol";
 import { eventBus } from "./events";
-import { HttpError } from "./http";
+import { isHttpError } from "./http";
 import type {
   PluginRoute,
   PluginStore,
@@ -135,7 +135,7 @@ export function served(route: PluginRoute): PluginRoute {
     try {
       return await route(...request);
     } catch (error) {
-      if (error instanceof HttpError) {
+      if (isHttpError(error)) {
         return Response.json(
           { error: error.message },
           { status: error.status },

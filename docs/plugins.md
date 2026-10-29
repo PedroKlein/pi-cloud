@@ -35,22 +35,28 @@ Every part is optional. Write them in TypeScript or JavaScript. `version` is opt
 
 ## The server part
 
-The server part runs inside the server's process. Its default export is a `ServerPlugin` from `@pipoca/plugins`, with the plugin's id as its `name` and a `register` function that gets the plugin's context. Import the types with `import type` and check the export with `satisfies`, so nothing from Pipoca ends up in the bundle:
+The server part runs inside the server's process. Its default export is a `ServerPlugin` from `@pipoca/plugins`, with the plugin's id as its `name` and a `register` function that gets the plugin's context. Check the export with `satisfies`:
 
 ```ts
-import type { ServerPlugin } from "@pipoca/plugins";
+import { NotFound, type ServerPlugin } from "@pipoca/plugins";
 
 export default {
   name: "greeter",
   register: (context) => {
-    context.routes.handle(() =>
-      Response.json({ greeting: context.settings.get()["greeting"] }),
-    );
+    context.routes.handle((_request, path) => {
+      if (path !== "greeting") {
+        throw new NotFound(`the greeter has no ${path}`);
+      }
+
+      return Response.json({ greeting: context.settings.get()["greeting"] });
+    });
   },
 } satisfies ServerPlugin;
 ```
 
-`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and its caller. The caller is `{ kind: "user", actor, admin }` for a signed-in user, also when a toolset tool sends the request for them (from a meta-session, `admin` is always false), and `{ kind: "session", session, actor }` when the plugin's Session part sent it. A route acts as its caller: a Session it starts for a user takes `actor: caller.actor`, so it gets that user's git logins. A route that changes config every user shares answers 403 unless `caller.kind === "user" && caller.admin` ([ADR 0038](adr/0038-single-sign-on-and-admins.md#admins)). The built-in plugins call `requireAdmin(caller, message)` from `@pipoca/plugins` for this. The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there, and `auth` is only for built-in plugins. `context.store` is the plugin's own SQLite database, with `exec`, `all` and `run` for SQL and `seal` and `open` for secrets it keeps in a table. Name its tables `<id>_<table>`. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
+The server and Session parts import `@pipoca/plugins` from the server they run on, the way a web part gets React from the page, so don't list it in `dependencies`. It changes with the server, and `engine` says which version a plugin was written for ([ADR 0046](adr/0046-plugin-sdk-from-the-server.md)). A route throws `BadRequest(message)`, `NotFound(message)` or `HttpError(status, message)` to answer with that status and `{ "error": message }`, as the server does for its own routes. `readJson(request)` reads a JSON body or throws a `BadRequest`, and `fieldsOf(body)` gives a body's fields to check one by one.
+
+`context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and its caller. The caller is `{ kind: "user", actor, admin }` for a signed-in user, also when a toolset tool sends the request for them (from a meta-session, `admin` is always false), and `{ kind: "session", session, actor }` when the plugin's Session part sent it. A route acts as its caller: a Session it starts for a user takes `actor: caller.actor`, so it gets that user's git logins. A route that changes config every user shares calls `requireAdmin(caller, message)` first, which answers 403 with the message unless `caller.kind === "user" && caller.admin` ([ADR 0038](adr/0038-single-sign-on-and-admins.md#admins)). The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there, and `auth` is only for built-in plugins. `context.store` is the plugin's own SQLite database, with `exec`, `all` and `run` for SQL and `seal` and `open` for secrets it keeps in a table. Name its tables `<id>_<table>`. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 
 | Capability     | What it gives                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------- |
@@ -176,5 +182,6 @@ const response = await route?.(
 - A plugin runs with the server's own access. Capabilities catch mistakes but don't sandbox anything, so turn on only plugins you trust.
 - The server installs dependencies with `bun install --ignore-scripts` and builds with Bun macros off. A plugin can't use `workspaces`, `patchedDependencies`, `workspace:` or `link:` dependencies, a dependency from a path outside its folder, a `bunfig.toml`, or an `.npmrc`.
 - A fetched plugin can't contain symlinks, and a URL can't contain credentials. Use an ssh URL with a key for a private repository.
+- `@pipoca/plugins` isn't on npm yet. A running part gets it from the server, but its types and `@pipoca/plugins/testing` come from a checkout of the Pipoca repository.
 - Parts run from `.build` in the plugin's folder, so a part that reads files next to itself through `import.meta.url` should look one folder up.
 - Settings types are `string`, `number` (with `min` and `max`), `boolean`, `choice` (with `options`) and `strings`. Each takes a `title`, an optional `description`, and a `default`.

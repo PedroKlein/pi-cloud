@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   BadRequest,
   fieldsOf,
+  isHttpError,
   NotFound,
   readJson,
   requireAdmin,
@@ -58,4 +59,16 @@ test("lets only an admin through to a route that changes shared config", () => {
       }),
     );
   }
+});
+
+test("recognizes an HTTP error, also from another copy of the SDK", () => {
+  const copy = Object.assign(new Error("no item 7"), {
+    status: 404,
+    [Symbol.for("pipoca.http-error")]: true,
+  });
+
+  expect(isHttpError(new NotFound("no item 7"))).toBe(true);
+  expect(isHttpError(copy)).toBe(true);
+  expect(isHttpError(new Error("no item 7"))).toBe(false);
+  expect(isHttpError({ status: 404, message: "no item 7" })).toBe(false);
 });
