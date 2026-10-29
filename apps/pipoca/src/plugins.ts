@@ -362,8 +362,8 @@ export function startPlugins(
     return folder();
   };
 
-  // Writes, builds and switches go one at a time, so a plugin isn't turned
-  // on while a write changes it.
+  // Writes, builds, switches and removals go one at a time, so a plugin
+  // isn't turned on while a write changes it.
   let changing = Promise.resolve();
 
   const oneAtATime = async <T>(change: () => Promise<T>): Promise<T> => {
@@ -833,33 +833,38 @@ export function startPlugins(
         return messageOf(error);
       }
     },
-    remove: async (name) => {
-      if (manifest(name) === undefined) {
-        return false;
-      }
+    remove: async (name) =>
+      oneAtATime(async () => {
+        if (manifest(name) === undefined) {
+          return false;
+        }
 
-      if (deps.installed === undefined || !installedIds.has(name)) {
-        return "only an installed plugin can be removed";
-      }
+        if (deps.installed === undefined || !installedIds.has(name)) {
+          return "only an installed plugin can be removed";
+        }
 
-      if (running.includes(name)) {
-        return "it is running, so turn it off and restart the server first";
-      }
+        if (running.includes(name)) {
+          return "it is running, so turn it off and restart the server first";
+        }
 
-      await deps.installed.remove(name);
+        try {
+          await deps.installed.remove(name);
+        } catch (error) {
+          return messageOf(error);
+        }
 
-      manifests = manifests.filter(({ id }) => id !== name);
-      installedIds.delete(name);
-      switchedOn.delete(name);
-      failures.delete(name);
-      sources.delete(name);
-      updated.delete(name);
-      fileDigests.delete(name);
+        manifests = manifests.filter(({ id }) => id !== name);
+        installedIds.delete(name);
+        switchedOn.delete(name);
+        failures.delete(name);
+        sources.delete(name);
+        updated.delete(name);
+        fileDigests.delete(name);
 
-      deps.log("plugin removed", { plugin: name });
+        deps.log("plugin removed", { plugin: name });
 
-      return true;
-    },
+        return true;
+      }),
     files: {
       list: async (name) => folder().files(name),
       read: async (name, path) => folder().read(name, path),
