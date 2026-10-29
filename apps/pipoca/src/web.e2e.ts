@@ -15,6 +15,7 @@ import {
   chromium,
   type Locator,
   type Page,
+  type Route,
 } from "playwright-core";
 import type { Environment } from "@pipoca/protocol";
 import { installedPlugins } from "./installed";
@@ -1654,6 +1655,54 @@ test("shows a plugin page's failure without taking the app down", async () => {
   await pluginPage.getByRole("button", { name: "Try again" }).click();
   await page.getByRole("heading", { name: "New Project" }).waitFor();
   await page.getByRole("button", { name: "New session" }).waitFor();
+});
+
+test("keeps a plugin's newest list when an older load answers last", async () => {
+  const projects = (name: string): object[] => [
+    {
+      id: name,
+      name,
+      needsYou: 0,
+      repositories: 1,
+      coordinatorState: "idle",
+    },
+  ];
+
+  const loads: Route[] = [];
+  const { promise: watching, resolve: watched } = Promise.withResolvers();
+
+  await page.route("**/api/plugins/projects/projects", async (route) => {
+    loads.push(route);
+    watched(undefined);
+
+    if (loads.length === 2) {
+      await route.fulfill({ json: projects("Newer") });
+    }
+  });
+
+  // One change arrives while the list's first load is still on its way.
+  await page.route("**/api/changes", async (route) => {
+    await watching;
+
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: `retry: 60000\ndata: ${JSON.stringify({ topic: "sessions" })}\n\n`,
+    });
+  });
+
+  await page.goto(server.url.href);
+
+  const nav = page.locator("#project-nav");
+  await nav.getByRole("link", { name: /^Newer/ }).waitFor();
+  await loads[0]?.fulfill({ json: projects("Older") });
+  await page.waitForTimeout(500);
+
+  const shown = await nav.getByRole("link").allTextContents();
+
+  expect(shown.map((text) => text.split("1 repository")[0])).toEqual(["Newer"]);
+
+  await page.unroute("**/api/changes");
+  await page.unroute("**/api/plugins/projects/projects");
 });
 
 test("attaches an image to a message and shows it in the chat", async () => {

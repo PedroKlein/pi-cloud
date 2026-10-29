@@ -11,10 +11,9 @@ import type {
   Profile,
   Session,
 } from "@pipoca/protocol";
-import { watchChanges } from "@pipoca/plugins/web";
+import { responseOrder, watchChanges } from "@pipoca/plugins/web";
 import { api } from "./api";
 import { noticeText, settled } from "./notices";
-import { responseOrder } from "./responses";
 
 function subscribeHash(onChange: () => void): () => void {
   window.addEventListener("hashchange", onChange);

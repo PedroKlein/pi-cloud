@@ -12,6 +12,9 @@ import {
   useEffectEvent,
   useState,
 } from "react";
+import { responseOrder } from "./responses";
+
+export { responseOrder } from "./responses";
 
 // The shell's own Session view, for a plugin page to show a Session in
 // (ADR 0028). A side view is a narrow panel next to the page's main view.
@@ -302,7 +305,8 @@ export function watchChanges(
 
 // Loads data for a component, again when key changes, on reload(), when one
 // of the topics changes, and every everyMs for data that changes outside
-// Pipoca. Stale results for an old key are dropped.
+// Pipoca. Stale results for an old key, and results older than the ones
+// shown, are dropped.
 // A failed first load is thrown during render, for the error boundary the
 // web app puts around every plugin part; a failed refresh keeps the last
 // value.
@@ -322,17 +326,19 @@ export function useLoaded<T>(
   const watched = topics.join(" ");
 
   useEffect(() => {
-    let live = true;
+    const order = responseOrder();
 
     const fetchNow = (): void => {
+      const request = order.send();
+
       run().then(
         (value) => {
-          if (live) {
+          if (order.accept(request)) {
             setLoaded({ key, value });
           }
         },
         (error: unknown) => {
-          if (live) {
+          if (order.accept(request)) {
             setFailed({ key, error });
           }
         },
@@ -348,7 +354,7 @@ export function useLoaded<T>(
       everyMs === undefined ? undefined : setInterval(fetchNow, everyMs);
 
     return () => {
-      live = false;
+      order.drop();
       unwatch?.();
       clearInterval(timer);
     };
