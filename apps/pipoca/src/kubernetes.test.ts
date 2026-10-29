@@ -10,7 +10,12 @@ import {
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { kubernetes } from "@pipoca/kubernetes/server";
-import type { Environment, Session } from "@pipoca/protocol";
+import {
+  type Environment,
+  protocolVersion,
+  type Session,
+  versionHeader,
+} from "@pipoca/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
 import { firstUser } from "./testdata/sign-in";
@@ -760,3 +765,53 @@ test("gives each Session a pod of its own that mounts its claim, and brings it b
 
   expect(api.claims.has(`pi-session-${first.id}`)).toBe(true);
 }, 30_000);
+
+test("keeps an archived Session's claim while its workspace is kept, until forced", async () => {
+  const environment = await kubernetesEnvironment({ workspace: "claim" });
+
+  const session = (await (
+    await call("POST", "/api/sessions", {
+      environment: environment.id,
+      workspace: { kind: "clone", repository: "https://example.com/r.git" },
+    })
+  ).json()) as Session;
+
+  const name = `pi-session-${session.id}`;
+  await eventually(() => api.pods.has(name) && api.claims.has(name));
+
+  const archived = (await (
+    await call("POST", `/api/sessions/${session.id}/archive`, {})
+  ).json()) as Session;
+
+  const reported = await fetch(
+    new URL(`/agent/sessions/${session.id}/workspace`, server.url),
+    {
+      method: "POST",
+      headers: {
+        [versionHeader]: String(protocolVersion),
+        authorization: `Bearer ${api.secrets.get(name)?.stringData["token"] ?? ""}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        generation: archived.generation,
+        outcome: "kept",
+        reason: "uncommitted changes",
+      }),
+    },
+  );
+
+  const pod = api.pods.get(name);
+  if (pod) {
+    pod.status = { phase: "Succeeded" };
+  }
+
+  await eventually(() => !api.pods.has(name));
+  await sleep(200);
+
+  expect(reported.status).toBe(204);
+  expect((await sessionOf(session.id)).workspaceRemoval).toBe("kept");
+  expect(api.claims.has(name)).toBe(true);
+
+  await call("POST", `/api/sessions/${session.id}/remove-workspace`, {});
+  await eventually(() => !api.claims.has(name));
+});

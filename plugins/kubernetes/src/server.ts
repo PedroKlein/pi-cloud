@@ -263,14 +263,21 @@ async function reconcile(
   failures.record(failed, now);
 
   // An archived Session's workspace is removed, as on any runner, so its
-  // claim goes once no pod mounts it.
+  // claim goes once no pod mounts it. A workspace its runner kept, or hasn't
+  // checked yet, stays until removed or forced, as on any runner.
   for (const claim of await pods.cluster.sessionClaims()) {
     const mounted = all.some(
       ({ name }) => name === claim.name && !removed.has(name),
     );
 
     const session = context.sessions.get(claim.sessionId);
-    if (!mounted && session !== undefined && session.archivedAt !== null) {
+    if (
+      !mounted &&
+      session !== undefined &&
+      session.archivedAt !== null &&
+      session.workspaceRemoval !== "kept" &&
+      session.workspaceRemoval !== "pending"
+    ) {
       await pods.cluster.deleteClaim(claim.name);
 
       context.log("session claim removed", {
