@@ -1,5 +1,7 @@
 import {
   BadRequest,
+  HttpError,
+  NotFound,
   type RouteCaller,
   type ServerPlugin,
 } from "@pipoca/plugins";
@@ -23,7 +25,7 @@ export const library: ServerPlugin = {
       const target = resolve(path.split("/"), caller, store);
 
       if (target === undefined) {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        throw new NotFound(`no route ${path}`);
       }
 
       const response = await serve(
@@ -105,40 +107,43 @@ async function serve(
     return Response.json(store.writes(projectId));
   }
 
-  if (resource !== "files") {
-    return Response.json({ error: "not_found" }, { status: 404 });
+  if (
+    resource !== "files" ||
+    (name === undefined && request.method !== "GET")
+  ) {
+    throw new NotFound("no such library route");
   }
 
   if (name === undefined) {
-    return request.method === "GET"
-      ? Response.json(store.files(projectId))
-      : Response.json({ error: "not_found" }, { status: 404 });
+    return Response.json(store.files(projectId));
   }
 
   if (request.method === "GET") {
     const content = store.read(projectId, name);
 
-    return content === undefined
-      ? Response.json({ error: `no library file ${name}` }, { status: 404 })
-      : new Response(content, {
-          headers: {
-            "content-type": "application/octet-stream",
-            "content-disposition": attachment(name),
-          },
-        });
+    if (content === undefined) {
+      throw new NotFound(`no library file ${name}`);
+    }
+
+    return new Response(content, {
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-disposition": attachment(name),
+      },
+    });
   }
 
   if (request.method !== "PUT") {
-    return Response.json({ error: "not_found" }, { status: 404 });
+    throw new NotFound("no such library route");
   }
 
   if (!validName(name)) {
-    return Response.json({ error: nameRule }, { status: 400 });
+    throw new BadRequest(nameRule);
   }
 
   const content = new Uint8Array(await request.arrayBuffer());
   if (content.length > limit) {
-    return Response.json({ error: sizeRule(limit) }, { status: 413 });
+    throw new HttpError(413, sizeRule(limit));
   }
 
   store.write(projectId, name, content, actor);

@@ -898,7 +898,11 @@ test("drops messages from an older generation", async () => {
   );
 
   expect(stale.status).toBe(409);
-  expect(await stale.json()).toEqual({ error: "stale_generation" });
+
+  expect(await stale.json()).toEqual({
+    error: "stale_generation",
+    message: "The Session has moved on since this was sent.",
+  });
 });
 
 test("drops transcript lines for a session no attempt has claimed", async () => {
@@ -1143,7 +1147,11 @@ test("rejects commands once the agent stops", async () => {
   });
 
   expect(sent.status).toBe(409);
-  expect(await sent.json()).toEqual({ error: "offline" });
+
+  expect(await sent.json()).toEqual({
+    error: "offline",
+    message: "The Session's runner is offline.",
+  });
 });
 
 test("restarts an interrupted session as a new attempt with its transcript", async () => {
@@ -2516,7 +2524,12 @@ test("archives a session: unloads it, hides it, refuses messages and replays it"
   );
 
   expect(sent.status).toBe(409);
-  expect(await sent.json()).toEqual({ error: "archived" });
+
+  expect(await sent.json()).toEqual({
+    error: "archived",
+    message: "The Session is archived.",
+  });
+
   expect(await listed()).not.toContain(session.id);
   expect(await listed("?archived=true")).toContain(session.id);
 
@@ -3121,7 +3134,8 @@ test("rejects repositories that would share a folder", async () => {
   expect(response.status).toBe(400);
 
   expect(await response.json()).toEqual({
-    error: "repositories need different names",
+    error: "bad_request",
+    message: "repositories need different names",
   });
 });
 
@@ -3156,7 +3170,8 @@ test("rejects a repository URL that carries credentials", async () => {
     expect(response.status).toBe(400);
 
     expect(await response.json()).toEqual({
-      error:
+      error: "bad_request",
+      message:
         "repository URLs can't hold credentials: connect the git host instead",
     });
   }
@@ -3267,7 +3282,11 @@ test("creates a session in the first Environment unless the request names one", 
   });
 
   expect(unknown.status).toBe(400);
-  expect(await unknown.json()).toEqual({ error: "unknown_environment" });
+
+  expect(await unknown.json()).toEqual({
+    error: "unknown_environment",
+    message: "There is no such Environment.",
+  });
 });
 
 test("sends browser commands to the session as the signed-in user, whatever the browser claims", async () => {

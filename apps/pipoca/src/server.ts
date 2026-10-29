@@ -9,6 +9,7 @@ import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
   fieldsOf,
+  HttpError,
   isHttpError,
   NotFound,
   readJson,
@@ -29,7 +30,7 @@ import { mcpHandler } from "./mcp";
 import type { OnBehalf, PluginHost, UserActor } from "./plugins";
 import { type AgentRoute, agentRoutes } from "./agent-routes";
 import { profileRoutes } from "./profile-routes";
-import { notFound, reply } from "./replies";
+import { errorReply, notFound, reply } from "./replies";
 import {
   browserCommand,
   createEnvironment,
@@ -96,7 +97,11 @@ export function createHandler(
 
       const caller = auth.agentOf(request);
       if (caller === undefined) {
-        return Response.json({ error: "unknown_token" }, { status: 401 });
+        return errorReply(
+          401,
+          "unknown_token",
+          "The server doesn't know this token.",
+        );
       }
 
       const sessionId = params[0];
@@ -134,7 +139,7 @@ export function createHandler(
         (user === undefined ? undefined : (`user:${user.id}` as const));
 
       if (actor === undefined) {
-        return Response.json({ error: "signed_out" }, { status: 401 });
+        return errorReply(401, "signed_out", "Sign in again.");
       }
 
       const admin =
@@ -157,7 +162,11 @@ export function createHandler(
     async (request, params, actor, isAdmin) =>
       isAdmin
         ? await route(request, params, actor, isAdmin)
-        : Response.json({ error: "admin_only" }, { status: 403 });
+        : errorReply(
+            403,
+            "admin_only",
+            "Only admins change plugins and restart the server.",
+          );
 
   const sessionAction =
     (message: string, act: (id: string) => Result<unknown>): Route =>
@@ -253,7 +262,11 @@ export function createHandler(
         if (joined === undefined) {
           log("runner refused", { runner: name });
 
-          return Response.json({ error: "unknown_key" }, { status: 401 });
+          return errorReply(
+            401,
+            "unknown_key",
+            "The server doesn't know this join key.",
+          );
         }
 
         log("runner joined", { runner: name, environment: joined.environment });
@@ -345,9 +358,11 @@ export function createHandler(
         // Sessions on the server's own runner stop with it mid-turn
         // (ADR 0022), so the user decides.
         if (busy > 0 && force !== true) {
-          return Response.json(
-            { error: "busy", sessions: busy },
-            { status: 409 },
+          return errorReply(
+            409,
+            "busy",
+            "Sessions are mid-turn on the server's own runner.",
+            { sessions: busy },
           );
         }
 
@@ -684,10 +699,15 @@ export function createHandler(
           return await route(request, match.slice(1));
         } catch (error) {
           if (isHttpError(error)) {
-            return Response.json(
-              { error: error.message },
-              { status: error.status },
+            // A plugin that bundles an SDK from before codes throws none
+            // (ADR 0046), so its status gives one.
+            const { status, code, message } = new HttpError(
+              error.status,
+              error.message,
+              (error as Partial<HttpError>).code,
             );
+
+            return errorReply(status, code, message);
           }
 
           if (
@@ -695,7 +715,7 @@ export function createHandler(
             error instanceof ProfileTooBig ||
             error instanceof InvalidCredentials
           ) {
-            return Response.json({ error: error.message }, { status: 400 });
+            return errorReply(400, "bad_request", error.message);
           }
 
           log("request failed", {
@@ -704,7 +724,11 @@ export function createHandler(
             error: String(error),
           });
 
-          return Response.json({ error: "internal" }, { status: 500 });
+          return errorReply(
+            500,
+            "internal",
+            "The server failed to answer. Its log says why.",
+          );
         }
       }
     }
@@ -733,7 +757,11 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
         );
 
         if (user === undefined) {
-          return Response.json({ error: "invalid_token" }, { status: 403 });
+          return errorReply(
+            403,
+            "invalid_token",
+            "This setup link is not the server's current one. Open the link from its latest log.",
+          );
         }
 
         log("first user created", { userId: user.id });
@@ -749,22 +777,27 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
         const user = await auth.signIn(credentials);
 
         if (user === "off") {
-          return Response.json(
-            { error: "password_login_off" },
-            { status: 403 },
+          return errorReply(
+            403,
+            "password_login_off",
+            "This server doesn't sign people in with a password.",
           );
         }
 
         if (user === "locked") {
           log("sign-in locked", { name: credentials.name });
 
-          return Response.json({ error: "locked" }, { status: 429 });
+          return errorReply(
+            429,
+            "locked",
+            "Too many failed sign-ins. Try again in 15 minutes.",
+          );
         }
 
         if (user === "wrong") {
           log("sign-in failed", { name: credentials.name });
 
-          return Response.json({ error: "wrong_password" }, { status: 401 });
+          return errorReply(401, "wrong_password", "Wrong name or password.");
         }
 
         log("signed in", { userId: user.id });
@@ -852,8 +885,9 @@ function unsupportedVersion(request: Request): Response | undefined {
 
   return version === String(protocolVersion)
     ? undefined
-    : Response.json(
-        { error: `unsupported protocol version ${String(version)}` },
-        { status: 400 },
+    : errorReply(
+        400,
+        "unsupported_version",
+        `unsupported protocol version ${String(version)}`,
       );
 }

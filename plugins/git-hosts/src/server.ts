@@ -2,6 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   BadRequest,
   fieldsOf,
+  HttpError,
+  NotFound,
   type PluginStore,
   readJson,
   type ServerPlugin,
@@ -226,20 +228,24 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (name !== undefined && request.method === "DELETE") {
-        return hosts.remove(name)
-          ? Response.json({ removed: name })
-          : Response.json({ error: "not_found" }, { status: 404 });
+        if (!hosts.remove(name)) {
+          throw new NotFound(`no host ${name}`);
+        }
+
+        return Response.json({ removed: name });
       }
 
       if (name !== undefined && request.method === "POST") {
         const updated = hosts.update(name, await readJson(request));
 
-        return updated === undefined
-          ? Response.json({ error: "not_found" }, { status: 404 })
-          : Response.json(viewOf(updated));
+        if (updated === undefined) {
+          throw new NotFound(`no host ${name}`);
+        }
+
+        return Response.json(viewOf(updated));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path.join("/")}`);
     };
 
     context.auth.handlePublic(async (request, path) =>
@@ -251,16 +257,22 @@ export const gitHosts: ServerPlugin = {
     context.routes.handle(async (request, path) => {
       const user = context.auth.userOf(request);
       if (user === undefined) {
-        return Response.json({ error: "signed_out" }, { status: 401 });
+        throw new HttpError(401, "Sign in again.", "signed_out");
       }
 
       const parts = path.split("/");
       const [route, name] = parts;
 
       if (route === "hosts") {
-        return user.admin
-          ? await manage(request, parts)
-          : Response.json({ error: "admin_only" }, { status: 403 });
+        if (!user.admin) {
+          throw new HttpError(
+            403,
+            "Only admins manage git hosts.",
+            "admin_only",
+          );
+        }
+
+        return await manage(request, parts);
       }
 
       if (route === "account" && request.method === "GET") {
@@ -315,7 +327,7 @@ export const gitHosts: ServerPlugin = {
         return Response.json(account(user));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path}`);
     });
   },
 };

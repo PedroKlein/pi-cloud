@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   BadRequest,
   fieldsOf,
+  NotFound,
   type PluginStore,
   readJson,
   type RouteCaller,
@@ -326,7 +327,7 @@ async function route(
 
   // The plugin has no Session part that sends requests.
   if (caller.kind !== "user") {
-    return Response.json({ error: "not_found" }, { status: 404 });
+    throw new NotFound(`no route ${path.join("/")}`);
   }
 
   if (resource === "projects" && id === undefined) {
@@ -340,9 +341,11 @@ async function route(
       );
     }
 
-    return request.method === "GET"
-      ? Response.json(summaries(store, context))
-      : Response.json({ error: "not_found" }, { status: 404 });
+    if (request.method !== "GET") {
+      throw new NotFound(`no route ${path.join("/")}`);
+    }
+
+    return Response.json(summaries(store, context));
   }
 
   const project = resource === "projects" ? store.get(id ?? "") : undefined;
@@ -362,9 +365,11 @@ async function route(
   if (project && child === "memory" && name !== undefined) {
     const content = store.readMemory(project.id, decoded(name));
 
-    return content === undefined
-      ? Response.json({ error: "not_found" }, { status: 404 })
-      : Response.json({ name, content });
+    if (content === undefined) {
+      throw new NotFound(`no memory file ${name}`);
+    }
+
+    return Response.json({ name, content });
   }
 
   const thread = resource === "threads" ? store.member(id ?? "") : undefined;
@@ -383,7 +388,7 @@ async function route(
     return new Response(null, { status: 204 });
   }
 
-  return Response.json({ error: "not_found" }, { status: 404 });
+  throw new NotFound(`no route ${path.join("/")}`);
 }
 
 function decoded(name: string): string {

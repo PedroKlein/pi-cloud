@@ -8,13 +8,6 @@ import {
 import { api } from "./api";
 import { Mark } from "./mark";
 
-const messages: Record<string, string> = {
-  wrong_password: "Wrong name or password.",
-  locked: "Too many failed sign-ins. Try again in 15 minutes.",
-  invalid_token:
-    "This setup link is not the server's current one. Open the link from its latest log.",
-};
-
 // Another way in that a plugin offers, such as single sign-on (ADR 0038).
 export interface Login {
   readonly label: string;
@@ -66,8 +59,7 @@ export function SignInPage({
 
         location.replace("/");
       } catch (reason) {
-        const message = reason instanceof Error ? reason.message : "";
-        setError(messages[message] ?? message);
+        setError(reason instanceof Error ? reason.message : "");
       }
     })();
   };

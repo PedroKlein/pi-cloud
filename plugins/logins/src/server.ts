@@ -7,7 +7,9 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
   fieldsOf,
+  HttpError,
   type McpLoginState,
+  NotFound,
   type PluginStore,
   readJson,
   type RouteCaller,
@@ -150,9 +152,11 @@ export const logins: ServerPlugin = {
       const kind = [models, mcp].find(({ name }) => name === route);
 
       if (caller.kind === "session") {
-        return kind === undefined
-          ? Response.json({ error: "not_found" }, { status: 404 })
-          : kind.sessionRoute(request, userId, key, action);
+        if (kind === undefined) {
+          throw new NotFound(`no route ${path}`);
+        }
+
+        return await kind.sessionRoute(request, userId, key, action);
       }
 
       if (route === "account" && request.method === "GET") {
@@ -168,9 +172,11 @@ export const logins: ServerPlugin = {
           models.validated(fields["credential"]),
         );
 
-        return saved
-          ? Response.json(account(userId))
-          : Response.json({ error: "busy" }, { status: 409 });
+        if (!saved) {
+          throw busy();
+        }
+
+        return Response.json(account(userId));
       }
 
       if (route === "providers" && request.method === "GET") {
@@ -240,9 +246,15 @@ export const logins: ServerPlugin = {
           textField(fields, "answer"),
         );
 
-        return answered
-          ? Response.json(account(userId))
-          : Response.json({ error: "not_asked" }, { status: 409 });
+        if (!answered) {
+          throw new HttpError(
+            409,
+            "the sign-in isn't waiting for that answer",
+            "not_asked",
+          );
+        }
+
+        return Response.json(account(userId));
       }
 
       if (route === "connection" && request.method === "DELETE") {
@@ -254,12 +266,14 @@ export const logins: ServerPlugin = {
       if (kind !== undefined && key !== "" && request.method === "DELETE") {
         const removed = await kind.write(userId, decodeURIComponent(key), null);
 
-        return removed
-          ? Response.json(account(userId))
-          : Response.json({ error: "busy" }, { status: 409 });
+        if (!removed) {
+          throw busy();
+        }
+
+        return Response.json(account(userId));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path}`);
     });
   },
 };
@@ -309,6 +323,11 @@ function mcpStateOfUser(
       );
     },
   };
+}
+
+// Another Session of the person's holds the login, so the caller asks again.
+function busy(): HttpError {
+  return new HttpError(409, "another Session is changing this login", "busy");
 }
 
 function textField(fields: Readonly<Record<string, unknown>>, name: string) {
@@ -410,7 +429,7 @@ function loginKind<T>(
   const lease = async (userId: string, key: string): Promise<Response> => {
     const given = await leases.acquire(leaseKey(userId, key));
     if (given === undefined) {
-      return Response.json({ error: "busy" }, { status: 409 });
+      throw busy();
     }
 
     const body: Lease<T> = {
@@ -439,7 +458,11 @@ function loginKind<T>(
     // would undo theirs.
     const held = leaseKey(userId, key);
     if (next !== undefined && !leases.holds(held, given)) {
-      return Response.json({ error: "lease_lapsed" }, { status: 409 });
+      throw new HttpError(
+        409,
+        "the lease lapsed, so this write could undo another",
+        "lease_lapsed",
+      );
     }
 
     if (next !== undefined) {
@@ -516,7 +539,7 @@ function loginKind<T>(
         return release(request, userId, key);
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${spec.name}/${rawKey}`);
     },
   };
 }

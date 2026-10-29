@@ -65,13 +65,15 @@ function leased<T>(
     });
 
     if (!response.ok) {
-      const { error } = (await response.json().catch(() => ({}))) as {
+      const { error, message } = (await response.json().catch(() => ({}))) as {
         error?: string;
+        message?: string;
       };
 
       throw new LoginsError(
         response.status,
-        error ?? `the server answered ${String(response.status)}`,
+        error,
+        message ?? `the server answered ${String(response.status)}`,
       );
     }
 
@@ -245,13 +247,15 @@ async function mcpLogins(
 
 class LoginsError extends Error {
   readonly status: number;
+  readonly code: string | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, code: string | undefined, message: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 
   get busy(): boolean {
-    return this.status === 409 && this.message === "busy";
+    return this.status === 409 && this.code === "busy";
   }
 }

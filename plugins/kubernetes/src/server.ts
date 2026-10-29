@@ -1,7 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
+  BadRequest,
+  HttpError,
   isObject,
+  NotFound,
   readJson,
   requireAdmin,
   type ServerPlugin,
@@ -107,7 +110,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           environmentId === undefined ||
           environment === undefined
         ) {
-          return Response.json({ error: "not_found" }, { status: 404 });
+          throw new NotFound(`no route ${path}`);
         }
 
         if (request.method === "GET") {
@@ -115,7 +118,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         }
 
         if (request.method !== "POST") {
-          return Response.json({ error: "not_found" }, { status: 404 });
+          throw new NotFound(`no route ${path}`);
         }
 
         // A pod patch can mount the namespace's Secrets or run privileged,
@@ -125,9 +128,8 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         const body = await readJson(request);
 
         if (!isObject(body)) {
-          return Response.json(
-            { error: "send { settings }, or { settings: null } to stop" },
-            { status: 400 },
+          throw new BadRequest(
+            "send { settings }, or { settings: null } to stop",
           );
         }
 
@@ -142,14 +144,11 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         const settings = settingsFrom(body["settings"]);
 
         if (typeof settings === "string") {
-          return Response.json({ error: settings }, { status: 400 });
+          throw new BadRequest(settings);
         }
 
         if (environment.isolation !== "process") {
-          return Response.json(
-            { error: "runner pods run Sessions as processes" },
-            { status: 409 },
-          );
+          throw new HttpError(409, "runner pods run Sessions as processes");
         }
 
         store.set(environmentId, settings);

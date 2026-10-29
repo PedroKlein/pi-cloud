@@ -78,5 +78,9 @@ test("a served route answers what it throws as the server does", async () => {
   );
 
   expect(response.status).toBe(400);
-  expect(await response.json()).toEqual({ error: "name must be text" });
+
+  expect(await response.json()).toEqual({
+    error: "bad_request",
+    message: "name must be text",
+  });
 });

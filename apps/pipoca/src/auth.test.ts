@@ -128,7 +128,11 @@ test("refuses the API and terminals without a signed-in browser", async () => {
     401, 401, 401, 401, 401, 401,
   ]);
 
-  expect(await sessions.json()).toEqual({ error: "signed_out" });
+  expect(await sessions.json()).toEqual({
+    error: "signed_out",
+    message: "Sign in again.",
+  });
+
   expect((await get("/healthz")).status).toBe(200);
   expect((await get("/")).status).toBe(200);
 });
@@ -258,7 +262,11 @@ test("refuses passwords when only single sign-on is on, but keeps the setup link
   const login = await post("/api/auth/login", pedro);
 
   expect([created.status, login.status]).toEqual([201, 403]);
-  expect(await login.json()).toEqual({ error: "password_login_off" });
+
+  expect(await login.json()).toEqual({
+    error: "password_login_off",
+    message: "This server doesn't sign people in with a password.",
+  });
 
   expect(await (await get("/api/auth")).json()).toMatchObject({
     passwordLogin: false,

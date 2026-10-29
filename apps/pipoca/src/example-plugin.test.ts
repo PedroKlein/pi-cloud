@@ -86,6 +86,7 @@ test("answers the example's unknown routes with the server's 404", async () => {
   expect(missing.status).toBe(404);
 
   expect(await missing.json()).toEqual({
-    error: "the greeter has no farewell",
+    error: "not_found",
+    message: "the greeter has no farewell",
   });
 });

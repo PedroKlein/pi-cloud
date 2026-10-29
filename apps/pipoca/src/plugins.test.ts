@@ -518,7 +518,7 @@ test("answers the errors a plugin's route throws as the server's own", async () 
           }
 
           throw path === "full"
-            ? new HttpError(409, "notes are full")
+            ? new HttpError(409, "notes are full", "notes_full")
             : new NotFound(`no note ${text}`);
         });
       },
@@ -547,10 +547,10 @@ test("answers the errors a plugin's route throws as the server's own", async () 
   ];
 
   expect(answers).toEqual([
-    [400, { error: "text must be text" }],
-    [404, { error: "no note a" }],
-    [409, { error: "notes are full" }],
-    [400, { error: "body must be JSON" }],
+    [400, { error: "bad_request", message: "text must be text" }],
+    [404, { error: "not_found", message: "no note a" }],
+    [409, { error: "notes_full", message: "notes are full" }],
+    [400, { error: "bad_request", message: "body must be JSON" }],
   ]);
 });
 

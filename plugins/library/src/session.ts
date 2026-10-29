@@ -27,11 +27,11 @@ function libraryTools({ request, settings }: SessionCloud): ToolDefinition[] {
   const ok = async (response: Response): Promise<Response> => {
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as {
-        error?: string;
+        message?: string;
       };
 
       throw new Error(
-        body.error ?? `library answered ${String(response.status)}`,
+        body.message ?? `library answered ${String(response.status)}`,
       );
     }
 
