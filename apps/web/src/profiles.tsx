@@ -1,5 +1,10 @@
 import { json, ok, useLoaded } from "@pipoca/plugins/web";
-import { type PiPackage, type Profile, profilePath } from "@pipoca/protocol";
+import {
+  type PiPackage,
+  type Profile,
+  type ProfileContent,
+  profilePath,
+} from "@pipoca/protocol";
 import {
   Badge,
   Button,
@@ -151,13 +156,8 @@ export function ProfilesPage({
           />
         </>
       )}
-      {selected === baseHash && (
-        <Files
-          url="/api/base/files"
-          title="Base Profile"
-          empty="No files yet. Every Session loads what an admin puts here under its own Profile: provider extensions, skills, AGENTS.md and settings, with the Profile winning where both set something."
-        />
-      )}
+      {selected === baseHash && <BaseEditor />}
+      {selected === baseHash && <Files url="/api/base/files" />}
       {selected === "new" && <Editor key="new" onChange={onChange} />}
       {selected === "" && <Import onChange={onChange} />}
     </div>
@@ -329,16 +329,113 @@ function Editor({
   );
 }
 
-// Every file in a Profile's folder, as Pi reads them from ~/.pi/agent.
-function Files({
-  url,
-  title = "Files",
-  empty = "No files yet, so this is plain Pi.",
+// The base Profile's packages and AGENTS.md, which every Session loads under
+// its own Profile's (ADR 0044).
+function BaseEditor(): ReactElement | null {
+  const { value: base, reload } = useLoaded(
+    async () => json<ProfileContent>(fetch("/api/base")),
+    "base",
+    { topics: ["profiles"] },
+  );
+
+  // The form starts again when the base changes, so it doesn't keep this.
+  const [saved, setSaved] = useState(false);
+
+  return base ? (
+    <BaseForm
+      key={`${base.agentsMd}:${JSON.stringify(base.packages)}`}
+      base={base}
+      saved={saved}
+      onSaved={() => {
+        setSaved(true);
+        reload();
+      }}
+    />
+  ) : null;
+}
+
+function BaseForm({
+  base,
+  saved,
+  onSaved,
 }: {
-  readonly url: string;
-  readonly title?: string;
-  readonly empty?: string;
+  readonly base: ProfileContent;
+  readonly saved: boolean;
+  readonly onSaved: () => void;
 }): ReactElement {
+  const [packages, setPackages] = useState<readonly string[]>(() =>
+    base.packages.map(packageText),
+  );
+
+  const [agentsMd, setAgentsMd] = useState(base.agentsMd);
+  const [error, setError] = useState<string>();
+
+  const submit = (event: SubmitEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+
+    send("/api/base", "PUT", {
+      packages: packages.map(packageOf),
+      agentsMd,
+    }).then(
+      () => {
+        setError(undefined);
+        onSaved();
+      },
+      (reason: unknown) => {
+        setError(messageOf(reason));
+      },
+    );
+  };
+
+  return (
+    <Section title="Base">
+      <form
+        onSubmit={submit}
+        className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5"
+      >
+        <p className="text-caption text-fg-dim">
+          Every Session loads this under its own Profile, with the
+          Profile&apos;s entries winning. Put provider extensions here so every
+          Session can use their models. Only admins change it.
+        </p>
+        <ListInput
+          label="Pi packages"
+          values={packages}
+          placeholder="npm:pi-subagents, git:… or a path, then Enter"
+          onChange={setPackages}
+        />
+        <Field label="AGENTS.md">
+          <textarea
+            value={agentsMd}
+            rows={5}
+            onChange={(event) => {
+              setAgentsMd(event.target.value);
+            }}
+            className={cn(
+              fieldClass,
+              "min-h-24 resize-y font-mono text-mono-sm",
+            )}
+          />
+        </Field>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" type="submit">
+            Save
+          </Button>
+          <p role="status" className="text-caption">
+            {error !== undefined ? (
+              <span className="text-failed">{error}</span>
+            ) : (
+              saved && <span className="text-fg-dim">Saved</span>
+            )}
+          </p>
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+// Every file in a Profile's folder, as Pi reads them from ~/.pi/agent.
+function Files({ url }: { readonly url: string }): ReactElement {
   const { value: files = [], reload } = useLoaded(
     async () => json<ProfileFile[]>(fetch(url)),
     url,
@@ -383,7 +480,7 @@ function Files({
   );
 
   return (
-    <Section title={title}>
+    <Section title="Files">
       <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
         <ul className="flex flex-col divide-y divide-line">
           {files.map(({ path, size }) => (
@@ -401,7 +498,9 @@ function Files({
             </li>
           ))}
           {files.length === 0 && (
-            <li className="py-1.5 text-caption text-fg-dim">{empty}</li>
+            <li className="py-1.5 text-caption text-fg-dim">
+              No files yet, so this is plain Pi.
+            </li>
           )}
         </ul>
         <form

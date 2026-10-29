@@ -12,13 +12,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import type {
-  Assignment,
-  Environment,
-  Profile,
-  ProfileFiles,
-  Session,
-  WorkPoll,
+import {
+  type Assignment,
+  type Environment,
+  emptyProfile,
+  type Profile,
+  type ProfileFiles,
+  type Session,
+  type WorkPoll,
 } from "@pipoca/protocol";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
@@ -764,6 +765,35 @@ test("layers the admin's base Profile under every Profile runners get", async ()
   expect((await filesOf("default")).hash).not.toBe(plain.hash);
 });
 
+test("edits the base Profile's packages and AGENTS.md like a Profile's", async () => {
+  expect(await json<unknown>(api("/api/base"))).toEqual(emptyProfile);
+
+  await fetch(new URL("/api/base/files/settings.json", server.url), {
+    method: "PUT",
+    headers: { cookie: await signedIn() },
+    body: JSON.stringify({ defaultThinkingLevel: "low" }),
+  });
+
+  const updated = await api("/api/base", {
+    method: "PUT",
+    body: { packages: ["npm:ai-provider"], agentsMd: "Be kind." },
+  });
+
+  expect(updated.status).toBe(200);
+
+  expect(await json<unknown>(api("/api/base"))).toEqual({
+    ...emptyProfile,
+    packages: ["npm:ai-provider"],
+    agentsMd: "Be kind.",
+    settings: { defaultThinkingLevel: "low" },
+  });
+
+  expect(
+    (await api("/api/base", { method: "PUT", body: { packages: "npm:x" } }))
+      .status,
+  ).toBe(400);
+});
+
 test("only admins change the base Profile", async () => {
   const db = new DatabaseSync(join(root, "server.db"));
   await signedIn();
@@ -777,6 +807,10 @@ test("only admins change the base Profile", async () => {
 
   expect(response.status).toBe(403);
   expect(await json<unknown>(api("/api/base/files"))).toEqual([]);
+
+  expect(
+    (await api("/api/base", { method: "PUT", body: { agentsMd: "x" } })).status,
+  ).toBe(403);
 });
 
 test("remembers the models extension providers registered on runners, after a restart", async () => {

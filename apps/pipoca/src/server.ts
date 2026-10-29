@@ -1063,7 +1063,10 @@ function profileRoutes(
 ): readonly (readonly [string, RegExp, BrowserRoute])[] {
   const replied = (
     result: ReturnType<
-      Profiles["create"] | Profiles["update"] | Profiles["remove"]
+      | Profiles["create"]
+      | Profiles["update"]
+      | Profiles["updateBase"]
+      | Profiles["remove"]
     >,
     status: number,
   ): Response =>
@@ -1189,7 +1192,24 @@ function profileRoutes(
         });
       },
     ],
-    // The admin's base Profile, file by file (ADR 0044).
+    // The admin's base Profile (ADR 0044).
+    ["GET", /^\/api\/base$/, () => Response.json(profiles.base())],
+    [
+      "PUT",
+      /^\/api\/base$/,
+      async (request, _params, actor) => {
+        const updated = profiles.updateBase(
+          await readJson(request),
+          isAdmin(actor),
+        );
+
+        if (updated.ok) {
+          log("base profile updated");
+        }
+
+        return replied(updated, 200);
+      },
+    ],
     ["GET", /^\/api\/base\/files$/, () => Response.json(profiles.baseFiles())],
     [
       "POST",

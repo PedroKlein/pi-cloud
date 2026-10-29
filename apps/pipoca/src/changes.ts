@@ -32,7 +32,7 @@ export function changeFeed(): Changes {
 }
 
 const kernelTopics: readonly (readonly [RegExp, string])[] = [
-  [/^\/api\/profiles(\/|$)/, "profiles"],
+  [/^\/api\/(profiles|base)(\/|$)/, "profiles"],
   [/^\/api\/environments(\/|$)/, "environments"],
   [/^\/api\/mcp-tokens(\/|$)/, "mcp-tokens"],
   [
