@@ -851,6 +851,22 @@ test("removes an installed plugin only once it isn't running", async () => {
   expect((await api("DELETE", "/api/plugins/projects")).status).toBe(400);
 });
 
+test("says why a plugin couldn't be removed", async () => {
+  await writePlugin("hello");
+  await start();
+  await mkdir(join(plugins, "enabled.json"));
+
+  const refused = await api("DELETE", "/api/plugins/hello");
+
+  expect(refused.status).toBe(400);
+
+  expect(((await refused.json()) as { error: string }).error).toContain(
+    "EISDIR",
+  );
+
+  expect(await listed("hello")).toBeDefined();
+});
+
 test("removes only the link to a plugin developed elsewhere", async () => {
   await writePlugin("linked");
   await rename(join(plugins, "linked"), join(root, "linked"));
