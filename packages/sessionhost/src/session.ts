@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { constants, homedir } from "node:os";
 import { dirname, isAbsolute, join, sep } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
@@ -15,6 +16,7 @@ import {
   hasTrustRequiringProjectResources,
   initTheme,
   type InlineExtension,
+  isBashToolResult,
   ModelRuntime,
   SessionManager,
   type ResourceDiagnostic,
@@ -98,6 +100,30 @@ function toolFinders(tools: readonly ToolDefinition[]): InlineExtension {
   };
 }
 
+// A stop signals a service's processes one at a time, so a command it kills
+// can end before its host hears of the stop. Holding the result a moment lets
+// the host exit first, and the reload records the call as interrupted.
+const stopGraceMs = 1000;
+
+const awaitHostStop: InlineExtension = {
+  name: "await-host-stop",
+  factory: (pi) => {
+    pi.on("tool_result", async (event) => {
+      const result = event.structuredContent;
+
+      if (
+        isBashToolResult(event) &&
+        typeof result === "object" &&
+        result !== null &&
+        "exit_code" in result &&
+        result["exit_code"] === 128 + constants.signals.SIGTERM
+      ) {
+        await sleep(stopGraceMs);
+      }
+    });
+  },
+};
+
 // The extensions Pi's CLI builds in, so hosted sessions get the same tools.
 // Its llama.cpp provider isn't exported, so it's left out.
 const builtInExtensions: InlineExtension[] = [
@@ -127,6 +153,7 @@ export async function startSession(
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
     extensionFactories: [
       ...builtInExtensions,
+      awaitHostStop,
       ...(host ? [toolFinders(host.tools)] : []),
       ...(host?.extensions ?? []),
     ],

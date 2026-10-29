@@ -3490,6 +3490,67 @@ test("records a tool cut off by its host going down as interrupted, not by its e
   }
 }, 30_000);
 
+test("records a tool killed just before its host goes down as interrupted", async () => {
+  const pidFile = join(root, "tool.pid");
+  const model = fakeModelServer("done", `echo $$ > ${pidFile}; exec sleep 30`);
+  await startProcessAgent(model);
+
+  try {
+    const session = (await (
+      await api("/api/sessions", {
+        environment: await environmentOf("process"),
+        workspace: { kind: "folder", path: root },
+        model: { provider: "fake", id: "fake-model" },
+      })
+    ).json()) as Session;
+
+    await follow(session.id, status("idle"));
+
+    await api(`/api/sessions/${session.id}/commands`, {
+      type: "message",
+      text: "run something slow",
+    });
+
+    let toolPid = Number.NaN;
+    while (Number.isNaN(toolPid)) {
+      toolPid = Number.parseInt(
+        await readFile(pidFile, "utf8").catch(() => ""),
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    // systemd signals a service's processes one by one, so the tool can be
+    // gone before its host hears about the stop.
+    process.kill(toolPid, "SIGTERM");
+
+    while (alive(toolPid)) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const [sessionPid] = sessionPids(session.id);
+    process.kill(sessionPid ?? 0, "SIGTERM");
+
+    const events = await follow(session.id, (seen) =>
+      seen.some(
+        (e) =>
+          e.type === "entry" &&
+          (e.entry.includes("interrupted by a restart") ||
+            e.entry.includes("exited with code 143")),
+      ),
+    );
+
+    const results = events.filter(
+      (e) => e.type === "entry" && e.entry.includes('"toolResult"'),
+    );
+
+    expect(results).toHaveLength(1);
+    expect(JSON.stringify(results)).toContain("interrupted by a restart");
+  } finally {
+    await model.stop(true);
+  }
+}, 30_000);
+
 test("sends a session process its first message", async () => {
   const model = fakeModelServer("first reply");
   await startProcessAgent(model);
