@@ -468,6 +468,46 @@ test("keeps an existing clone and its changes on a later attempt", async () => {
   );
 });
 
+test("drops a stale clone and continues the branch another machine pushed when told to start fresh", async () => {
+  const workspace = { kind: "clone", repository, branch: "pipoca/s1" } as const;
+  const here = join(root, "here", "workspaces", "s1");
+  const other = join(root, "here", "workspaces", "s2");
+
+  await prepareWorkspace(workspace, { dir: here, folders: [] }, noLog);
+  await commit(here, "first.txt");
+  await git(here, "push", "origin", "pipoca/s1");
+  await writeFile(join(here, "stale.txt"), "left behind\n");
+
+  await prepareWorkspace(
+    { ...workspace, branch: "pipoca/s2" },
+    { dir: other, folders: [] },
+    noLog,
+  );
+
+  await writeFile(join(other, "notes.txt"), "work in progress\n");
+
+  const there = join(root, "there", "workspaces", "s1");
+  await prepareWorkspace(workspace, { dir: there, folders: [] }, noLog);
+  await commit(there, "second.txt");
+  await git(there, "push", "origin", "pipoca/s1");
+  const pushed = await git(there, "rev-parse", "HEAD");
+
+  const back = await prepareWorkspace(
+    workspace,
+    { dir: here, folders: [], fresh: true },
+    noLog,
+  );
+
+  expect(back.cwd).toBe(here);
+  expect(await git(here, "rev-parse", "HEAD")).toBe(pushed);
+  expect(await git(here, "branch", "--show-current")).toBe("pipoca/s1");
+  expect(await readdir(here)).not.toContain("stale.txt");
+
+  expect(await readFile(join(other, "notes.txt"), "utf8")).toBe(
+    "work in progress\n",
+  );
+});
+
 test("fails with git's error and leaves no directory behind", async () => {
   const dir = join(root, "workspaces", "s1");
 
@@ -1675,6 +1715,57 @@ test("makes each repository a worktree of the first checkout under the roots tha
 
   expect(await git(join(folders, "c"), "worktree", "list")).toContain(
     join(dir, "other"),
+  );
+});
+
+test("drops only its own repository worktree when told to start fresh", async () => {
+  const folders = join(root, "folders");
+  await mkdir(folders);
+  await git(folders, "clone", repository, "a");
+  const checkout = join(folders, "a");
+
+  const workspace = (branch: string): Workspace => ({
+    kind: "repositories",
+    branch,
+    repositories: [{ repository }],
+  });
+
+  const s1 = join(root, "workspaces", "s1");
+  const s2 = join(root, "workspaces", "s2");
+
+  await prepareWorkspace(
+    workspace("pipoca/s1"),
+    { dir: s1, folders: [folders] },
+    noLog,
+  );
+
+  await prepareWorkspace(
+    workspace("pipoca/s2"),
+    { dir: s2, folders: [folders] },
+    noLog,
+  );
+
+  await writeFile(join(s1, "origin", "stale.txt"), "left behind\n");
+  await writeFile(join(s2, "origin", "notes.txt"), "work in progress\n");
+
+  await prepareWorkspace(
+    workspace("pipoca/s1"),
+    { dir: s1, folders: [folders], fresh: true },
+    noLog,
+  );
+
+  const worktrees = await git(checkout, "worktree", "list");
+
+  expect(worktrees).toContain(join(s1, "origin"));
+  expect(worktrees).toContain(join(s2, "origin"));
+  expect(await readdir(join(s1, "origin"))).not.toContain("stale.txt");
+
+  expect(await git(join(s1, "origin"), "branch", "--show-current")).toBe(
+    "pipoca/s1",
+  );
+
+  expect(await readFile(join(s2, "origin", "notes.txt"), "utf8")).toBe(
+    "work in progress\n",
   );
 });
 

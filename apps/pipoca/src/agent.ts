@@ -314,12 +314,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
       const gitLogins = hostLogins(assignment.gitLogins ?? [], environment);
       const agentDir = await syncProfileOf(assignment, gitLogins, sessionLog);
       const sessionDir = join(options.dataDir, "sessions", sessionId);
-
-      const variables = {
-        ...environment,
-        ...gitCredentials(gitLogins, { ...process.env, ...environment }),
-        ...(await writeGhConfig(join(sessionDir, "gh"), gitLogins)),
-      };
+      const fresh = assignment.fresh === true;
 
       // Every Session of the Environment shares what its setup script makes,
       // so the script signs in only with the Environment's own token.
@@ -331,6 +326,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         }),
       );
 
+      if (fresh) {
+        sessionLog("dropping this runner's copies of the Session", {
+          reason: "it last ran on another runner",
+          sessionDir,
+          workspace: workspaceDir(sessionId),
+        });
+      }
+
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
         {
@@ -338,6 +341,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
           folders: options.folders,
           mirrors: join(options.dataDir, "mirrors"),
           remoteEnv: gitCredentials(gitLogins, process.env),
+          fresh,
         },
         sessionLog,
       );
@@ -348,13 +352,23 @@ export async function runAgent(options: AgentOptions): Promise<void> {
         return undefined;
       }
 
-      const restored = await restoreTranscript(sessionDir, cwd, async () =>
-        fetchTranscript(agent, sessionId),
+      const restored = await restoreTranscript(
+        sessionDir,
+        cwd,
+        async () => fetchTranscript(agent, sessionId),
+        { fresh },
       );
 
       if (restored > 0) {
         sessionLog("transcript restored from the server", { lines: restored });
       }
+
+      // Written after the restore, which may drop the Session's folder.
+      const variables = {
+        ...environment,
+        ...gitCredentials(gitLogins, { ...process.env, ...environment }),
+        ...(await writeGhConfig(join(sessionDir, "gh"), gitLogins)),
+      };
 
       const sessionOptions = {
         cwd,
