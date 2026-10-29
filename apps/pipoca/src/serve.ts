@@ -163,6 +163,8 @@ export function serve(options: ServeOptions): {
   const pluginsStop = new AbortController();
   const auth = new Auth(store.auth, options.passwordLogin);
 
+  const userProfiles = new Profiles(profiles, store, owner);
+
   const pluginHost = startPlugins(plugins, enabled, {
     manifests: known,
     sessions,
@@ -206,6 +208,7 @@ export function serve(options: ServeOptions): {
         build: async (id) => buildPlugin(folder.root, id),
       },
     }),
+    mcpServers: () => userProfiles.mcpServers(),
     signal: pluginsStop.signal,
     log: options.log,
   });
@@ -213,7 +216,7 @@ export function serve(options: ServeOptions): {
   const handler = createHandler(
     auth,
     sessions,
-    new Profiles(profiles, store, owner),
+    userProfiles,
     pluginHost,
     changes,
     store.check,

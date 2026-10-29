@@ -885,3 +885,26 @@ test("offers the models extension providers registered on runners, after a resta
 
   expect((await environmentOf())?.models).toEqual([gemini, aiCore]);
 });
+
+test("offers sign-in to the MCP servers of the base Profile and the user's Profiles", async () => {
+  await api("/api/base", {
+    method: "PUT",
+    body: { mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } },
+  });
+
+  await api("/api/profiles", {
+    body: {
+      name: "Work",
+      mcpServers: {
+        notion: { url: "https://mcp.notion.com/mcp" },
+        files: { command: "files-mcp" },
+      },
+    },
+  });
+
+  const account = await json<{ servers: readonly { name: string }[] }>(
+    api("/api/plugins/logins/account"),
+  );
+
+  expect(account.servers.map(({ name }) => name)).toEqual(["linear", "notion"]);
+});

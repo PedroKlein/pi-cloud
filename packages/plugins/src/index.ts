@@ -25,6 +25,7 @@ export type {
   PluginNotice,
   PluginRoute,
   PluginStore,
+  ProfileMcpServer,
   PublicRoute,
   RouteCaller,
   RouteRequest,

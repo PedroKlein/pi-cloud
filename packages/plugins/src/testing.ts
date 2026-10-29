@@ -68,7 +68,10 @@ export function fakeContext(
       revokeRunner: notFaked("environments.revokeRunner"),
       startsRunners: notFaked("environments.startsRunners"),
     },
-    profiles: { provide: notFaked("profiles.provide") },
+    profiles: {
+      provide: notFaked("profiles.provide"),
+      mcpServers: () => [],
+    },
     routes: { handle: notFaked("routes.handle") },
     auth: {
       offer: notFaked("auth.offer"),
