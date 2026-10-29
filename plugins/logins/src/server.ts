@@ -7,6 +7,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
   fieldsOf,
+  type McpLoginState,
   type PluginStore,
   readJson,
   type RouteCaller,
@@ -14,8 +15,15 @@ import {
   type ServerPluginContext,
 } from "@pipoca/plugins";
 import type { ModelRef } from "@pipoca/protocol";
-import { connections } from "./connect";
+import { callbacks, callbackUrl } from "./callback";
+import { connections, modelSignIn } from "./connect";
 import { type Locks, locks } from "./locks";
+import {
+  type McpOAuthState,
+  type McpOAuthStateStore,
+  mcpSignIn,
+  signableServers,
+} from "./mcp";
 import {
   type Account,
   type Connectable,
@@ -108,6 +116,16 @@ export const logins: ServerPlugin = {
       context.changes.publish("logins");
     }, context.log);
 
+    const returns = callbacks();
+
+    context.auth.handlePublic((request, path) =>
+      request.method === "GET" && path === "callback"
+        ? returns.handle(request)
+        : undefined,
+    );
+
+    const servers = () => signableServers(context.profiles.mcpServers());
+
     const account = (userId: string): Account => ({
       logins: models.list(userId).map(({ key, type, updatedAt }) => ({
         provider: key,
@@ -117,6 +135,11 @@ export const logins: ServerPlugin = {
       mcp: mcp.list(userId).map(({ key, updatedAt }) => ({
         server: key,
         updatedAt,
+      })),
+      servers: servers().map(({ key, name, url }) => ({
+        key,
+        name,
+        url,
       })),
       ...withConnection(signIns.current(userId)),
     });
@@ -167,11 +190,41 @@ export const logins: ServerPlugin = {
 
         signIns.start(
           userId,
-          { provider, name: offered.name, type: type as AuthType },
-          credentialsOf(models, userId),
+          { key: provider, name: offered.name },
+          modelSignIn(
+            credentialsOf(models, userId),
+            provider,
+            type as AuthType,
+          ),
         );
 
         return Response.json(account(userId));
+      }
+
+      if (route === "connect-mcp" && request.method === "POST") {
+        const wanted = textField(fieldsOf(await readJson(request)), "server");
+        const server = servers().find(({ key: each }) => each === wanted);
+
+        if (server === undefined) {
+          throw new BadRequest(`no MCP server ${wanted} to sign in to`);
+        }
+
+        const browser = returns.browser(request);
+
+        signIns.start(
+          userId,
+          { key: server.key, name: server.name },
+          mcpSignIn(
+            server,
+            mcpStateOfUser(mcp, userId, server.key),
+            callbackUrl(request),
+            returns.wait(browser.id),
+          ),
+        );
+
+        return Response.json(account(userId), {
+          headers: { "set-cookie": browser.cookie },
+        });
       }
 
       if (
@@ -236,6 +289,23 @@ function credentialsOf(
     delete: async (providerId) => {
       await models.modify(userId, providerId, async () =>
         Promise.resolve(null),
+      );
+    },
+  };
+}
+
+// One MCP server's sign-in state in the person's logins, as Pi's MCP sign-in
+// reads and writes it.
+function mcpStateOfUser(
+  mcp: LoginKind<McpLoginState>,
+  userId: string,
+  key: string,
+): McpOAuthStateStore {
+  return {
+    load: () => mcp.get(userId, key) as McpOAuthState | undefined,
+    save: async (state) => {
+      await mcp.modify(userId, key, async () =>
+        Promise.resolve(state as unknown as McpLoginState),
       );
     },
   };

@@ -197,6 +197,7 @@ export function startPlugins(
       "userOf" | "createUser" | "setAdmin" | "startSession"
     >;
     readonly installed?: InstalledPlugins;
+    readonly mcpServers?: ServerPluginContext["profiles"]["mcpServers"];
     readonly signal: AbortSignal;
     readonly log: Log;
   },
@@ -494,6 +495,7 @@ export function startPlugins(
 
               return id;
             },
+            mcpServers: deps.mcpServers ?? (() => []),
           },
           routes: {
             handle: (route) => {

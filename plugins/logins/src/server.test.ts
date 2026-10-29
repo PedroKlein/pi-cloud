@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import type { ModelOffer, PluginRoute, RouteCaller } from "@pipoca/plugins";
+import type {
+  ModelOffer,
+  PluginRoute,
+  ProfileMcpServer,
+  PublicRoute,
+  RouteCaller,
+} from "@pipoca/plugins";
 import {
   fakeContext,
   fakeSession,
@@ -9,15 +15,25 @@ import {
 import type { Account, Connectable } from "./model";
 import { logins } from "./server";
 
-function registered(): {
+function registered(mcpServers: readonly ProfileMcpServer[] = []): {
   readonly route: PluginRoute;
   readonly offer: ModelOffer;
+  readonly callback: (request: Request) => Promise<Response | undefined>;
 } {
   const routes: PluginRoute[] = [];
   const offers: ModelOffer[] = [];
+  const publicRoutes: PublicRoute[] = [];
+  const faked = fakeContext();
 
   logins.register(
     fakeContext({
+      auth: {
+        ...faked.auth,
+        handlePublic: (route) => {
+          publicRoutes.push(route);
+        },
+      },
+      profiles: { ...faked.profiles, mcpServers: () => mcpServers },
       routes: {
         handle: (route) => {
           routes.push(route);
@@ -33,11 +49,20 @@ function registered(): {
 
   const [route] = routes;
   const [offer] = offers;
-  if (route === undefined || offer === undefined) {
-    throw new Error("logins registered no route or offer");
+  const [publicRoute] = publicRoutes;
+  if (route === undefined || offer === undefined || publicRoute === undefined) {
+    throw new Error("logins registered no route, offer or callback");
   }
 
-  return { route: served(route), offer };
+  return {
+    route: served(route),
+    offer,
+    callback: async (request) =>
+      publicRoute(
+        request,
+        new URL(request.url).pathname.split("/").at(-1) ?? "",
+      ),
+  };
 }
 
 const runnerOf = (userId: string): RouteCaller => ({
@@ -98,7 +123,7 @@ test("a person sees their own logins and can log out of one", async () => {
     fakeUser({ id: "ana" }),
   );
 
-  expect(await removed.json()).toEqual({ logins: [], mcp: [] });
+  expect(await removed.json()).toEqual({ logins: [], mcp: [], servers: [] });
 
   const other = await call(route, fakeUser({ id: "bo" }), "account");
 
@@ -294,7 +319,7 @@ test("a person connects a provider from Settings by answering Pi's prompts", asy
   });
 
   const other = await call(route, fakeUser({ id: "bo" }), "account");
-  expect(await other.json()).toEqual({ logins: [], mcp: [] });
+  expect(await other.json()).toEqual({ logins: [], mcp: [], servers: [] });
 });
 
 test("a person dismisses a sign-in and it stops asking", async () => {
@@ -318,7 +343,7 @@ test("a person dismisses a sign-in and it stops asking", async () => {
     fakeUser({ id: "ana" }),
   );
 
-  expect(await dismissed.json()).toEqual({ logins: [], mcp: [] });
+  expect(await dismissed.json()).toEqual({ logins: [], mcp: [], servers: [] });
 
   const late = await call(route, fakeUser({ id: "ana" }), "connection/answer", {
     prompt: asked.connection?.prompt?.id,
@@ -338,4 +363,207 @@ test("a sign-in a provider doesn't take is refused", async () => {
   });
 
   expect(refused.status).toBe(400);
+});
+
+// An MCP server with its own authorization server, which registers any
+// client and swaps the code "granted" for tokens.
+function oauthServer(): { readonly url: string; readonly stop: () => void } {
+  const server: Bun.Server<undefined> = Bun.serve({
+    port: 0,
+    fetch: async (request): Promise<Response> => {
+      const { pathname } = new URL(request.url);
+      const origin = server.url.origin;
+
+      if (pathname.startsWith("/.well-known/oauth-protected-resource")) {
+        return Response.json({
+          resource: `${origin}/mcp`,
+          authorization_servers: [origin],
+        });
+      }
+
+      if (
+        pathname.startsWith("/.well-known/oauth-authorization-server") ||
+        pathname.startsWith("/.well-known/openid-configuration")
+      ) {
+        return Response.json({
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          registration_endpoint: `${origin}/register`,
+          response_types_supported: ["code"],
+          code_challenge_methods_supported: ["S256"],
+          token_endpoint_auth_methods_supported: ["none"],
+        });
+      }
+
+      if (pathname === "/register") {
+        const metadata = (await request.json()) as Record<string, unknown>;
+
+        return Response.json(
+          { ...metadata, client_id: "client-1" },
+          { status: 201 },
+        );
+      }
+
+      if (pathname === "/token") {
+        const params = new URLSearchParams(await request.text());
+
+        return params.get("code") === "granted"
+          ? Response.json({
+              access_token: "access-1",
+              refresh_token: "refresh-1",
+              token_type: "Bearer",
+              expires_in: 3600,
+            })
+          : Response.json({ error: "invalid_grant" }, { status: 400 });
+      }
+
+      return new Response("unauthorized", {
+        status: 401,
+        headers: {
+          "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+        },
+      });
+    },
+  });
+
+  return {
+    url: `${server.url.origin}/mcp`,
+    stop: () => {
+      void server.stop(true);
+    },
+  };
+}
+
+test("a person signs in to an MCP server of their Profiles from Settings, and the sign-in page sends them back to Pipoca", async () => {
+  const linear = oauthServer();
+  try {
+    const { route, callback } = registered([
+      { name: "linear", config: { url: linear.url } },
+      { name: "local", config: { command: "linear-mcp" } },
+    ]);
+
+    const key = `linear ${linear.url}`;
+
+    const listed = (await (
+      await call(route, fakeUser({ id: "ana" }), "account")
+    ).json()) as Account;
+
+    expect(listed.servers).toEqual([{ key, name: "linear", url: linear.url }]);
+
+    const started = await call(route, fakeUser({ id: "ana" }), "connect-mcp", {
+      server: key,
+    });
+
+    const cookie =
+      (started.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+
+    const asked = await connection(route, "ana", ({ connection: current }) =>
+      (current?.events ?? []).some(({ type }) => type === "auth_url"),
+    );
+
+    const event = asked.connection?.events.find(
+      ({ type }) => type === "auth_url",
+    );
+
+    const page = new URL(event?.type === "auth_url" ? event.url : "");
+    const back = new URL(page.searchParams.get("redirect_uri") ?? "");
+    expect(back.href).toBe("http://logins/api/plugins/logins/callback");
+
+    back.search = new URLSearchParams({
+      code: "granted",
+      state: page.searchParams.get("state") ?? "",
+    }).toString();
+
+    const elsewhere = await callback(new Request(back.href));
+    expect(elsewhere?.status).toBe(400);
+
+    const returned = await callback(
+      new Request(back.href, { headers: { cookie } }),
+    );
+
+    expect(returned?.status).toBe(200);
+
+    const done = await connection(
+      route,
+      "ana",
+      ({ connection: current }) => current?.state !== "running",
+    );
+
+    expect(done.connection).toMatchObject({ state: "done" });
+    expect(done.mcp).toMatchObject([{ server: key }]);
+
+    const read = await route(
+      new Request("http://logins/mcp?values"),
+      "mcp",
+      runnerOf("ana"),
+    );
+
+    expect(await read.json()).toMatchObject({
+      [key]: {
+        tokens: { access_token: "access-1", refresh_token: "refresh-1" },
+      },
+    });
+  } finally {
+    linear.stop();
+  }
+});
+
+test("a client registered for a loopback address signs in with the address the person pastes", async () => {
+  const linear = oauthServer();
+  try {
+    const { route } = registered([
+      {
+        name: "linear",
+        config: {
+          url: linear.url,
+          oauth: { clientId: "registered", callbackPort: 8123 },
+        },
+      },
+      {
+        name: "secret",
+        config: { url: linear.url, oauth: { clientSecret: "${SECRET}" } },
+      },
+    ]);
+
+    const key = `linear ${linear.url}`;
+
+    await call(route, fakeUser({ id: "ana" }), "connect-mcp", { server: key });
+
+    const asked = await connection(
+      route,
+      "ana",
+      ({ connection: current }) => current?.prompt !== undefined,
+    );
+
+    expect(asked.servers.map(({ name }) => name)).toEqual(["linear"]);
+    expect(asked.connection?.prompt).toMatchObject({ type: "manual_code" });
+
+    const event = asked.connection?.events.find(
+      ({ type }) => type === "auth_url",
+    );
+
+    const page = new URL(event?.type === "auth_url" ? event.url : "");
+    expect(page.searchParams.get("client_id")).toBe("registered");
+
+    expect(page.searchParams.get("redirect_uri")).toBe(
+      "http://127.0.0.1:8123/callback",
+    );
+
+    await call(route, fakeUser({ id: "ana" }), "connection/answer", {
+      prompt: asked.connection?.prompt?.id,
+      answer: `http://127.0.0.1:8123/callback?code=granted&state=${page.searchParams.get("state") ?? ""}`,
+    });
+
+    const done = await connection(
+      route,
+      "ana",
+      ({ connection: current }) => current?.state !== "running",
+    );
+
+    expect(done.connection).toMatchObject({ state: "done" });
+    expect(done.mcp).toMatchObject([{ server: key }]);
+  } finally {
+    linear.stop();
+  }
 });
