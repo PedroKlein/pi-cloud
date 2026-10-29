@@ -3,9 +3,47 @@ import type {
   SettingSpec,
   SettingValue,
 } from "@pipoca/protocol";
+import { type TSchema, Type } from "typebox";
+import { Value } from "typebox/value";
 import { isObject } from "./http";
 
 type Schema = Readonly<Record<string, SettingSpec>>;
+
+const described = {
+  title: Type.String(),
+  description: Type.Optional(Type.String()),
+};
+
+const settingSpec = Type.Union([
+  Type.Object({
+    ...described,
+    type: Type.Literal("string"),
+    default: Type.String(),
+  }),
+  Type.Object({
+    ...described,
+    type: Type.Literal("number"),
+    default: Type.Number(),
+    min: Type.Optional(Type.Number()),
+    max: Type.Optional(Type.Number()),
+  }),
+  Type.Object({
+    ...described,
+    type: Type.Literal("boolean"),
+    default: Type.Boolean(),
+  }),
+  Type.Object({
+    ...described,
+    type: Type.Literal("choice"),
+    options: Type.Array(Type.String()),
+    default: Type.String(),
+  }),
+  Type.Object({
+    ...described,
+    type: Type.Literal("strings"),
+    default: Type.Array(Type.String()),
+  }),
+]);
 
 // A plugin's values with a default for every setting it declares. Stored
 // values that no longer fit the schema read as their defaults, and names it
@@ -53,83 +91,39 @@ export function settingSpecs(settings: unknown): Schema {
     throw new Error("pipoca.settings must name each setting the plugin has");
   }
 
-  for (const [name, spec] of Object.entries(settings)) {
-    if (!isSpec(spec)) {
-      throw new Error(
-        `pipoca.settings.${name} needs a title, a type this server knows and a default that fits it`,
-      );
-    }
-  }
+  return Object.fromEntries(
+    Object.entries(settings).map(([name, spec]) => {
+      if (!Value.Check(settingSpec, spec) || !fits(spec, spec.default)) {
+        throw new Error(
+          `pipoca.settings.${name} needs a title, a type this server knows and a default that fits it`,
+        );
+      }
 
-  return settings as Schema;
-}
-
-const types: readonly unknown[] = [
-  "string",
-  "number",
-  "boolean",
-  "choice",
-  "strings",
-] satisfies readonly SettingSpec["type"][];
-
-function isSpec(spec: unknown): spec is SettingSpec {
-  if (!isObject(spec)) {
-    return false;
-  }
-
-  const { title, description, type, min, max, options } = spec;
-
-  if (
-    typeof title !== "string" ||
-    (description !== undefined && typeof description !== "string") ||
-    !types.includes(type)
-  ) {
-    return false;
-  }
-
-  if (
-    type === "number" &&
-    ![min, max].every(
-      (bound) =>
-        bound === undefined ||
-        (typeof bound === "number" && Number.isFinite(bound)),
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    type === "choice" &&
-    !(
-      Array.isArray(options) &&
-      options.every((option) => typeof option === "string")
-    )
-  ) {
-    return false;
-  }
-
-  return fits(spec as unknown as SettingSpec, spec["default"]);
+      return [name, spec];
+    }),
+  );
 }
 
 function fits(spec: SettingSpec, value: unknown): value is SettingValue {
+  return Value.Check(valueSchema(spec), value);
+}
+
+// The JSON Schema of a setting's value.
+function valueSchema(spec: SettingSpec): TSchema {
   switch (spec.type) {
     case "string":
-      return typeof value === "string";
+      return Type.String();
     case "number":
-      return (
-        typeof value === "number" &&
-        Number.isFinite(value) &&
-        value >= (spec.min ?? -Infinity) &&
-        value <= (spec.max ?? Infinity)
-      );
+      return Type.Number({
+        ...(spec.min !== undefined && { minimum: spec.min }),
+        ...(spec.max !== undefined && { maximum: spec.max }),
+      });
     case "boolean":
-      return typeof value === "boolean";
+      return Type.Boolean();
     case "choice":
-      return typeof value === "string" && spec.options.includes(value);
+      return Type.Enum(spec.options);
     case "strings":
-      return (
-        Array.isArray(value) && value.every((each) => typeof each === "string")
-      );
+      return Type.Array(Type.String());
   }
 }
 

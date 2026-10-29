@@ -13,12 +13,13 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { type ServerPlugin, settingSpecs } from "@pipoca/plugins";
 import {
-  type Capability,
   capabilities,
   type PluginManifest,
   pluginEngine,
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { bundleParts, type PluginParts, provideSdk } from "./bundle";
 import { builtInPlugins } from "./session-parts";
 import { fetchSource, type PluginSource } from "./sources";
@@ -315,6 +316,10 @@ export async function remove(root: string, id: string): Promise<void> {
   });
 }
 
+const identified = Type.Object({
+  pipoca: Type.Object({ id: Type.String() }),
+});
+
 async function stagedManifest(folder: string): Promise<PluginManifest> {
   const packageJson: unknown = JSON.parse(
     await readFile(join(folder, "package.json"), "utf8").catch(() => {
@@ -322,12 +327,11 @@ async function stagedManifest(folder: string): Promise<PluginManifest> {
     }),
   );
 
-  const { id } = fields(fields(packageJson)["pipoca"]);
-
-  if (typeof id !== "string") {
+  if (!Value.Check(identified, packageJson)) {
     throw new Error("its package.json has no pipoca.id");
   }
 
+  const { id } = packageJson.pipoca;
   const error = idProblem(id);
 
   if (error !== undefined) {
@@ -337,17 +341,22 @@ async function stagedManifest(folder: string): Promise<PluginManifest> {
   return manifestOf(packageJson, id);
 }
 
+const recordedSource = Type.Object({
+  url: Type.String(),
+  pinned: Type.String(),
+});
+
 // A missing or broken record means it wasn't installed from a URL.
 export async function sourceOf(
   folder: string,
 ): Promise<PluginSource | undefined> {
   try {
-    const { url, pinned } = fields(
-      JSON.parse(await readFile(join(folder, sourceFile), "utf8")),
+    const source: unknown = JSON.parse(
+      await readFile(join(folder, sourceFile), "utf8"),
     );
 
-    return typeof url === "string" && typeof pinned === "string"
-      ? { url, pinned }
+    return Value.Check(recordedSource, source)
+      ? { url: source.url, pinned: source.pinned }
       : undefined;
   } catch {
     return undefined;
@@ -528,16 +537,42 @@ async function inside(folder: string, part: string): Promise<string> {
   return entry;
 }
 
+// The pipoca field of a plugin's package.json (ADR 0022, ADR 0036).
+const pluginPackage = Type.Object({
+  pipoca: Type.Object({
+    id: Type.String(),
+    title: Type.String(),
+    description: Type.String(),
+    version: Type.Optional(Type.String()),
+    engine: Type.Number(),
+    capabilities: Type.Optional(Type.Array(Type.Enum(capabilities))),
+    parts: Type.Optional(
+      Type.Object({
+        server: Type.Optional(Type.String()),
+        web: Type.Optional(Type.String()),
+        session: Type.Optional(Type.String()),
+      }),
+    ),
+    ownSessionsOnly: Type.Optional(Type.Boolean()),
+    settings: Type.Optional(Type.Unknown()),
+  }),
+});
+
 function manifestOf(packageJson: unknown, folder: string): PluginManifest {
-  const field = fields(fields(packageJson)["pipoca"]);
-  const { id, title, description, version, engine, parts } = field;
+  if (!Value.Check(pluginPackage, packageJson)) {
+    const [error] = Value.Errors(pluginPackage, packageJson);
+    const field = error?.instancePath.slice(1).replaceAll("/", ".") ?? "";
+
+    throw new Error(
+      `${field === "" ? "package.json" : field} ${error?.message ?? "doesn't fit"}`,
+    );
+  }
+
+  const { id, title, description, version, engine, parts, settings } =
+    packageJson.pipoca;
 
   if (id !== folder) {
     throw new Error(`pipoca.id must be the folder's name, ${folder}`);
-  }
-
-  if (typeof title !== "string" || typeof description !== "string") {
-    throw new Error("pipoca needs a title and a description");
   }
 
   if (engine !== pluginEngine) {
@@ -546,43 +581,23 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     );
   }
 
-  const { server, web, session } = fields(parts);
-  const declared = field["capabilities"] ?? [];
-
-  if (
-    !Array.isArray(declared) ||
-    !declared.every((each): each is Capability =>
-      capabilities.includes(each as Capability),
-    )
-  ) {
-    throw new Error(
-      `pipoca.capabilities must list some of ${capabilities.join(", ")}`,
-    );
-  }
-
-  const settings = field["settings"];
-
   return {
     id,
     title,
     description,
     engine,
-    capabilities: declared,
-    ...(typeof version === "string" && { version }),
-    ...(field["ownSessionsOnly"] === true && { ownSessionsOnly: true }),
+    capabilities: packageJson.pipoca.capabilities ?? [],
+    ...(version !== undefined && { version }),
+    ...(packageJson.pipoca.ownSessionsOnly === true && {
+      ownSessionsOnly: true,
+    }),
     parts: {
-      ...(typeof server === "string" && { server }),
-      ...(typeof web === "string" && { web }),
-      ...(typeof session === "string" && { session }),
+      ...(parts?.server !== undefined && { server: parts.server }),
+      ...(parts?.web !== undefined && { web: parts.web }),
+      ...(parts?.session !== undefined && { session: parts.session }),
     },
     ...(settings !== undefined && { settings: settingSpecs(settings) }),
   };
-}
-
-function fields(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function skipReason(
