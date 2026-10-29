@@ -13,11 +13,11 @@ import {
   type WorkPoll,
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
+import { startPlugins } from "@pipoca/pluginhost";
 import { ProfileFolders, Profiles } from "@pipoca/profiles";
 import { Sessions } from "@pipoca/sessions";
 import { Auth } from "./auth";
 import { changeFeed } from "./changes";
-import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { readSse } from "./sse";
 import { openStore } from "./store";
@@ -38,6 +38,7 @@ test("reports unhealthy when the database can't be read, keeping why in the log"
     new Profiles(noProfiles, store),
     startPlugins([], [], {
       sessions,
+      sessionParts: [],
       runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
       changes: () => undefined,
@@ -118,6 +119,7 @@ function startServer(
     new Profiles(noProfiles, store),
     startPlugins([plugin], [plugin.name], {
       sessions,
+      sessionParts: [],
       runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
       changes: () => undefined,
@@ -488,6 +490,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
       new Profiles(noProfiles, store),
       startPlugins([keeper], enabled, {
         sessions,
+        sessionParts: [],
         runners: { token: () => "pct_test", revoke: () => undefined },
         events: eventBus(() => undefined),
         changes: () => undefined,

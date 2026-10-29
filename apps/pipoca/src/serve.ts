@@ -2,6 +2,15 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { ServerWebSocket } from "bun";
+import { gitHosts } from "@pipoca/git-hosts/server";
+import { kubernetesPlugin } from "@pipoca/kubernetes/server";
+import { library } from "@pipoca/library/server";
+import { logins as loginsPlugin } from "@pipoca/logins/server";
+import { meta } from "@pipoca/meta/server";
+import { models } from "@pipoca/models/server";
+import { oidc } from "@pipoca/oidc/server";
+import { projects } from "@pipoca/projects/server";
+import { kernelToolsets, startPlugins } from "@pipoca/pluginhost";
 import { eventBus, type ServerPlugin } from "@pipoca/plugins";
 import type { PluginManifest } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
@@ -25,16 +34,25 @@ import {
   turnOn,
   update,
 } from "./installed";
-import { serverPlugins, startPlugins } from "./plugins";
-import { builtInPlugins } from "./session-parts";
+import { builtInPlugins, sessionPlugins } from "./session-parts";
 import { errorReply } from "./replies";
 import { previewBroker } from "./previews";
 import { changeFeed } from "./changes";
 import { createHandler, fromAddress, onBehalfOf } from "./server";
-import { kernelToolsets } from "./toolsets";
 import type { PreviewData, SocketData, TerminalData } from "./sockets";
 import { openStore } from "./store";
 import { terminalBroker } from "./terminals";
+
+const serverPlugins: readonly ServerPlugin[] = [
+  projects,
+  library,
+  models,
+  kubernetesPlugin,
+  meta,
+  oidc,
+  gitHosts,
+  loginsPlugin,
+];
 
 export interface ServeOptions {
   // 127.0.0.1 unless a proxy or other machines reach the server directly.
@@ -213,6 +231,7 @@ export function serve(options: ServeOptions): {
         build: async (id) => buildPlugin(folder.root, id),
       },
     }),
+    sessionParts: sessionPlugins,
     mcpServers: () => userProfiles.mcpServers(),
     signal: pluginsStop.signal,
     log: options.log,

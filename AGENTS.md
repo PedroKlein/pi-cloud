@@ -20,7 +20,7 @@ Pipoca is a self-hosted control plane for durable Pi sessions and Projects on yo
 
 ```text
 apps/            thin entry points: the pipoca binary (with its adapters) and web
-packages/        domain packages: protocol, sessions, workspaces, providers, sessionhost
+packages/        domain packages: protocol, sessions, workspaces, providers, sessionhost, pluginhost
 plugins/         features built on the kernel, such as projects (ADR 0015)
 ```
 

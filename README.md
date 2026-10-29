@@ -162,7 +162,7 @@ Next up are teams: inviting people, shared Environments and Profiles, and multip
 ```text
 apps/pipoca      the pipoca binary: server and agent
 apps/web         the web UI
-packages/        protocol, sessions, providers, workspaces, profiles, UI kit and the session host
+packages/        protocol, sessions, providers, workspaces, profiles, UI kit, the session host and the plugin host
 plugins/         built-in plugins: projects, changes, usage, kubernetes, oidc and more
 deploy/helm      the Helm chart
 docs/            guide, vision, architecture, design system and decision records

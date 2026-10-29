@@ -1,7 +1,7 @@
+import type { PluginHost } from "@pipoca/pluginhost";
 import { fieldsOf } from "@pipoca/plugins";
 import type { Log } from "@pipoca/providers";
 import type { Auth } from "./auth";
-import type { PluginHost } from "./plugins";
 import { errorReply } from "./replies";
 
 // Pipoca's meta toolsets over MCP's streamable HTTP transport (ADR 0035):
