@@ -22,6 +22,6 @@
   "pipoca": {
     "id": "logins",
     "title": "Logins",
-    "description": "Keeps each person's model provider logins on the server, so their Sessions use them on every runner. Log in once with /login in any Session."
+    "description": "Keeps each person's model provider and MCP server logins on the server, so their Sessions use them on every runner. Log in once with /login or /mcp login in any Session."
   }
 }

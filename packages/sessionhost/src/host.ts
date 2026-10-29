@@ -360,8 +360,8 @@ export async function hostSession(
     plugins.map(async ({ plugin, cloud }) => plugin.tools?.(cloud) ?? []),
   );
 
-  const keeper = plugins.find(({ plugin }) => plugin.credentials);
-  const credentials = keeper?.plugin.credentials?.(keeper.cloud);
+  const keeper = plugins.find(({ plugin }) => plugin.logins);
+  const logins = await keeper?.plugin.logins?.(keeper.cloud);
 
   const pages = hostPages(
     stream.preview,
@@ -408,7 +408,8 @@ export async function hostSession(
     ],
     packages: plugins.flatMap(({ plugin }) => plugin.packages ?? []),
     onError,
-    ...(credentials && { credentials }),
+    ...(logins && { logins }),
+    openUrl: pages.open,
   });
 
   const tui = view.host(session, {

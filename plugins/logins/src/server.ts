@@ -7,14 +7,16 @@ import {
   readJson,
   type RouteCaller,
   type ServerPlugin,
+  type ServerPluginContext,
 } from "@pipoca/plugins";
 import type { ModelRef } from "@pipoca/protocol";
-import { locks } from "./locks";
+import { type Locks, locks } from "./locks";
 import {
   type Account,
   credentialOf,
   type Lease,
-  type LoginView,
+  mcpStateOf,
+  type Stored,
 } from "./model";
 
 // Long enough for a token refresh, short enough that a runner that went away
@@ -24,13 +26,30 @@ const holdMs = 60_000;
 // again instead of having its request cut.
 const waitMs = 20_000;
 
-// Each person's model logins live on the server, and their Sessions read and
-// write them through it on every runner (ADR 0045).
+// Each person's model and MCP logins live on the server, and their Sessions
+// read and write them through it on every runner (ADR 0045).
 export const logins: ServerPlugin = {
   name: "logins",
   register: (context) => {
-    const credentials = credentialStore(context.store);
     const leases = locks(holdMs, waitMs);
+
+    const models = loginKind(context, leases, {
+      name: "credentials",
+      table: "logins_credentials",
+      column: "provider",
+      valid: credentialOf,
+      typeOf: ({ type }) => type,
+    });
+
+    // Pi keeps one state per MCP server, with its client registration and
+    // tokens, keyed by the server's name and address.
+    const mcp = loginKind(context, leases, {
+      name: "mcp",
+      table: "logins_mcp",
+      column: "server",
+      valid: mcpStateOf,
+      typeOf: () => "oauth",
+    });
 
     // Pi's own models, by provider, for the models a person's logins reach.
     // Providers that extensions add are already in the runners' lists.
@@ -51,187 +70,66 @@ export const logins: ServerPlugin = {
         return { models: [] };
       }
 
-      const providers = new Set(
-        credentials.of(userId).map(({ provider }) => provider),
-      );
+      const providers = new Set(models.list(userId).map(({ key }) => key));
 
       return {
         models: catalog.filter(({ provider }) => providers.has(provider)),
       };
     });
 
-    const changed = (): void => {
-      context.changes.publish("logins");
-    };
-
-    const keyOf = (userId: string, provider: string): string =>
-      `${userId}\u0000${provider}`;
-
-    const lease = async (
-      userId: string,
-      provider: string,
-    ): Promise<Response> => {
-      const given = await leases.acquire(keyOf(userId, provider));
-      if (given === undefined) {
-        return Response.json({ error: "busy" }, { status: 409 });
-      }
-
-      const body: Lease = {
-        lease: given,
-        credential: credentials.get(userId, provider) ?? null,
-      };
-
-      return Response.json(body);
-    };
-
-    const release = async (
-      request: Request,
-      userId: string,
-      provider: string,
-    ): Promise<Response> => {
-      const fields = fieldsOf(await readJson(request));
-      const { lease: given, credential } = fields;
-
-      if (typeof given !== "string") {
-        throw new BadRequest("lease must be text");
-      }
-
-      const next =
-        credential === undefined || credential === null
-          ? credential
-          : validCredential(credential);
-
-      // A lapsed lease may have let another runner write since, so its
-      // write would undo theirs.
-      const key = keyOf(userId, provider);
-      if (next !== undefined && !leases.holds(key, given)) {
-        return Response.json({ error: "lease_lapsed" }, { status: 409 });
-      }
-
-      if (next === null) {
-        credentials.remove(userId, provider);
-        context.log("login removed", { userId, provider });
-        changed();
-      } else if (next !== undefined) {
-        const stored = credentials.get(userId, provider);
-        credentials.save(userId, provider, next);
-
-        if (stored === undefined) {
-          context.log("login saved", { userId, provider, type: next.type });
-        }
-
-        changed();
-      }
-
-      leases.release(key, given);
-
-      return Response.json({ ok: true });
-    };
-
-    const sessionRoutes = async (
-      request: Request,
-      parts: readonly string[],
-      userId: string,
-    ): Promise<Response> => {
-      const [route, rawProvider, action] = parts;
-
-      if (route !== "credentials") {
-        return Response.json({ error: "not_found" }, { status: 404 });
-      }
-
-      if (
-        (rawProvider === undefined || rawProvider === "") &&
-        new URL(request.url).searchParams.has("values")
-      ) {
-        return Response.json(
-          Object.fromEntries(
-            credentials.of(userId).flatMap(({ provider }) => {
-              const credential = credentials.get(userId, provider);
-
-              return credential === undefined ? [] : [[provider, credential]];
-            }),
-          ),
-        );
-      }
-
-      if (rawProvider === undefined || rawProvider === "") {
-        return Response.json(
-          credentials
-            .of(userId)
-            .map(({ provider, type }) => ({ providerId: provider, type })),
-        );
-      }
-
-      const provider = decodeURIComponent(rawProvider);
-
-      if (action === "lock" && request.method === "POST") {
-        return lease(userId, provider);
-      }
-
-      if (action === "release" && request.method === "POST") {
-        return release(request, userId, provider);
-      }
-
-      return Response.json({ error: "not_found" }, { status: 404 });
-    };
-
     const account = (userId: string): Account => ({
-      logins: credentials.of(userId),
+      logins: models.list(userId).map(({ key, type, updatedAt }) => ({
+        provider: key,
+        type: type as Credential["type"],
+        updatedAt,
+      })),
+      mcp: mcp.list(userId).map(({ key, updatedAt }) => ({
+        server: key,
+        updatedAt,
+      })),
     });
 
     context.routes.handle(async (request, path, caller) => {
       const userId = userOf(caller);
-      const parts = path.split("/");
+      const [route = "", key, action] = path.split("/");
 
       if (caller.kind === "session") {
-        return sessionRoutes(request, parts, userId);
-      }
+        const kind = [models, mcp].find(({ name }) => name === route);
 
-      const [route] = parts;
+        return kind === undefined
+          ? Response.json({ error: "not_found" }, { status: 404 })
+          : kind.sessionRoute(request, userId, key, action);
+      }
 
       if (route === "account" && request.method === "GET") {
         return Response.json(account(userId));
       }
 
       if (route === "save" && request.method === "POST") {
-        const { provider, credential } = fieldsOf(await readJson(request));
-        if (typeof provider !== "string" || provider === "") {
-          throw new BadRequest("provider must be text");
-        }
+        const fields = fieldsOf(await readJson(request));
 
-        const next = validCredential(credential);
-        const key = keyOf(userId, provider);
-        const given = await leases.acquire(key);
-        if (given === undefined) {
-          return Response.json({ error: "busy" }, { status: 409 });
-        }
+        const saved = await models.write(
+          userId,
+          textField(fields, "provider"),
+          models.validated(fields["credential"]),
+        );
 
-        credentials.save(userId, provider, next);
-        leases.release(key, given);
-        context.log("login saved", { userId, provider, type: next.type });
-        changed();
-
-        return Response.json(account(userId));
+        return saved
+          ? Response.json(account(userId))
+          : Response.json({ error: "busy" }, { status: 409 });
       }
 
       if (route === "remove" && request.method === "POST") {
-        const { provider } = fieldsOf(await readJson(request));
-        if (typeof provider !== "string") {
-          throw new BadRequest("provider must be text");
-        }
+        const fields = fieldsOf(await readJson(request));
 
-        const key = keyOf(userId, provider);
-        const given = await leases.acquire(key);
-        if (given === undefined) {
-          return Response.json({ error: "busy" }, { status: 409 });
-        }
+        const removed =
+          fields["server"] === undefined
+            ? await models.write(userId, textField(fields, "provider"), null)
+            : await mcp.write(userId, textField(fields, "server"), null);
 
-        credentials.remove(userId, provider);
-        leases.release(key, given);
-        context.log("login removed", { userId, provider });
-        changed();
-
-        return Response.json(account(userId));
+        return removed
+          ? Response.json(account(userId))
+          : Response.json({ error: "busy" }, { status: 409 });
       }
 
       return Response.json({ error: "not_found" }, { status: 404 });
@@ -239,14 +137,13 @@ export const logins: ServerPlugin = {
   },
 };
 
-function validCredential(value: unknown): Credential {
-  try {
-    return credentialOf(value);
-  } catch (error) {
-    throw new BadRequest(
-      error instanceof Error ? error.message : String(error),
-    );
+function textField(fields: Readonly<Record<string, unknown>>, name: string) {
+  const value = fields[name];
+  if (typeof value !== "string" || value === "") {
+    throw new BadRequest(`${name} must be text`);
   }
+
+  return value;
 }
 
 // A Session uses the logins of the person who started it, or who started the
@@ -257,57 +154,211 @@ function userOf(caller: RouteCaller): string {
     : caller.actor.slice("user:".length);
 }
 
-interface CredentialStore {
-  readonly of: (userId: string) => readonly LoginView[];
-  readonly get: (userId: string, provider: string) => Credential | undefined;
-  readonly save: (
+interface KindSpec<T> {
+  // The first part of the Session routes.
+  readonly name: string;
+  readonly table: string;
+  readonly column: string;
+  readonly valid: (value: unknown) => T;
+  readonly typeOf: (value: T) => string;
+}
+
+interface LoginKind<T> {
+  readonly name: string;
+  readonly list: (userId: string) => readonly Stored[];
+  readonly validated: (value: unknown) => T;
+  // Takes the key's lease to write, or says false when it stays busy. Null
+  // removes the login.
+  readonly write: (
     userId: string,
-    provider: string,
-    credential: Credential,
-  ) => void;
-  readonly remove: (userId: string, provider: string) => void;
+    key: string,
+    value: T | null,
+  ) => Promise<boolean>;
+  // What a Session asks for: every login's key, every value, or a lease on
+  // one to read, refresh and write back.
+  readonly sessionRoute: (
+    request: Request,
+    userId: string,
+    key: string | undefined,
+    action: string | undefined,
+  ) => Promise<Response>;
+}
+
+function loginKind<T>(
+  context: Pick<ServerPluginContext, "store" | "changes" | "log">,
+  leases: Locks,
+  spec: KindSpec<T>,
+): LoginKind<T> {
+  const rows = sealedRows(context.store, spec);
+
+  const leaseKey = (userId: string, key: string): string =>
+    `${spec.name}\u0000${userId}\u0000${key}`;
+
+  const validated = (value: unknown): T => {
+    try {
+      return spec.valid(value);
+    } catch (error) {
+      throw new BadRequest(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  };
+
+  const store = (userId: string, key: string, value: T | null): void => {
+    const known = rows.get(userId, key) !== undefined;
+
+    if (value === null) {
+      rows.remove(userId, key);
+    } else {
+      rows.save(userId, key, value);
+    }
+
+    if (value === null || !known) {
+      context.log(value === null ? "login removed" : "login saved", {
+        kind: spec.name,
+        userId,
+        key,
+      });
+    }
+
+    context.changes.publish("logins");
+  };
+
+  const lease = async (userId: string, key: string): Promise<Response> => {
+    const given = await leases.acquire(leaseKey(userId, key));
+    if (given === undefined) {
+      return Response.json({ error: "busy" }, { status: 409 });
+    }
+
+    const body: Lease<T> = {
+      lease: given,
+      value: rows.get(userId, key) ?? null,
+    };
+
+    return Response.json(body);
+  };
+
+  const release = async (
+    request: Request,
+    userId: string,
+    key: string,
+  ): Promise<Response> => {
+    const { lease: given, value } = fieldsOf(await readJson(request));
+
+    if (typeof given !== "string") {
+      throw new BadRequest("lease must be text");
+    }
+
+    const next =
+      value === undefined || value === null ? value : validated(value);
+
+    // A lapsed lease may have let another runner write since, so its write
+    // would undo theirs.
+    const held = leaseKey(userId, key);
+    if (next !== undefined && !leases.holds(held, given)) {
+      return Response.json({ error: "lease_lapsed" }, { status: 409 });
+    }
+
+    if (next !== undefined) {
+      store(userId, key, next);
+    }
+
+    leases.release(held, given);
+
+    return Response.json({ ok: true });
+  };
+
+  return {
+    name: spec.name,
+    list: rows.list,
+    validated,
+    write: async (userId, key, value) => {
+      const held = leaseKey(userId, key);
+      const given = await leases.acquire(held);
+      if (given === undefined) {
+        return false;
+      }
+
+      store(userId, key, value);
+      leases.release(held, given);
+
+      return true;
+    },
+    sessionRoute: async (request, userId, rawKey, action) => {
+      if (rawKey === undefined || rawKey === "") {
+        return Response.json(
+          new URL(request.url).searchParams.has("values")
+            ? Object.fromEntries(
+                rows.list(userId).flatMap(({ key }) => {
+                  const value = rows.get(userId, key);
+
+                  return value === undefined ? [] : [[key, value]];
+                }),
+              )
+            : rows.list(userId).map(({ key, type }) => ({ key, type })),
+        );
+      }
+
+      const key = decodeURIComponent(rawKey);
+
+      if (action === "lock" && request.method === "POST") {
+        return lease(userId, key);
+      }
+
+      if (action === "release" && request.method === "POST") {
+        return release(request, userId, key);
+      }
+
+      return Response.json({ error: "not_found" }, { status: 404 });
+    },
+  };
+}
+
+interface SealedRows<T> {
+  readonly list: (userId: string) => readonly Stored[];
+  readonly get: (userId: string, key: string) => T | undefined;
+  readonly save: (userId: string, key: string, value: T) => void;
+  readonly remove: (userId: string, key: string) => void;
 }
 
 // A login is state people create as they go, so it lives in SQLite, sealed
-// for its user and provider (ADR 0039).
-function credentialStore(store: PluginStore): CredentialStore {
+// for its user and key (ADR 0039).
+function sealedRows<T>(
+  store: PluginStore,
+  { table, column, valid, typeOf }: KindSpec<T>,
+): SealedRows<T> {
   store.exec(`
-    create table if not exists "logins_credentials" (
+    create table if not exists "${table}" (
       user_id text not null,
-      provider text not null,
+      ${column} text not null,
       type text not null,
       credential text not null,
       updated_at text not null,
-      primary key (user_id, provider)
+      primary key (user_id, ${column})
     )
   `);
 
-  const context = (userId: string, provider: string): string =>
-    `${userId} ${provider}`;
+  const sealedFor = (userId: string, key: string): string => `${userId} ${key}`;
 
   return {
-    of: (userId) =>
+    list: (userId) =>
       (
         store.all(
-          `select provider, type, updated_at from "logins_credentials" where user_id = ? order by provider`,
+          `select ${column} as key, type, updated_at from "${table}" where user_id = ? order by ${column}`,
           userId,
-        ) as {
-          provider: string;
-          type: Credential["type"];
-          updated_at: string;
-        }[]
-      ).map(({ provider, type, updated_at }) => ({
-        provider,
+        ) as { key: string; type: string; updated_at: string }[]
+      ).map(({ key, type, updated_at }) => ({
+        key,
         type,
         updatedAt: updated_at,
       })),
     // A login sealed under another server key can't be opened, and reads as
     // logged out.
-    get: (userId, provider) => {
+    get: (userId, key) => {
       const [row] = store.all(
-        `select credential from "logins_credentials" where user_id = ? and provider = ?`,
+        `select credential from "${table}" where user_id = ? and ${column} = ?`,
         userId,
-        provider,
+        key,
       ) as { credential: string }[];
 
       if (row === undefined) {
@@ -315,28 +366,28 @@ function credentialStore(store: PluginStore): CredentialStore {
       }
 
       try {
-        return credentialOf(
-          JSON.parse(store.open(row.credential, context(userId, provider))),
+        return valid(
+          JSON.parse(store.open(row.credential, sealedFor(userId, key))),
         );
       } catch {
         return undefined;
       }
     },
-    save: (userId, provider, credential) => {
+    save: (userId, key, value) => {
       store.run(
-        `insert into "logins_credentials" (user_id, provider, type, credential, updated_at) values (?, ?, ?, ?, ?) on conflict (user_id, provider) do update set type = excluded.type, credential = excluded.credential, updated_at = excluded.updated_at`,
+        `insert into "${table}" (user_id, ${column}, type, credential, updated_at) values (?, ?, ?, ?, ?) on conflict (user_id, ${column}) do update set type = excluded.type, credential = excluded.credential, updated_at = excluded.updated_at`,
         userId,
-        provider,
-        credential.type,
-        store.seal(JSON.stringify(credential), context(userId, provider)),
+        key,
+        typeOf(value),
+        store.seal(JSON.stringify(value), sealedFor(userId, key)),
         new Date().toISOString(),
       );
     },
-    remove: (userId, provider) => {
+    remove: (userId, key) => {
       store.run(
-        `delete from "logins_credentials" where user_id = ? and provider = ?`,
+        `delete from "${table}" where user_id = ? and ${column} = ?`,
         userId,
-        provider,
+        key,
       );
     },
   };

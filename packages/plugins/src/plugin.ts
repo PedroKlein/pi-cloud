@@ -367,7 +367,34 @@ export interface SessionPlugin {
   readonly tools?: (
     cloud: SessionCloud,
   ) => readonly ToolDefinition[] | Promise<readonly ToolDefinition[]>;
-  // Where the Session keeps its model logins instead of the machine's auth
-  // file, such as the server (ADR 0045). The first plugin that gives one wins.
-  readonly credentials?: (cloud: SessionCloud) => CredentialStore;
+  // Where the Session keeps its logins instead of the machine's files, such as
+  // the server (ADR 0045). The first plugin that gives them wins.
+  readonly logins?: (cloud: SessionCloud) => Promise<SessionLogins>;
+}
+
+export interface SessionLogins {
+  readonly models: CredentialStore;
+  readonly mcp: McpLoginStore;
+}
+
+// What Pi's MCP extension asks of its sign-in store, which Pi keeps in
+// mcp-auth.json by default. Its calls don't wait, except a token refresh,
+// which runs while no other process refreshes the same server.
+export interface McpLoginStore {
+  readonly forServer: (
+    name: string,
+    serverUrl: string,
+  ) => {
+    readonly load: () => McpLoginState | undefined;
+    readonly save: (state: McpLoginState) => void;
+    readonly withRefreshLock: <T>(fn: () => Promise<T>) => Promise<T>;
+  };
+  readonly tokens: (name: string, serverUrl: string) => unknown;
+  readonly remove: (name: string, serverUrl: string) => boolean;
+}
+
+// One MCP server's client registration and tokens, as Pi keeps them.
+export interface McpLoginState {
+  readonly tokens?: unknown;
+  readonly [field: string]: unknown;
 }
