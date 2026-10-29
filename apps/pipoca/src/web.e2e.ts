@@ -1572,6 +1572,56 @@ test("creates a Project and shares a file through its library", async () => {
   await nav.waitFor({ state: "detached" });
 }, 30_000);
 
+test("shows a Project made elsewhere on the open Projects page", async () => {
+  let made = false;
+  const { promise: listed, resolve: list } = Promise.withResolvers();
+
+  await page.route("**/api/plugins/projects/projects", async (route) =>
+    route.fulfill({
+      json: made
+        ? [
+            {
+              id: "elsewhere",
+              name: "Made elsewhere",
+              threads: 0,
+              needsYou: 0,
+              repositories: 1,
+              coordinatorState: "idle",
+            },
+          ]
+        : [],
+    }),
+  );
+
+  await page.route("**/api/changes", async (route) => {
+    await listed;
+    made = true;
+
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: `retry: 60000\ndata: ${JSON.stringify({ topic: "projects.projects" })}\n\n`,
+    });
+  });
+
+  await page.goto(server.url.href);
+
+  await page
+    .locator("#plugin-nav")
+    .getByRole("link", { name: "Projects" })
+    .click();
+
+  const pluginPage = page.locator("#plugin-page");
+  await pluginPage.getByText("No Projects yet.").waitFor();
+  list(undefined);
+
+  await pluginPage
+    .getByRole("button", { name: /^Made elsewhere/ })
+    .waitFor({ timeout: 2000 });
+
+  await page.unroute("**/api/changes");
+  await page.unroute("**/api/plugins/projects/projects");
+});
+
 test("shows a plugin page's failure without taking the app down", async () => {
   await page.route("**/api/plugins/projects/projects", async (route) =>
     route.fulfill({
