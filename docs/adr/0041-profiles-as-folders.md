@@ -40,7 +40,7 @@ Pi already has a format for all of this: its agent folder, `~/.pi/agent`.
 ### Editing
 
 - The Profile page in Settings shows the folder's files, with a text editor for any of them and buttons to add, delete and upload files. An upload can be a whole folder, such as someone's own `~/.pi/agent`, and leaves out what machines keep for themselves (decided 2026-10-26; amended 2026-10-26: a folder upload instead of a `.zip`, since browsers can pick folders and Bun reads and writes `.tar.gz` but not `.zip`).
-- The package list and the `AGENTS.md` editor stay as shortcuts. They edit `settings.json` and `AGENTS.md` underneath.
+- The page has a tab for each kind of thing Pi reads from the folder (amended 2026-10-29): Overview with the package list, Instructions (`AGENTS.md`, `APPEND_SYSTEM.md`, `SYSTEM.md`), Skills, Prompts, Extensions, MCP (`mcp.json`), Models (`models.json`), Settings (`settings.json`) and Files with every file. Skills, Prompts and Extensions list what the folder holds by Pi's own layout, start a new one from Pi's template and take uploads into their folder. Every tab edits the same files underneath. The base Profile ([ADR 0044](0044-base-profile.md)) has the same tabs.
 - The server writes each file to a temporary file and renames it over the old one. Edits made by hand on the server show up the next time the page loads, and reach Sessions by the hash.
 - Secrets in `mcp.json` follow ADR 0039: sealed with the server's secret key when typed in the UI, or named by an environment variable in files written by hand.
 
