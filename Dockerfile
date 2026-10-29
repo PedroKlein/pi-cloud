@@ -14,4 +14,4 @@ USER node
 ENV HOME=/data
 WORKDIR /data
 EXPOSE 7420
-ENTRYPOINT ["pipoca", "server", "--host", "0.0.0.0", "--database", "/data/server.db"]
+ENTRYPOINT ["pipoca", "server", "--supervise", "--host", "0.0.0.0", "--database", "/data/server.db"]

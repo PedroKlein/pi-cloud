@@ -29,7 +29,7 @@ type ChildMessage =
 const stopTimeoutMs = 10_000;
 
 // A compiled binary is its own entry point. From source, Bun runs main.ts.
-const pipoca = import.meta.dirname.startsWith("/$bunfs")
+export const pipoca = import.meta.dirname.startsWith("/$bunfs")
   ? [process.execPath]
   : [process.execPath, join(import.meta.dirname, "main.ts")];
 

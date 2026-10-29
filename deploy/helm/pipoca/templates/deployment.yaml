@@ -70,9 +70,6 @@ spec:
             - {{ . | quote }}
             {{- end }}
           env:
-            # The pod starts the server again when it exits for a restart.
-            - name: PIPOCA_SUPERVISED
-              value: "1"
             - name: PIPOCA_SECRET_KEY
               valueFrom:
                 secretKeyRef:

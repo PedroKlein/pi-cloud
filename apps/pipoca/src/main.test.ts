@@ -9,6 +9,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { type AddressInfo, createServer } from "node:net";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -118,6 +119,96 @@ test("keeps using the data folder from before the product was renamed", async ()
     await once(server, "exit");
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test("restarts a supervised server in place and stops it through the server on SIGTERM", async () => {
+  const home = await mkdtemp(join(tmpdir(), "pipoca-supervised-"));
+  const port = await freePort();
+
+  const supervisor = spawn(
+    process.execPath,
+    [
+      join(import.meta.dirname, "main.ts"),
+      "server",
+      "--supervise",
+      "--port",
+      String(port),
+      "--database",
+      join(home, "server.db"),
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  let log = "";
+  supervisor.stderr.setEncoding("utf8");
+
+  supervisor.stderr.on("data", (chunk: string) => {
+    log += chunk;
+  });
+
+  const listening = (): number => log.split("server listening").length - 1;
+
+  try {
+    const { url, cookie } = await signedIn(supervisor);
+
+    const restart = await fetch(new URL("/api/restart", url), {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect(restart.status).toBe(202);
+
+    while (listening() < 2 && supervisor.exitCode === null) {
+      await sleep(50);
+    }
+
+    expect(supervisor.exitCode).toBeNull();
+    expect((await fetch(new URL("/healthz", url))).status).toBe(200);
+
+    supervisor.kill("SIGTERM");
+
+    const [code, signal] = (await once(supervisor, "exit")) as [
+      number | null,
+      NodeJS.Signals | null,
+    ];
+
+    expect({ code, signal }).toEqual({ code: 0, signal: null });
+    expect(log.split("server stopped").length - 1).toBe(2);
+  } finally {
+    supervisor.kill("SIGKILL");
+    await rm(home, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test("exits a supervised server with the server's code when it stops for another reason", async () => {
+  const supervisor = spawn(
+    process.execPath,
+    [
+      join(import.meta.dirname, "main.ts"),
+      "server",
+      "--supervise",
+      "--port",
+      "0",
+      "--database",
+      ":memory:",
+      "--folder",
+      "/no/such/folder",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  let log = "";
+  supervisor.stderr.setEncoding("utf8");
+
+  supervisor.stderr.on("data", (chunk: string) => {
+    log += chunk;
+  });
+
+  const [code] = (await once(supervisor, "exit")) as [number | null];
+
+  expect(code).toBe(2);
+  expect(log).toContain("folder does not exist: /no/such/folder");
 });
 
 test("refuses to start an agent with a folder that does not exist", async () => {
@@ -681,6 +772,16 @@ const proxyExtension = `export default (pi) => {
 `;
 
 const git = promisify(execFile);
+
+async function freePort(): Promise<number> {
+  const server = createServer().listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  server.close();
+  await once(server, "close");
+
+  return port;
+}
 
 async function gitRepository(path: string): Promise<void> {
   await git("git", ["init", "--initial-branch=main", path]);

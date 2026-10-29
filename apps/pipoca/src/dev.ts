@@ -1,9 +1,8 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { dataFolder } from "./data-folder";
 import { stderrLog } from "./log";
-import { restartExitCode } from "./restart";
+import { supervise, type Supervisor } from "./restart";
 
 const log = stderrLog("dev");
 const main = join(import.meta.dirname, "main.ts");
@@ -31,51 +30,19 @@ const commands = [
   ],
 ];
 
-let children: ChildProcess[] = [];
+let children: Supervisor[] = [];
 let restart: ReturnType<typeof setTimeout> | undefined;
 let restarting: Promise<void> = Promise.resolve();
 let exiting = false;
-// A restart the server asked for waits while the watcher restarts everything.
-let stopping = false;
 
 function start(): void {
-  children = commands.map(run);
-}
-
-// The server restarts itself by exiting with restartExitCode for this loop
-// to start it again.
-function run(args: readonly string[]): ChildProcess {
-  const child = spawn(process.execPath, [main, ...args], {
-    stdio: "inherit",
-    env: { ...process.env, PIPOCA_SUPERVISED: "1" },
-  });
-
-  child.once("exit", (code) => {
-    if (code === restartExitCode && !exiting && !stopping) {
-      log("restarting", { asked: args[0] });
-      children = children.map((each) => (each === child ? run(args) : each));
-    }
-  });
-
-  return child;
+  children = commands.map((args) =>
+    supervise([process.execPath, main, ...args], log),
+  );
 }
 
 async function stop(): Promise<void> {
-  stopping = true;
-
-  await Promise.all(
-    children.map(async (child) => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        return;
-      }
-
-      const exited = new Promise((resolve) => child.once("exit", resolve));
-      child.kill("SIGTERM");
-      await exited;
-    }),
-  );
-
-  stopping = false;
+  await Promise.all(children.map(async (child) => child.stop()));
 }
 
 // Restart child processes instead of using bun --watch, which does not
