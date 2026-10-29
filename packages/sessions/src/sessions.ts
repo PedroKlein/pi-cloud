@@ -1325,7 +1325,11 @@ export class Sessions {
       this.#surfaces.delete(session.id);
     }
 
-    if (![...unhosted, ...attempting].includes(session.status)) {
+    if (
+      ![...claimableStatuses, ...unhosted, ...attempting].includes(
+        session.status,
+      )
+    ) {
       this.#held.delete(session.id);
       this.#hostedGeneration.delete(session.id);
     }
