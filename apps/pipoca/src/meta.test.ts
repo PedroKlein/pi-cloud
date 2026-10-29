@@ -147,6 +147,19 @@ test("refuses a meta-session without a first message", async () => {
   expect(response.status).toBe(400);
 });
 
+test("answers a method the meta-session list has no route for as not found", async () => {
+  const response = await fetch(
+    new URL("/api/plugins/meta/sessions", server.url),
+    {
+      method: "DELETE",
+      headers: { cookie: await signedIn() },
+    },
+  );
+
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ error: "not_found" });
+});
+
 async function environmentId(): Promise<string> {
   await environmentReady();
   const [environment] = await json<{ id: string }[]>(api("/api/environments"));

@@ -1,4 +1,9 @@
-import type { PluginConfig, PluginStore } from "@pipoca/plugins";
+import {
+  BadRequest,
+  isObject,
+  type PluginConfig,
+  type PluginStore,
+} from "@pipoca/plugins";
 import type { HostView } from "./model";
 
 export interface HostConfig {
@@ -15,8 +20,6 @@ export interface OAuthApp {
   readonly clientSecret: string | undefined;
   readonly clientSecretEnv: string | undefined;
 }
-
-export class InvalidHost extends Error {}
 
 export interface HostStore {
   readonly list: () => readonly HostConfig[];
@@ -102,7 +105,7 @@ export function hostStore(
   const save = (next: readonly Entry[]): void => {
     current();
     if (unfit !== undefined) {
-      throw new InvalidHost(`fix git-hosts in pipoca.json first: ${unfit}`);
+      throw new BadRequest(`fix git-hosts in pipoca.json first: ${unfit}`);
     }
 
     const value = config.get();
@@ -113,7 +116,7 @@ export function hostStore(
         hosts: next.map(fileEntry),
       });
     } catch (failure) {
-      throw new InvalidHost(
+      throw new BadRequest(
         failure instanceof Error ? failure.message : String(failure),
       );
     }
@@ -130,11 +133,11 @@ export function hostStore(
     input: unknown,
     before: Entry | undefined,
   ): Entry => {
-    const fields = fieldsOf(input);
+    const fields = objectOf(input);
     const secret = fields["clientSecret"];
 
     if (secret !== undefined && secret !== null && typeof secret !== "string") {
-      throw new InvalidHost("clientSecret must be text");
+      throw new BadRequest("clientSecret must be text");
     }
 
     const label = text(fields["label"], "label").trim() || host;
@@ -178,10 +181,10 @@ export function hostStore(
     list: () => current().map((entry) => entry.config),
     get: (host) => get(host)?.config,
     create: (input) => {
-      const host = hostName(fieldsOf(input)["host"]);
+      const host = hostName(objectOf(input)["host"]);
 
       if (get(host) !== undefined) {
-        throw new InvalidHost(`${host} is already listed`);
+        throw new BadRequest(`${host} is already listed`);
       }
 
       const entry = changed(host, input, undefined);
@@ -234,7 +237,7 @@ function entriesOf(
   }
 
   if (!isObject(value)) {
-    throw new InvalidHost("git-hosts in pipoca.json must be an object");
+    throw new BadRequest("git-hosts in pipoca.json must be an object");
   }
 
   const { hosts } = value;
@@ -244,7 +247,7 @@ function entriesOf(
   }
 
   if (!Array.isArray(hosts)) {
-    throw new InvalidHost("git-hosts.hosts must be a list");
+    throw new BadRequest("git-hosts.hosts must be a list");
   }
 
   const seen = new Set<string>();
@@ -252,21 +255,21 @@ function entriesOf(
   return hosts.map((item: unknown, index): Entry => {
     try {
       if (!isObject(item)) {
-        throw new InvalidHost("must be an object");
+        throw new BadRequest("must be an object");
       }
 
       const host = hostName(item["host"]);
 
       if (seen.has(host)) {
-        throw new InvalidHost(`${host} is listed twice`);
+        throw new BadRequest(`${host} is listed twice`);
       }
 
       seen.add(host);
 
       return entryOf(host, item, open, secretIn);
     } catch (failure) {
-      if (failure instanceof InvalidHost) {
-        throw new InvalidHost(
+      if (failure instanceof BadRequest) {
+        throw new BadRequest(
           `git-hosts.hosts[${String(index)}]: ${failure.message}`,
         );
       }
@@ -285,7 +288,7 @@ function entryOf(
   const { api, oauth } = item;
 
   if (api !== undefined && (typeof api !== "string" || !isHttp(api))) {
-    throw new InvalidHost("api must be an http or https URL");
+    throw new BadRequest("api must be an http or https URL");
   }
 
   const base = {
@@ -298,13 +301,13 @@ function entryOf(
   }
 
   if (!isObject(oauth)) {
-    throw new InvalidHost("oauth must be an object");
+    throw new BadRequest("oauth must be an object");
   }
 
   const { clientId, clientSecret, clientSecretEnv } = oauth;
 
   if (typeof clientId !== "string" || clientId.trim() === "") {
-    throw new InvalidHost("oauth.clientId must be text");
+    throw new BadRequest("oauth.clientId must be text");
   }
 
   if (clientSecretEnv !== undefined) {
@@ -314,7 +317,7 @@ function entryOf(
         : undefined;
 
     if (typeof clientSecretEnv !== "string" || secret === undefined) {
-      throw new InvalidHost(
+      throw new BadRequest(
         "oauth.clientSecretEnv names no environment variable that is set",
       );
     }
@@ -329,7 +332,7 @@ function entryOf(
   }
 
   if (clientSecret !== undefined && typeof clientSecret !== "string") {
-    throw new InvalidHost("oauth.clientSecret must be text");
+    throw new BadRequest("oauth.clientSecret must be text");
   }
 
   return {
@@ -356,7 +359,7 @@ function opened(
   try {
     return open(sealed, host);
   } catch {
-    throw new InvalidHost(
+    throw new BadRequest(
       "oauth.clientSecret must be sealed by Settings; name an environment variable in oauth.clientSecretEnv instead",
     );
   }
@@ -403,7 +406,7 @@ function hostName(value: unknown): string {
   const host = typeof value === "string" ? value.trim().toLowerCase() : "";
 
   if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(host)) {
-    throw new InvalidHost("host must be a host name, such as github.com");
+    throw new BadRequest("host must be a host name, such as github.com");
   }
 
   return host;
@@ -415,7 +418,7 @@ function text(value: unknown, field: string): string {
   }
 
   if (typeof value !== "string") {
-    throw new InvalidHost(`${field} must be text`);
+    throw new BadRequest(`${field} must be text`);
   }
 
   return value;
@@ -429,14 +432,10 @@ function isHttp(value: string): boolean {
   }
 }
 
-function fieldsOf(input: unknown): Readonly<Record<string, unknown>> {
+function objectOf(input: unknown): Readonly<Record<string, unknown>> {
   if (!isObject(input)) {
-    throw new InvalidHost("expected an object");
+    throw new BadRequest("expected an object");
   }
 
   return input;
-}
-
-function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

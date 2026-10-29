@@ -1,4 +1,10 @@
-import type { OfferedModels, PluginStore, ServerPlugin } from "@pipoca/plugins";
+import {
+  isObject,
+  type OfferedModels,
+  type PluginStore,
+  readJson,
+  type ServerPlugin,
+} from "@pipoca/plugins";
 import { aliasesOf, gatewayProvider } from "./gateway";
 import {
   type AliasConfig,
@@ -56,7 +62,7 @@ export const models: ServerPlugin = {
         }
 
         if (method === "POST" && path === "health") {
-          const reported = healthFrom(await request.json().catch(() => null));
+          const reported = healthFrom(await readJson(request));
           if (reported === undefined) {
             return Response.json({ error: "invalid_health" }, { status: 400 });
           }
@@ -90,8 +96,8 @@ export const models: ServerPlugin = {
       }
 
       if (method === "POST" && environmentId !== undefined) {
-        const body: unknown = await request.json().catch(() => null);
-        if (typeof body !== "object" || body === null || !("aliases" in body)) {
+        const body = await readJson(request);
+        if (!isObject(body) || !("aliases" in body)) {
           return Response.json(
             { error: "aliases must be a config or null" },
             { status: 400 },

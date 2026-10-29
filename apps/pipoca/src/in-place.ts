@@ -10,14 +10,13 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { NotFound } from "@pipoca/plugins";
 import { build, idProblem, isReserved, sourceOf, turnOn } from "./installed";
 
 // The files of a plugin a meta-session writes straight into the plugins
 // folder (ADR 0035). None of its code runs until the user turns it on.
 
 const maxFileBytes = 1024 * 1024;
-
-export class NotFound extends Error {}
 
 export async function pluginFiles(root: string, id: string): Promise<string[]> {
   const folder = await pluginFolder(root, id);

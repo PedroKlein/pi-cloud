@@ -8,7 +8,7 @@ import {
   type ServerPluginContext,
   type ServerTool,
 } from "@pipoca/plugins";
-import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
+import { fakeContext, fakeSession, served } from "@pipoca/plugins/testing";
 import type { Actor, Session } from "@pipoca/protocol";
 import type { ProjectView } from "./model";
 import { projects } from "./server";
@@ -193,7 +193,7 @@ function fakeKernel(): {
     toolsets: { register: () => undefined, loadInOwnSessions: () => undefined },
     routes: {
       handle: (handler) => {
-        route = handler;
+        route = served(handler);
       },
     },
     signal: stop.signal,

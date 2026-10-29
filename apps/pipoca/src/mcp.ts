@@ -1,3 +1,4 @@
+import { fieldsOf } from "@pipoca/plugins";
 import type { Log } from "@pipoca/providers";
 import type { Auth } from "./auth";
 import type { PluginHost } from "./plugins";
@@ -149,12 +150,6 @@ class RpcError extends Error {
 
 function rpcError(id: Id | null, code: number, message: string): Response {
   return Response.json({ jsonrpc: "2.0", id, error: { code, message } });
-}
-
-function fieldsOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function sameHost(origin: string, url: string): boolean {

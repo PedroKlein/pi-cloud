@@ -1,4 +1,8 @@
-import type { ServerPlugin, ToolCaller } from "@pipoca/plugins";
+import {
+  BadRequest,
+  type ServerPlugin,
+  type ToolCaller,
+} from "@pipoca/plugins";
 import type { Actor } from "@pipoca/protocol";
 import { type LibraryStore, libraryStore } from "./library";
 import { fileLimit, nameRule, sizeRule, validName } from "./model";
@@ -17,16 +21,7 @@ export const library: ServerPlugin = {
     });
 
     context.routes.handle(async (request, path, caller) => {
-      let target: Target | undefined;
-      try {
-        target = resolve(path.split("/"), caller, store);
-      } catch (error) {
-        if (error instanceof URIError) {
-          return Response.json({ error: error.message }, { status: 400 });
-        }
-
-        throw error;
-      }
+      const target = resolve(path.split("/"), caller, store);
 
       if (target === undefined) {
         return Response.json({ error: "not_found" }, { status: 404 });
@@ -85,9 +80,15 @@ function resolve(
 // macOS and zip archives often spell "é" as "e" plus a combining accent; NFC
 // makes both spellings one file.
 function decoded(name: string | undefined): string | undefined {
-  return name === undefined || name === ""
-    ? undefined
-    : decodeURIComponent(name).normalize("NFC");
+  if (name === undefined || name === "") {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(name).normalize("NFC");
+  } catch (error) {
+    throw new BadRequest((error as Error).message);
+  }
 }
 
 async function serve(

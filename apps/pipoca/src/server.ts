@@ -37,6 +37,13 @@ import {
   type WorkspaceRequest,
 } from "@pipoca/protocol";
 import { VERSION as piVersion } from "@earendil-works/pi-coding-agent";
+import {
+  BadRequest,
+  fieldsOf,
+  HttpError,
+  NotFound,
+  readJson,
+} from "@pipoca/plugins";
 import { InvalidProfile, ProfileTooBig, type Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
 import type { Rejection, Result, Sessions } from "@pipoca/sessions";
@@ -50,7 +57,6 @@ import {
   type User,
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
-import { NotFound } from "./in-place";
 import { mcpHandler } from "./mcp";
 import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
@@ -935,12 +941,14 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
-          if (error instanceof NotFound) {
-            return Response.json({ error: error.message }, { status: 404 });
+          if (error instanceof HttpError) {
+            return Response.json(
+              { error: error.message },
+              { status: error.status },
+            );
           }
 
           if (
-            error instanceof BadRequest ||
             error instanceof InvalidProfile ||
             error instanceof ProfileTooBig ||
             error instanceof InvalidCredentials
@@ -1403,8 +1411,6 @@ function notFound(): Response {
   return Response.json({ error: "not_found" }, { status: 404 });
 }
 
-class BadRequest extends Error {}
-
 // What an in-place plugin's change can't do is the caller's to fix.
 async function refused<T>(change: Promise<T>): Promise<T> {
   return change.catch((error: unknown) => {
@@ -1416,14 +1422,6 @@ async function refused<T>(change: Promise<T>): Promise<T> {
       error instanceof Error ? error.message : String(error),
     );
   });
-}
-
-async function readJson(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    throw new BadRequest("body must be JSON");
-  }
 }
 
 function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
@@ -2096,12 +2094,6 @@ function liveEventOf(event: unknown): LiveEvent {
   }
 
   return event as LiveEvent;
-}
-
-function fieldsOf(value: unknown): Record<string, unknown> {
-  const fields = typeof value === "object" && value !== null ? value : {};
-
-  return fields as Record<string, unknown>;
 }
 
 // A file's path as it arrives in a URL, percent-encoded.

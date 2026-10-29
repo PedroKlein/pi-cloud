@@ -1,6 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { ServerPlugin, ServerPluginContext } from "@pipoca/plugins";
+import {
+  isObject,
+  readJson,
+  type ServerPlugin,
+  type ServerPluginContext,
+} from "@pipoca/plugins";
 import { type Environment, movable } from "@pipoca/protocol";
 import {
   type ApiAccess,
@@ -12,7 +17,6 @@ import {
 import { type FailedPod, PodFailures } from "./failures";
 import { runnerPod, sessionClaim, sessionPodName } from "./pods";
 import {
-  isObject,
   type KubernetesEnvironment,
   type KubernetesSettings,
   type SettingsStore,
@@ -117,7 +121,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           );
         }
 
-        const body: unknown = await request.json().catch(() => null);
+        const body = await readJson(request);
 
         if (!isObject(body)) {
           return Response.json(

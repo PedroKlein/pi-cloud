@@ -1,5 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { PluginStore, ServerPlugin, User } from "@pipoca/plugins";
+import {
+  BadRequest,
+  fieldsOf,
+  type PluginStore,
+  readJson,
+  type ServerPlugin,
+  type User,
+} from "@pipoca/plugins";
 import type { Account, LinkedIdentity } from "./model";
 import {
   type Attempt,
@@ -12,12 +19,7 @@ import {
   type Provider,
   redeem,
 } from "./oidc";
-import {
-  InvalidProvider,
-  type ProviderConfig,
-  providerStore,
-  viewOf,
-} from "./providers";
+import { type ProviderConfig, providerStore, viewOf } from "./providers";
 
 // A browser has this long to come back from the provider.
 const attemptMs = 10 * 60_000;
@@ -266,40 +268,29 @@ export const oidc: ServerPlugin = {
     ): Promise<Response> => {
       const [, id] = path;
 
-      try {
-        if (id === undefined && request.method === "GET") {
-          return Response.json(providers.list().map(viewOf));
-        }
+      if (id === undefined && request.method === "GET") {
+        return Response.json(providers.list().map(viewOf));
+      }
 
-        if (id === undefined && request.method === "POST") {
-          const created = providers.create(await request.json());
-          context.log("provider added", { provider: created.id });
+      if (id === undefined && request.method === "POST") {
+        const created = providers.create(await readJson(request));
+        context.log("provider added", { provider: created.id });
 
-          return Response.json(viewOf(created), { status: 201 });
-        }
+        return Response.json(viewOf(created), { status: 201 });
+      }
 
-        if (id !== undefined && path[2] === "remove") {
-          return providers.remove(id)
-            ? Response.json({ removed: id })
-            : Response.json({ error: "not_found" }, { status: 404 });
-        }
+      if (id !== undefined && path[2] === "remove") {
+        return providers.remove(id)
+          ? Response.json({ removed: id })
+          : Response.json({ error: "not_found" }, { status: 404 });
+      }
 
-        if (id !== undefined && request.method === "POST") {
-          const updated = providers.update(id, await request.json());
+      if (id !== undefined && request.method === "POST") {
+        const updated = providers.update(id, await readJson(request));
 
-          return updated === undefined
-            ? Response.json({ error: "not_found" }, { status: 404 })
-            : Response.json(viewOf(updated));
-        }
-      } catch (failure) {
-        if (
-          failure instanceof InvalidProvider ||
-          failure instanceof SyntaxError
-        ) {
-          return Response.json({ error: failure.message }, { status: 400 });
-        }
-
-        throw failure;
+        return updated === undefined
+          ? Response.json({ error: "not_found" }, { status: 404 })
+          : Response.json(viewOf(updated));
       }
 
       return Response.json({ error: "not_found" }, { status: 404 });
@@ -347,15 +338,10 @@ export const oidc: ServerPlugin = {
       }
 
       if (route === "unlink" && request.method === "POST") {
-        const { issuer } = (await request.json().catch(() => ({}))) as {
-          issuer?: unknown;
-        };
+        const { issuer } = fieldsOf(await readJson(request));
 
         if (typeof issuer !== "string") {
-          return Response.json(
-            { error: "issuer must be text" },
-            { status: 400 },
-          );
+          throw new BadRequest("issuer must be text");
         }
 
         identities.unlink(user.id, issuer);

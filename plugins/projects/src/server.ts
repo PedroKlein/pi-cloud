@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type {
-  PluginStore,
-  SendOutcome,
-  ServerPlugin,
-  ServerPluginContext,
+import {
+  BadRequest,
+  fieldsOf,
+  type PluginStore,
+  readJson,
+  type SendOutcome,
+  type ServerPlugin,
+  type ServerPluginContext,
 } from "@pipoca/plugins";
 import { type Actor, checkoutName } from "@pipoca/protocol";
 import type { ProjectSummary, ProjectView } from "./model";
@@ -313,8 +316,6 @@ function deliverTurn(
   return sessions.send(coordinatorId, text, actor, notice);
 }
 
-class BadRequest extends Error {}
-
 async function route(
   request: Request,
   path: readonly string[],
@@ -322,70 +323,70 @@ async function route(
   context: ServerPluginContext,
   user: Actor,
 ): Promise<Response> {
-  try {
-    const [resource, id, child, name] = path;
+  const [resource, id, child, name] = path;
 
-    if (resource === "projects" && id === undefined) {
-      return request.method === "POST"
-        ? Response.json(
-            view(
-              create(await request.json(), store, context, user),
-              store,
-              context,
-            ),
-          )
-        : Response.json(summaries(store, context));
-    }
-
-    const project = resource === "projects" ? store.get(id ?? "") : undefined;
-
-    if (project && child === undefined && request.method === "GET") {
-      return Response.json(view(project, store, context));
-    }
-
-    if (project && child === "settings" && request.method === "POST") {
-      store.update(project.id, settings(project, await request.json()));
-
+  if (resource === "projects" && id === undefined) {
+    if (request.method === "POST") {
       return Response.json(
-        view(store.get(project.id) ?? project, store, context),
+        view(
+          create(await readJson(request), store, context, user),
+          store,
+          context,
+        ),
       );
     }
 
-    if (project && child === "memory" && name !== undefined) {
-      const content = store.readMemory(project.id, decodeURIComponent(name));
+    return request.method === "GET"
+      ? Response.json(summaries(store, context))
+      : Response.json({ error: "not_found" }, { status: 404 });
+  }
 
-      return content === undefined
-        ? Response.json({ error: "not_found" }, { status: 404 })
-        : Response.json({ name, content });
-    }
+  const project = resource === "projects" ? store.get(id ?? "") : undefined;
 
-    const thread = resource === "threads" ? store.member(id ?? "") : undefined;
+  if (project && child === undefined && request.method === "GET") {
+    return Response.json(view(project, store, context));
+  }
 
-    if (thread?.role === "thread" && child === undefined) {
-      return Response.json({
-        projectId: thread.projectId,
-        ...threadView(thread, context.sessions.get(thread.sessionId)),
-      });
-    }
+  if (project && child === "settings" && request.method === "POST") {
+    store.update(project.id, settings(project, await readJson(request)));
 
-    if (thread && child === "state" && request.method === "POST") {
-      const { state } = ((await request.json()) ?? {}) as { state?: unknown };
-      store.setWorkState(thread.sessionId, toState(state));
+    return Response.json(
+      view(store.get(project.id) ?? project, store, context),
+    );
+  }
 
-      return new Response(null, { status: 204 });
-    }
+  if (project && child === "memory" && name !== undefined) {
+    const content = store.readMemory(project.id, decoded(name));
 
-    return Response.json({ error: "not_found" }, { status: 404 });
+    return content === undefined
+      ? Response.json({ error: "not_found" }, { status: 404 })
+      : Response.json({ name, content });
+  }
+
+  const thread = resource === "threads" ? store.member(id ?? "") : undefined;
+
+  if (thread?.role === "thread" && child === undefined) {
+    return Response.json({
+      projectId: thread.projectId,
+      ...threadView(thread, context.sessions.get(thread.sessionId)),
+    });
+  }
+
+  if (thread && child === "state" && request.method === "POST") {
+    const { state } = fieldsOf(await readJson(request));
+    store.setWorkState(thread.sessionId, toState(state));
+
+    return new Response(null, { status: 204 });
+  }
+
+  return Response.json({ error: "not_found" }, { status: 404 });
+}
+
+function decoded(name: string): string {
+  try {
+    return decodeURIComponent(name);
   } catch (error) {
-    if (
-      error instanceof BadRequest ||
-      error instanceof SyntaxError ||
-      error instanceof URIError
-    ) {
-      return Response.json({ error: error.message }, { status: 400 });
-    }
-
-    throw error;
+    throw new BadRequest((error as Error).message);
   }
 }
 
@@ -406,8 +407,7 @@ function settings(
   Project,
   "name" | "goal" | "instructions" | "threadModel" | "profileId"
 > {
-  const { name, goal, instructions, threadModel, profile } = (body ??
-    {}) as Record<string, unknown>;
+  const { name, goal, instructions, threadModel, profile } = fieldsOf(body);
 
   if (
     profile !== undefined &&
@@ -474,7 +474,7 @@ function create(
     profile,
     model,
     threadModel,
-  } = (body ?? {}) as Record<string, unknown>;
+  } = fieldsOf(body);
 
   if (typeof name !== "string" || name.trim() === "") {
     throw new BadRequest("name is required");

@@ -9,10 +9,15 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type {
-  KernelEvent,
-  ServerPlugin,
-  ServerPluginContext,
+import {
+  BadRequest,
+  fieldsOf,
+  HttpError,
+  type KernelEvent,
+  NotFound,
+  readJson,
+  type ServerPlugin,
+  type ServerPluginContext,
 } from "@pipoca/plugins";
 import type { Environment, Session, SessionEvent } from "@pipoca/protocol";
 import { runAgent } from "./agent";
@@ -486,6 +491,55 @@ test("routes requests to a plugin that keeps its own tables", async () => {
 
   expect(await (await api("/api/plugins")).json()).toMatchObject([
     { id: "notes", state: "on" },
+  ]);
+});
+
+test("answers the errors a plugin's route throws as the server's own", async () => {
+  await start([
+    {
+      name: "notes",
+      register: ({ routes }) => {
+        routes.handle(async (request, path) => {
+          const { text } = fieldsOf(await readJson(request));
+
+          if (typeof text !== "string") {
+            throw new BadRequest("text must be text");
+          }
+
+          throw path === "full"
+            ? new HttpError(409, "notes are full")
+            : new NotFound(`no note ${text}`);
+        });
+      },
+    },
+  ]);
+
+  const answer = async (
+    response: Promise<Response>,
+  ): Promise<readonly unknown[]> => {
+    const { status } = await response;
+
+    return [status, await (await response).json()];
+  };
+
+  const answers = [
+    await answer(api("/api/plugins/notes/items", { text: 1 })),
+    await answer(api("/api/plugins/notes/items", { text: "a" })),
+    await answer(api("/api/plugins/notes/full", { text: "a" })),
+    await answer(
+      fetch(new URL("/api/plugins/notes/items", server?.url), {
+        method: "POST",
+        headers: { cookie: await signedIn() },
+        body: "{not json",
+      }),
+    ),
+  ];
+
+  expect(answers).toEqual([
+    [400, { error: "text must be text" }],
+    [404, { error: "no note a" }],
+    [409, { error: "notes are full" }],
+    [400, { error: "body must be JSON" }],
   ]);
 });
 
