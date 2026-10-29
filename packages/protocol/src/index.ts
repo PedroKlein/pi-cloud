@@ -425,17 +425,66 @@ export interface SessionStart extends Assignment {
   readonly token: string;
 }
 
-// A Session's start for logs: without its token, environment or git logins.
+// A Session's start for logs. Only fields that hold no secrets or user text,
+// so not its token, environment, git logins, prompts or plugin settings.
 export function loggedStart({
-  token: _token,
-  environment: _environment,
-  gitLogins: _gitLogins,
-  ...start
-}: Assignment & { readonly token?: string }): Omit<
-  Assignment,
-  "environment" | "gitLogins"
-> {
-  return start;
+  sessionId,
+  generation,
+  profile,
+  model,
+  thinking,
+  plugins,
+  workspace,
+}: Assignment): Readonly<Record<string, unknown>> {
+  return {
+    sessionId,
+    generation,
+    profile,
+    model,
+    thinking,
+    plugins,
+    workspace: loggedWorkspace(workspace),
+  };
+}
+
+function loggedWorkspace(workspace: Workspace): Record<string, unknown> {
+  switch (workspace.kind) {
+    case "folder":
+      return { kind: workspace.kind, path: workspace.path };
+    case "worktree":
+      return {
+        kind: workspace.kind,
+        path: workspace.path,
+        branch: workspace.branch,
+      };
+    case "clone":
+      return {
+        kind: workspace.kind,
+        repository: withoutUserinfo(workspace.repository),
+        branch: workspace.branch,
+      };
+    case "repositories":
+      return {
+        kind: workspace.kind,
+        branch: workspace.branch,
+        repositories: workspace.repositories.map(({ repository }) =>
+          withoutUserinfo(repository),
+        ),
+      };
+  }
+}
+
+// An scp-style git@host:path, which URL can't parse, has no password.
+function withoutUserinfo(repository: string): string {
+  const url = URL.parse(repository);
+  if (url === null || (url.username === "" && url.password === "")) {
+    return repository;
+  }
+
+  url.username = "";
+  url.password = "";
+
+  return url.href;
 }
 
 export interface Work {
