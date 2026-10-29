@@ -68,7 +68,7 @@ async function api(path: string, body?: unknown): Promise<Response> {
 }
 
 async function until<T>(
-  read: () => Promise<T>,
+  read: () => T | Promise<T>,
   done: (value: T) => boolean,
 ): Promise<T> {
   for (;;) {
@@ -136,7 +136,7 @@ test("routes an alias to its first model in the session's Environment", async ()
   ).json()) as Session;
 
   await until(
-    async () => primary.state.callCount,
+    () => primary.state.callCount,
     (count) => count > 0,
   );
 
@@ -189,7 +189,7 @@ test("takes a provider that hit its cap out of routing for the whole Environment
   ).json()) as Session;
 
   await until(
-    async () => primary.state.callCount + fallback.state.callCount,
+    () => primary.state.callCount + fallback.state.callCount,
     (count) => count > 1,
   );
 
