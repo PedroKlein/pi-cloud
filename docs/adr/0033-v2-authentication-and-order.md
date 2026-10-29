@@ -1,6 +1,6 @@
 # 0033: v2 Authentication and Build Order
 
-- Status: accepted, amended 2026-10-25 (meta-sessions become step 5, [ADR 0035](0035-meta-sessions.md); third-party install and in-place plugins become step 6; automation plugins leave v2)
+- Status: accepted, amended 2026-10-25 (meta-sessions become step 5, [ADR 0035](0035-meta-sessions.md); third-party install and in-place plugins become step 6; automation plugins leave v2) and 2026-10-29 (failed password sign-ins count per name and client address)
 - Date: 2026-10-24
 
 ## Context
@@ -18,6 +18,7 @@ v2's other decisions are in [ADR 0022](0022-plugin-model-v2.md) (plugins), [ADR 
 - Signing in through an OIDC provider, such as GitHub, Google or a company identity provider, is a first-party plugin ([ADR 0038](0038-single-sign-on-and-admins.md)).
 - A browser session is an `HttpOnly; SameSite=Strict` cookie, which also covers WebSocket upgrades. No key is kept in `localStorage` ([v2-ideas.md](../v2-ideas.md#authentication-once-v1s-no-auth-rule-ends)).
 - A runner joins an Environment's pool with that Environment's key, and gets a token of its own for its polls and streams.
+- Failed password sign-ins count per name and client address: ten in 15 minutes lock that name from that address, and 50 for any names lock the address. Guessing stays slow from any one place, and a stranger elsewhere can't lock a person out. The server takes the address from `X-Forwarded-For` only with `--trust-proxy`, which the Helm chart sets behind Kyma's gateway (decided 2026-10-29; until then ten failures locked a name for everyone).
 - A loopback bind needs a login and runner keys too, as in Claude Code. Other local users and DNS-rebinding pages can reach a loopback port, and one code path is tested everywhere (decided 2026-10-25).
 
 ### Build order

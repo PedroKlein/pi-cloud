@@ -22,6 +22,12 @@ apiRule:
   # server through its Service.
   exposeAgents: false
 
+# Counts failed sign-ins by the client address that a proxy in front, such as
+# an ingress controller, adds to X-Forwarded-For. Set it only when every
+# request comes through that proxy; on Kyma, apiRule.enabled sets it. Without
+# it everyone shares the proxy's address.
+trustProxy: false
+
 # Runs a runner inside the server too, in the Environment of this name.
 builtInRunner: ""
 

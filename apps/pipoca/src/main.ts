@@ -18,7 +18,7 @@ import { runSessionProcess } from "./session-process";
 const usage = `usage:
   [PIPOCA_SECRET_KEY=<32 bytes, base64>] \\
   pipoca server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
-                  [--database ~/.pipoca/server.db] [--sso-only]
+                  [--database ~/.pipoca/server.db] [--sso-only] [--trust-proxy]
                   [--plugins <folder next to the database>/plugins]
                   [--config-dir <folder next to the database>/config]
                   [--provider <name> [--data-dir ~/.pipoca/server]
@@ -68,6 +68,7 @@ switch (command) {
         port: { type: "string", default: "7420" },
         database: { type: "string", default: join(dataRoot, "server.db") },
         "sso-only": { type: "boolean", default: false },
+        "trust-proxy": { type: "boolean", default: false },
         "config-dir": { type: "string" },
         plugins: { type: "string" },
         provider: { type: "string" },
@@ -100,6 +101,7 @@ switch (command) {
         configDir: absolutePath(values["config-dir"]),
       }),
       passwordLogin: !values["sso-only"],
+      trustProxy: values["trust-proxy"],
       ...(secretKey !== undefined && { secretKey: parseSecretKey(secretKey) }),
       ...(values.provider !== undefined && {
         agent: {

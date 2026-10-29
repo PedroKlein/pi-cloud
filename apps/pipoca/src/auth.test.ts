@@ -23,11 +23,13 @@ afterEach(async () => {
 function start(
   database: string,
   passwordLogin?: boolean,
+  trustProxy?: boolean,
 ): ReturnType<typeof serve> {
   return serve({
     port: 0,
     database,
     ...(passwordLogin !== undefined && { passwordLogin }),
+    ...(trustProxy !== undefined && { trustProxy }),
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
     },
@@ -174,14 +176,80 @@ test("keeps a user's name without the spaces around it, and signs in with or wit
   expect(signedIn.map(({ status }) => status)).toEqual([200, 200]);
 });
 
-test("locks a name after repeated failed sign-ins", async () => {
+async function behindProxy(): Promise<void> {
+  await server?.stop();
+  logs = [];
+  server = start(":memory:", undefined, true);
+  await setUp();
+}
+
+function from(address: string): Record<string, string> {
+  return { "x-forwarded-for": `198.51.100.7, ${address}` };
+}
+
+test("locks a name after repeated failed sign-ins from one address, but not from another", async () => {
+  await behindProxy();
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await post(
+      "/api/auth/login",
+      { ...pedro, password: "nope" },
+      from("203.0.113.1"),
+    );
+  }
+
+  const here = await post("/api/auth/login", pedro, from("203.0.113.1"));
+  expect(here.status).toBe(429);
+
+  expect(await here.json()).toEqual({
+    error: "locked",
+    message: "Too many failed sign-ins. Try again in 15 minutes.",
+  });
+
+  const elsewhere = await post("/api/auth/login", pedro, from("203.0.113.2"));
+  expect(elsewhere.status).toBe(200);
+});
+
+test("locks an address after failed sign-ins for many names", async () => {
+  await behindProxy();
+
+  const guesses = await Promise.all(
+    Array.from({ length: 50 }, async (_, attempt) =>
+      post(
+        "/api/auth/login",
+        { name: `guess-${String(attempt)}`, password: "nope" },
+        from("203.0.113.1"),
+      ),
+    ),
+  );
+
+  expect(guesses.map(({ status }) => status)).toEqual(
+    Array.from({ length: 50 }, () => 401),
+  );
+
+  expect(
+    (await post("/api/auth/login", pedro, from("203.0.113.1"))).status,
+  ).toBe(429);
+
+  expect(
+    (await post("/api/auth/login", pedro, from("203.0.113.2"))).status,
+  ).toBe(200);
+}, 30_000);
+
+test("ignores a forwarded address unless the server trusts its proxy", async () => {
   await setUp();
 
   for (let attempt = 0; attempt < 10; attempt++) {
-    await post("/api/auth/login", { ...pedro, password: "nope" });
+    await post(
+      "/api/auth/login",
+      { ...pedro, password: "nope" },
+      from(`203.0.113.${String(attempt)}`),
+    );
   }
 
-  expect((await post("/api/auth/login", pedro)).status).toBe(429);
+  expect(
+    (await post("/api/auth/login", pedro, from("203.0.113.99"))).status,
+  ).toBe(429);
 });
 
 test("locks a name after failed sign-ins sent all at once", async () => {
