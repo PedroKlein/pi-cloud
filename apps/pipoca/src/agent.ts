@@ -39,6 +39,7 @@ import {
   fetchProfile,
   fetchTranscript,
   httpControlPlane,
+  type UnsupportedVersion,
   httpSessionStream,
   joinPool,
   reportRemoval,
@@ -614,14 +615,19 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   };
 
   // A server that no longer knows the token, as after a new key, has let the
-  // runner go. It stops instead of polling forever.
+  // runner go, and so has one of another protocol version. It stops instead
+  // of polling forever.
   const letGo = new AbortController();
+  let unsupported: UnsupportedVersion | undefined;
   const idle = idleExit(options.exitWhenIdleMs, () => hosted.size, log);
 
   await runProvider({
-    controlPlane: httpControlPlane(agent, () => {
+    controlPlane: httpControlPlane(agent, (reason) => {
+      unsupported = reason;
+
       log(
-        "the server let this runner go; join again with the Environment's key",
+        reason?.message ??
+          "the server let this runner go; join again with the Environment's key",
       );
 
       letGo.abort();
@@ -700,6 +706,10 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   );
 
   await Promise.all([...stopping.values(), ...removing.values()]);
+
+  if (unsupported !== undefined) {
+    throw unsupported;
+  }
 
   if (letGo.signal.aborted) {
     throw new Error("the server let this runner go");

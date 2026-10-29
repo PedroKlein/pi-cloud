@@ -48,6 +48,10 @@ class HttpError extends Error {
   }
 }
 
+// A runner and a server of other protocol versions can't work together, so
+// retrying never helps.
+export class UnsupportedVersion extends Error {}
+
 // A runner's token, or one of its Sessions' (ADR 0033).
 interface Agent {
   readonly server: string;
@@ -92,6 +96,10 @@ export async function joinPool(
         });
       }
 
+      if (error instanceof UnsupportedVersion) {
+        throw error;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- the signal can abort while the call above is pending
       if (signal.aborted) {
         return undefined;
@@ -123,9 +131,20 @@ async function call(
   });
 
   if (!response.ok) {
+    const text = await response.text();
+
+    if (
+      response.status === 400 &&
+      text.includes("unsupported protocol version")
+    ) {
+      throw new UnsupportedVersion(
+        `the server at ${agent.server} doesn't speak this runner's protocol version ${String(protocolVersion)}; run the same Pipoca version on both`,
+      );
+    }
+
     throw new HttpError(
       response.status,
-      `${init.method ?? "GET"} ${path}: ${String(response.status)} ${await response.text()}`,
+      `${init.method ?? "GET"} ${path}: ${String(response.status)} ${text}`,
     );
   }
 
@@ -134,7 +153,7 @@ async function call(
 
 export function httpControlPlane(
   agent: Agent,
-  letGo: () => void,
+  letGo: (reason?: UnsupportedVersion) => void,
 ): ControlPlane {
   return {
     work: async (poll, signal) => {
@@ -149,6 +168,10 @@ export function httpControlPlane(
       } catch (error) {
         if (error instanceof HttpError && error.status === 401) {
           letGo();
+        }
+
+        if (error instanceof UnsupportedVersion) {
+          letGo(error);
         }
 
         throw error;
