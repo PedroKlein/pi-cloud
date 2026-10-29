@@ -91,6 +91,7 @@ export interface SessionStore {
     statuses: readonly SessionStatus[],
   ) => readonly StoredSession[];
   byRunner: (
+    provider: string,
     runner: string,
     statuses: readonly SessionStatus[],
   ) => readonly StoredSession[];
@@ -213,8 +214,8 @@ export class Sessions {
       pollWaitMs: options.pollWaitMs ?? 10_000,
       offlineAfterMs: options.offlineAfterMs ?? 30_000,
       leaseMs: options.leaseMs ?? leaseMs,
-      onlineChanged: (runner) => {
-        this.#onlineChanged(runner);
+      onlineChanged: (environment, runner) => {
+        this.#onlineChanged(environment, runner);
       },
     });
 
@@ -574,7 +575,8 @@ export class Sessions {
           name,
           online,
           capacity,
-          running: this.#store.byRunner(name, attempting).length,
+          running: this.#store.byRunner(environment.provider, name, attempting)
+            .length,
         })),
         folders: [
           ...new Set(runners.flatMap(({ inventory }) => inventory.folders)),
@@ -608,7 +610,7 @@ export class Sessions {
     const pool = {
       runners,
       leaseLapsed: (name: string) =>
-        this.#polls.leaseLapsed(name, environment.provider),
+        this.#polls.leaseLapsed(environment.provider, name),
     };
 
     const room = new Map(
@@ -616,7 +618,8 @@ export class Sessions {
         name,
         capacity === null
           ? Infinity
-          : capacity - this.#store.byRunner(name, attempting).length,
+          : capacity -
+            this.#store.byRunner(environment.provider, name, attempting).length,
       ]),
     );
 
@@ -701,13 +704,13 @@ export class Sessions {
     });
 
     try {
-      const interrupted = this.#interruptMissing(runner.name, running);
+      const interrupted = this.#interruptMissing(runner, running);
       const first = work();
       if (first.start.length > 0 || first.unload.length > 0 || signal.aborted) {
         return { ...first, interrupted };
       }
 
-      await this.#polls.waitForWork(runner.name, signal);
+      await this.#polls.waitForWork(runner.environment, runner.name, signal);
 
       return { ...work(), interrupted };
     } finally {
@@ -721,11 +724,12 @@ export class Sessions {
     models: readonly ModelRef[],
   ): void {
     const key = JSON.stringify(models);
-    if (this.#reported.get(runner.name) === key) {
+    const reporter = JSON.stringify([runner.environment, runner.name]);
+    if (this.#reported.get(reporter) === key) {
       return;
     }
 
-    this.#reported.set(runner.name, key);
+    this.#reported.set(reporter, key);
     this.#store.setRegisteredModels(runner.environment, runner.name, models);
     this.#runnersChanged();
   }
@@ -1012,12 +1016,16 @@ export class Sessions {
   }
 
   #interruptMissing(
-    runner: string,
+    runner: { readonly name: string; readonly environment: string },
     running: readonly Attempt[],
   ): readonly Attempt[] {
     const now = new Date().toISOString();
     const interrupted: Attempt[] = [];
-    for (const session of this.#store.byRunner(runner, attempting)) {
+    for (const session of this.#store.byRunner(
+      runner.environment,
+      runner.name,
+      attempting,
+    )) {
       const alive = running.some(
         (attempt) =>
           attempt.sessionId === session.id &&
@@ -1069,7 +1077,7 @@ export class Sessions {
     const pool = {
       runners: this.#polls.runners(runner.environment),
       leaseLapsed: (name: string) =>
-        this.#polls.leaseLapsed(name, runner.environment),
+        this.#polls.leaseLapsed(runner.environment, name),
     };
 
     // A Session still attempting on another runner is claimable only once
@@ -1251,19 +1259,16 @@ export class Sessions {
 
   // A command stream whose tunnel died can stay open for minutes, so an
   // offline runner's streams are ended and the agent opens new ones.
-  #onlineChanged(runner: string): void {
-    const online = this.#polls.online(runner);
+  #onlineChanged(environment: string, runner: string): void {
+    const online = this.#polls.online(environment, runner);
     this.#runnersChanged();
 
     const sessions = this.#store
       .list({ includeArchived: true })
       .filter(
         (session) =>
-          session.runner === runner ||
-          (session.runner === null &&
-            this.#polls
-              .runners(session.provider)
-              .some(({ name }) => name === runner)),
+          session.provider === environment &&
+          (session.runner === runner || session.runner === null),
       );
 
     for (const session of sessions) {

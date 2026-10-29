@@ -574,11 +574,11 @@ export function openStore(
   );
 
   const selectByRunner = db.prepare(
-    `${withProvider} where runner = ? and status in (select value from json_each(?)) order by sessions.created_at`,
+    `${withProvider} where environments.provider = ? and runner = ? and status in (select value from json_each(?)) order by sessions.created_at`,
   );
 
   const selectPendingRemovals = db.prepare(
-    `${withProvider} where (runner = ? or (runner is null and environments.provider = ?)) and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
+    `${withProvider} where environments.provider = ? and (runner = ? or runner is null) and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
   );
 
   const toEnvironment = (row: EnvironmentRow): StoredEnvironment => ({
@@ -719,9 +719,10 @@ export function openStore(
           JSON.stringify(statuses),
         ) as unknown as SessionRow[]
       ).map(toSession),
-    byRunner: (runner, statuses) =>
+    byRunner: (provider, runner, statuses) =>
       (
         selectByRunner.all(
+          provider,
           runner,
           JSON.stringify(statuses),
         ) as unknown as SessionRow[]
@@ -729,8 +730,8 @@ export function openStore(
     pendingRemovals: (provider, runner) =>
       (
         selectPendingRemovals.all(
-          runner,
           provider,
+          runner,
           "stopped" satisfies SessionStatus,
           "pending" satisfies WorkspaceRemoval,
           "forced" satisfies WorkspaceRemoval,

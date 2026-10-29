@@ -254,24 +254,7 @@ test("moves a Session whose Workspace can be cloned again once its runner's leas
   expect(back.start).toEqual([]);
 });
 
-test("shows a Session offline once its runner joins another Environment", async () => {
-  await poll("mac-1");
-
-  const id = await startSession("/srv/a");
-
-  await poll("mac-1");
-  await poll("mac-1", { environment: "elsewhere" });
-
-  const session = await json<Session>(
-    fetch(new URL(`/api/sessions/${id}`, server.url), {
-      headers: { cookie: await signedIn() },
-    }),
-  );
-
-  expect(session).toMatchObject({ runner: "mac-1", online: false });
-});
-
-test("moves a clone Session off a runner that joined another Environment", async () => {
+test("keeps a Session on its runner while a runner with the same name polls for another Environment", async () => {
   await claimed("mac-1");
 
   const clone = await startSession({
@@ -279,12 +262,28 @@ test("moves a clone Session off a runner that joined another Environment", async
     repository: "https://example.com/app.git",
   });
 
-  await claimed("mac-1");
-  await claimed("mac-1", { environment: "elsewhere" });
+  const first = await claimed("mac-1");
 
-  expect(await claimed("mac-2")).toMatchObject([
-    { sessionId: clone, generation: 2 },
-  ]);
+  await poll("mac-1", { running: [...first] });
+  await poll("mac-1", { environment: "elsewhere" });
+
+  const elsewhere = await claimed("mac-2");
+
+  const session = await json<Session>(
+    fetch(new URL(`/api/sessions/${clone}`, server.url), {
+      headers: { cookie: await signedIn() },
+    }),
+  );
+
+  expect(ids(first)).toEqual([clone]);
+  expect(elsewhere).toEqual([]);
+
+  expect(session).toMatchObject({
+    runner: "mac-1",
+    status: "starting",
+    generation: 1,
+    online: true,
+  });
 });
 
 test("gives a runner an Environment's secrets without logging them", async () => {
