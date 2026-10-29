@@ -98,6 +98,8 @@ async function environment(): Promise<Environment> {
 const session = async (id: string): Promise<Session> =>
   (await (await api(`/api/sessions/${id}`)).json()) as Session;
 
+// A new Session reports idle once before its first turn starts, so a test
+// that counts model calls waits for the call first.
 const settled = (value: Session): boolean =>
   value.status === "idle" || value.status === "failed";
 
@@ -132,6 +134,11 @@ test("routes an alias to its first model in the session's Environment", async ()
       firstMessage: "hi",
     })
   ).json()) as Session;
+
+  await until(
+    async () => primary.state.callCount,
+    (count) => count > 0,
+  );
 
   expect((await until(async () => session(started.id), settled)).status).toBe(
     "idle",
@@ -180,6 +187,11 @@ test("takes a provider that hit its cap out of routing for the whole Environment
       firstMessage: "hi again",
     })
   ).json()) as Session;
+
+  await until(
+    async () => primary.state.callCount + fallback.state.callCount,
+    (count) => count > 1,
+  );
 
   expect((await until(async () => session(next.id), settled)).status).toBe(
     "idle",
