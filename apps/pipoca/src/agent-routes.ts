@@ -1,10 +1,10 @@
 import { type Command, loggedStart, type Work } from "@pipoca/protocol";
 import { BadRequest, readJson } from "@pipoca/plugins";
+import type { PluginHost } from "@pipoca/pluginhost";
 import type { Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
 import type { Sessions } from "@pipoca/sessions";
 import type { Agent, Auth } from "./auth";
-import type { PluginHost } from "./plugins";
 import { errorReply, notFound, rejected, reply } from "./replies";
 import {
   livePost,

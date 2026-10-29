@@ -1,0 +1,12 @@
+{
+  "name": "@pipoca/pluginhost",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/protocol": "workspace:*",
+    "@pipoca/providers": "workspace:*",
+    "@pipoca/sessions": "workspace:*"
+  }
+}

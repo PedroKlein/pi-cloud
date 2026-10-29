@@ -1,7 +1,7 @@
 import { BadRequest, fieldsOf, readJson } from "@pipoca/plugins";
 import type { Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
-import { userIdOf } from "./plugins";
+import { userIdOf } from "@pipoca/pluginhost";
 import { errorReply, notFound, reply } from "./replies";
 import type { BrowserRoute } from "./server";
 

@@ -4,7 +4,6 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
   ModelRef,
-  PluginSettings,
   ProfileContent,
   SessionOwner,
   SessionStatus,
@@ -13,6 +12,7 @@ import type {
   WorkspaceRemoval,
 } from "@pipoca/protocol";
 import type { PluginStore } from "@pipoca/plugins";
+import type { PluginSettingsStore } from "@pipoca/pluginhost";
 import {
   defaultProfileId as sharedDefault,
   type ProfileFolders,
@@ -1108,13 +1108,6 @@ function authStore(db: DatabaseSync): AuthStore {
       );
     },
   };
-}
-
-// What a plugin's settings were saved as, checked against its schema when
-// read (ADR 0036).
-export interface PluginSettingsStore {
-  readonly get: (plugin: string) => unknown;
-  readonly set: (plugin: string, settings: PluginSettings) => void;
 }
 
 function pluginSettingsStore(db: DatabaseSync): PluginSettingsStore {

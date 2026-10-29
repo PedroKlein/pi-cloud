@@ -30,7 +30,7 @@ import {
   type WorkspaceRequest,
 } from "@pipoca/protocol";
 import { BadRequest, fieldsOf } from "@pipoca/plugins";
-import type { UserActor } from "./plugins";
+import type { UserActor } from "@pipoca/pluginhost";
 
 function thinkingOf(value: unknown, field = "thinking"): ThinkingLevel {
   const level = thinkingLevels.find((known) => known === value);

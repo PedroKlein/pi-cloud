@@ -1,12 +1,4 @@
 import { basename } from "node:path";
-import { gitHosts } from "@pipoca/git-hosts/server";
-import { kubernetesPlugin } from "@pipoca/kubernetes/server";
-import { library } from "@pipoca/library/server";
-import { logins as loginsPlugin } from "@pipoca/logins/server";
-import { meta } from "@pipoca/meta/server";
-import { models } from "@pipoca/models/server";
-import { oidc } from "@pipoca/oidc/server";
-import { projects } from "@pipoca/projects/server";
 import {
   checkedSettings,
   type EventBus,
@@ -20,6 +12,7 @@ import {
   type ServerPlugin,
   type ServerPluginContext,
   type ServerTool,
+  type SessionPlugin,
   settingValues,
   type Toolset,
 } from "@pipoca/plugins";
@@ -45,20 +38,7 @@ import {
   type SessionPlugins,
   type Sessions,
 } from "@pipoca/sessions";
-import { sessionPlugins } from "./session-parts";
 import { runRouteTool, type ToolsetTool, toolsetTools } from "./toolsets";
-import type { PluginSettingsStore } from "./store";
-
-export const serverPlugins: readonly ServerPlugin[] = [
-  projects,
-  library,
-  models,
-  kubernetesPlugin,
-  meta,
-  oidc,
-  gitHosts,
-  loginsPlugin,
-];
 
 export type UserActor = `user:${string}`;
 
@@ -71,6 +51,13 @@ export function userIdOf(actor: UserActor): string {
 export interface OnBehalf {
   readonly actor: UserActor;
   readonly mayAdmin: boolean;
+}
+
+// What a plugin's settings were saved as, checked against its schema when
+// read (ADR 0036).
+export interface PluginSettingsStore {
+  readonly get: (plugin: string) => unknown;
+  readonly set: (plugin: string, settings: PluginSettings) => void;
 }
 
 export interface PluginHost {
@@ -201,6 +188,8 @@ export function startPlugins(
       "userOf" | "createUser" | "setAdmin" | "startSession"
     >;
     readonly installed?: InstalledPlugins;
+    // The Session parts built into the binary, besides installed ones.
+    readonly sessionParts?: readonly SessionPlugin[];
     readonly mcpServers?: ServerPluginContext["profiles"]["mcpServers"];
     readonly signal: AbortSignal;
     readonly log: Log;
@@ -826,7 +815,7 @@ export function startPlugins(
           running.map((name) => [name, values(name)]),
         ),
         ownSessionsOnly: [
-          ...sessionPlugins
+          ...(deps.sessionParts ?? [])
             .filter(({ ownSessionsOnly: own }) => own === true)
             .map(({ name }) => name),
           ...[...sessionBundles.keys()].filter(

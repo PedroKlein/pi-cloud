@@ -22,6 +22,7 @@
     "@pipoca/meta": "workspace:*",
     "@pipoca/models": "workspace:*",
     "@pipoca/oidc": "workspace:*",
+    "@pipoca/pluginhost": "workspace:*",
     "@pipoca/plugins": "workspace:*",
     "@pipoca/profiles": "workspace:*",
     "@pipoca/projects": "workspace:*",

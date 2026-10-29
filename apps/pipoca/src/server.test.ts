@@ -13,11 +13,11 @@ import {
   type WorkPoll,
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
+import { startPlugins } from "@pipoca/pluginhost";
 import { ProfileFolders, Profiles } from "@pipoca/profiles";
 import { Sessions } from "@pipoca/sessions";
 import { Auth } from "./auth";
 import { changeFeed } from "./changes";
-import { startPlugins } from "./plugins";
 import { createHandler } from "./server";
 import { readSse } from "./sse";
 import { openStore } from "./store";

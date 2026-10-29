@@ -9,7 +9,7 @@ import {
   type ToolSpec,
   type UiAction,
 } from "@pipoca/protocol";
-import type { OnBehalf } from "./plugins";
+import type { OnBehalf } from "./host";
 
 const workspaceSchema = {
   type: "object",

@@ -14,6 +14,12 @@ import {
   NotFound,
   readJson,
 } from "@pipoca/plugins";
+import {
+  type OnBehalf,
+  type PluginHost,
+  type UserActor,
+  userIdOf,
+} from "@pipoca/pluginhost";
 import { InvalidProfile, ProfileTooBig, type Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
 import type { Result, Sessions } from "@pipoca/sessions";
@@ -27,12 +33,6 @@ import {
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
 import { mcpHandler } from "./mcp";
-import {
-  type OnBehalf,
-  type PluginHost,
-  type UserActor,
-  userIdOf,
-} from "./plugins";
 import { type AgentRoute, agentRoutes } from "./agent-routes";
 import { profileRoutes } from "./profile-routes";
 import { errorReply, notFound, reply } from "./replies";

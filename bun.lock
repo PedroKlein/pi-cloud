@@ -34,6 +34,7 @@
         "@pipoca/meta": "workspace:*",
         "@pipoca/models": "workspace:*",
         "@pipoca/oidc": "workspace:*",
+        "@pipoca/pluginhost": "workspace:*",
         "@pipoca/plugins": "workspace:*",
         "@pipoca/profiles": "workspace:*",
         "@pipoca/projects": "workspace:*",
@@ -87,6 +88,15 @@
         "@pipoca/ui": "workspace:*",
         "@types/react": "19.3.0",
         "react": "19.3.1",
+      },
+    },
+    "packages/pluginhost": {
+      "name": "@pipoca/pluginhost",
+      "dependencies": {
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/providers": "workspace:*",
+        "@pipoca/sessions": "workspace:*",
       },
     },
     "packages/plugins": {
@@ -486,6 +496,8 @@
     "@pipoca/oidc": ["@pipoca/oidc@workspace:plugins/oidc"],
 
     "@pipoca/pipoca": ["@pipoca/pipoca@workspace:apps/pipoca"],
+
+    "@pipoca/pluginhost": ["@pipoca/pluginhost@workspace:packages/pluginhost"],
 
     "@pipoca/plugins": ["@pipoca/plugins@workspace:packages/plugins"],
 
