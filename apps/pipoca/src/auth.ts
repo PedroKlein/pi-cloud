@@ -131,13 +131,23 @@ export class Auth {
   }
 
   userOf(request: Request): User | undefined {
+    const session = this.browserSessionOf(request);
+
+    return session === undefined ? undefined : this.userOfSession(session);
+  }
+
+  // Names the request's browser session without its token, so something
+  // that lasts only as long as the session can check it is still there.
+  browserSessionOf(request: Request): string | undefined {
     const token = new Bun.CookieMap(request.headers.get("cookie") ?? "").get(
       cookieName,
     );
 
-    return token === null
-      ? undefined
-      : this.#store.browserSessionUser(hash(token), new Date().toISOString());
+    return token === null ? undefined : hash(token);
+  }
+
+  userOfSession(session: string): User | undefined {
+    return this.#store.browserSessionUser(session, new Date().toISOString());
   }
 
   status(request: Request): AuthStatus {
