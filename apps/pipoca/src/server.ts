@@ -24,6 +24,7 @@ import {
   protocolVersion,
   type EnvironmentUpdate,
   isolations,
+  loggedStart,
   type CreateEnvironment,
   type EnvironmentKey,
   type JoinRequest,
@@ -789,9 +790,8 @@ export function createHandler(
           log("session interrupted", { ...fields, ...attempt });
         }
 
-        // The environment holds secret values.
-        for (const { environment: _secret, ...assignment } of start) {
-          log("session assigned", { ...fields, ...assignment });
+        for (const assignment of start) {
+          log("session assigned", { ...fields, ...loggedStart(assignment) });
         }
 
         for (const attempt of unload) {

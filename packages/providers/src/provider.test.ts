@@ -27,6 +27,7 @@ const assignment: SessionStart = {
     setupScript: "",
     variables: { TOKEN: "s3cret" },
   },
+  gitLogins: [{ host: "github.example.com", token: "gho_s3cret" }],
 };
 
 const none: Work = { start: [], unload: [], remove: [], profiles: [] };
@@ -112,6 +113,7 @@ test("starts, unloads and removes what the server asks, passes on its Profiles a
   expect(logs).toContain("work poll failed");
   expect(logs.at(-1)).toBe("provider stopped");
   expect(JSON.stringify(fields)).not.toContain("s3cret");
+  expect(JSON.stringify(fields)).not.toContain("pct_test");
 });
 
 test("stops while waiting to retry", async () => {
