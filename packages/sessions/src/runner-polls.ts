@@ -11,7 +11,8 @@ export interface PolledRunner {
 }
 
 interface RunnerState {
-  environment: string;
+  readonly name: string;
+  readonly environment: string;
   capacity: number | null;
   polling: number;
   lastPoll: number;
@@ -21,13 +22,15 @@ interface RunnerState {
 
 // A runner stays online for offlineAfterMs after its last poll ends, so the
 // gap between long polls doesn't flip it offline. Its lease on its Sessions
-// lasts leaseMs after that poll (ADR 0032).
+// lasts leaseMs after that poll (ADR 0032). A runner is known by its name
+// within its Environment, so runners with one name in two Environments are
+// two runners.
 export class RunnerPolls {
   readonly #pollWaitMs: number;
   readonly #offlineAfterMs: number;
   readonly #leaseMs: number;
   readonly #startedAt = Date.now();
-  readonly #onlineChanged: (runner: string) => void;
+  readonly #onlineChanged: (environment: string, runner: string) => void;
   readonly #runners = new Map<string, RunnerState>();
   readonly #waiting = new Map<string, Set<() => void>>();
 
@@ -35,7 +38,7 @@ export class RunnerPolls {
     readonly pollWaitMs: number;
     readonly offlineAfterMs: number;
     readonly leaseMs: number;
-    readonly onlineChanged: (runner: string) => void;
+    readonly onlineChanged: (environment: string, runner: string) => void;
   }) {
     this.#pollWaitMs = options.pollWaitMs;
     this.#offlineAfterMs = options.offlineAfterMs;
@@ -51,23 +54,24 @@ export class RunnerPolls {
       readonly inventory: Inventory;
     },
   ): () => void {
-    const wasOnline = this.online(runner);
+    const { environment } = poll;
+    const wasOnline = this.online(environment, runner);
 
-    const state = this.#runners.get(runner) ?? {
+    const state = this.#runners.get(key(environment, runner)) ?? {
       ...poll,
+      name: runner,
       polling: 0,
       lastPoll: 0,
       offlineTimer: undefined,
     };
 
-    this.#runners.set(runner, state);
+    this.#runners.set(key(environment, runner), state);
     state.polling++;
-    state.environment = poll.environment;
     state.capacity = poll.capacity;
     state.inventory = poll.inventory;
     clearTimeout(state.offlineTimer);
     if (!wasOnline) {
-      this.#onlineChanged(runner);
+      this.#onlineChanged(environment, runner);
     }
 
     return () => {
@@ -78,13 +82,13 @@ export class RunnerPolls {
       }
 
       state.offlineTimer = setTimeout(() => {
-        this.#onlineChanged(runner);
+        this.#onlineChanged(environment, runner);
       }, this.#offlineAfterMs);
     };
   }
 
-  online(runner: string): boolean {
-    const state = this.#runners.get(runner);
+  online(environment: string, runner: string): boolean {
+    const state = this.#runners.get(key(environment, runner));
 
     return (
       state !== undefined &&
@@ -93,37 +97,37 @@ export class RunnerPolls {
   }
 
   // A runner that hasn't polled since the server started keeps its lease for
-  // a full lease after the start, so a restart doesn't move its Sessions. One
-  // that now polls for another Environment holds no lease in this one.
-  leaseLapsed(runner: string, environment: string): boolean {
-    const state = this.#runners.get(runner);
+  // a full lease after the start, so a restart doesn't move its Sessions.
+  leaseLapsed(environment: string, runner: string): boolean {
+    const state = this.#runners.get(key(environment, runner));
     if (state === undefined) {
       return Date.now() - this.#startedAt >= this.#leaseMs;
     }
 
-    return (
-      state.environment !== environment ||
-      (state.polling === 0 && Date.now() - state.lastPoll >= this.#leaseMs)
-    );
+    return state.polling === 0 && Date.now() - state.lastPoll >= this.#leaseMs;
   }
 
   // The runners that polled for the Environment since the server started.
   runners(environment: string): readonly PolledRunner[] {
-    return [...this.#runners]
-      .filter(([, state]) => state.environment === environment)
-      .map(([name, state]) => ({
+    return [...this.#runners.values()]
+      .filter((state) => state.environment === environment)
+      .map(({ name, capacity, inventory }) => ({
         name,
         environment,
-        online: this.online(name),
-        capacity: state.capacity,
-        inventory: state.inventory,
+        online: this.online(environment, name),
+        capacity,
+        inventory,
       }));
   }
 
-  async waitForWork(runner: string, signal: AbortSignal): Promise<void> {
+  async waitForWork(
+    environment: string,
+    runner: string,
+    signal: AbortSignal,
+  ): Promise<void> {
     await new Promise<void>((resolve) => {
-      const waiting = this.#waiting.get(runner) ?? new Set();
-      this.#waiting.set(runner, waiting);
+      const waiting = this.#waiting.get(key(environment, runner)) ?? new Set();
+      this.#waiting.set(key(environment, runner), waiting);
 
       const done = (): void => {
         clearTimeout(timer);
@@ -140,7 +144,7 @@ export class RunnerPolls {
 
   wake(environment: string): void {
     for (const { name } of this.runners(environment)) {
-      for (const done of this.#waiting.get(name) ?? []) {
+      for (const done of this.#waiting.get(key(environment, name)) ?? []) {
         done();
       }
     }
@@ -151,4 +155,8 @@ export class RunnerPolls {
       clearTimeout(state.offlineTimer);
     }
   }
+}
+
+function key(environment: string, runner: string): string {
+  return JSON.stringify([environment, runner]);
 }
