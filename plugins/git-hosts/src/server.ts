@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
   BadRequest,
-  fieldsOf,
   HttpError,
   NotFound,
   type PluginStore,
-  readJson,
+  readBody,
   type ServerPlugin,
+  Type,
   type User,
 } from "@pipoca/plugins";
 import type { GitLogin, RepositoryChoice } from "@pipoca/protocol";
@@ -17,7 +17,13 @@ import {
   redeem,
   repositoriesOf,
 } from "./github";
-import { type HostConfig, hostStore, viewOf } from "./hosts";
+import {
+  type HostConfig,
+  hostChange,
+  hostStore,
+  newHost,
+  viewOf,
+} from "./hosts";
 import type { Account, Connection } from "./model";
 
 // A browser has this long to come back from the host.
@@ -30,6 +36,8 @@ interface Pending {
   readonly browser: string;
   readonly expires: number;
 }
+
+const connection = Type.Object({ host: Type.String(), token: Type.String() });
 
 // Each person connects their own account on each host, and the runner signs
 // git and gh in with it in that person's Sessions (ADR 0043).
@@ -221,7 +229,7 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (name === undefined && request.method === "POST") {
-        const created = hosts.create(await readJson(request));
+        const created = hosts.create(await readBody(request, newHost));
         context.log("host added", { host: created.host });
 
         return Response.json(viewOf(created), { status: 201 });
@@ -236,7 +244,7 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (name !== undefined && request.method === "POST") {
-        const updated = hosts.update(name, await readJson(request));
+        const updated = hosts.update(name, await readBody(request, hostChange));
 
         if (updated === undefined) {
           throw new NotFound(`no host ${name}`);
@@ -293,14 +301,14 @@ export const gitHosts: ServerPlugin = {
       }
 
       if (route === "connect" && request.method === "POST") {
-        const { host, token } = fieldsOf(await readJson(request));
-        const listed = typeof host === "string" ? hosts.get(host) : undefined;
+        const { host, token } = await readBody(request, connection);
+        const listed = hosts.get(host);
 
         if (listed === undefined) {
           throw new BadRequest("that host isn't listed");
         }
 
-        if (typeof token !== "string" || token.trim() === "") {
+        if (token.trim() === "") {
           throw new BadRequest("paste a personal access token");
         }
 

@@ -477,6 +477,43 @@ test("lets only an admin through a plugin's route that requires one", async () =
   });
 });
 
+test("checks a body against a schema from the server's plugin SDK", async () => {
+  await writePlugin("names");
+
+  await writeFile(
+    join(plugins, "names", "server.ts"),
+    `import { readBody, Type } from "@pipoca/plugins";
+
+const rename = Type.Object({ name: Type.String() });
+
+export default {
+  name: "names",
+  register: (context) => {
+    context.routes.handle(async (request) =>
+      Response.json(await readBody(request, rename)),
+    );
+  },
+};
+`,
+  );
+
+  await writeFile(join(plugins, "enabled.json"), JSON.stringify(["names"]));
+  await start();
+
+  const named = await api("POST", "/api/plugins/names/rename", { name: "a" });
+
+  expect(await named.json()).toEqual({ name: "a" });
+
+  const refused = await api("POST", "/api/plugins/names/rename", { name: 7 });
+
+  expect(refused.status).toBe(400);
+
+  expect(await refused.json()).toEqual({
+    error: "bad_request",
+    message: "name must be string",
+  });
+});
+
 test("answers the errors of a plugin that bundles its own copy of the SDK", async () => {
   await writeRefusingPlugin("vendored", "./sdk");
 
