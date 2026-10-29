@@ -124,7 +124,14 @@ test("closes a terminal socket whose output the server stops reading", async () 
 test("stops an attempt the server fenced without failing its live events", async () => {
   const server = Bun.serve({
     port: 0,
-    fetch: () => Response.json({ error: "stale_generation" }, { status: 409 }),
+    fetch: () =>
+      Response.json(
+        {
+          error: "stale_generation",
+          message: "The Session has moved on since this was sent.",
+        },
+        { status: 409 },
+      ),
   });
 
   let fences = 0;

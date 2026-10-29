@@ -482,7 +482,8 @@ test("won't save over providers edited by hand into a list that doesn't fit", as
   expect(added.status).toBe(400);
 
   expect(await added.json()).toEqual({
-    error:
+    error: "bad_request",
+    message:
       "fix oidc in pipoca.json first: oidc.providers[0]: clientSecret must be sealed by Settings; name an environment variable in clientSecretEnv instead",
   });
 

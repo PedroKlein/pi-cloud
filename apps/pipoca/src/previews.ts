@@ -5,6 +5,7 @@ import type { PreviewRequest, PreviewResponse } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import type { Sessions } from "@pipoca/sessions";
 import type { Auth } from "./auth";
+import { errorReply, notFound } from "./replies";
 import {
   fromSessionHost,
   type PreviewData,
@@ -301,24 +302,22 @@ export function previewBroker(options: {
           : auth.userOfSession(browserSession);
 
       if (browserSession === undefined || user === undefined) {
-        return Response.json({ error: "signed_out" }, { status: 401 });
+        return errorReply(401, "signed_out", "Sign in again.");
       }
 
       const sessionId = match[1] ?? "";
       const port = Number(match[2]);
       if (sessions.get(sessionId) === undefined || port < 1 || port > 65535) {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        return notFound();
       }
 
       const host = request.headers.get("host") ?? "";
       const { hostname } = new URL(`http://${host}`);
       if (isIP(hostname.replace(/^\[|\]$/g, "")) !== 0) {
-        return Response.json(
-          {
-            error:
-              "previews need Pipoca opened under a name, such as localhost, not an IP address",
-          },
-          { status: 400 },
+        return errorReply(
+          400,
+          "bad_request",
+          "previews need Pipoca opened under a name, such as localhost, not an IP address",
         );
       }
 
@@ -367,14 +366,14 @@ export function previewBroker(options: {
         exchange.sessionId !== sessionId ||
         !fromSessionHost(request, sessions, auth, sessionId)
       ) {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        return notFound();
       }
 
       return server.upgrade(request, {
         data: { kind: "preview", role: "host", connectionId },
       })
         ? "upgraded"
-        : Response.json({ error: "expected a websocket" }, { status: 400 });
+        : errorReply(400, "bad_request", "expected a websocket");
     },
     websocket: {
       open: (ws) => {

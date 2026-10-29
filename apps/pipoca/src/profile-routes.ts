@@ -1,14 +1,14 @@
 import { BadRequest, fieldsOf, readJson } from "@pipoca/plugins";
 import type { Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
-import { notFound, reply } from "./replies";
+import { errorReply, notFound, reply } from "./replies";
 import type { BrowserRoute } from "./server";
 
-const profileRejectionStatus = {
-  not_found: 404,
-  default: 409,
-  in_use: 409,
-  admin_only: 403,
+const profileRejections = {
+  not_found: [404, "There is no such Profile."],
+  default: [409, "The default Profile can't be removed."],
+  in_use: [409, "Sessions still use this Profile."],
+  admin_only: [403, "Only admins change shared Profiles."],
 } as const;
 
 // Shared Profiles are changed only by admins (ADR 0041).
@@ -27,9 +27,10 @@ export function profileRoutes(
   ): Response =>
     result.ok
       ? reply(result, status)
-      : Response.json(
-          { error: result.reason },
-          { status: profileRejectionStatus[result.reason] },
+      : errorReply(
+          profileRejections[result.reason][0],
+          result.reason,
+          profileRejections[result.reason][1],
         );
 
   return [

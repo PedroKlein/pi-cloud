@@ -86,9 +86,14 @@ async function write(
 async function errorOf(response: Promise<Response>): Promise<string> {
   const settled = await response;
 
-  expect(settled.status).toBe(400);
+  const { error, message } = (await settled.json()) as {
+    error: string;
+    message: string;
+  };
 
-  return ((await settled.json()) as { error: string }).error;
+  expect([settled.status, error]).toEqual([400, "bad_request"]);
+
+  return message;
 }
 
 const manifest = (parts: Record<string, string> = { server: "server.ts" }) =>

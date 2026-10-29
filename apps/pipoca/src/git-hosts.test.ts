@@ -221,7 +221,8 @@ test("refuses a token the host doesn't accept, saying so", async () => {
   expect(refused.status).toBe(400);
 
   expect(await refused.json()).toEqual({
-    error: `${enterprise} doesn't accept this token`,
+    error: "bad_request",
+    message: `${enterprise} doesn't accept this token`,
   });
 });
 
@@ -276,7 +277,8 @@ test("won't save over hosts edited by hand into a list that doesn't fit", async 
   expect(added.status).toBe(400);
 
   expect(await added.json()).toEqual({
-    error:
+    error: "bad_request",
+    message:
       "fix git-hosts in pipoca.json first: git-hosts.hosts[0]: api must be an http or https URL",
   });
 

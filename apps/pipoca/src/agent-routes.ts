@@ -5,7 +5,7 @@ import type { Log } from "@pipoca/providers";
 import type { Sessions } from "@pipoca/sessions";
 import type { Agent, Auth } from "./auth";
 import type { PluginHost } from "./plugins";
-import { notFound, reply } from "./replies";
+import { errorReply, notFound, rejected, reply } from "./replies";
 import {
   livePost,
   removalPost,
@@ -42,7 +42,7 @@ export function agentRoutes(
         );
 
         if (!session || !sessions.isCurrent(id, generation)) {
-          return Response.json({ error: "stale_generation" }, { status: 409 });
+          return rejected("stale_generation");
         }
 
         return (
@@ -87,7 +87,7 @@ export function agentRoutes(
 
         return session && sessions.isCurrent(id, generation)
           ? Response.json(plugins.tools(session))
-          : Response.json({ error: "stale_generation" }, { status: 409 });
+          : rejected("stale_generation");
       },
     ],
     [
@@ -97,7 +97,7 @@ export function agentRoutes(
         const call = toolCall(await readJson(request));
         const session = sessions.get(id);
         if (!session || !sessions.isCurrent(id, call.generation)) {
-          return Response.json({ error: "stale_generation" }, { status: 409 });
+          return rejected("stale_generation");
         }
 
         plugins.call(session, call);
@@ -121,7 +121,11 @@ export function agentRoutes(
         // The plugin that started the runner may have revoked it during the
         // poll, and a revoked runner must not get Session tokens.
         if (auth.agentOf(request) === undefined) {
-          return Response.json({ error: "unknown_token" }, { status: 401 });
+          return errorReply(
+            401,
+            "unknown_token",
+            "The server doesn't know this token.",
+          );
         }
 
         const fields = {

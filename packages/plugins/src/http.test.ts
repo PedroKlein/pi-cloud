@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   BadRequest,
   fieldsOf,
+  HttpError,
   isHttpError,
   NotFound,
   readJson,
@@ -32,11 +33,20 @@ test("gives a body's fields, or none when it isn't an object", () => {
   expect(fieldsOf("a")).toEqual({});
 });
 
-test("carries the status the server answers with", () => {
-  expect(new NotFound("no item 7")).toMatchObject({
-    status: 404,
-    message: "no item 7",
-  });
+test("carries the status and code the server answers with", () => {
+  expect([
+    new NotFound("no item 7"),
+    new BadRequest("name must be text"),
+    new HttpError(409, "notes are full"),
+    new HttpError(409, "notes are full", "notes_full"),
+    new HttpError(418, "short and stout"),
+  ]).toMatchObject([
+    { status: 404, code: "not_found", message: "no item 7" },
+    { status: 400, code: "bad_request", message: "name must be text" },
+    { status: 409, code: "conflict", message: "notes are full" },
+    { status: 409, code: "notes_full", message: "notes are full" },
+    { status: 418, code: "error", message: "short and stout" },
+  ]);
 });
 
 test("lets only an admin through to a route that changes shared config", () => {
@@ -55,6 +65,7 @@ test("lets only an admin through to a route that changes shared config", () => {
     }).toThrow(
       expect.objectContaining({
         status: 403,
+        code: "admin_only",
         message: "only admins change names",
       }),
     );

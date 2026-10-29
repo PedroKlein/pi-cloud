@@ -450,7 +450,11 @@ test("answers the errors a plugin throws from the server's plugin SDK", async ()
 
   expect(await listed("strict")).toMatchObject({ state: "on" });
   expect(refused.status).toBe(400);
-  expect(await refused.json()).toEqual({ error: "say something" });
+
+  expect(await refused.json()).toEqual({
+    error: "bad_request",
+    message: "say something",
+  });
 });
 
 test("lets only an admin through a plugin's route that requires one", async () => {
@@ -466,7 +470,11 @@ test("lets only an admin through a plugin's route that requires one", async () =
   const refused = await api("POST", "/api/plugins/strict/names");
 
   expect(refused.status).toBe(403);
-  expect(await refused.json()).toEqual({ error: "only admins change names" });
+
+  expect(await refused.json()).toEqual({
+    error: "admin_only",
+    message: "only admins change names",
+  });
 });
 
 test("answers the errors of a plugin that bundles its own copy of the SDK", async () => {
@@ -484,7 +492,11 @@ test("answers the errors of a plugin that bundles its own copy of the SDK", asyn
   const refused = await api("POST", "/api/plugins/vendored/hi");
 
   expect(refused.status).toBe(400);
-  expect(await refused.json()).toEqual({ error: "say something" });
+
+  expect(await refused.json()).toEqual({
+    error: "bad_request",
+    message: "say something",
+  });
 });
 
 test("serves a running plugin's web part, built against the page's modules", async () => {
@@ -791,13 +803,13 @@ test("refuses an install that would take an id already here, leaving nothing beh
 
   expect(twice.status).toBe(400);
 
-  expect(((await twice.json()) as { error: string }).error).toContain(
+  expect(((await twice.json()) as { message: string }).message).toContain(
     "already here",
   );
 
   expect(projects.status).toBe(400);
 
-  expect(((await projects.json()) as { error: string }).error).toContain(
+  expect(((await projects.json()) as { message: string }).message).toContain(
     "built-in",
   );
 
@@ -955,7 +967,7 @@ test("says why a plugin couldn't be removed", async () => {
 
   expect(refused.status).toBe(400);
 
-  expect(((await refused.json()) as { error: string }).error).toContain(
+  expect(((await refused.json()) as { message: string }).message).toContain(
     "EISDIR",
   );
 
@@ -988,7 +1000,7 @@ test("refuses a plugin holding a link, which could aim the server's writes anywh
 
   expect(refused.status).toBe(400);
 
-  expect(((await refused.json()) as { error: string }).error).toContain(
+  expect(((await refused.json()) as { message: string }).message).toContain(
     "holds a link, .source.json",
   );
 
@@ -1001,7 +1013,7 @@ test("refuses a URL holding credentials, since every user sees where a plugin ca
 
   const refused = await install("https://me:token@example.com/plugin.git");
 
-  expect(((await refused.json()) as { error: string }).error).toContain(
+  expect(((await refused.json()) as { message: string }).message).toContain(
     "credentials",
   );
 });

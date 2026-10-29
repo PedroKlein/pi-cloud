@@ -55,7 +55,7 @@ function useWatchedList(path: string, topic: string): WatchedList<unknown> {
       })
       .catch((error: unknown) => {
         // The browser session ended, so the page goes back to signing in.
-        if (error instanceof Error && error.message === "signed_out") {
+        if (error instanceof Error && error.cause === "signed_out") {
           location.reload();
         }
       });

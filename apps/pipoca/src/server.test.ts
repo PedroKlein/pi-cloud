@@ -391,9 +391,18 @@ test("refuses messages from when the provider goes offline until a new command s
 
   expect(view.online).toBe(false);
   expect(whileOffline.status).toBe(409);
-  expect(await whileOffline.json()).toEqual({ error: "offline" });
+
+  expect(await whileOffline.json()).toEqual({
+    error: "offline",
+    message: "The Session's runner is offline.",
+  });
+
   expect(beforeReconnect.status).toBe(409);
-  expect(await beforeReconnect.json()).toEqual({ error: "offline" });
+
+  expect(await beforeReconnect.json()).toEqual({
+    error: "offline",
+    message: "The Session's runner is offline.",
+  });
 });
 
 test("delivers a server tool's result that finished while the provider was offline with a command stream that never closed", async () => {

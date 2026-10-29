@@ -1,6 +1,7 @@
 import {
   BadRequest,
   fieldsOf,
+  NotFound,
   readJson,
   type ServerPlugin,
   type ServerPluginContext,
@@ -32,7 +33,7 @@ export const meta: ServerPlugin = {
 
     context.routes.handle(async (request, path, caller) => {
       if (path !== "sessions" || caller.kind !== "user") {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        throw new NotFound(`no route ${path}`);
       }
 
       if (request.method === "GET") {
@@ -40,7 +41,7 @@ export const meta: ServerPlugin = {
       }
 
       if (request.method !== "POST") {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        throw new NotFound(`no route ${path}`);
       }
 
       return Response.json(

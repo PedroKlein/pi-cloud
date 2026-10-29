@@ -2,6 +2,7 @@ import { fieldsOf } from "@pipoca/plugins";
 import type { Log } from "@pipoca/providers";
 import type { Auth } from "./auth";
 import type { PluginHost } from "./plugins";
+import { errorReply } from "./replies";
 
 // Pipoca's meta toolsets over MCP's streamable HTTP transport (ADR 0035):
 // one JSON reply per request and no server-sent stream, which the transport
@@ -90,15 +91,24 @@ export function mcpHandler(
     // endpoint, as the transport asks.
     const origin = request.headers.get("origin");
     if (origin !== null && !sameHost(origin, request.url)) {
-      return Response.json({ error: "foreign_origin" }, { status: 403 });
+      return errorReply(
+        403,
+        "foreign_origin",
+        "A page on another site can't reach this endpoint.",
+      );
     }
 
     const user = auth.mcpUserOf(request);
     if (user === undefined) {
-      return Response.json(
-        { error: "unknown_token" },
-        { status: 401, headers: { "www-authenticate": "Bearer" } },
+      const refused = errorReply(
+        401,
+        "unknown_token",
+        "The server doesn't know this token.",
       );
+
+      refused.headers.set("www-authenticate", "Bearer");
+
+      return refused;
     }
 
     let body: unknown;

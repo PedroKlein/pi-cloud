@@ -1,5 +1,8 @@
 import {
+  BadRequest,
+  HttpError,
   isObject,
+  NotFound,
   type OfferedModels,
   type PluginStore,
   readJson,
@@ -44,7 +47,7 @@ export const models: ServerPlugin = {
             // A Session polls again at once after any answer, and backs off
             // only after an error.
             if (context.signal.aborted) {
-              return Response.json({ error: "stopping" }, { status: 503 });
+              throw new HttpError(503, "the server is stopping", "stopping");
             }
 
             await versions.changed(
@@ -65,7 +68,10 @@ export const models: ServerPlugin = {
         if (method === "POST" && path === "health") {
           const reported = healthFrom(await readJson(request));
           if (reported === undefined) {
-            return Response.json({ error: "invalid_health" }, { status: 400 });
+            throw new BadRequest(
+              "model health report not understood",
+              "invalid_health",
+            );
           }
 
           const current = store.get(environmentId).health;
@@ -84,12 +90,12 @@ export const models: ServerPlugin = {
           return new Response(null, { status: 204 });
         }
 
-        return Response.json({ error: "not_found" }, { status: 404 });
+        throw new NotFound(`no route ${path}`);
       }
 
       const [resource, environmentId] = path.split("/");
       if (resource !== "environments") {
-        return Response.json({ error: "not_found" }, { status: 404 });
+        throw new NotFound(`no route ${path}`);
       }
 
       if (method === "GET" && environmentId === undefined) {
@@ -101,16 +107,13 @@ export const models: ServerPlugin = {
 
         const body = await readJson(request);
         if (!isObject(body) || !("aliases" in body)) {
-          return Response.json(
-            { error: "aliases must be a config or null" },
-            { status: 400 },
-          );
+          throw new BadRequest("aliases must be a config or null");
         }
 
         const { aliases } = body;
         const problem = aliases === null ? undefined : aliasProblem(aliases);
         if (problem !== undefined) {
-          return Response.json({ error: problem }, { status: 400 });
+          throw new BadRequest(problem);
         }
 
         store.setAliases(environmentId, aliases as AliasConfig | null);
@@ -120,7 +123,7 @@ export const models: ServerPlugin = {
         return Response.json(store.get(environmentId));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path}`);
     });
   },
 };

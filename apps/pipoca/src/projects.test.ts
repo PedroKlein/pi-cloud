@@ -739,7 +739,11 @@ test("answers a method the Project list has no route for as not found", async ()
   );
 
   expect(response.status).toBe(404);
-  expect(await response.json()).toEqual({ error: "not_found" });
+
+  expect(await response.json()).toEqual({
+    error: "not_found",
+    message: "no route projects",
+  });
 });
 
 test("lists memory file sizes in UTF-8 bytes", async () => {

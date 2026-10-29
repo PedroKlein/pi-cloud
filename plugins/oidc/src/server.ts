@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  HttpError,
+  NotFound,
   type PluginStore,
   readJson,
   type ServerPlugin,
@@ -278,20 +280,24 @@ export const oidc: ServerPlugin = {
       }
 
       if (id !== undefined && request.method === "DELETE") {
-        return providers.remove(id)
-          ? Response.json({ removed: id })
-          : Response.json({ error: "not_found" }, { status: 404 });
+        if (!providers.remove(id)) {
+          throw new NotFound(`no provider ${id}`);
+        }
+
+        return Response.json({ removed: id });
       }
 
       if (id !== undefined && request.method === "POST") {
         const updated = providers.update(id, await readJson(request));
 
-        return updated === undefined
-          ? Response.json({ error: "not_found" }, { status: 404 })
-          : Response.json(viewOf(updated));
+        if (updated === undefined) {
+          throw new NotFound(`no provider ${id}`);
+        }
+
+        return Response.json(viewOf(updated));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path.join("/")}`);
     };
 
     context.auth.offer(() =>
@@ -315,16 +321,22 @@ export const oidc: ServerPlugin = {
     context.routes.handle(async (request, path) => {
       const user = context.auth.userOf(request);
       if (user === undefined) {
-        return Response.json({ error: "signed_out" }, { status: 401 });
+        throw new HttpError(401, "Sign in again.", "signed_out");
       }
 
       const parts = path.split("/");
       const [route, id] = parts;
 
       if (route === "providers") {
-        return user.admin
-          ? manage(request, parts)
-          : Response.json({ error: "admin_only" }, { status: 403 });
+        if (!user.admin) {
+          throw new HttpError(
+            403,
+            "Only admins manage sign-in providers.",
+            "admin_only",
+          );
+        }
+
+        return manage(request, parts);
       }
 
       if (route === "link" && id !== undefined && request.method === "GET") {
@@ -347,7 +359,7 @@ export const oidc: ServerPlugin = {
         return Response.json(account(user));
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      throw new NotFound(`no route ${path}`);
     });
 
     const account = (user: User): Account => ({
