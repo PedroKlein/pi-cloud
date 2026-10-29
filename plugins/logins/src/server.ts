@@ -1,4 +1,8 @@
-import type { Credential } from "@earendil-works/pi-ai";
+import type {
+  AuthType,
+  Credential,
+  CredentialStore,
+} from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
@@ -10,9 +14,11 @@ import {
   type ServerPluginContext,
 } from "@pipoca/plugins";
 import type { ModelRef } from "@pipoca/protocol";
+import { connections } from "./connect";
 import { type Locks, locks } from "./locks";
 import {
   type Account,
+  type Connectable,
   credentialOf,
   type Lease,
   mcpStateOf,
@@ -51,15 +57,36 @@ export const logins: ServerPlugin = {
       typeOf: () => "oauth",
     });
 
-    // Pi's own models, by provider, for the models a person's logins reach.
-    // Providers that extensions add are already in the runners' lists.
+    // Pi's own providers and models, for the models a person's logins reach
+    // and the providers Settings can sign them in to. Providers that
+    // extensions add are already in the runners' lists, and take /login in a
+    // Session.
     let catalog: readonly ModelRef[] = [];
+    let connectable: readonly Connectable[] = [];
 
     void ModelRuntime.create({ modelsPath: null, allowModelNetwork: false })
       .then((runtime) => {
         catalog = runtime
           .getModels()
           .map(({ provider, id }) => ({ provider, id }));
+
+        connectable = runtime.getProviders().flatMap(({ id, name, auth }) => {
+          const methods = [
+            ...(auth.oauth
+              ? [
+                  {
+                    type: "oauth" as const,
+                    label: auth.oauth.loginLabel ?? auth.oauth.name,
+                  },
+                ]
+              : []),
+            ...(auth.apiKey?.login
+              ? [{ type: "api_key" as const, label: "API key" }]
+              : []),
+          ];
+
+          return methods.length === 0 ? [] : [{ id, name, methods }];
+        });
       })
       .catch((error: unknown) => {
         context.log("models not listed", { error: String(error) });
@@ -77,6 +104,10 @@ export const logins: ServerPlugin = {
       };
     });
 
+    const signIns = connections(() => {
+      context.changes.publish("logins");
+    }, context.log);
+
     const account = (userId: string): Account => ({
       logins: models.list(userId).map(({ key, type, updatedAt }) => ({
         provider: key,
@@ -87,6 +118,7 @@ export const logins: ServerPlugin = {
         server: key,
         updatedAt,
       })),
+      ...withConnection(signIns.current(userId)),
     });
 
     context.routes.handle(async (request, path, caller) => {
@@ -119,6 +151,54 @@ export const logins: ServerPlugin = {
           : Response.json({ error: "busy" }, { status: 409 });
       }
 
+      if (route === "providers" && request.method === "GET") {
+        return Response.json(connectable);
+      }
+
+      if (route === "connect" && request.method === "POST") {
+        const fields = fieldsOf(await readJson(request));
+        const provider = textField(fields, "provider");
+        const type = fields["type"];
+
+        const offered = connectable.find(({ id }) => id === provider);
+
+        if (offered?.methods.some((method) => method.type === type) !== true) {
+          throw new BadRequest(`${provider} takes no such login`);
+        }
+
+        signIns.start(
+          userId,
+          { provider, name: offered.name, type: type as AuthType },
+          credentialsOf(models, userId),
+        );
+
+        return Response.json(account(userId));
+      }
+
+      if (
+        route === "connection" &&
+        key === "answer" &&
+        request.method === "POST"
+      ) {
+        const fields = fieldsOf(await readJson(request));
+
+        const answered = signIns.answer(
+          userId,
+          textField(fields, "prompt"),
+          textField(fields, "answer"),
+        );
+
+        return answered
+          ? Response.json(account(userId))
+          : Response.json({ error: "not_asked" }, { status: 409 });
+      }
+
+      if (route === "connection" && request.method === "DELETE") {
+        signIns.dismiss(userId);
+
+        return Response.json(account(userId));
+      }
+
       if (route === "remove" && request.method === "POST") {
         const fields = fieldsOf(await readJson(request));
 
@@ -136,6 +216,36 @@ export const logins: ServerPlugin = {
     });
   },
 };
+
+function withConnection(
+  connection: Account["connection"],
+): Pick<Account, "connection"> {
+  return connection === undefined ? {} : { connection };
+}
+
+// The person's model logins as Pi reads and writes them while it signs them
+// in on the server.
+function credentialsOf(
+  models: LoginKind<Credential>,
+  userId: string,
+): CredentialStore {
+  return {
+    read: async (providerId) => Promise.resolve(models.get(userId, providerId)),
+    list: async () =>
+      Promise.resolve(
+        models.list(userId).map(({ key, type }) => ({
+          providerId: key,
+          type: type as Credential["type"],
+        })),
+      ),
+    modify: async (providerId, fn) => models.modify(userId, providerId, fn),
+    delete: async (providerId) => {
+      await models.modify(userId, providerId, async () =>
+        Promise.resolve(null),
+      );
+    },
+  };
+}
 
 function textField(fields: Readonly<Record<string, unknown>>, name: string) {
   const value = fields[name];
@@ -166,7 +276,16 @@ interface KindSpec<T> {
 interface LoginKind<T> {
   readonly name: string;
   readonly list: (userId: string) => readonly Stored[];
+  readonly get: (userId: string, key: string) => T | undefined;
   readonly validated: (value: unknown) => T;
+  // Reads and writes the login under its lease. fn returns the new login,
+  // null to remove it, or undefined to keep it. Throws LoginBusy when the
+  // lease stays taken.
+  readonly modify: (
+    userId: string,
+    key: string,
+    fn: (current: T | undefined) => Promise<T | null | undefined>,
+  ) => Promise<T | undefined>;
   // Takes the key's lease to write, or says false when it stays busy. Null
   // removes the login.
   readonly write: (
@@ -268,21 +387,45 @@ function loginKind<T>(
     return Response.json({ ok: true });
   };
 
+  const modify: LoginKind<T>["modify"] = async (userId, key, fn) => {
+    const held = leaseKey(userId, key);
+    const given = await leases.acquire(held);
+    if (given === undefined) {
+      throw new LoginBusy();
+    }
+
+    try {
+      const current = rows.get(userId, key);
+      const next = await fn(current);
+
+      if (next !== undefined) {
+        store(userId, key, next);
+      }
+
+      return next === undefined ? current : (next ?? undefined);
+    } finally {
+      leases.release(held, given);
+    }
+  };
+
   return {
     name: spec.name,
     list: rows.list,
+    get: rows.get,
     validated,
+    modify,
     write: async (userId, key, value) => {
-      const held = leaseKey(userId, key);
-      const given = await leases.acquire(held);
-      if (given === undefined) {
-        return false;
+      try {
+        await modify(userId, key, async () => Promise.resolve(value));
+
+        return true;
+      } catch (error) {
+        if (error instanceof LoginBusy) {
+          return false;
+        }
+
+        throw error;
       }
-
-      store(userId, key, value);
-      leases.release(held, given);
-
-      return true;
     },
     sessionRoute: async (request, userId, rawKey, action) => {
       if (rawKey === undefined || rawKey === "") {
@@ -391,4 +534,10 @@ function sealedRows<T>(
       );
     },
   };
+}
+
+class LoginBusy extends Error {
+  constructor() {
+    super("another runner holds this login");
+  }
 }
