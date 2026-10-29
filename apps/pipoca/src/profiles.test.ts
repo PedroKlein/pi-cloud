@@ -779,7 +779,7 @@ test("only admins change the base Profile", async () => {
   expect(await json<unknown>(api("/api/base/files"))).toEqual([]);
 });
 
-test("remembers the models extension providers registered on runners, after a restart", async () => {
+test("offers the models extension providers registered on runners, after a restart", async () => {
   const gemini = { provider: "google", id: "gemini-flash" };
   const aiCore = { provider: "aicore", id: "gpt-x" };
 
@@ -788,8 +788,7 @@ test("remembers the models extension providers registered on runners, after a re
   const environmentOf = async (): Promise<Environment | undefined> =>
     (await json<Environment[]>(api("/api/environments")))[0];
 
-  expect((await environmentOf())?.models).toEqual([gemini]);
-  expect((await environmentOf())?.registeredModels).toEqual([gemini, aiCore]);
+  expect((await environmentOf())?.models).toEqual([gemini, aiCore]);
 
   await server.stop();
 
@@ -804,6 +803,5 @@ test("remembers the models extension providers registered on runners, after a re
     },
   });
 
-  expect((await environmentOf())?.models).toEqual([]);
-  expect((await environmentOf())?.registeredModels).toEqual([gemini, aiCore]);
+  expect((await environmentOf())?.models).toEqual([gemini, aiCore]);
 });

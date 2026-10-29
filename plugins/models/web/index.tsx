@@ -276,7 +276,7 @@ function Editor({
         Aliases, each with its models in fallback order
       </h3>
       <datalist id={list}>
-        {environment.registeredModels
+        {environment.models
           .filter(({ provider }) => provider !== gatewayProvider)
           .map((model) => (
             <option key={modelKey(model)} value={modelKey(model)} />
