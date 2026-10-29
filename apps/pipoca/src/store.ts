@@ -480,7 +480,7 @@ function migrateToEnvironments(db: DatabaseSync): void {
 
   transaction(db, () => {
     for (const { provider } of providers) {
-      insertEnvironment(db, provider);
+      insertEnvironment(db, provider, owner);
     }
 
     db.exec(`
@@ -494,10 +494,14 @@ function migrateToEnvironments(db: DatabaseSync): void {
   });
 }
 
-function insertEnvironment(db: DatabaseSync, provider: string): void {
+function insertEnvironment(
+  db: DatabaseSync,
+  provider: string,
+  ownerId: string,
+): void {
   db.prepare(
     "insert into environments (id, name, provider, owner_id, created_at) values (?, ?, ?, ?, ?) on conflict (provider) do nothing",
-  ).run(randomUUID(), provider, provider, owner, new Date().toISOString());
+  ).run(randomUUID(), provider, provider, ownerId, new Date().toISOString());
 }
 
 // Seals secrets stored before they were encrypted, and fails the start when
@@ -635,11 +639,20 @@ export function openStore(
     `${withProvider} where environments.provider = ? and (runner = ? or runner is null) and status = ? and workspace_removal in (?, ?) order by sessions.created_at`,
   );
 
+  const selectFirstUser = db.prepare(
+    "select id from users order by created_at limit 1",
+  );
+
+  // An Environment from before each one had a person, or one a runner made
+  // with a join key, is the person the setup link made (ADR 0049).
   const toEnvironment = (row: EnvironmentRow): StoredEnvironment => ({
     id: row.id,
     name: row.name,
     provider: row.provider,
-    ownerId: row.owner_id,
+    ownerId:
+      row.owner_id === owner
+        ? ((selectFirstUser.get() as { id: string } | undefined)?.id ?? owner)
+        : row.owner_id,
     createdAt: row.created_at,
     isolation: row.isolation === "container" ? "container" : "process",
     image: row.image,
@@ -791,8 +804,8 @@ export function openStore(
           "forced" satisfies WorkspaceRemoval,
         ) as unknown as SessionRow[]
       ).map(toSession),
-    ensureEnvironment: (provider) => {
-      insertEnvironment(db, provider);
+    ensureEnvironment: (provider, ownerId = owner) => {
+      insertEnvironment(db, provider, ownerId);
     },
     environments: () =>
       (selectEnvironments.all() as unknown as EnvironmentRow[]).map(

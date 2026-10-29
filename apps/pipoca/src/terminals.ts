@@ -66,6 +66,10 @@ export function terminalBroker(
       return errorReply(401, "signed_out", "Sign in again.");
     }
 
+    if (!sessions.belongsTo(sessionId, user.id)) {
+      return notFound();
+    }
+
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return errorReply(400, "bad_request", "expected a websocket");
     }

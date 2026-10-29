@@ -69,7 +69,7 @@ export interface SessionStore {
     repository: string,
     trusted: boolean,
   ) => void;
-  ensureEnvironment: (provider: string) => void;
+  ensureEnvironment: (provider: string, ownerId?: string) => void;
   // The models each runner of an Environment last reported (ADR 0044).
   registeredModels: (provider: string) => readonly ModelRef[];
   setRegisteredModels: (
@@ -236,7 +236,13 @@ export class Sessions {
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
   start(request: StartRequest, ownedBy?: SessionOwner): Result<Session> {
-    const environments = this.#store.environments();
+    // The Profiles a Session may use are its starter's (ADR 0041), and so
+    // are the Environments (ADR 0049).
+    const startedBy = this.#starter(request.actor);
+
+    const environments = this.#store
+      .environments()
+      .filter(({ ownerId }) => startedBy === null || ownerId === startedBy);
 
     const environment =
       request.environment === undefined
@@ -246,9 +252,6 @@ export class Sessions {
     if (!environment) {
       return { ok: false, reason: "unknown_environment" };
     }
-
-    // The Profiles a Session may use are its starter's (ADR 0041).
-    const startedBy = this.#starter(request.actor);
 
     const profileId =
       request.profile ?? this.#store.defaultProfileId(startedBy ?? owner);
@@ -393,13 +396,35 @@ export class Sessions {
   list({
     archived = false,
     owner: ownedBy,
+    person,
   }: {
     readonly archived?: boolean;
     readonly owner?: SessionOwner;
+    readonly person?: string;
   } = {}): readonly Session[] {
     return this.#store
       .list({ includeArchived: archived, ...(ownedBy && { owner: ownedBy }) })
+      .filter(
+        (session) => person === undefined || this.#person(session) === person,
+      )
       .map((session) => this.#view(session));
+  }
+
+  // Whether the Session is the person's own (ADR 0049).
+  belongsTo(id: string, person: string): boolean {
+    const session = this.#store.get(id);
+
+    return session !== undefined && this.#person(session) === person;
+  }
+
+  // Who started a Session, or else whose Environment it runs in.
+  #person(session: StoredSession): string | null {
+    return (
+      session.startedBy ??
+      this.#store.environments().find(({ id }) => id === session.environmentId)
+        ?.ownerId ??
+      null
+    );
   }
 
   // Gives an owner to a Session started before it had one. A Session's owner
@@ -538,12 +563,13 @@ export class Sessions {
 
   createEnvironment(
     provider: string,
+    ownerId?: string,
   ): Result<Environment, "environment_exists"> {
     if (this.#store.environments().some((each) => each.provider === provider)) {
       return { ok: false, reason: "environment_exists" };
     }
 
-    this.#store.ensureEnvironment(provider);
+    this.#store.ensureEnvironment(provider, ownerId);
 
     const created = this.environments().find(
       (each) => each.provider === provider,

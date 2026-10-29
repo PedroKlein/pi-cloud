@@ -374,7 +374,7 @@ test("starts a plugin's own Sessions on the Profile it provides, and no others",
   await start([
     {
       name: "meta",
-      register: ({ owner, profiles, routes, sessions }) => {
+      register: ({ profiles, routes, sessions }) => {
         const profile = profiles.provide("assistant", {
           name: "Assistant",
           packages: [],
@@ -385,7 +385,7 @@ test("starts a plugin's own Sessions on the Profile it provides, and no others",
           settings: {},
         });
 
-        routes.handle((_request, path) => {
+        routes.handle((_request, path, caller) => {
           const [last] = sessions.owned("chat");
 
           if (path === "again" && last !== undefined) {
@@ -398,7 +398,7 @@ test("starts a plugin's own Sessions on the Profile it provides, and no others",
           return Response.json(
             sessions.start(
               {
-                actor: `user:${owner}`,
+                actor: caller.actor,
                 workspace: { kind: "folder", path: root },
                 profile,
               },

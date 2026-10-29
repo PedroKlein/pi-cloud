@@ -51,7 +51,13 @@ export const meta: ServerPlugin = {
       }
 
       if (request.method === "GET") {
-        return Response.json(context.sessions.owned(context.owner));
+        return Response.json(
+          context.sessions
+            .owned(context.owner)
+            .filter(
+              ({ startedBy }) => caller.actor === `user:${startedBy ?? ""}`,
+            ),
+        );
       }
 
       if (request.method !== "POST") {

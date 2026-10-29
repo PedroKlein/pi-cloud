@@ -192,7 +192,6 @@ test("creates, edits and makes a Profile the default", async () => {
 
 test("each user picks their own default and keeps their Profiles to themselves", async () => {
   const ana = await secondUser();
-  const environment = await vmEnvironment();
   const workspace = { kind: "folder", path: root };
 
   const work = await json<Profile>(
@@ -217,12 +216,19 @@ test("each user picks their own default and keeps their Profiles to themselves",
     404,
   );
 
+  const laptop = await json<{ environment: Environment }>(
+    api("/api/environments", { body: { name: "laptop" }, cookie: ana }),
+  );
+
   const started = await json<Session>(
-    api("/api/sessions", { body: { environment, workspace }, cookie: ana }),
+    api("/api/sessions", {
+      body: { environment: laptop.environment.id, workspace },
+      cookie: ana,
+    }),
   );
 
   const named = await api("/api/sessions", {
-    body: { environment, workspace, profile: work.id },
+    body: { environment: laptop.environment.id, workspace, profile: work.id },
     cookie: ana,
   });
 

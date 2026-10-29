@@ -547,12 +547,12 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
   const workspace = { kind: "folder", path: "/srv/app" } as const;
 
   const owned = context?.sessions.start(
-    { actor: "user:local", workspace },
+    { actor: "plugin:keeper", workspace },
     "k1",
   );
 
-  const plain = sessions.start({ actor: "user:local", workspace });
-  const adopted = sessions.start({ actor: "user:local", workspace });
+  const plain = sessions.start({ actor: "plugin:keeper", workspace });
+  const adopted = sessions.start({ actor: "plugin:keeper", workspace });
   if (!owned || !plain.ok || !adopted.ok) {
     throw new Error("sessions not started");
   }
