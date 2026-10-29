@@ -34,7 +34,11 @@ interface FakePod {
     }[];
     readonly [field: string]: unknown;
   };
-  status?: { phase: string; containerStatuses?: readonly object[] };
+  status?: {
+    phase: string;
+    containerStatuses?: readonly object[];
+    initContainerStatuses?: readonly object[];
+  };
 }
 
 interface Labelled {
@@ -82,6 +86,14 @@ function fakeApi(): {
       const store = stores[kind];
       if (store === undefined) {
         return Response.json({}, { status: 404 });
+      }
+
+      if (request.method === "GET" && name !== undefined) {
+        const found = store.get(name);
+
+        return found === undefined
+          ? Response.json({}, { status: 404 })
+          : Response.json(found);
       }
 
       if (request.method === "GET") {
@@ -162,6 +174,7 @@ function startServer(database = ":memory:"): void {
         image: "pipoca:test",
         imagePullPolicy: "Always",
         server: "http://pipoca:7420",
+        pod: "pipoca-server",
         variables: { PIPOCA_FAUX_REPLY: "hi" },
         intervalMs: 20,
         retryAfterMs: 300,
@@ -901,4 +914,128 @@ test("keeps an archived Session's claim while its workspace is kept, until force
 
   await call("POST", `/api/sessions/${session.id}/remove-workspace`, {});
   await eventually(() => !api.claims.has(name));
+});
+
+test("replaces a runner pod whose spec names an older Pipoca image, keeping its claim", async () => {
+  const environment = await kubernetesEnvironment({ workspace: "claim" });
+  const old = await startSession(environment);
+  const current = await startSession(environment);
+  const oldName = `pi-session-${old.id}`;
+  const currentName = `pi-session-${current.id}`;
+  await eventually(() => api.pods.has(oldName) && api.pods.has(currentName));
+
+  const oldToken = api.secrets.get(oldName)?.stringData["token"] ?? "";
+  const currentToken = api.secrets.get(currentName)?.stringData["token"];
+  const currentPod = api.pods.get(currentName);
+  const started = api.pods.get(oldName);
+
+  const upgraded: FakePod = {
+    metadata: started?.metadata ?? { name: oldName, labels: {} },
+    spec: {
+      ...started?.spec,
+      containers: started?.spec.containers ?? [],
+      initContainers: [{ name: "pipoca", image: "pipoca:old" }],
+    },
+    status: { phase: "Running" },
+  };
+
+  api.pods.set(oldName, upgraded);
+
+  await eventually(
+    () =>
+      api.pods.has(oldName) &&
+      api.pods.get(oldName) !== upgraded &&
+      api.secrets.get(oldName)?.stringData["token"] !== undefined &&
+      api.secrets.get(oldName)?.stringData["token"] !== oldToken,
+  );
+
+  await sleep(200);
+
+  const work = await fetch(new URL("/agent/work", server.url), {
+    method: "POST",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      authorization: `Bearer ${oldToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ running: [], folders: [], models: [] }),
+  });
+
+  expect(api.pods.get(oldName)?.spec["initContainers"]).toMatchObject([
+    { image: "pipoca:test" },
+  ]);
+
+  expect(work.status).toBe(401);
+  expect([...api.claims.keys()].sort()).toEqual([oldName, currentName].sort());
+  expect(api.pods.get(currentName)).toBe(currentPod);
+  expect(api.secrets.get(currentName)?.stringData["token"]).toBe(currentToken);
+
+  expect(
+    logs.filter((line) => line.includes("runner pod replaced")),
+  ).toHaveLength(1);
+});
+
+test("replaces a runner pod whose node ran another digest of the same moving tag, keeping its claim", async () => {
+  const ran = (pod: FakePod | undefined, imageId: string): void => {
+    if (pod) {
+      pod.status = {
+        phase: "Running",
+        initContainerStatuses: [
+          { name: "pipoca", image: "pipoca:test", imageID: imageId },
+        ],
+      };
+    }
+  };
+
+  api.pods.set("pipoca-server", {
+    metadata: { name: "pipoca-server", labels: {} },
+    spec: { containers: [{ image: "pipoca:test", command: [] }] },
+    status: {
+      phase: "Running",
+      containerStatuses: [
+        {
+          name: "server",
+          image: "pipoca:test",
+          imageID: "registry/pipoca@sha256:new",
+        },
+      ],
+    },
+  });
+
+  const environment = await kubernetesEnvironment({ workspace: "claim" });
+  const old = await startSession(environment);
+  const current = await startSession(environment);
+  const oldName = `pi-session-${old.id}`;
+  const currentName = `pi-session-${current.id}`;
+  await eventually(() => api.pods.has(oldName) && api.pods.has(currentName));
+
+  const oldPod = api.pods.get(oldName);
+  const currentPod = api.pods.get(currentName);
+  const oldToken = api.secrets.get(oldName)?.stringData["token"];
+  const currentToken = api.secrets.get(currentName)?.stringData["token"];
+  ran(currentPod, "registry/pipoca@sha256:new");
+  ran(oldPod, "registry/pipoca@sha256:old");
+
+  await eventually(
+    () =>
+      api.pods.has(oldName) &&
+      api.pods.get(oldName) !== oldPod &&
+      api.secrets.get(oldName)?.stringData["token"] !== undefined &&
+      api.secrets.get(oldName)?.stringData["token"] !== oldToken,
+  );
+
+  await sleep(200);
+
+  expect(oldPod?.spec["initContainers"]).toMatchObject([
+    { image: "pipoca:test" },
+  ]);
+
+  expect([...api.claims.keys()].sort()).toEqual([oldName, currentName].sort());
+  expect(api.pods.get(currentName)).toBe(currentPod);
+  expect(api.secrets.get(currentName)?.stringData["token"]).toBe(currentToken);
+  expect(api.pods.get(oldName)?.spec["terminationGracePeriodSeconds"]).toBe(30);
+
+  expect(
+    logs.filter((line) => line.includes("runner pod replaced")),
+  ).toHaveLength(1);
 });

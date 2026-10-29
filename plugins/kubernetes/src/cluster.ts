@@ -11,10 +11,17 @@ export interface RunnerPod {
   // Why a container of the pod failed or can't start, such as its last log
   // lines or an image that can't be pulled.
   readonly problem: string | undefined;
+  // The Pipoca image its init container copied the binary from, and the
+  // image ID the node ran it as, once known.
+  readonly binaryImage: string | undefined;
+  readonly binaryImageId: string | undefined;
+  readonly deleting: boolean;
 }
 
 interface ContainerStatus {
   readonly name: string;
+  readonly image?: string;
+  readonly imageID?: string;
   readonly state?: {
     readonly waiting?: { readonly reason?: string; readonly message?: string };
     readonly terminated?: {
@@ -39,6 +46,8 @@ export interface Cluster {
   ) => Promise<void>;
   readonly createPod: (pod: object) => Promise<void>;
   readonly deletePod: (name: string) => Promise<void>;
+  // The ID a pod's node ran an image as, such as the server's own.
+  readonly imageId: (pod: string, image: string) => Promise<string | undefined>;
   readonly deleteSecret: (name: string) => Promise<void>;
   // The Secrets of runner pods, by Environment.
   readonly runnerSecrets: () => Promise<
@@ -139,6 +148,13 @@ export function clusterAt(options: ApiAccess): Cluster {
             readonly name: string;
             readonly labels?: Readonly<Record<string, string>>;
             readonly creationTimestamp?: string;
+            readonly deletionTimestamp?: string;
+          };
+          readonly spec?: {
+            readonly initContainers?: readonly {
+              readonly name: string;
+              readonly image?: string;
+            }[];
           };
           readonly status?: {
             readonly phase?: string;
@@ -148,7 +164,7 @@ export function clusterAt(options: ApiAccess): Cluster {
         }[];
       };
 
-      return list.items.map(({ metadata, status }) => ({
+      return list.items.map(({ metadata, spec, status }) => ({
         name: metadata.name,
         environmentId: metadata.labels?.[environmentLabel] ?? "",
         sessionId: metadata.labels?.[sessionLabel],
@@ -160,6 +176,12 @@ export function clusterAt(options: ApiAccess): Cluster {
         ]
           .map(problemOf)
           .find((problem) => problem !== undefined),
+        binaryImage: spec?.initContainers?.find(({ name }) => name === "pipoca")
+          ?.image,
+        binaryImageId: status?.initContainerStatuses?.find(
+          ({ name }) => name === "pipoca",
+        )?.imageID,
+        deleting: metadata.deletionTimestamp !== undefined,
       }));
     },
     createSecret: async (name, environmentId, data) => {
@@ -181,6 +203,19 @@ export function clusterAt(options: ApiAccess): Cluster {
     },
     deletePod: async (name) => {
       await call("DELETE", `pods/${name}`);
+    },
+    imageId: async (pod, image) => {
+      const { status } = (await call("GET", `pods/${pod}`)) as {
+        readonly status?: {
+          readonly initContainerStatuses?: readonly ContainerStatus[];
+          readonly containerStatuses?: readonly ContainerStatus[];
+        };
+      };
+
+      return [
+        ...(status?.containerStatuses ?? []),
+        ...(status?.initContainerStatuses ?? []),
+      ].find((each) => each.image === image && each.imageID !== "")?.imageID;
     },
     deleteSecret: async (name) => {
       await call("DELETE", `secrets/${name}`);
