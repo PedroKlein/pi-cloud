@@ -171,8 +171,8 @@ export interface PluginHost {
     settings: unknown,
   ) => PluginInfo | string | undefined;
   // Turns an installed plugin on or off for the next start.
-  // Turning one on with the digest of the manifest the user saw refuses it
-  // when its folder changed since.
+  // Turning one on with the digest of the manifest and files the user saw
+  // refuses it when its folder changed since.
   readonly turnOn: (
     name: string,
     on: boolean,
@@ -324,6 +324,20 @@ export function startPlugins(
 
   const updated = new Set<string>();
 
+  const fileDigests = new Map(
+    deps.installed?.plugins.flatMap(({ manifest: { id }, digest }) =>
+      digest === undefined ? [] : [[id, digest] as const],
+    ),
+  );
+
+  const remember = (id: string, digest: string | undefined): void => {
+    if (digest === undefined) {
+      fileDigests.delete(id);
+    } else {
+      fileDigests.set(id, digest);
+    }
+  };
+
   const folder = (): InstalledPlugins => {
     if (deps.installed === undefined) {
       throw new Error("this server has no plugins folder");
@@ -390,6 +404,7 @@ export function startPlugins(
       : [...manifests, read.manifest];
 
     installedIds.add(name);
+    remember(name, read.digest);
 
     if (!running.includes(name)) {
       if (read.error === undefined) {
@@ -677,6 +692,7 @@ export function startPlugins(
       values: values(found.id),
       digest: new Bun.CryptoHasher("sha256")
         .update(JSON.stringify(listed(found.id) ?? found))
+        .update(fileDigests.get(found.id) ?? "")
         .digest("hex"),
       ...(source !== undefined && { installedFrom: source }),
       ...(updated.has(found.id) && { updated: true }),
@@ -746,13 +762,18 @@ export function startPlugins(
       }
 
       try {
-        const { manifest: found, source } = await deps.installed.install(
+        const {
+          manifest: found,
+          source,
+          digest,
+        } = await deps.installed.install(
           url,
           (id) => manifest(id) !== undefined,
         );
 
         manifests = [...manifests, found];
         installedIds.add(found.id);
+        remember(found.id, digest);
 
         if (source !== undefined) {
           sources.set(found.id, source);
@@ -789,6 +810,8 @@ export function startPlugins(
         if (fetched.source !== undefined) {
           sources.set(name, fetched.source);
         }
+
+        remember(name, fetched.digest);
 
         updated.add(name);
 
@@ -828,6 +851,7 @@ export function startPlugins(
       failures.delete(name);
       sources.delete(name);
       updated.delete(name);
+      fileDigests.delete(name);
 
       deps.log("plugin removed", { plugin: name });
 
@@ -1292,6 +1316,7 @@ export interface InstalledPlugins {
     readonly session?: { readonly path: string; readonly hash: string };
     readonly error?: string;
     readonly source?: { readonly url: string; readonly pinned: string };
+    readonly digest?: string;
   }[];
   readonly turnOn: (id: string, on: boolean) => Promise<void>;
   readonly install: (

@@ -321,6 +321,26 @@ test("won't turn on a plugin that changed since the user saw it", async () => {
   ).toBe(200);
 });
 
+test("won't turn on a plugin whose code changed since the user saw it", async () => {
+  await start();
+  await write("hello", "package.json", manifest());
+
+  const seen = (await (
+    await write("hello", "server.ts", serverPart)
+  ).json()) as PluginInfo;
+
+  await write("hello", "server.ts", serverPart.replace("hi", "bye"));
+
+  expect(
+    await errorOf(
+      api("PATCH", "/api/plugins/hello", {
+        enabled: true,
+        digest: seen.digest,
+      }),
+    ),
+  ).toContain("changed since");
+});
+
 test("keeps what the server makes in a plugin's folder out of reach, whatever the case or links", async () => {
   await start();
   await write("hello", "package.json", manifest());
