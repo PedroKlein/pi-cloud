@@ -19,6 +19,9 @@
   "pipoca": {
     "id": "oidc",
     "title": "Single sign-on",
-    "description": "Signs people in through OpenID Connect providers, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose. Admins add providers in Settings."
+    "description": "Signs people in through OpenID Connect providers, such as SAP IAS, Okta or Google, and lets in the groups or emails you choose. Admins add providers in Settings.",
+    "capabilities": [
+      "routes"
+    ]
   }
 }

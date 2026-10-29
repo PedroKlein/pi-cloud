@@ -1,6 +1,6 @@
 # 0032: Environments and Runners
 
-- Status: accepted, amended 2026-10-29 (a Session that comes back to a runner after running elsewhere starts fresh)
+- Status: accepted, amended 2026-10-29 (runner pods with an older Pipoca image are replaced at once; a Session that comes back to a runner after running elsewhere starts fresh)
 - Date: 2026-10-24
 
 ## Context
@@ -66,6 +66,7 @@ Pi Cloud's agent already works like that runner. It connects outbound, long-poll
 - A runner pod runs the Environment's image. An init container copies the `pi-cloud` binary in from the Pi Cloud image, and the pod runs `pi-cloud agent` against the server's in-cluster Service with its token from a Secret per pod. Sessions in a pod use process isolation.
 - The plugin starts one pod for each `capacity` queued Sessions, up to a maximum per Environment. Agents started with `--exit-when-idle` stop after running no Session for that long, and the plugin deletes finished pods and their Secrets.
 - A pod for a Session with its own claim is named after that Session, has capacity one and mounts the claim. A Session that has run goes back to the runner it ran on, so a replacement pod with that name picks it up.
+- After an upgrade, the plugin deletes a runner pod whose init container copied the binary from another Pipoca image than the server's, at server start and on every pass, even mid-turn. It compares the image digests the nodes ran, so a moving tag works, and the names in the pod specs until both digests are known. The owner decided that old code must not run against the new server. The delete is graceful, with the pod's 30-second grace period pinned, so the agent halts its Sessions before their tools and a cut-off tool is recorded as interrupted by a restart. The pod's token is revoked once it is gone, as for a pod deleted from outside, and a Session's claim stays, so the Session goes on in the replacement (amended 2026-10-29).
 - CI runs a Session in a runner pod on kind, with Pi's faux model switched on in the binary by an environment variable only tests set.
 
 ### Variables and secrets

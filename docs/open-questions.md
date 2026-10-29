@@ -118,7 +118,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Is an integrated browser still wanted, and if so as a preview iframe the agent drives through an injected script, or in a desktop app? The CDP screencast was rejected ([ADR 0022](adr/0022-plugin-model-v2.md#no-browser-plugin-yet)).
 - Which extension types run inside the control plane, Provider Agent, browser, or Pi Session?
 - Resolved: plugins declare settings with defaults in their manifest, values are stored per installation and edited on a Plugins page, and a plugin that fails to start is turned off and reported instead of stopping the server ([ADR 0036](adr/0036-plugin-settings.md)).
-- Resolved for v2: a plugin declares `capabilities` and `requires` in its manifest; the exact capability names are open ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest)).
+- Resolved for v2: every plugin declares `capabilities` in its manifest, built-in or installed, and the server holds both to them; only built-ins get `auth`. The exact capability names are open. `requires` isn't read yet and arrives with the first plugin that needs it ([ADR 0022](adr/0022-plugin-model-v2.md#a-small-manifest), amended 2026-10-29).
 - Which first-party features must prove the public extension surface?
 - How are blocking or faulty trusted extensions diagnosed and disabled safely?
 - Resolved: Chromium resolves `*.localhost` for previews, which cover pages a Session opens through `BROWSER` ([ADR 0037](adr/0037-previews-and-opened-pages.md)). Other browsers are checked as they are used.

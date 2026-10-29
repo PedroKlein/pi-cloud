@@ -19,6 +19,11 @@
   "pipoca": {
     "id": "kubernetes",
     "title": "Kubernetes",
-    "description": "Starts runner pods for an Environment when the server runs in a cluster."
+    "description": "Starts runner pods for an Environment when the server runs in a cluster.",
+    "capabilities": [
+      "sessions",
+      "environments",
+      "routes"
+    ]
   }
 }

@@ -30,3 +30,19 @@ test("the chart pulls its moving image tag again, for the server and runner pods
 
   expect(plugin).toContain('process.env["PIPOCA_IMAGE_PULL_POLICY"]');
 });
+
+// Under a moving tag only the image ID the server's pod ran tells a runner
+// pod's old binary from the current one.
+test("the chart lets the server read its own pod, to replace runner pods with an old binary", () => {
+  const rbac = readFileSync(join(chart, "templates/rbac.yaml"), "utf8");
+
+  expect(deployment).toContain(
+    "- name: POD_NAME\n              valueFrom:\n                fieldRef:\n                  fieldPath: metadata.name",
+  );
+
+  expect(plugin).toContain('process.env["POD_NAME"]');
+
+  expect(rbac).toContain(
+    'resources: ["pods", "secrets", "persistentvolumeclaims"]\n    verbs: ["get",',
+  );
+});

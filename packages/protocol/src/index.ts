@@ -274,9 +274,8 @@ export type SettingSpec = {
   | { readonly type: "strings"; readonly default: readonly string[] }
 );
 
-// What an installed plugin's server part may reach on its context besides
-// its own store, settings, signal and log (ADR 0022). Built-in plugins reach
-// all of it.
+// What a plugin's server part may reach on its context besides its own
+// store, settings, signal and log, built-in or installed alike (ADR 0022).
 export const capabilities = [
   "tools",
   "toolsets",

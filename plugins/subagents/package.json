@@ -19,6 +19,7 @@
   "pipoca": {
     "id": "subagents",
     "title": "Subagents",
-    "description": "Lets a Session start subagents and shows their runs."
+    "description": "Lets a Session start subagents and shows their runs.",
+    "capabilities": []
   }
 }

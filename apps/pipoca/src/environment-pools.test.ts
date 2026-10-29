@@ -42,6 +42,14 @@ function startServer({ pollWaitMs = 0, offlineAfterMs = 30_000 } = {}): void {
         },
       },
     ],
+    manifests: [
+      {
+        id: "machines",
+        title: "Machines",
+        description: "",
+        capabilities: ["environments"],
+      },
+    ],
     log: (message, fields) => {
       logged.push(`${message} ${JSON.stringify(fields)}`);
     },
