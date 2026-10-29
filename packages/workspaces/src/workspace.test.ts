@@ -296,6 +296,31 @@ test("clones the repository onto the session's own branch", async () => {
   expect(await git(dir, "remote", "get-url", "origin")).toBe(repository);
 });
 
+test("continues a session branch it already pushed when the clone moves to another machine", async () => {
+  const start = await git(repository, "rev-parse", "HEAD");
+  const workspace = { kind: "clone", repository, branch: "pipoca/s1" } as const;
+
+  const first = await prepareWorkspace(
+    workspace,
+    { dir: join(root, "first", "s1"), folders: [] },
+    noLog,
+  );
+
+  await commit(first.cwd, "work.txt");
+  await git(first.cwd, "push", "origin", "pipoca/s1");
+  const pushed = await git(first.cwd, "rev-parse", "HEAD");
+
+  const moved = await prepareWorkspace(
+    workspace,
+    { dir: join(root, "second", "s1"), folders: [] },
+    noLog,
+  );
+
+  expect(await git(moved.cwd, "rev-parse", "HEAD")).toBe(pushed);
+  expect(await git(moved.cwd, "branch", "--show-current")).toBe("pipoca/s1");
+  expect(moved.checkouts).toEqual([{ path: moved.cwd, base: start }]);
+});
+
 test("reaches the remote with the environment it is given", async () => {
   const dir = join(root, "workspaces", "s1");
   const remote = "https://git.invalid/origin.git";

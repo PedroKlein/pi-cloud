@@ -256,6 +256,28 @@ async function branchStart(
     });
   }
 
+  // A session that moved to another machine kept no restore point, but the
+  // branch it pushed from the first one carries on its work.
+  if (workspace.kind === "clone" && workspace.restorePoint === undefined) {
+    const pushed = `origin/${branch}`;
+
+    if (await isCommit(repository, pushed)) {
+      log("continuing the pushed session branch", { branch });
+
+      const base = await git(
+        repository,
+        "merge-base",
+        pushed,
+        startPoint === undefined ? "HEAD" : await named(startPoint),
+      ).catch(() => undefined);
+
+      return {
+        startPoint: pushed,
+        config: base === undefined ? {} : { pipocaBase: base },
+      };
+    }
+  }
+
   return {
     startPoint: startPoint === undefined ? undefined : await named(startPoint),
     config: {},
