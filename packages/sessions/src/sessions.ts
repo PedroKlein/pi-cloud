@@ -582,10 +582,7 @@ export class Sessions {
         models: uniqueModels([
           ...offered,
           ...runners.flatMap(({ inventory }) => inventory.models),
-        ]),
-        registeredModels: uniqueModels([
           ...this.#store.registeredModels(environment.provider),
-          ...runners.flatMap(({ inventory }) => inventory.models),
         ]),
       };
     });

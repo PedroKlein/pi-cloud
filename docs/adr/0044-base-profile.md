@@ -46,7 +46,7 @@ The base is to the Profile what Pi's `~/.pi/agent` is to a repository's `.pi/` (
 
 - A runner reports every model its providers register, from the base and from each Profile it holds, next to the ones logged in on that machine (decided 2026-10-28). Pi's own providers register over a thousand models, which people reach through `/login`, so only the providers that extensions and `models.json` add are reported this way.
 - The server keeps the last list each runner reported, so it outlives runners that exit and server restarts. A runner's newer report replaces what it reported before, and a runner gone for a month is forgotten.
-- The Models page suggests every model in that list. Model pickers keep listing the models logged in on the Environment's runners, since a Session can't start on the others.
+- The Models page and the model pickers list every model in that list beside the ones logged in on online runners (amended 2026-10-29: a Kubernetes Environment usually has no runner online, so pickers listing only logged-in models showed none of an extension's). A Session on a model whose provider isn't logged in fails with Pi's own error, as an alias's missing model does.
 
 ### Credentials
 
