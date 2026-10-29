@@ -130,6 +130,29 @@ You can also put the folder in the server's plugins folder yourself (`--plugins`
 
 Then select Turn on. The confirm lists the capabilities the plugin asks for and where its parts will run. Restart the server from the banner that appears. A plugin installed from git or a tarball can be updated to the newest version at its URL. A new version that asks for more capabilities, or adds a web or Session part, is turned off until you turn it on again.
 
+## Test it
+
+`@pipoca/plugins/testing` has what a test of a server part needs. `fakeContext(members)` returns a context with the members you pass, and the others throw when called. `owner`, `events`, `changes`, `store`, `settings`, `config`, `signal` and `log` work without passing them: the store is an SQLite database in memory from `memoryStore()`, and the settings are empty. `fakeSession(fields)` makes a Session, such as the caller of a route.
+
+```ts
+import type { PluginRoute } from "@pipoca/plugins";
+import { fakeContext } from "@pipoca/plugins/testing";
+import greeter from "./server";
+
+let route: PluginRoute | undefined;
+
+greeter.register(
+  fakeContext({
+    routes: {
+      handle: (handler) => {
+        route = handler;
+      },
+    },
+    settings: { get: () => ({ greeting: "Hi" }) },
+  }),
+);
+```
+
 ## Know the limits
 
 - A plugin runs with the server's own access. Capabilities catch mistakes but don't sandbox anything, so turn on only plugins you trust.

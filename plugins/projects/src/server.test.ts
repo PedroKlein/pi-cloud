@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   eventBus,
   type EventBus,
@@ -9,6 +8,7 @@ import {
   type ServerPluginContext,
   type ServerTool,
 } from "@pipoca/plugins";
+import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
 import type { Actor, Session } from "@pipoca/protocol";
 import type { ProjectView } from "./model";
 import { projects } from "./server";
@@ -53,7 +53,6 @@ function fakeKernel(): {
   readonly stuck: Set<string>;
   readonly logged: Logged[];
 } {
-  const db = new DatabaseSync(":memory:");
   const sessions = new Map<string, Session>();
   const transcripts = new Map<string, string[]>();
   const tools = new Map<string, ServerTool>();
@@ -86,32 +85,20 @@ function fakeKernel(): {
     return { ok: true };
   };
 
-  const notUsed = (): never => {
-    throw new Error("not used by the projects plugin");
-  };
-
-  const context: ServerPluginContext = {
+  const context = fakeContext({
     owner: "pedro",
-    environments: {
-      list: notUsed,
-      unplaced: notUsed,
-      runnerToken: notUsed,
-      revokeRunner: notUsed,
-      startsRunners: notUsed,
-    },
     tools: {
       register: (tool) => {
         tools.set(tool.name, tool);
       },
     },
     events,
-    changes: { publish: () => undefined },
     sessions: {
       loadOnly: () => undefined,
       start: (request, ownerKey) => {
         const id = `session-${String(sessions.size + 1)}`;
 
-        const session: Session = {
+        const session = fakeSession({
           id,
           environmentId: request.environment ?? "laptop",
           ownerId: "pedro",
@@ -119,27 +106,13 @@ function fakeKernel(): {
             ownerKey === undefined
               ? null
               : { plugin: "projects", key: ownerKey },
-          provider: "local",
-          runner: null,
           profileId: request.profile ?? "profile-1",
-          workspace: { kind: "folder", path: "/work" },
           model: request.model ?? null,
           thinking: request.thinking ?? null,
           systemPrompt: request.systemPrompt ?? null,
           firstMessage: request.firstMessage ?? null,
-          title: null,
-          status: "idle",
-          generation: 1,
           createdAt: new Date().toISOString(),
-          interruptedAt: null,
-          error: null,
-          archivedAt: null,
-          workspaceRemoval: null,
-          workspaceKeptReason: null,
-          startedBy: null,
-          online: true,
-          waiting: false,
-        };
+        });
 
         sessions.set(id, session);
         transcripts.set(id, []);
@@ -217,46 +190,17 @@ function fakeKernel(): {
       },
       transcriptLength: (id) => transcripts.get(id)?.length ?? 0,
     },
-    profiles: {
-      provide: () => {
-        throw new Error("not used by the projects plugin");
-      },
-    },
     toolsets: { register: () => undefined, loadInOwnSessions: () => undefined },
     routes: {
       handle: (handler) => {
         route = handler;
       },
     },
-    auth: {
-      offer: () => undefined,
-      handlePublic: () => undefined,
-      userOf: () => undefined,
-      createUser: () => undefined,
-      setAdmin: () => undefined,
-      startSession: () => undefined,
-      gitLogins: () => undefined,
-    },
-    models: { offer: () => undefined },
-    store: {
-      exec: (sql) => {
-        db.exec(sql);
-      },
-      all: (sql, ...params) =>
-        db.prepare(sql).all(...(params as SQLInputValue[])),
-      run: (sql, ...params) => {
-        db.prepare(sql).run(...(params as SQLInputValue[]));
-      },
-      seal: (text) => text,
-      open: (sealed) => sealed,
-    },
-    settings: { get: () => ({}) },
-    config: { get: () => undefined, set: () => undefined, dir: "" },
     signal: stop.signal,
     log: (message, fields) => {
       logged.push({ message, fields });
     },
-  };
+  });
 
   return {
     context,

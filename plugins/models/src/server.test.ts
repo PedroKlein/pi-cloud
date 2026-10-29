@@ -1,118 +1,30 @@
 import { expect, test } from "bun:test";
 import { getEventListeners } from "node:events";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import {
-  eventBus,
-  type PluginRoute,
-  type PluginStore,
-  type ToolCaller,
-} from "@pipoca/plugins";
+import type { PluginRoute, ToolCaller } from "@pipoca/plugins";
+import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
 import { models } from "./server";
 
 const environmentId = "environment-1";
 
 const caller: ToolCaller = {
-  session: {
-    id: "session-1",
-    environmentId,
-    ownerId: "owner",
-    owner: null,
-    provider: "local",
-    runner: null,
-    profileId: "profile-1",
-    workspace: { kind: "folder", path: "/work" },
-    model: null,
-    thinking: null,
-    systemPrompt: null,
-    firstMessage: null,
-    title: null,
-    status: "idle",
-    generation: 1,
-    createdAt: "2026-10-22T00:00:00.000Z",
-    interruptedAt: null,
-    error: null,
-    archivedAt: null,
-    workspaceRemoval: null,
-    workspaceKeptReason: null,
-    startedBy: null,
-    online: true,
-    waiting: false,
-  },
+  session: fakeSession({ environmentId }),
   actor: "session:session-1",
 };
-
-function memoryStore(): PluginStore {
-  const db = new DatabaseSync(":memory:");
-
-  return {
-    exec: (sql) => {
-      db.exec(sql);
-    },
-    all: (sql, ...params) =>
-      db.prepare(sql).all(...(params as SQLInputValue[])),
-    run: (sql, ...params) => {
-      db.prepare(sql).run(...(params as SQLInputValue[]));
-    },
-    seal: (text) => text,
-    open: (sealed) => sealed,
-  };
-}
 
 function registered(signal: AbortSignal): PluginRoute {
   const routes: PluginRoute[] = [];
 
-  const unused = (): never => {
-    throw new Error("not used by the models plugin");
-  };
-
-  models.register({
-    owner: "owner",
-    tools: { register: unused },
-    events: eventBus(unused),
-    changes: { publish: () => undefined },
-    environments: {
-      list: unused,
-      unplaced: unused,
-      runnerToken: unused,
-      revokeRunner: unused,
-      startsRunners: unused,
-    },
-    sessions: {
-      loadOnly: unused,
-      start: unused,
-      get: unused,
-      owned: unused,
-      adopt: unused,
-      archive: unused,
-      unarchive: unused,
-      send: unused,
-      notify: unused,
-      transcript: unused,
-      transcriptLength: unused,
-    },
-    profiles: { provide: unused },
-    toolsets: { register: unused, loadInOwnSessions: unused },
-    routes: {
-      handle: (route) => {
-        routes.push(route);
+  models.register(
+    fakeContext({
+      routes: {
+        handle: (route) => {
+          routes.push(route);
+        },
       },
-    },
-    auth: {
-      offer: unused,
-      handlePublic: unused,
-      userOf: unused,
-      createUser: unused,
-      setAdmin: unused,
-      startSession: unused,
-      gitLogins: unused,
-    },
-    models: { offer: () => undefined },
-    store: memoryStore(),
-    settings: { get: () => ({}) },
-    config: { get: () => undefined, set: () => undefined, dir: "" },
-    signal,
-    log: () => undefined,
-  });
+      models: { offer: () => undefined },
+      signal,
+    }),
+  );
 
   const [route] = routes;
   if (route === undefined) {
