@@ -8,6 +8,11 @@ const rejections = {
   not_kept: [409, "The Session has no kept workspace to remove."],
   unknown_environment: [400, "There is no such Environment."],
   environment_exists: [409, "An Environment of that name already exists."],
+  unknown_template: [400, "There is no such template."],
+  from_template: [
+    409,
+    "The Environment's template sets its isolation, image and setup script.",
+  ],
   unknown_profile: [400, "There is no such Profile."],
   not_movable: [
     409,

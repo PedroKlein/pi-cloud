@@ -50,6 +50,7 @@ import {
   textOf,
 } from "./requests";
 import { sseResponse } from "./sse";
+import type { Templates } from "./templates";
 
 type Route = (
   request: Request,
@@ -104,6 +105,7 @@ export function createHandler(
   checkStore: () => void,
   log: Log,
   restart?: ServerRestart,
+  templates?: Templates,
 ): (request: Request) => Promise<Response> {
   const agent = (route: AgentRoute): Route => {
     return async (request, params) => {
@@ -193,6 +195,30 @@ export function createHandler(
       auth.userById(userIdOf(actor))?.admin === true
         ? await route(request, params, actor, isAdmin)
         : errorReply(403, "admin_only", "Only admins write and build plugins.");
+
+  // Every Environment made from a template follows it, so only admins
+  // change templates (ADR 0049).
+  const templateChange =
+    (
+      route: (
+        request: Request,
+        params: readonly string[],
+        made: Templates,
+      ) => Response | Promise<Response>,
+    ): BrowserRoute =>
+    async (request, params, _actor, isAdmin) => {
+      if (!isAdmin) {
+        return errorReply(
+          403,
+          "admin_only",
+          "Only admins change Environment templates.",
+        );
+      }
+
+      return templates === undefined
+        ? notFound()
+        : await route(request, params, templates);
+    };
 
   // A person reaches only their own Sessions. An admin also reaches
   // everyone's outline, and stops, archives or deletes them (ADR 0049).
@@ -563,8 +589,14 @@ export function createHandler(
       "POST",
       /^\/api\/environments$/,
       async (request, _params, actor) => {
-        const { name } = createEnvironment(await readJson(request));
-        const created = sessions.createEnvironment(name, userIdOf(actor));
+        const { name, template } = createEnvironment(await readJson(request));
+
+        const created = sessions.createEnvironment(
+          name,
+          userIdOf(actor),
+          template,
+        );
+
         if (!created.ok) {
           return reply(created, 201);
         }
@@ -628,16 +660,45 @@ export function createHandler(
           environmentUpdate(await readJson(request)),
         );
 
-        if (!updated.ok) {
-          return notFound();
+        if (updated.ok) {
+          log("environment updated", { environmentId: id });
         }
 
-        log("environment updated", { environmentId: id });
-
-        return Response.json(updated.value);
+        return reply(updated, 200);
       },
     ],
     ...profileRoutes(profiles, log),
+    ["GET", /^\/api\/templates$/, () => Response.json(templates?.list() ?? [])],
+    [
+      "POST",
+      /^\/api\/templates$/,
+      templateChange(async (request, _params, made) => {
+        const created = made.create(await readJson(request));
+        log("template created", { templateId: created.id });
+
+        return Response.json(created, { status: 201 });
+      }),
+    ],
+    [
+      "PATCH",
+      /^\/api\/templates\/([^/]+)$/,
+      templateChange(async (request, [id = ""], made) => {
+        const updated = made.update(id, await readJson(request));
+        log("template updated", { templateId: id });
+
+        return Response.json(updated);
+      }),
+    ],
+    [
+      "DELETE",
+      /^\/api\/templates\/([^/]+)$/,
+      templateChange((_request, [id = ""], made) => {
+        made.remove(id);
+        log("template removed", { templateId: id });
+
+        return new Response(null, { status: 204 });
+      }),
+    ],
     [
       "GET",
       /^\/api\/sessions$/,

@@ -1074,10 +1074,25 @@ export interface Environment {
   readonly secrets: readonly string[];
   // Whether runners can join, which takes the Environment's key.
   readonly hasKey: boolean;
+  // The admin's template it was made from, which sets its isolation, image
+  // and setup script and the variables under its own (ADR 0049).
+  readonly templateId: string | null;
+}
+
+// What admins share for people's Environments: settings, never secrets or
+// runners (ADR 0049).
+export interface EnvironmentTemplate {
+  readonly id: string;
+  readonly name: string;
+  readonly isolation: Isolation;
+  readonly image: string | null;
+  readonly setupScript: string;
+  readonly variables: Readonly<Record<string, string>>;
 }
 
 export interface CreateEnvironment {
   readonly name: string;
+  readonly template?: string;
 }
 
 // A null secret removes it.
