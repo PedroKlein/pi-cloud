@@ -229,6 +229,10 @@ export interface Assignment {
   // The git hosts the Session's owner connected (ADR 0043). Older servers
   // leave it out.
   readonly gitLogins?: readonly GitLogin[];
+  // The Session last ran on another runner, so this one drops what it kept
+  // of it and starts as a runner that never ran it (ADR 0032). Older servers
+  // leave it out.
+  readonly fresh?: boolean;
 }
 
 export interface GitLogin {

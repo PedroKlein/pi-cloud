@@ -1,6 +1,6 @@
 # 0032: Environments and Runners
 
-- Status: accepted, amended 2026-10-29 (runner pods with an older Pipoca image are replaced at once)
+- Status: accepted, amended 2026-10-29 (runner pods with an older Pipoca image are replaced at once; a Session that comes back to a runner after running elsewhere starts fresh)
 - Date: 2026-10-24
 
 ## Context
@@ -46,6 +46,7 @@ Pi Cloud's agent already works like that runner. It connects outbound, long-poll
 - When a lease lapses, the server starts a new generation of the Session on another runner in its Environment. The new attempt starts from the server's copy of the transcript ([ADR 0006](0006-provider-protocol.md#transcript-replication)) and a fresh Workspace on the Session's branch. A turn that was running is reported as interrupted, as it is after an agent restart today.
 - A runner that can't renew its lease in time stops its Sessions itself, so two runners never run one Session.
 - In a pool of one, the Session waits for its runner to come back, as v1 Sessions do.
+- Amended 2026-10-29, by the owner's decision: a Session that comes back to a runner it ran on earlier, after running on another one, starts fresh there. That runner's transcript and Workspace are older than what the other runner uploaded and pushed. The server knows the runner the Session last ran on, so an assignment to a different runner says `fresh`. The runner then drops its folder and its Workspace for that Session, and only those, and restores from the server's transcript and the pushed branch, as a runner that never ran the Session does. A Session that returns to the runner it last ran on still reuses what that runner kept.
 - Uncommitted files survive only where the Workspace survives, for example on a Kubernetes volume (below).
 - pi-durable's mid-turn resume is not used. It is a separate harness that Pi packages, and so Profiles, don't run on. It has no lease of its own ("use only one process for a storage at a time"), and it doesn't keep Workspace files ([research.md](../research.md#pi-durable)).
 
@@ -82,6 +83,7 @@ Pi Cloud's agent already works like that runner. It connects outbound, long-poll
 - Kubernetes, extra VMs and laptops are all pools of the same runner, so Projects, Sessions and the API keep their shape, as ADR 0014 intended.
 - Batch Jobs can be Sessions in an Environment whose runners have capacity one and exit when done.
 - ADR 0006's "a Session stays on its provider" now holds only for pools of one. Elsewhere, a Session can move to another runner, and a moved Session loses uncommitted work unless its Workspace is on a volume.
+- A runner that a Session comes back to drops what it kept of the Session, so uncommitted files and unpushed commits left there from its earlier run are lost (amended 2026-10-29).
 - Server-held secrets put real secret values in the server's store, which needs care once authentication arrives.
 - Containers need Docker or Podman wherever an Environment uses them. Kubernetes needs a cluster account for the plugin.
 - Nothing stops a Session's network traffic yet, on any runner.

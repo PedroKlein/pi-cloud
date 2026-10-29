@@ -1144,6 +1144,10 @@ export class Sessions {
           ...this.#pluginsOf(session),
           environment: this.#sessionEnvironment(session.environmentId),
           ...this.#gitLoginsOf(session.startedBy),
+          // What this runner kept from an earlier run is older than what the
+          // other runner pushed and uploaded since.
+          ...(next.runner !== null &&
+            next.runner !== runner.name && { fresh: true }),
         };
       });
   }

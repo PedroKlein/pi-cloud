@@ -1,14 +1,20 @@
-import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // A runner that never ran the Session starts it from the server's copy of
 // its transcript (ADR 0032). Pi finds a Session's file by the folder in its
-// header, and this runner may keep the Workspace elsewhere.
+// header, and this runner may keep the Workspace elsewhere. A fresh start
+// first drops the Session's folder, whose copy another runner has outdated.
 export async function restoreTranscript(
   sessionDir: string,
   cwd: string,
   entries: () => Promise<readonly string[]>,
+  { fresh = false }: { readonly fresh?: boolean } = {},
 ): Promise<number> {
+  if (fresh) {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+
   const local = await readdir(sessionDir).catch(() => []);
   if (local.some((file) => file.endsWith(".jsonl"))) {
     return 0;

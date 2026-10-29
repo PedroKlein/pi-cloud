@@ -284,6 +284,44 @@ test("moves a Session whose Workspace can be cloned again once its runner's leas
   expect(back.start).toEqual([]);
 });
 
+test("tells a runner to start fresh when a Session comes back from another runner, and not on a restart", async () => {
+  await claimed("mac-1");
+
+  const clone = await startSession({
+    kind: "clone",
+    repository: "https://example.com/app.git",
+  });
+
+  const first = await claimed("mac-1");
+
+  // mac-1 lost the attempt and takes it again.
+  await claimed("mac-1", {
+    capacity: 1,
+    running: [{ sessionId: "other", generation: 1 }],
+  });
+
+  const restarted = await claimed("mac-1");
+
+  await sleep(leaseMs * 1.5);
+  const moved = await claimed("mac-2");
+
+  await sleep(leaseMs * 1.5);
+  const back = await claimed("mac-1");
+
+  expect(first).toMatchObject([{ sessionId: clone, generation: 1 }]);
+  expect(first[0]?.fresh).toBeUndefined();
+  expect(restarted).toMatchObject([{ sessionId: clone, generation: 2 }]);
+  expect(restarted[0]?.fresh).toBeUndefined();
+
+  expect(moved).toMatchObject([
+    { sessionId: clone, generation: 3, fresh: true },
+  ]);
+
+  expect(back).toMatchObject([
+    { sessionId: clone, generation: 4, fresh: true },
+  ]);
+});
+
 test("keeps a Session on its runner while a runner with the same name polls for another Environment", async () => {
   await claimed("mac-1");
 

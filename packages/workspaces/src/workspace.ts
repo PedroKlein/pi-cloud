@@ -47,6 +47,9 @@ export interface WorkspaceOptions {
   // Added to the environment of git commands that reach a remote, such as
   // credentials (ADR 0034).
   readonly remoteEnv?: Readonly<Record<string, string>>;
+  // Drops what dir holds first, as when the Session ran on another machine
+  // since (ADR 0032).
+  readonly fresh?: boolean;
 }
 
 export async function prepareWorkspace(
@@ -54,6 +57,10 @@ export async function prepareWorkspace(
   options: WorkspaceOptions,
   log: Log,
 ): Promise<PreparedWorkspace> {
+  if (options.fresh === true) {
+    await dropWorkspace(workspace, options, log);
+  }
+
   if (workspace.kind !== "repositories") {
     const checkout = await prepareCheckout(workspace, options, log);
 
@@ -104,6 +111,28 @@ export async function prepareWorkspace(
   );
 
   return { cwd: dir, checkouts };
+}
+
+async function dropWorkspace(
+  workspace: Workspace,
+  { dir, folders }: WorkspaceOptions,
+  log: Log,
+): Promise<void> {
+  if (workspace.kind === "folder" || !(await exists(dir))) {
+    return;
+  }
+
+  const report = await removeWorkspace(
+    workspace,
+    { dir, force: true, folders },
+    log,
+  );
+
+  if (report.outcome === "kept") {
+    throw new Error(`stale workspace not dropped: ${report.reason}`);
+  }
+
+  log("stale workspace dropped", { dir });
 }
 
 async function prepareCheckout(
