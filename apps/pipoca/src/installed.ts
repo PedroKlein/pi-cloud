@@ -3,6 +3,7 @@ import {
   mkdir,
   readdir,
   readFile,
+  readlink,
   realpath,
   rename,
   rm,
@@ -37,10 +38,15 @@ export interface InstalledPlugin {
   readonly error?: string;
   // Where it was installed from, unless it was put in the folder by hand.
   readonly source?: PluginSource;
+  // A hash of its files, which the user reviews before turning it on.
+  readonly digest?: string;
 }
 
 const switchesFile = "enabled.json";
 const sourceFile = ".source.json";
+
+// What the server makes or keeps in a plugin's folder itself.
+const reserved = new Set([sourceFile, ".build", "node_modules", ".git"]);
 const idPattern = /^[a-z][a-z0-9-]*$/;
 
 export async function installedPlugins(
@@ -95,6 +101,7 @@ export async function installedPlugins(
         {
           ...(await load(folder, name, on.includes(name))),
           ...(source && { source }),
+          digest: await digestOf(folder),
         },
       ];
     }),
@@ -193,7 +200,12 @@ export async function install(
       await writeSource(staging, source);
       await rename(staging, join(root, manifest.id));
 
-      return { manifest, on: false, source };
+      return {
+        manifest,
+        on: false,
+        source,
+        digest: await digestOf(join(root, manifest.id)),
+      };
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
@@ -270,7 +282,12 @@ export async function update(
 
       await rm(old, { recursive: true, force: true });
 
-      return { manifest, on: (await turnedOn(root)).includes(id), source };
+      return {
+        manifest,
+        on: (await turnedOn(root)).includes(id),
+        source,
+        digest: await digestOf(folder),
+      };
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
@@ -432,7 +449,44 @@ export async function reread(
   return {
     ...(await load(folder, id, false)),
     ...(source && { source }),
+    digest: await digestOf(folder),
   };
+}
+
+// Every file but what the server keeps, so code changed after the user
+// looked shows as a change, not only a changed manifest.
+async function digestOf(folder: string): Promise<string> {
+  const hash = new Bun.CryptoHasher("sha256");
+
+  const entries = await readdir(folder, {
+    recursive: true,
+    withFileTypes: true,
+  }).catch(() => []);
+
+  const files = entries
+    .filter((entry) => entry.isFile() || entry.isSymbolicLink())
+    .map((entry) => relative(folder, join(entry.parentPath, entry.name)))
+    .filter((path) => !isReserved(path.split(sep)[0] ?? ""))
+    .sort();
+
+  for (const path of files) {
+    const at = join(folder, path);
+
+    const content = await readFile(at).catch(async () =>
+      readlink(at).catch(() => ""),
+    );
+
+    hash.update(
+      `${JSON.stringify(path)} ${new Bun.CryptoHasher("sha256").update(content).digest("hex")}\n`,
+    );
+  }
+
+  return hash.digest("hex");
+}
+
+// Case-insensitive, as macOS's file system is.
+export function isReserved(name: string): boolean {
+  return reserved.has(name.normalize("NFC").toLowerCase());
 }
 
 // Builds a plugin that isn't running, so what is wrong shows before the user

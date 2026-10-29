@@ -10,15 +10,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { build, idProblem, sourceOf, turnOn } from "./installed";
+import { build, idProblem, isReserved, sourceOf, turnOn } from "./installed";
 
 // The files of a plugin a meta-session writes straight into the plugins
 // folder (ADR 0035). None of its code runs until the user turns it on.
 
 const maxFileBytes = 1024 * 1024;
-
-// What the server makes or keeps in a plugin's folder itself.
-const reserved = new Set([".source.json", ".build", "node_modules", ".git"]);
 
 export async function pluginFiles(root: string, id: string): Promise<string[]> {
   const folder = await pluginFolder(root, id);
@@ -174,11 +171,6 @@ function lexicalPath(folder: string, path: string): string {
   }
 
   return lexical;
-}
-
-// Case-insensitive, as macOS's file system is.
-function isReserved(name: string): boolean {
-  return reserved.has(name.normalize("NFC").toLowerCase());
 }
 
 async function nearestFolder(path: string): Promise<string> {
