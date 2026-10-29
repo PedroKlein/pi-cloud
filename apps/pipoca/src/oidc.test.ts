@@ -660,14 +660,14 @@ test("only admins change plugins or restart the server", async () => {
   expect(statuses).toEqual([403, 403, 403, 403]);
 });
 
-test("only admins change an Environment's Kubernetes settings", async () => {
+test("only admins change a template's Kubernetes settings", async () => {
   const { cookie } = await signIn(ana);
 
-  const { environment } = (await (
-    await api("POST", "/api/environments", cookie, { name: "pods" })
-  ).json()) as { environment: { id: string } };
+  const template = (await (
+    await api("POST", "/api/templates", await pedro(), { name: "pods" })
+  ).json()) as { id: string };
 
-  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  const path = `/api/plugins/kubernetes/templates/${template.id}`;
   const patch = { spec: { volumes: [{ name: "key", secret: {} }] } };
 
   const statuses = [

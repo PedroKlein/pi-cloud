@@ -9,6 +9,7 @@ import {
   type PluginStore,
   type PublicRoute,
   type RouteCaller,
+  type RunnerSource,
   type ServerPlugin,
   type ServerPluginContext,
   type ServerTool,
@@ -113,7 +114,7 @@ export interface PluginHost {
     actor: UserActor,
   ) => Promise<ToolResult>;
   readonly offeredModels: ModelOffer;
-  readonly startsRunners: (environmentId: string) => boolean;
+  readonly startsRunners: (environment: RunnerSource) => boolean;
   readonly gitLogins: (userId: string) => readonly GitLogin[];
   readonly route: (
     request: Request,
@@ -160,6 +161,7 @@ function pluginEnvironments(
       runners.revoke(provider(environmentId), runner);
     },
     startsRunners,
+    templates: () => sessions.templates(),
   };
 }
 
@@ -203,7 +205,7 @@ export function startPlugins(
   const logins: { plugin: string; offered: () => readonly Login[] }[] = [];
   const offers: ModelOffer[] = [];
   const gitLogins: ((userId: string) => readonly GitLogin[])[] = [];
-  const starters: ((environmentId: string) => boolean)[] = [];
+  const starters: ((environment: RunnerSource) => boolean)[] = [];
 
   const failures = new Map<string, string>(
     deps.installed?.plugins.flatMap(({ manifest: { id }, error }) =>
@@ -400,7 +402,7 @@ export function startPlugins(
       logins: [] as (() => readonly Login[])[],
       offers: [] as ModelOffer[],
       gitLogins: [] as ((userId: string) => readonly GitLogin[])[],
-      starters: [] as ((environmentId: string) => boolean)[],
+      starters: [] as ((environment: RunnerSource) => boolean)[],
       profiles: new Map<string, PluginProfile>(),
       loadOnly: undefined as readonly string[] | undefined,
       unsubscribes: [] as (() => void)[],
@@ -919,8 +921,8 @@ export function startPlugins(
         ...(fallback && { default: fallback }),
       };
     },
-    startsRunners: (environmentId) =>
-      starters.some((starts) => starts(environmentId)),
+    startsRunners: (environment) =>
+      starters.some((starts) => starts(environment)),
     gitLogins: (userId) => gitLogins.flatMap((loginsOf) => loginsOf(userId)),
     route: async (request, name, path, caller) =>
       routes.get(name)?.(request, path, caller),

@@ -67,6 +67,7 @@ export function fakeContext(
       runnerToken: notFaked("environments.runnerToken"),
       revokeRunner: notFaked("environments.revokeRunner"),
       startsRunners: notFaked("environments.startsRunners"),
+      templates: () => [],
     },
     profiles: {
       provide: notFaked("profiles.provide"),

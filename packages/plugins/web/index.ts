@@ -1,5 +1,6 @@
 import type {
   Environment,
+  EnvironmentTemplate,
   PluginSettings,
   RepositoryChoice,
   Session,
@@ -92,6 +93,11 @@ export interface EnvironmentSectionProps {
   readonly environment: Environment;
 }
 
+export interface TemplateSectionProps {
+  readonly context: WebContext;
+  readonly template: EnvironmentTemplate;
+}
+
 // A tool call a plugin draws in the chat, from the transcript (ADR 0030).
 export interface ToolCall {
   readonly id: string;
@@ -139,6 +145,9 @@ export interface WebPlugin {
   // A section on the Environments page for the open Environment, such as the
   // plugin's settings for it (ADR 0032).
   readonly EnvironmentSection?: ComponentType<EnvironmentSectionProps>;
+  // A section in an Environment template, such as where the runners of
+  // Environments made from it come from (ADR 0049).
+  readonly TemplateSection?: ComponentType<TemplateSectionProps>;
   // A section on the user's Settings page, such as their linked accounts.
   readonly SettingsSection?: ComponentType<{ readonly context: WebContext }>;
   readonly SessionHeader?: ComponentType<SessionPartProps>;

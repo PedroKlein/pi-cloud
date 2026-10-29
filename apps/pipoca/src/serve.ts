@@ -201,7 +201,7 @@ export function serve(options: ServeOptions): {
     sessionPlugins: () => pluginHost.sessionPlugins(),
     offeredModels: (environmentId, userId) =>
       pluginHost.offeredModels(environmentId, userId),
-    startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),
+    startsRunners: (environment) => pluginHost.startsRunners(environment),
     pluginProfile: (id) => pluginHost.profile(id),
     gitLogins: (userId) => pluginHost.gitLogins(userId),
     templates: () => templates.list(),

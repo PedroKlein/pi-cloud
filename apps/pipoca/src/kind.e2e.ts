@@ -43,6 +43,24 @@ async function forwardPort(): Promise<void> {
   throw new Error("the server never answered through the port forward");
 }
 
+// An Environment made from a new pod template with these settings.
+async function podEnvironment(
+  name: string,
+  settings: object,
+): Promise<Environment> {
+  const template = (await (await api("/api/templates", { name })).json()) as {
+    readonly id: string;
+  };
+
+  await api(`/api/plugins/kubernetes/templates/${template.id}`, { settings });
+
+  const { environment } = (await (
+    await api("/api/environments", { name, template: template.id })
+  ).json()) as { environment: Environment };
+
+  return environment;
+}
+
 async function api(path: string, body?: unknown): Promise<Response> {
   const response = await fetch(new URL(path, server), {
     method: body === undefined ? "GET" : "POST",
@@ -163,22 +181,11 @@ test("runs a Session from an agent pod that joined with its Environment's key", 
 }, 60_000);
 
 test("runs a Session in a runner pod the kubernetes plugin starts, and removes the pod once idle", async () => {
-  const { environment } = (await (
-    await api("/api/environments", { name: "pods" })
-  ).json()) as { environment: Environment };
-
-  const saved = await fetch(
-    new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({
-        settings: { capacity: 1, maxPods: 2, idleSeconds: 5 },
-      }),
-    },
-  );
-
-  expect(saved.status).toBe(200);
+  const environment = await podEnvironment("pods", {
+    capacity: 1,
+    maxPods: 2,
+    idleSeconds: 5,
+  });
 
   const session = (await (
     await api("/api/sessions", {
@@ -224,22 +231,11 @@ test("runs a Session in a runner pod the kubernetes plugin starts, and removes t
 }, 240_000);
 
 test("brings back a Session's own pod, with its claim, after the pod is deleted", async () => {
-  const { environment } = (await (
-    await api("/api/environments", { name: "claims" })
-  ).json()) as { environment: Environment };
-
-  const saved = await fetch(
-    new URL(`/api/plugins/kubernetes/environments/${environment.id}`, server),
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", cookie },
-      body: JSON.stringify({
-        settings: { workspace: "claim", claimSize: "1Gi", idleSeconds: 5 },
-      }),
-    },
-  );
-
-  expect(saved.status).toBe(200);
+  const environment = await podEnvironment("claims", {
+    workspace: "claim",
+    claimSize: "1Gi",
+    idleSeconds: 5,
+  });
 
   const session = (await (
     await api("/api/sessions", {

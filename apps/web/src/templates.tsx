@@ -11,6 +11,8 @@ import {
 } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
+import { PluginBoundary } from "./plugin-boundary";
+import { enabledPlugins, pluginContext } from "./plugins";
 
 // What admins share for everyone's Environments (ADR 0049). The server
 // answers anyone else's change with why it can't.
@@ -211,6 +213,19 @@ function TemplateEditor({
           </p>
         </div>
       </form>
+      <div className="flex flex-col gap-4 px-5 pb-5">
+        {enabledPlugins().map(
+          ({ name, TemplateSection }) =>
+            TemplateSection && (
+              <PluginBoundary key={name} name={name}>
+                <TemplateSection
+                  context={pluginContext(name)}
+                  template={template}
+                />
+              </PluginBoundary>
+            ),
+        )}
+      </div>
     </details>
   );
 }
