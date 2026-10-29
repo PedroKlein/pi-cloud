@@ -153,7 +153,7 @@ test("a person logs out of an MCP server by its name and address", async () => {
     fakeUser({ id: "ana" }),
   );
 
-  expect(await removed.json()).toEqual({ logins: [], mcp: [] });
+  expect(await removed.json()).toEqual({ logins: [], mcp: [], servers: [] });
 });
 
 test("a person saves a login, such as an API key, that their Sessions read", async () => {
