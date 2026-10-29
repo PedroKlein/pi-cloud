@@ -30,6 +30,7 @@ import {
   startSession,
   stopSession,
 } from "./session";
+import type { McpLoginState, McpLoginStore } from "@pipoca/plugins";
 import { fauxModels } from "./testdata/models";
 import { sessionOptions } from "./testdata/options";
 
@@ -322,12 +323,12 @@ test("refuses to start on a model the provider cannot use", async () => {
   expect(start).rejects.toThrow("model not available: proxy/proxy-huge");
 });
 
-test("starts on a model that the host's credentials log in to", async () => {
-  const stored = new Map<string, Credential>([
-    ["anthropic", { type: "api_key", key: "sk-test" }],
-  ]);
+function memoryLogins(
+  entries: readonly (readonly [string, Credential])[],
+): CredentialStore {
+  const stored = new Map(entries);
 
-  const credentials: CredentialStore = {
+  return {
     read: async (id) => Promise.resolve(stored.get(id)),
     list: async () =>
       Promise.resolve(
@@ -346,6 +347,22 @@ test("starts on a model that the host's credentials log in to", async () => {
       await Promise.resolve();
     },
   };
+}
+
+const noMcpLogins: McpLoginStore = {
+  forServer: () => ({
+    load: () => undefined,
+    save: () => undefined,
+    withRefreshLock: async (fn) => fn(),
+  }),
+  tokens: () => undefined,
+  remove: () => false,
+};
+
+test("starts on a model that the host's logins log in to", async () => {
+  const credentials = memoryLogins([
+    ["anthropic", { type: "api_key", key: "sk-test" }],
+  ]);
 
   const catalog = await ModelRuntime.create({
     modelsPath: null,
@@ -368,7 +385,7 @@ test("starts on a model that the host's credentials log in to", async () => {
       extensions: [],
       packages: [],
       onError: () => undefined,
-      credentials,
+      logins: { models: credentials, mcp: noMcpLogins },
     },
   );
 
@@ -376,6 +393,70 @@ test("starts on a model that the host's credentials log in to", async () => {
 
   expect(modelName(session)).toBe(`anthropic/${model.id}`);
   expect(await readdir(root)).not.toContain("auth.json");
+});
+
+test("connects to an MCP server with the sign-in the host's logins keep", async () => {
+  const seen: string[] = [];
+
+  const mcp = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      seen.push(request.headers.get("authorization") ?? "");
+
+      return Response.json({ error: "unauthorized" }, { status: 401 });
+    },
+  });
+
+  const agentDir = join(root, "agent");
+  await mkdir(agentDir, { recursive: true });
+
+  const url = `http://127.0.0.1:${String(mcp.port)}/mcp`;
+
+  await writeFile(
+    join(agentDir, "mcp.json"),
+    JSON.stringify({ mcpServers: { remote: { url } } }),
+  );
+
+  const stored: McpLoginState = {
+    tokens: { access_token: "from-the-server", token_type: "Bearer" },
+  };
+
+  const logins: McpLoginStore = {
+    ...noMcpLogins,
+    forServer: (name, serverUrl) => ({
+      ...noMcpLogins.forServer(name, serverUrl),
+      load: () => (name === "remote" && serverUrl === url ? stored : undefined),
+    }),
+  };
+
+  const { models } = await fauxModels(root);
+
+  // Pi's MCP extension finds the agent folder only here, as a Session
+  // process sets it.
+  const before = process.env["PI_CODING_AGENT_DIR"];
+  process.env["PI_CODING_AGENT_DIR"] = agentDir;
+
+  const session = await startSession(
+    sessionOptions(root, { agentDir, models }),
+    {
+      ui: {} as SessionHost["ui"],
+      tools: [],
+      extensions: [],
+      packages: [],
+      onError: () => undefined,
+      logins: { models: memoryLogins([]), mcp: logins },
+    },
+  );
+
+  for (let tries = 0; tries < 100 && seen.length === 0; tries++) {
+    await Bun.sleep(20);
+  }
+
+  await stopSession(session);
+  await mcp.stop(true);
+  process.env["PI_CODING_AGENT_DIR"] = before;
+
+  expect(seen).toContain("Bearer from-the-server");
 });
 
 test("keeps a resumed session on the model it last used", async () => {

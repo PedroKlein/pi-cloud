@@ -15,6 +15,7 @@ import {
   hasTrustRequiringProjectResources,
   initTheme,
   type InlineExtension,
+  type McpExtensionOptions,
   ModelRuntime,
   SessionManager,
   type ResourceDiagnostic,
@@ -22,7 +23,7 @@ import {
   SettingsManager,
   type ToolExposure,
 } from "@earendil-works/pi-coding-agent";
-import type { Checkout } from "@pipoca/plugins";
+import type { Checkout, SessionLogins } from "@pipoca/plugins";
 import type { ModelRef, ThinkingLevel } from "@pipoca/protocol";
 import chalk from "chalk";
 import { pluginPackages } from "./packages";
@@ -62,8 +63,10 @@ export interface SessionHost {
   // Pi package sources plugins load in every Session.
   readonly packages: readonly string[];
   readonly onError: (error: ExtensionError) => void;
-  // Model logins kept elsewhere than the machine's auth file (ADR 0045).
-  readonly credentials?: CredentialStore;
+  // Logins kept elsewhere than the machine's files (ADR 0045).
+  readonly logins?: SessionLogins;
+  // Opens a page, such as an MCP sign-in, where the person is.
+  readonly openUrl?: (url: string) => void;
 }
 
 // The tool that lets the model reach tools of each exposure it isn't
@@ -102,11 +105,24 @@ function toolFinders(tools: readonly ToolDefinition[]): InlineExtension {
 
 // The extensions Pi's CLI builds in, so hosted sessions get the same tools.
 // Its llama.cpp provider isn't exported, so it's left out.
-const builtInExtensions: InlineExtension[] = [
-  { name: "codemode", factory: createCodemodeExtension() },
-  { name: "tool-search", factory: createToolSearchExtension() },
-  { name: "mcp", factory: createMcpExtension() },
-].map((extension) => ({ ...extension, replaceable: true, builtin: true }));
+function builtInExtensions(host?: SessionHost): InlineExtension[] {
+  const mcp: McpExtensionOptions = {
+    // Pi types the store as its own class, which it doesn't export. Its
+    // extension calls only what McpLoginStore has.
+    ...(host?.logins && {
+      credentials: host.logins.mcp as unknown as NonNullable<
+        McpExtensionOptions["credentials"]
+      >,
+    }),
+    ...(host?.openUrl && { openUrl: host.openUrl }),
+  };
+
+  return [
+    { name: "codemode", factory: createCodemodeExtension() },
+    { name: "tool-search", factory: createToolSearchExtension() },
+    { name: "mcp", factory: createMcpExtension(mcp) },
+  ].map((extension) => ({ ...extension, replaceable: true, builtin: true }));
+}
 
 export async function startSession(
   options: SessionOptions,
@@ -128,12 +144,12 @@ export async function startSession(
     projectTrusted: options.trusted ?? !asksForTrust(cwd, options),
     ...(systemPrompt !== null && { appendSystemPrompt: [systemPrompt] }),
     extensionFactories: [
-      ...builtInExtensions,
+      ...builtInExtensions(host),
       ...(host ? [toolFinders(host.tools)] : []),
       ...(host?.extensions ?? []),
     ],
     ...(host && { packages: host.packages, onError: host.onError }),
-    ...(host?.credentials && { credentials: host.credentials }),
+    ...(host?.logins && { credentials: host.logins.models }),
   });
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);

@@ -74,7 +74,7 @@ async function save(
     route,
     runnerOf(userId),
     `credentials/${provider}/release`,
-    { lease, credential: { type: "api_key", key: "sk" } },
+    { lease, value: { type: "api_key", key: "sk" } },
   );
 
   expect(saved.status).toBe(200);
@@ -95,7 +95,7 @@ test("a person sees their own logins and can log out of one", async () => {
     provider: "anthropic",
   });
 
-  expect(await removed.json()).toEqual({ logins: [] });
+  expect(await removed.json()).toEqual({ logins: [], mcp: [] });
 
   const other = await call(route, fakeUser({ id: "bo" }), "account");
 
@@ -134,7 +134,7 @@ test("a write without the lease is refused", async () => {
     route,
     runnerOf("ana"),
     "credentials/anthropic/release",
-    { lease: "made-up", credential: { type: "api_key", key: "sk" } },
+    { lease: "made-up", value: { type: "api_key", key: "sk" } },
   );
 
   expect(refused.status).toBe(409);
@@ -152,7 +152,7 @@ test("a login that isn't one is refused", async () => {
     route,
     runnerOf("ana"),
     "credentials/anthropic/release",
-    { lease, credential: { key: "sk" } },
+    { lease, value: { key: "sk" } },
   );
 
   expect(refused.status).toBe(400);
