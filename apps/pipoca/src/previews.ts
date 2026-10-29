@@ -180,8 +180,10 @@ export function previewBroker(options: {
         requestBody: body,
         answer,
         timeout: setTimeout(() => {
+          const exchange = exchanges.get(connectionId);
           exchanges.delete(connectionId);
           log("preview not answered", { ...target, connectionId });
+          exchange?.host?.close(1011, "the Session didn't answer");
           answer(new Response("The Session didn't answer.", { status: 504 }));
         }, hostTimeoutMs),
       });
@@ -224,6 +226,7 @@ export function previewBroker(options: {
         const exchange = exchanges.get(connectionId);
         exchanges.delete(connectionId);
         log("preview not answered", { ...target, connectionId });
+        exchange?.host?.close(1011, "the Session didn't answer");
         exchange?.browser?.close(1011, "the Session didn't answer");
       }, hostTimeoutMs),
     });

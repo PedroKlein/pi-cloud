@@ -3824,6 +3824,71 @@ test("drops a page once nothing listens on its port", async () => {
   ).toEqual([1, 0]);
 });
 
+test("lets go of the app's WebSocket when the Session answers too late", async () => {
+  let live = 0;
+  let upgraded = (): void => undefined;
+
+  const tried = new Promise<void>((resolve) => {
+    upgraded = resolve;
+  });
+
+  const app = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: async (request, appServer) => {
+      if (new URL(request.url).pathname !== "/slow") {
+        return new Response("ok");
+      }
+
+      // Past the server's wait for the Session to answer.
+      await Bun.sleep(11_000);
+
+      const answer = appServer.upgrade(request, { data: undefined })
+        ? undefined
+        : new Response("gone", { status: 400 });
+
+      upgraded();
+
+      return answer;
+    },
+    websocket: {
+      open: () => {
+        live += 1;
+      },
+      close: () => {
+        live -= 1;
+      },
+      message: () => undefined,
+    },
+  });
+
+  const port = app.port ?? 0;
+  const session = await openedPage(`http://localhost:${String(port)}/`);
+  const preview = await visitPreview(session.id, port, "/");
+
+  const url = new URL("/slow", server.url);
+  url.protocol = "ws:";
+
+  const socket = new WebSocket(url, {
+    headers: { host: preview.host, cookie: preview.cookie },
+  });
+
+  const closed = new Promise<number>((resolve) => {
+    socket.addEventListener("close", (event) => {
+      resolve(event.code);
+    });
+  });
+
+  expect(await closed).toBe(1011);
+
+  await tried;
+  await Bun.sleep(500);
+
+  expect(live).toBe(0);
+
+  await app.stop(true);
+}, 30_000);
+
 test("carries a preview's WebSocket frames both ways, as dev servers' live reload uses them", async () => {
   const app = Bun.serve<{ host: string | null }>({
     hostname: "127.0.0.1",
