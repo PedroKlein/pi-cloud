@@ -230,6 +230,21 @@ test("fails a plugin whose manifest this server can't load", async () => {
   expect((await listed("misnamed"))?.error).toContain("folder's name");
 });
 
+test("names the manifest field that doesn't fit, failing only that plugin", async () => {
+  await writePlugin("hello");
+  await writePlugin("untitled", { title: 7 });
+  await writePlugin("greedy", { capabilities: ["routes", "root"] });
+  await start();
+
+  expect((await listed("untitled"))?.error).toBe("pipoca.title must be string");
+
+  expect((await listed("greedy"))?.error).toBe(
+    "pipoca.capabilities.1 must be equal to one of the allowed values",
+  );
+
+  expect(await listed("hello")).toMatchObject({ state: "off" });
+});
+
 test("fails only the plugin whose settings are malformed", async () => {
   await writePlugin("hello");
 
