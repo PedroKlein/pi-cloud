@@ -6,7 +6,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { SessionCloud, SessionPlugin } from "@pipoca/plugins";
 import { aliasesOf, candidates, failure, gatewayProvider } from "./gateway";
-import { mergeHealth, type ModelRef, type SessionConfig } from "./model";
+import {
+  mergeHealth,
+  type ModelRef,
+  noHealth,
+  type SessionConfig,
+} from "./model";
 
 const thinkingLevels = [
   "off",
@@ -35,11 +40,7 @@ export const models: SessionPlugin = {
       },
     );
 
-    if (first === undefined || first.aliases === null) {
-      return;
-    }
-
-    let config = first;
+    let config = first ?? { version: 0, aliases: null, health: noHealth };
     let registered: readonly string[] = [];
 
     const register = (): void => {
@@ -123,7 +124,7 @@ export const models: SessionPlugin = {
       }
     });
 
-    follow(pi, cloud, config.version, (next) => {
+    follow(pi, cloud, first?.version, (next) => {
       const aliasesChanged =
         JSON.stringify(next.aliases) !== JSON.stringify(config.aliases);
 
@@ -200,11 +201,11 @@ async function read(
 }
 
 // Waits for the server's next change to the config or health, until the
-// Session shuts down.
+// Session shuts down. Without a version it reads the config at once.
 function follow(
   pi: ExtensionAPI,
   cloud: SessionCloud,
-  version: number,
+  version: number | undefined,
   changed: (config: SessionConfig) => void,
 ): void {
   const stop = new AbortController();
