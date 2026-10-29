@@ -1739,6 +1739,58 @@ test("removes several repositories only when none of them would lose work", asyn
   );
 });
 
+test("keeps the restore points of repositories it removed before another failed", async () => {
+  const second = join(root, "second");
+  await repositoryAt(second);
+  const checkout = await checkoutWithRemote();
+  const dir = join(root, "workspaces", "s1");
+  const options = { dir, folders: [checkout] };
+
+  const workspace = {
+    kind: "repositories",
+    branch: "pipoca/s1",
+    repositories: [{ repository }, { repository: second }],
+  } as const;
+
+  await prepareWorkspace(workspace, options, noLog);
+  await commit(join(dir, "origin"), "work.txt");
+  await git(join(dir, "origin"), "push", "origin", "pipoca/s1");
+
+  await commit(join(dir, "second"), "local.txt");
+  const tip = await git(join(dir, "second"), "rev-parse", "HEAD");
+
+  await rm(
+    join(dir, "second", ".git", "objects", tip.slice(0, 2), tip.slice(2)),
+  );
+
+  const report = await removeWorkspace(workspace, { dir, force: true }, noLog);
+
+  expect(report).toMatchObject({
+    outcome: "kept",
+    restore: {
+      ...workspace,
+      repositories: [
+        { repository, restorePoint: "origin/pipoca/s1" },
+        { repository: second },
+      ],
+    },
+  });
+
+  expect(stat(join(dir, "origin"))).rejects.toThrow();
+
+  await prepareWorkspace(
+    report.outcome === "kept" && report.restore !== undefined
+      ? report.restore
+      : workspace,
+    options,
+    noLog,
+  );
+
+  expect(await readFile(join(dir, "origin", "work.txt"), "utf8")).toBe(
+    "work.txt\n",
+  );
+});
+
 test("removes a repository worktree of a bare repository kept in a folder's .git", async () => {
   const tools = join(root, "tools");
   await run("git", ["clone", "--bare", repository, join(tools, ".git")]);

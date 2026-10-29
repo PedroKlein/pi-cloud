@@ -297,8 +297,7 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
     // An unarchive can overtake a removal or its report, so the assignment
     // may still name the workspace that removal deleted.
-    const workspace =
-      report?.outcome === "removed" ? report.restore : assignment.workspace;
+    const workspace = report?.restore ?? assignment.workspace;
 
     try {
       const environment = assignment.environment.variables;

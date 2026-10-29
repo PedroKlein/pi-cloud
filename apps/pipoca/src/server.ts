@@ -2042,16 +2042,24 @@ function removalReport(body: unknown): RemovalReport {
 
   switch (outcome) {
     case "removed":
-      if (typeof fieldsOf(restore)["kind"] !== "string") {
-        throw new BadRequest("restore must be a workspace with a kind");
-      }
-
-      return { outcome, restore: restore as Workspace };
+      return { outcome, restore: workspaceOf(restore) };
     case "kept":
-      return { outcome, reason: textOf("reason", reason) };
+      return {
+        outcome,
+        reason: textOf("reason", reason),
+        ...(restore !== undefined && { restore: workspaceOf(restore) }),
+      };
     default:
       throw new BadRequest('outcome must be "removed" or "kept"');
   }
+}
+
+function workspaceOf(restore: unknown): Workspace {
+  if (typeof fieldsOf(restore)["kind"] !== "string") {
+    throw new BadRequest("restore must be a workspace with a kind");
+  }
+
+  return restore as Workspace;
 }
 
 function livePost(body: unknown): LivePost {

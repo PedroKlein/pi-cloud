@@ -3009,6 +3009,45 @@ test("keeps a session's workspace when a removal report's restore has no kind", 
   expect(stored.workspace).toEqual(session.workspace);
 });
 
+test("keeps the restore points a partly failed removal reports", async () => {
+  const session = await createSession("vm", {
+    kind: "worktree",
+    path: root,
+  });
+
+  await api(`/api/sessions/${session.id}/archive`, {});
+
+  const work = (await (
+    await asAgent("vm", "/agent/work", {
+      running: [],
+      folders: [],
+      models: [],
+    })
+  ).json()) as Work;
+
+  const restore = {
+    ...session.workspace,
+    restorePoint: "origin/pipoca/restored",
+  };
+
+  await asAgent("vm", `/agent/sessions/${session.id}/workspace`, {
+    generation: work.remove[0]?.generation,
+    outcome: "kept",
+    reason: "git failed",
+    restore,
+  });
+
+  const stored = (await (
+    await api(`/api/sessions/${session.id}`)
+  ).json()) as Session;
+
+  expect(stored).toMatchObject({
+    workspace: restore,
+    workspaceRemoval: "kept",
+    workspaceKeptReason: "git failed",
+  });
+});
+
 test("checks several repositories out in one workspace and shows each one's changes", async () => {
   const checkout = await pushedCheckout();
   const remote = join(root, "remote.git");
