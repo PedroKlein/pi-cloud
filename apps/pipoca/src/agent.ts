@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import {
   mkdir,
@@ -11,6 +12,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
   GitLogin,
+  Joined,
   SessionStart,
   ModelRef,
   Removal,
@@ -100,27 +102,114 @@ interface Unreported {
 }
 
 export async function runAgent(options: AgentOptions): Promise<void> {
-  const { log } = options;
+  const { credential, log } = options;
 
-  const { credential } = options;
+  if ("token" in credential) {
+    await runAs(options, credential.token).then(stopIfUnknown);
 
-  const token =
-    "token" in credential
-      ? credential.token
-      : (
-          await joinPool(
-            options.server,
-            credential.key,
-            { name: options.provider },
-            log,
-            options.signal,
-          )
-        )?.token;
-
-  if (token === undefined) {
     return;
   }
 
+  // A restart comes back with the token it joined with, which is no join, so
+  // the runner isn't refused its own name while it still shows online
+  // (ADR 0032). Only a token the server no longer knows makes it join again.
+  const saved = await savedToken(options, credential.key);
+  if (saved !== undefined) {
+    if ((await runAs(options, saved)) !== "unknown_token") {
+      return;
+    }
+
+    log("saved runner token refused, joining again");
+  }
+
+  const joined = await joinPool(
+    options.server,
+    credential.key,
+    { name: options.provider },
+    log,
+    options.signal,
+  );
+
+  if (joined === undefined) {
+    return;
+  }
+
+  await saveToken(options, credential.key, joined);
+  await runAs(options, joined.token).then(stopIfUnknown);
+}
+
+function stopIfUnknown(outcome: "unknown_token" | undefined): void {
+  if (outcome === "unknown_token") {
+    throw new Error("the server let this runner go");
+  }
+}
+
+// The runner's token, kept in its data folder for the server and the
+// Environment key it joined with, so another --server or key joins anew.
+interface SavedRunner {
+  readonly server: string;
+  readonly environment: string;
+  readonly runner: string;
+  readonly key: string;
+  readonly token: string;
+}
+
+const savedRunnerFile = "runner.json";
+
+async function savedToken(
+  options: AgentOptions,
+  key: string,
+): Promise<string | undefined> {
+  const path = join(options.dataDir, savedRunnerFile);
+
+  try {
+    const saved = JSON.parse(
+      await readFile(path, "utf8"),
+    ) as Partial<SavedRunner>;
+
+    return saved.server === options.server &&
+      saved.runner === options.provider &&
+      saved.key === keyHash(key) &&
+      typeof saved.token === "string"
+      ? saved.token
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function saveToken(
+  options: AgentOptions,
+  key: string,
+  joined: Joined,
+): Promise<void> {
+  const saved: SavedRunner = {
+    server: options.server,
+    environment: joined.environment,
+    runner: options.provider,
+    key: keyHash(key),
+    token: joined.token,
+  };
+
+  const path = join(options.dataDir, savedRunnerFile);
+  const temporary = `${path}.${randomUUID()}`;
+
+  await mkdir(options.dataDir, { recursive: true });
+  await writeFile(temporary, JSON.stringify(saved), { mode: 0o600 });
+  await rename(temporary, path);
+}
+
+function keyHash(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+// A token the server refused before any poll got through is "unknown_token",
+// so a saved one can be replaced by joining again.
+async function runAs(
+  options: AgentOptions,
+  token: string,
+): Promise<"unknown_token" | undefined> {
+  const { log } = options;
   const agent = { server: options.server, token };
 
   const hosted = new Map<string, Hosted>();
@@ -645,17 +734,28 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   let unsupported: UnsupportedVersion | undefined;
   const idle = idleExit(options.exitWhenIdleMs, () => hosted.size, log);
 
+  const controlPlane = httpControlPlane(agent, (reason) => {
+    unsupported = reason;
+
+    log(
+      reason?.message ??
+        "the server let this runner go; join again with the Environment's key",
+    );
+
+    letGo.abort();
+  });
+
+  const progress = { polled: false };
+
   await runProvider({
-    controlPlane: httpControlPlane(agent, (reason) => {
-      unsupported = reason;
+    controlPlane: {
+      work: async (poll, signal) => {
+        const work = await controlPlane.work(poll, signal);
+        progress.polled = true;
 
-      log(
-        reason?.message ??
-          "the server let this runner go; join again with the Environment's key",
-      );
-
-      letGo.abort();
-    }),
+        return work;
+      },
+    },
     log,
     signal: AbortSignal.any([options.signal, letGo.signal, idle.signal]),
     folders: [...new Set([...options.folders, ...checkouts])],
@@ -741,8 +841,14 @@ export async function runAgent(options: AgentOptions): Promise<void> {
   }
 
   if (letGo.signal.aborted) {
-    throw new Error("the server let this runner go");
+    if (progress.polled) {
+      throw new Error("the server let this runner go");
+    }
+
+    return "unknown_token";
   }
+
+  return undefined;
 }
 
 async function claimProfiles(dir: string, server: string): Promise<boolean> {

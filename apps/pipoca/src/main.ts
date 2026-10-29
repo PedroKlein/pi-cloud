@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { installPackage } from "@pipoca/sessionhost";
 import { runAgent } from "./agent";
+import { JoinRefused } from "./client";
 import { dataFolder } from "./data-folder";
 import { fauxModels } from "./faux";
 import { installedPlugins } from "./installed";
@@ -210,6 +211,13 @@ switch (command) {
       }),
       log: stderrLog("agent"),
       signal: shutdown.signal,
+    }).catch((error: unknown) => {
+      if (!(error instanceof JoinRefused)) {
+        throw error;
+      }
+
+      process.stderr.write(`${error.message}\n`);
+      process.exit(1);
     });
 
     break;

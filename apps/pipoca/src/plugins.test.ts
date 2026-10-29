@@ -28,7 +28,6 @@ import {
 import { runAgent } from "./agent";
 import { sessionParts } from "./session-parts";
 import { serve } from "./serve";
-import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
@@ -36,7 +35,6 @@ let root: string;
 let faux: ReturnType<typeof fauxProvider>;
 let server: ReturnType<typeof serve> | undefined;
 let signedIn: () => Promise<string>;
-let runners: ReturnType<typeof runnerCredentials>;
 let runtime: ModelRuntime;
 
 beforeEach(async () => {
@@ -88,7 +86,6 @@ async function start(
   });
 
   signedIn = firstUser(server, logs);
-  runners = runnerCredentials(server, signedIn);
 }
 
 async function api(path: string, body?: unknown): Promise<Response> {
@@ -155,11 +152,14 @@ const entriesInclude =
 
 test("serves a plugin's tools to the sessions they apply to and returns their result", async () => {
   const called: KernelEvent[] = [];
+  let machines: ServerPluginContext["environments"] | undefined;
 
   await start([
     {
       name: "lookup",
-      register: ({ tools, events }) => {
+      register: ({ tools, events, environments }) => {
+        machines = environments;
+
         events.subscribe("ToolCalled", (event) => {
           called.push(event);
         });
@@ -209,13 +209,14 @@ test("serves a plugin's tools to the sessions they apply to and returns their re
   ]);
 
   const toolless = await createSession({ systemPrompt: "No tools here." });
+  const token = machines?.runnerToken(toolless.environmentId, "local");
 
   const tools = await fetch(
     new URL(`/agent/sessions/${toolless.id}/tools?generation=1`, server?.url),
     {
       headers: {
         "pipoca-protocol": "4",
-        authorization: `Bearer ${await runners.token("local")}`,
+        authorization: `Bearer ${token ?? ""}`,
       },
     },
   );
@@ -334,10 +335,14 @@ test("serves a tool's exposure, namespace and hints to its sessions", async () =
     annotations: { readOnlyHint: true },
   } as const;
 
+  let machines: ServerPluginContext["environments"] | undefined;
+
   await start([
     {
       name: "keys",
-      register: ({ tools }) => {
+      register: ({ tools, environments }) => {
+        machines = environments;
+
         tools.register({
           ...spec,
           appliesTo: () => true,
@@ -348,13 +353,14 @@ test("serves a tool's exposure, namespace and hints to its sessions", async () =
   ]);
 
   const session = await createSession();
+  const token = machines?.runnerToken(session.environmentId, "local");
 
   const tools = await fetch(
     new URL(`/agent/sessions/${session.id}/tools?generation=1`, server?.url),
     {
       headers: {
         "pipoca-protocol": "4",
-        authorization: `Bearer ${await runners.token("local")}`,
+        authorization: `Bearer ${token ?? ""}`,
       },
     },
   );

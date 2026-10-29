@@ -291,29 +291,41 @@ export class Auth {
   }
 
   // The first runner to join with a join key gets an Environment that
-  // newEnvironment makes for it, and the key becomes that Environment's.
+  // environments.create makes for it, and the key becomes that Environment's.
+  // A runner is refused the name of one online in the Environment, and takes
+  // over the name of one offline, whose tokens stop working (ADR 0032).
   join(
     key: string,
     runner: string,
-    newEnvironment: (runner: string) => string,
-  ): Joined | undefined {
+    environments: {
+      readonly create: (runner: string) => string;
+      readonly online: (environment: string, runner: string) => boolean;
+    },
+  ): Joined | "online" | undefined {
     if (this.#store.hasJoinKey(hash(key))) {
-      this.#store.claimJoinKey(hash(key), newEnvironment(runner));
+      this.#store.claimJoinKey(hash(key), environments.create(runner));
     }
 
     const environment = this.#store.keyEnvironment(hash(key));
+    if (environment === undefined) {
+      return undefined;
+    }
 
-    return environment === undefined
-      ? undefined
-      : {
-          token: this.#agentToken({
-            environment,
-            runner,
-            sessionId: null,
-            joined: true,
-          }),
-          environment,
-        };
+    if (environments.online(environment, runner)) {
+      return "online";
+    }
+
+    this.#store.deleteRunnerTokens(environment, runner);
+
+    return {
+      token: this.#agentToken({
+        environment,
+        runner,
+        sessionId: null,
+        joined: true,
+      }),
+      environment,
+    };
   }
 
   // The server's own runner needs no key, and it and its Sessions stop with

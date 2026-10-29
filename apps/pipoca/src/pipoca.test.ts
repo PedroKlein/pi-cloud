@@ -58,7 +58,7 @@ async function startAgent(
   const done = runAgent({
     server: serverUrl.href,
     provider,
-    credential: { key: await runners.key(environment) },
+    credential: { token: await runners.token(provider, environment) },
     dataDir: join(root, provider),
     extensionPaths,
     folders: [root, join(root, "origin")],
@@ -1742,6 +1742,63 @@ test("stops a runner the server let go when its Environment got a new key", asyn
   );
 
   expect(stopped).toEqual(new Error("the server let this runner go"));
+});
+
+test("joins again when the server no longer knows the token an agent saved", async () => {
+  const key = await runners.key("pool");
+  const logs: string[] = [];
+
+  const start = (): (() => Promise<void>) => {
+    const controller = new AbortController();
+
+    const done = runAgent({
+      server: server.url.href,
+      provider: "mac",
+      credential: { key },
+      dataDir: join(root, "mac"),
+      extensionPaths: [],
+      folders: [root],
+      models: { runtime, model: faux.getModel() },
+      log: (message) => {
+        logs.push(message);
+      },
+      signal: controller.signal,
+    });
+
+    const stop = async (): Promise<void> => {
+      controller.abort();
+      await done;
+    };
+
+    agents.push(stop);
+
+    return stop;
+  };
+
+  const macOnline = async (): Promise<boolean> =>
+    ((await (await api("/api/environments")).json()) as Environment[]).some(
+      ({ provider, runners: polled }) =>
+        provider === "pool" &&
+        polled.some(({ name, online }) => name === "mac" && online),
+    );
+
+  const stop = start();
+  while (!(await macOnline())) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  await stop();
+  while (await macOnline()) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  await runners.token("mac", "pool");
+  start();
+  while (!(await macOnline())) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  expect(logs).toContain("saved runner token refused, joining again");
 });
 
 test("stops a runner whose server speaks another protocol version instead of retrying", async () => {

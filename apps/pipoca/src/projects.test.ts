@@ -12,6 +12,7 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { ServerPluginContext } from "@pipoca/plugins";
 import type { ProjectView } from "@pipoca/projects/model";
 import type { Environment, Session, ToolSpec } from "@pipoca/protocol";
 import { runAgent } from "./agent";
@@ -27,6 +28,7 @@ let runtime: ModelRuntime;
 let server: ReturnType<typeof serve> | undefined;
 let signedIn: () => Promise<string>;
 let runners: ReturnType<typeof runnerCredentials>;
+let machines: ServerPluginContext["environments"] | undefined;
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pipoca-projects-")));
@@ -52,6 +54,28 @@ beforeEach(async () => {
       extensionPaths: [],
       folders: [],
       models: { runtime, model: faux.getModel() },
+    },
+    // Reads a Session's tools as its runner does, which no second runner of
+    // that name can join to do.
+    installed: {
+      root,
+      plugins: [
+        {
+          manifest: {
+            id: "machines",
+            title: "Machines",
+            description: "",
+            capabilities: ["environments"],
+          },
+          on: true,
+          server: {
+            name: "machines",
+            register: ({ environments }) => {
+              machines = environments;
+            },
+          },
+        },
+      ],
     },
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
@@ -289,6 +313,8 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
   expect(notices).toContain("set its work state to review_ready");
   expect(notices).toContain("bumped to v2");
 
+  const token = machines?.runnerToken(coordinator.environmentId, "local");
+
   const tools = async (sessionId: string): Promise<string[]> =>
     (
       (await (
@@ -300,7 +326,7 @@ test("runs a Project: a coordinator starts a thread, hears about its turns and s
           {
             headers: {
               "pipoca-protocol": "4",
-              authorization: `Bearer ${await runners.token("local")}`,
+              authorization: `Bearer ${token ?? ""}`,
             },
           },
         )

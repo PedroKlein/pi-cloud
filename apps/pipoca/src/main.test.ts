@@ -261,6 +261,176 @@ test("joins an agent started with only a join key under its host's name, sharing
   }
 }, 30_000);
 
+test("stops an agent with the server's reason when a runner of its name is online", async () => {
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "pipoca-")));
+  const main = join(import.meta.dirname, "main.ts");
+
+  const server = spawn(
+    process.execPath,
+    [main, "server", "--port", "0", "--database", ":memory:"],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  const agent = (dataDir: string, key: string): ChildProcess =>
+    spawn(
+      process.execPath,
+      [
+        main,
+        "agent",
+        "--name",
+        "mac",
+        "--server",
+        url,
+        "--data-dir",
+        join(folder, dataDir),
+        "--folder",
+        folder,
+      ],
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        env: { ...process.env, PIPOCA_KEY: key },
+      },
+    );
+
+  let url = "";
+  let first: ChildProcess | undefined;
+
+  try {
+    const signed = await signedIn(server);
+    url = signed.url;
+
+    const created = await fetch(new URL("/api/environments", url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: signed.cookie },
+      body: JSON.stringify({ name: "laptops" }),
+    });
+
+    const { key } = (await created.json()) as { key: string };
+    first = agent("first", key);
+    first.stderr?.resume();
+
+    let environment: Environment | undefined;
+    while (environment?.online !== true) {
+      const response = await fetch(new URL("/api/environments", url), {
+        headers: { cookie: signed.cookie },
+      });
+
+      [environment] = (await response.json()) as Environment[];
+      await sleep(20);
+    }
+
+    const second = agent("second", key);
+    let stderr = "";
+    second.stderr?.setEncoding("utf8");
+
+    second.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    const [code] = (await once(second, "exit")) as [number | null];
+
+    expect(code).toBe(1);
+    expect(stderr).toEndWith("a runner named mac is online here\n");
+    expect(stderr).not.toContain("join failed");
+  } finally {
+    first?.kill("SIGKILL");
+    server.kill("SIGKILL");
+    await rm(folder, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test("brings an agent restarted while its runner still shows online back under its own name", async () => {
+  const folder = await realpath(await mkdtemp(join(tmpdir(), "pipoca-")));
+  const main = join(import.meta.dirname, "main.ts");
+  const [before, after] = [join(folder, "before"), join(folder, "after")];
+  await Promise.all([mkdir(before), mkdir(after)]);
+
+  const server = spawn(
+    process.execPath,
+    [main, "server", "--port", "0", "--database", ":memory:"],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+
+  let serverLog = "";
+
+  server.stderr.on("data", (chunk: Buffer) => {
+    serverLog += chunk.toString();
+  });
+
+  let url = "";
+  let key = "";
+
+  const agent = (shared: string): ChildProcess =>
+    spawn(
+      process.execPath,
+      [
+        main,
+        "agent",
+        "--name",
+        "mac",
+        "--server",
+        url,
+        "--data-dir",
+        join(folder, ".agent"),
+        "--folder",
+        shared,
+      ],
+      { stdio: "ignore", env: { ...process.env, PIPOCA_KEY: key } },
+    );
+
+  let running: ChildProcess | undefined;
+
+  try {
+    const signed = await signedIn(server);
+    url = signed.url;
+
+    const created = await fetch(new URL("/api/environments", url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: signed.cookie },
+      body: JSON.stringify({ name: "laptops" }),
+    });
+
+    key = ((await created.json()) as { key: string }).key;
+
+    const listed = async (shared: string): Promise<Environment> => {
+      for (;;) {
+        const response = await fetch(new URL("/api/environments", url), {
+          headers: { cookie: signed.cookie },
+        });
+
+        const [environment] = (await response.json()) as Environment[];
+        if (environment?.folders.includes(shared) === true) {
+          return environment;
+        }
+
+        await sleep(20);
+      }
+    };
+
+    running = agent(before);
+    await listed(before);
+    running.kill("SIGTERM");
+    await once(running, "exit");
+
+    running = agent(after);
+    const environment = await listed(after);
+    const saved = await stat(join(folder, ".agent", "runner.json"));
+
+    expect(
+      environment.runners.map(({ name, online }) => ({ name, online })),
+    ).toEqual([{ name: "mac", online: true }]);
+
+    expect(running.exitCode).toBeNull();
+    expect(serverLog.match(/runner joined/g)).toHaveLength(1);
+    expect(serverLog).not.toContain("runner refused");
+    expect(saved.mode & 0o777).toBe(0o600);
+  } finally {
+    running?.kill("SIGKILL");
+    server.kill("SIGKILL");
+    await rm(folder, { recursive: true, force: true });
+  }
+}, 30_000);
+
 test("marks a session failed and keeps running when its process cannot be spawned", async () => {
   const folder = await realpath(await mkdtemp(join(tmpdir(), "pipoca-")));
 
