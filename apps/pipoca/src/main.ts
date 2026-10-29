@@ -10,15 +10,15 @@ import { JoinRefused } from "./client";
 import { dataFolder } from "./data-folder";
 import { fauxModels } from "./faux";
 import { installedPlugins } from "./installed";
-import { restartExitCode, supervised } from "./restart";
+import { restartExitCode, supervise, supervised } from "./restart";
 import { stderrLog } from "./log";
 import { parseSecretKey } from "./secret-box";
 import { serve } from "./serve";
-import { runSessionProcess } from "./session-process";
+import { pipoca, runSessionProcess } from "./session-process";
 
 const usage = `usage:
   [PIPOCA_SECRET_KEY=<32 bytes, base64>] \\
-  pipoca server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
+  pipoca server [--supervise] [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                   [--database ~/.pipoca/server.db] [--sso-only] [--trust-proxy]
                   [--plugins <folder next to the database>/plugins]
                   [--config-dir <folder next to the database>/config]
@@ -64,6 +64,7 @@ switch (command) {
     const { values } = parseArgs({
       args: rest,
       options: {
+        supervise: { type: "boolean", default: false },
         host: { type: "string", default: "127.0.0.1" },
         url: { type: "string" },
         port: { type: "string", default: "7420" },
@@ -78,6 +79,21 @@ switch (command) {
         extension: { type: "string", multiple: true, default: [] },
       },
     });
+
+    // A container has nothing that starts the server again in place, and
+    // Kubernetes backs off from a container that keeps exiting.
+    if (values.supervise) {
+      const supervisor = supervise(
+        [...pipoca, "server", ...rest.filter((arg) => arg !== "--supervise")],
+        stderrLog("supervisor"),
+      );
+
+      shutdown.signal.addEventListener("abort", () => {
+        void supervisor.stop();
+      });
+
+      process.exit(await supervisor.exited);
+    }
 
     await checkFolders(values.folder);
 

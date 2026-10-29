@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx`, the binary's `import()` was checked, web parts get shared modules from a global, and Session parts are fetched per Session, step 6) and 2026-10-29 (built-in plugins declare `capabilities` too; `requires` waits for a plugin that needs it)
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx`, the binary's `import()` was checked, web parts get shared modules from a global, and Session parts are fetched per Session, step 6) and 2026-10-29 (built-in plugins declare `capabilities` too; `requires` waits for a plugin that needs it; the server restarts inside its container)
 - Date: 2026-10-22
 
 ## Context
@@ -88,6 +88,7 @@ Contributions (tools, routes, slots, commands) stay in code. Declaring them in t
 - A plugin may export `onEnable`, which runs once when the user turns it on, for first-time setup.
 - Sessions on a separate agent, like the laptop's, keep running through the restart with the Session part they started with. Sessions on the server's built-in provider are interrupted and reload idle from their transcript ([ADR 0012](0012-built-in-provider.md)), so the restart waits for the user to confirm while any of them is mid-turn. Sessions started or reloaded later get the new set.
 - Live enable and disable, like Obsidian's, can be added later without changing the plugin interface.
+- Amended 2026-10-29, by the owner's decision: in a container the server restarts in place. The image runs `pipoca server --supervise`, which starts the server as a child process and starts it again when it exits with code 75, so the kubelet never sees the exit. The kubelet counts every exit as a crash and backs off from 10 seconds up to 5 minutes, so a few restarts in a row left the server down for minutes in CrashLoopBackOff. The parent passes SIGTERM and SIGINT to the server, which stops its Sessions in order, and exits with the server's own code for any exit that isn't a restart, so a real crash still reaches the kubelet. `bun run dev` uses the same loop. systemd on the VM already starts the server again and is unchanged.
 
 ### Settings with a schema
 

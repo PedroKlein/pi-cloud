@@ -60,3 +60,21 @@ test("the chart trusts the proxy in front only when there is one", () => {
 
   expect(main).toContain('trustProxy: values["trust-proxy"]');
 });
+
+// The kubelet counts every exit as a crash and backs off for up to five
+// minutes, so the server restarts inside the container instead.
+test("the chart's server restarts inside its container, not through the kubelet", () => {
+  const dockerfile = readFileSync(
+    join(import.meta.dir, "../../../Dockerfile"),
+    "utf8",
+  );
+
+  expect(dockerfile).toMatch(
+    /^ENTRYPOINT \["pipoca", "server", "--supervise",/m,
+  );
+
+  const server = deployment.slice(deployment.indexOf("- name: server"));
+
+  expect(server).not.toMatch(/^\s*command:/m);
+  expect(deployment).not.toContain("PIPOCA_SUPERVISED");
+});
