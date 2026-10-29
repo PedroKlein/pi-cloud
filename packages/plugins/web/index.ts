@@ -231,8 +231,7 @@ function connect(): void {
     lost = true;
 
     if (source.readyState === closedState && stream === source) {
-      retry = setTimeout(connect, Math.min(1000 * 2 ** failures, 30_000));
-      failures++;
+      void reconnect(source);
     }
   });
 
@@ -244,6 +243,34 @@ function connect(): void {
       watchers.forEach(notify);
     }
   });
+}
+
+// An EventSource doesn't say which error response closed it, and a signed
+// out browser would otherwise retry forever.
+async function reconnect(source: ChangeStream): Promise<void> {
+  const status = await fetch("/api/changes").then(
+    async (response) => {
+      await response.body?.cancel();
+
+      return response.status;
+    },
+    () => undefined,
+  );
+
+  if (stream !== source) {
+    return;
+  }
+
+  if (status === 401) {
+    (
+      globalThis as unknown as { location: { reload: () => void } }
+    ).location.reload();
+
+    return;
+  }
+
+  retry = setTimeout(connect, Math.min(1000 * 2 ** failures, 30_000));
+  failures++;
 }
 
 // Calls onChange when the server says one of the topics changed, and after

@@ -120,3 +120,46 @@ test("watchChanges fetches again after an error response closed the stream", asy
     globals.EventSource = original;
   }
 });
+
+test("watchChanges reloads the page instead of reconnecting once the browser is signed out", async () => {
+  const globals = globalThis as unknown as {
+    EventSource: unknown;
+    location?: unknown;
+  };
+
+  const original = globals.EventSource;
+  const realFetch = globalThis.fetch;
+  let reloads = 0;
+  globals.EventSource = FakeStream;
+  globals.location = { reload: () => reloads++ };
+
+  globalThis.fetch = Object.assign(
+    async () =>
+      Promise.resolve(Response.json({ error: "signed_out" }, { status: 401 })),
+    { preconnect: realFetch.preconnect },
+  );
+
+  try {
+    FakeStream.opened = [];
+    const unwatch = watchChanges(["sessions"], () => undefined);
+    const [stream] = FakeStream.opened;
+
+    if (stream !== undefined) {
+      stream.readyState = 2;
+    }
+
+    stream?.emit("error");
+    await sleep(1100);
+
+    expect({ reloads, streams: FakeStream.opened.length }).toEqual({
+      reloads: 1,
+      streams: 1,
+    });
+
+    unwatch();
+  } finally {
+    globals.EventSource = original;
+    globalThis.fetch = realFetch;
+    delete globals.location;
+  }
+});
