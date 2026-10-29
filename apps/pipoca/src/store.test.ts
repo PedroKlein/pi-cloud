@@ -561,6 +561,58 @@ test("moves Profiles from the database to folders and points at them", () => {
   expect(project).toEqual({ profile_id: "work" });
 });
 
+test("gives a sole user the Profiles and default that were everyone's", () => {
+  const { profiles, store } = heldForEveryone(["pedro"]);
+
+  expect(profiles.read("work")?.ownerId).toBe("pedro");
+  expect(store.defaultProfileId("pedro")).toBe("work");
+
+  store.close();
+});
+
+test("shares the Profiles that were everyone's among several users", () => {
+  const { profiles, store } = heldForEveryone(["pedro", "ana"]);
+
+  expect(profiles.read("work")?.ownerId).toBeNull();
+  expect(store.defaultProfileId("pedro")).toBe("work");
+  expect(store.defaultProfileId("ana")).toBe("work");
+
+  store.close();
+});
+
+// Before each user had their own, one server-wide owner held every Profile
+// and the default.
+function heldForEveryone(users: readonly string[]): {
+  readonly profiles: ProfileFolders;
+  readonly store: ReturnType<typeof openStore>;
+} {
+  const path = join(root, "server.db");
+  const profiles = folders();
+
+  profiles.write(
+    "work",
+    { name: "Work", ownerId: "local", createdAt: "2026-10-24T00:00:00.000Z" },
+    {},
+  );
+
+  const old = openStore(path, undefined, profiles);
+  old.setDefaultProfile("local", "work");
+
+  for (const id of users) {
+    old.auth.insertUser({
+      id,
+      name: id,
+      admin: false,
+      passwordHash: "",
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  old.close();
+
+  return { profiles, store: openStore(path, undefined, profiles) };
+}
+
 function folders(): ProfileFolders {
   return new ProfileFolders(join(root, "profiles"), () => undefined);
 }

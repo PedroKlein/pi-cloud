@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -58,16 +59,45 @@ afterEach(async () => {
 
 async function api(
   path: string,
-  init: { readonly method?: string; readonly body?: unknown } = {},
+  init: {
+    readonly method?: string;
+    readonly body?: unknown;
+    readonly cookie?: string;
+  } = {},
 ): Promise<Response> {
   return fetch(new URL(path, server.url), {
     method: init.method ?? (init.body === undefined ? "GET" : "POST"),
     headers: {
-      cookie: await signedIn(),
+      cookie: init.cookie ?? (await signedIn()),
       ...(init.body !== undefined && { "content-type": "application/json" }),
     },
     ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
   });
+}
+
+// Signs in a second user, who isn't an admin, and returns their cookie.
+async function secondUser(): Promise<string> {
+  await signedIn();
+
+  const db = new DatabaseSync(join(root, "server.db"));
+
+  db.prepare(
+    "insert into users (id, name, password_hash, created_at, admin) values (?, 'ana', ?, ?, 0)",
+  ).run(
+    randomUUID(),
+    await Bun.password.hash("battery staple"),
+    new Date().toISOString(),
+  );
+
+  db.close();
+
+  const response = await fetch(new URL("/api/auth/login", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "ana", password: "battery staple" }),
+  });
+
+  return response.headers.get("set-cookie")?.split(";")[0] ?? "";
 }
 
 async function json<T>(response: Promise<Response>): Promise<T> {
@@ -133,7 +163,7 @@ test("creates, edits and makes a Profile the default", async () => {
   expect(created).toMatchObject({
     id: "work",
     name: "Work",
-    ownerId: "local",
+    ownerId: expect.any(String) as string,
     isDefault: false,
     ...content,
   });
@@ -158,6 +188,46 @@ test("creates, edits and makes a Profile the default", async () => {
     { name: "Default", isDefault: false },
     { name: "Work", isDefault: true },
   ]);
+});
+
+test("each user picks their own default and keeps their Profiles to themselves", async () => {
+  const ana = await secondUser();
+  const environment = await vmEnvironment();
+  const workspace = { kind: "folder", path: root };
+
+  const work = await json<Profile>(
+    api("/api/profiles", { body: { name: "Work" } }),
+  );
+
+  await api(`/api/profiles/${work.id}/default`, { body: {} });
+
+  const defaults = async (cookie: string): Promise<string[]> =>
+    (await json<Profile[]>(api("/api/profiles", { cookie })))
+      .filter(({ isDefault }) => isDefault)
+      .map(({ id }) => id);
+
+  expect(await defaults(await signedIn())).toEqual(["work"]);
+  expect(await defaults(ana)).toEqual(["default"]);
+
+  const anas = await json<Profile[]>(api("/api/profiles", { cookie: ana }));
+
+  expect(anas.map(({ id }) => id)).toEqual(["default"]);
+
+  expect((await api(`/api/profiles/${work.id}`, { cookie: ana })).status).toBe(
+    404,
+  );
+
+  const started = await json<Session>(
+    api("/api/sessions", { body: { environment, workspace }, cookie: ana }),
+  );
+
+  const named = await api("/api/sessions", {
+    body: { environment, workspace, profile: work.id },
+    cookie: ana,
+  });
+
+  expect(started.profileId).toBe("default");
+  expect(named.status).toBe(400);
 });
 
 test("rejects Profile content Pi couldn't use", async () => {
@@ -251,7 +321,9 @@ test("keeps the default Profile and Profiles in use", async () => {
 });
 
 test("exports a Profile's folder and imports it as a copy", async () => {
-  await api("/api/profiles", { body: { name: "Work", ...content } });
+  const created = await json<Profile>(
+    api("/api/profiles", { body: { name: "Work", ...content } }),
+  );
 
   await mkdir(join(root, "config", "profiles", "work", "skills", "review"), {
     recursive: true,
@@ -281,7 +353,7 @@ test("exports a Profile's folder and imports it as a copy", async () => {
   expect(imported).toMatchObject({
     id: "work-2",
     name: "Work",
-    ownerId: "local",
+    ownerId: created.ownerId,
     isDefault: false,
     ...content,
   });
@@ -542,7 +614,9 @@ test("keeps a repository trust answer for the next Session in it", async () => {
 });
 
 test("keeps a Profile as a Pi agent folder people can edit by hand", async () => {
-  await api("/api/profiles", { body: { name: "Work", ...content } });
+  const created = await json<Profile>(
+    api("/api/profiles", { body: { name: "Work", ...content } }),
+  );
 
   const folder = join(root, "config", "profiles", "work");
 
@@ -579,7 +653,12 @@ test("keeps a Profile as a Pi agent folder people can edit by hand", async () =>
   ).toEqual([
     { id: "default", name: "Default", ownerId: null, agentsMd: "" },
     { id: "review", name: "review", ownerId: null, agentsMd: "" },
-    { id: "work", name: "Work", ownerId: "local", agentsMd: "Edited by hand." },
+    {
+      id: "work",
+      name: "Work",
+      ownerId: created.ownerId,
+      agentsMd: "Edited by hand.",
+    },
   ]);
 
   await api("/api/profiles/review", {

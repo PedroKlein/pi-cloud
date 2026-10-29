@@ -30,6 +30,7 @@ Pi already has a format for all of this: its agent folder, `~/.pi/agent`.
 - The server creates a shared Profile named `default` on start when it doesn't exist. It starts empty, which is a plain Pi install, and admins change it like any other shared Profile (decided 2026-10-26).
 - A new Session's Profile is still picked as ADR 0031 says: the Session's own choice, then the Project's, then the user's default, which is `default` until the user picks another. Which Profile is each user's default is state the product creates as it runs, so it stays in SQLite.
 - The built-in meta Profile ([ADR 0035](0035-meta-sessions.md)) ships with Pi Cloud and isn't a folder in the config folder.
+- Each person picks their own default and owns the private Profiles they make (amended 2026-10-29). Picking a default changes it only for the signed-in user who picks it, and a Session started without a Profile gets the default of the user who started it. Before this, one server-wide owner held every private Profile and the one default, so with several users each saw everyone's Profiles and changed everyone's default. On start the server gives what that owner held to the only user, when there is one. With several users nobody can tell whose a Profile was, so those Profiles become shared and each user keeps the old default until they pick another.
 
 ### On the runner
 

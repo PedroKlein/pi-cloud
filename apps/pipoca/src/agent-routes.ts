@@ -152,10 +152,7 @@ export function agentRoutes(
           })),
           unload,
           remove,
-          profiles: [
-            ...profiles.list().map(({ id }) => id),
-            ...plugins.profileIds(),
-          ],
+          profiles: [...profiles.ids(), ...plugins.profileIds()],
         };
 
         return Response.json(work);

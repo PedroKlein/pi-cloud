@@ -6,7 +6,7 @@ import { eventBus, type ServerPlugin } from "@pipoca/plugins";
 import type { PluginManifest } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import { ProfileFolders, Profiles } from "@pipoca/profiles";
-import { owner, Sessions, type SessionsOptions } from "@pipoca/sessions";
+import { Sessions, type SessionsOptions } from "@pipoca/sessions";
 import web from "@pipoca/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
@@ -168,7 +168,7 @@ export function serve(options: ServeOptions): {
   const pluginsStop = new AbortController();
   const auth = new Auth(store.auth, options.passwordLogin);
 
-  const userProfiles = new Profiles(profiles, store, owner);
+  const userProfiles = new Profiles(profiles, store);
 
   const pluginHost = startPlugins(plugins, enabled, {
     manifests: known,

@@ -14,7 +14,7 @@ import {
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import { ProfileFolders, Profiles } from "@pipoca/profiles";
-import { owner, Sessions } from "@pipoca/sessions";
+import { Sessions } from "@pipoca/sessions";
 import { Auth } from "./auth";
 import { changeFeed } from "./changes";
 import { startPlugins } from "./plugins";
@@ -35,7 +35,7 @@ test("reports unhealthy when the database can't be read, keeping why in the log"
   const handler = createHandler(
     new Auth(store.auth),
     sessions,
-    new Profiles(noProfiles, store, owner),
+    new Profiles(noProfiles, store),
     startPlugins([], [], {
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
@@ -115,7 +115,7 @@ function startServer(
   const handler = createHandler(
     auth,
     sessions,
-    new Profiles(noProfiles, store, owner),
+    new Profiles(noProfiles, store),
     startPlugins([plugin], [plugin.name], {
       sessions,
       runners: { token: () => "pct_test", revoke: () => undefined },
@@ -485,7 +485,7 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
     const handle = createHandler(
       auth,
       sessions,
-      new Profiles(noProfiles, store, owner),
+      new Profiles(noProfiles, store),
       startPlugins([keeper], enabled, {
         sessions,
         runners: { token: () => "pct_test", revoke: () => undefined },

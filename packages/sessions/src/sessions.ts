@@ -247,7 +247,12 @@ export class Sessions {
       return { ok: false, reason: "unknown_environment" };
     }
 
-    const profileId = request.profile ?? this.#store.defaultProfileId(owner);
+    // The Profiles a Session may use are its starter's (ADR 0041).
+    const startedBy = this.#starter(request.actor);
+
+    const profileId =
+      request.profile ?? this.#store.defaultProfileId(startedBy ?? owner);
+
     const provided = this.#pluginProfile(profileId);
 
     const stored = this.#store.profile(profileId);
@@ -256,7 +261,7 @@ export class Sessions {
     const usable =
       provided === undefined
         ? stored !== undefined &&
-          (stored.ownerId === null || stored.ownerId === owner)
+          (stored.ownerId === null || stored.ownerId === startedBy)
         : provided.plugin === ownedBy?.plugin;
 
     if (!usable) {
@@ -291,7 +296,7 @@ export class Sessions {
       archivedAt: null,
       workspaceRemoval: null,
       workspaceKeptReason: null,
-      startedBy: this.#starter(request.actor),
+      startedBy,
     };
 
     this.#store.insert(session);

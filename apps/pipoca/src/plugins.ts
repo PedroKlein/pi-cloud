@@ -62,6 +62,10 @@ export const serverPlugins: readonly ServerPlugin[] = [
 
 export type UserActor = `user:${string}`;
 
+export function userIdOf(actor: UserActor): string {
+  return actor.slice("user:".length);
+}
+
 // Who a toolset tool's request acts as (ADR 0035). A meta-session's acts as
 // the user who started it, but never as an admin (ADR 0038).
 export interface OnBehalf {
