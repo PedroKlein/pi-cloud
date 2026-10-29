@@ -138,7 +138,7 @@ config:
 
 ### Images and remote runners
 
-Every push to main publishes the image as `ghcr.io/pedroklein/pipoca:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod.
+Every push to main publishes the image as `ghcr.io/pedroklein/pipoca:main` and `:sha-<commit>`. Agents on other machines join it with an Environment's key, as above. `builtInRunner` also runs a runner inside the server pod, but only with `runnerPods.enabled=false`: a server that can start runner pods leaves its own off and logs why, since its Sessions would share the server pod's files, sealing key included ([ADR 0049](adr/0049-personal-environments-and-templates.md)).
 
 ### Runner pods
 

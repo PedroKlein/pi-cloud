@@ -28,7 +28,9 @@ apiRule:
 # it everyone shares the proxy's address.
 trustProxy: false
 
-# Runs a runner inside the server too, in the Environment of this name.
+# Runs a runner inside the server too, in the Environment of this name. Only
+# with runnerPods.enabled false: a server that starts runner pods leaves it off,
+# since its Sessions would share the server pod's files (ADR 0049).
 builtInRunner: ""
 
 # A Secret with a `secretKey` entry: 32 bytes, base64. When empty, the chart
