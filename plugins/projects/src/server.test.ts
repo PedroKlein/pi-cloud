@@ -1228,3 +1228,37 @@ test("tells the coordinator about a thread that stopped mid-turn, not one a rest
     kernel.delivered.map(({ text }) => /\) (stopped: \w+)/.exec(text)?.[1]),
   ).toEqual(["stopped: interrupted", "stopped: failed"]);
 }, 10_000);
+
+test("keeps each Project to the person who started it (ADR 0049)", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { threadId } = await startProject(kernel);
+  const { id } = await projectView(kernel);
+  const ana = fakeUser({ id: "ana" });
+
+  const asAna = async (path: string, body?: unknown): Promise<Response> =>
+    kernel.route()(
+      new Request(`http://pipoca/${path}`, {
+        ...(body !== undefined && {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      }),
+      path,
+      ana,
+    );
+
+  expect(await (await asAna("projects")).json()).toEqual([]);
+
+  for (const response of [
+    await asAna(`projects/${id}`),
+    await asAna(`projects/${id}/settings`, { name: "Mine" }),
+    await asAna(`projects/${id}/memory/notes.md`),
+    await asAna(`threads/${threadId}`),
+    await asAna(`threads/${threadId}/state`, { state: "done" }),
+  ]) {
+    expect(response.status).toBe(404);
+  }
+
+  expect((await projectView(kernel)).name).toBe("Release");
+});

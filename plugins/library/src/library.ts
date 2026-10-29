@@ -12,6 +12,7 @@ interface FileRow {
 export interface LibraryStore {
   readonly addMember: (sessionId: string, projectId: string) => void;
   readonly projectOf: (sessionId: string) => string | undefined;
+  readonly members: (projectId: string) => readonly string[];
   readonly files: (projectId: string) => readonly LibraryFile[];
   readonly read: (projectId: string, name: string) => Uint8Array | undefined;
   readonly write: (
@@ -66,6 +67,13 @@ export function libraryStore(store: PluginStore): LibraryStore {
           sessionId,
         )[0] as { project_id: string } | undefined
       )?.project_id,
+    members: (projectId) =>
+      (
+        store.all(
+          "select session_id from library_members where project_id = ?",
+          projectId,
+        ) as { session_id: string }[]
+      ).map((row) => row.session_id),
     files: (projectId) =>
       (
         store.all(
