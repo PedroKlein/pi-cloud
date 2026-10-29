@@ -1,0 +1,11 @@
+{
+  "name": "@pipoca/examples",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@pipoca/plugins": "workspace:*",
+    "@pipoca/ui": "workspace:*",
+    "@types/react": "19.3.0",
+    "react": "19.3.1"
+  }
+}

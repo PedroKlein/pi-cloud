@@ -77,6 +77,15 @@
         "@types/react-dom": "19.3.0",
       },
     },
+    "examples": {
+      "name": "@pipoca/examples",
+      "devDependencies": {
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/ui": "workspace:*",
+        "@types/react": "19.3.0",
+        "react": "19.3.1",
+      },
+    },
     "packages/plugins": {
       "name": "@pipoca/plugins",
       "dependencies": {
@@ -439,6 +448,8 @@
     "@pipoca/ask": ["@pipoca/ask@workspace:plugins/ask"],
 
     "@pipoca/changes": ["@pipoca/changes@workspace:plugins/changes"],
+
+    "@pipoca/examples": ["@pipoca/examples@workspace:examples"],
 
     "@pipoca/git-hosts": ["@pipoca/git-hosts@workspace:plugins/git-hosts"],
 
