@@ -509,7 +509,10 @@ test("forks from a user message with only the entries before it on its branch", 
   expect(await transcript(forked.id)).toEqual(lines.slice(0, 3));
   expect(await transcript(whole.id)).toEqual(lines);
   expect(assistant.status).toBe(400);
-  expect(await assistant.json()).toEqual({ error: "unknown_entry" });
+  expect(await assistant.json()).toEqual({
+    error: "unknown_entry",
+    message: "That isn't one of the Session's messages.",
+  });
   expect(unknown.status).toBe(400);
 });
 

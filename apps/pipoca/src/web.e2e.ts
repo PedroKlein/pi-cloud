@@ -438,7 +438,10 @@ test("infers the workspace from what the New session composer picks and remember
     await route.fulfill({
       status: 400,
       contentType: "application/json",
-      body: JSON.stringify({ error: "not this time" }),
+      body: JSON.stringify({
+        error: "bad_request",
+        message: "not this time",
+      }),
     });
   });
 
@@ -541,7 +544,11 @@ test("walks a new server through connecting a machine and logging in to a model"
     }
 
     asked.push(route.request().postDataJSON());
-    await route.fulfill({ status: 400, json: { error: "not this time" } });
+
+    await route.fulfill({
+      status: 400,
+      json: { error: "bad_request", message: "not this time" },
+    });
   });
 
   await page.goto(server.url.href);
@@ -781,7 +788,11 @@ test("puts a pin back when the server doesn't save it", async () => {
     }
 
     await pinned;
-    await route.fulfill({ status: 500, json: { error: "disk full" } });
+
+    await route.fulfill({
+      status: 500,
+      json: { error: "internal", message: "disk full" },
+    });
   });
 
   await page.goto(server.url.href);
@@ -954,7 +965,10 @@ test("says why an MCP token wasn't revoked", async () => {
   const revoke = page.getByRole("button", { name: "Revoke Old laptop" });
 
   await page.route("**/api/mcp-tokens/*", async (route) =>
-    route.fulfill({ status: 500, json: { error: "token store is locked" } }),
+    route.fulfill({
+      status: 500,
+      json: { error: "internal", message: "token store is locked" },
+    }),
   );
 
   page.once("dialog", async (dialog) => dialog.accept());
@@ -1873,7 +1887,10 @@ test("shows a plugin page's failure without taking the app down", async () => {
     route.fulfill({
       status: 500,
       contentType: "application/json",
-      body: JSON.stringify({ error: "projects store is unreadable" }),
+      body: JSON.stringify({
+        error: "internal",
+        message: "projects store is unreadable",
+      }),
     }),
   );
 

@@ -27,6 +27,7 @@ import {
 } from "./installed";
 import { serverPlugins, startPlugins } from "./plugins";
 import { builtInPlugins } from "./session-parts";
+import { errorReply } from "./replies";
 import { previewBroker } from "./previews";
 import { changeFeed } from "./changes";
 import { createHandler, onBehalfOf } from "./server";
@@ -274,7 +275,11 @@ export function serve(options: ServeOptions): {
       }
 
       if (!fromThisSite(request, siteHosts)) {
-        return Response.json({ error: "forbidden" }, { status: 403 });
+        return errorReply(
+          403,
+          "forbidden",
+          "Requests from another site aren't allowed.",
+        );
       }
 
       const upgraded =

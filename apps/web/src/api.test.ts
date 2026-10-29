@@ -33,7 +33,14 @@ test("api and send reject with the status when an error response isn't JSON", as
 });
 
 test("api rejects with the server's error message", async () => {
-  respond(() => Response.json({ error: "signed_out" }, { status: 401 }));
+  respond(() =>
+    Response.json(
+      { error: "signed_out", message: "Sign in again." },
+      { status: 401 },
+    ),
+  );
 
-  expect(await api("/api/sessions").catch(String)).toBe("Error: signed_out");
+  expect(await api("/api/sessions").catch(String)).toBe(
+    "Error: Sign in again.",
+  );
 });

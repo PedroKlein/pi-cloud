@@ -1,24 +1,41 @@
 import type { Rejection, Result } from "@pipoca/sessions";
 
-const rejectionStatus = {
-  not_found: 404,
-  stale_generation: 409,
-  offline: 409,
-  archived: 409,
-  not_kept: 409,
-  unknown_environment: 400,
-  environment_exists: 409,
-  unknown_profile: 400,
-  not_movable: 409,
-  unknown_entry: 400,
-} as const satisfies Record<Rejection, number>;
+const rejections = {
+  not_found: [404, "Not found."],
+  stale_generation: [409, "The Session has moved on since this was sent."],
+  offline: [409, "The Session's runner is offline."],
+  archived: [409, "The Session is archived."],
+  not_kept: [409, "The Session has no kept workspace to remove."],
+  unknown_environment: [400, "There is no such Environment."],
+  environment_exists: [409, "An Environment of that name already exists."],
+  unknown_profile: [400, "There is no such Profile."],
+  not_movable: [
+    409,
+    "The Session's workspace can't move to another Environment.",
+  ],
+  unknown_entry: [400, "That isn't one of the Session's messages."],
+} as const satisfies Record<Rejection, readonly [number, string]>;
+
+// Every error the API answers has this body: a code a program can check and
+// the message a person reads (ADR 0047).
+export function errorReply(
+  status: number,
+  code: string,
+  message: string,
+  details?: Readonly<Record<string, unknown>>,
+): Response {
+  return Response.json({ ...details, error: code, message }, { status });
+}
+
+export function rejected(reason: Rejection): Response {
+  const [status, message] = rejections[reason];
+
+  return errorReply(status, reason, message);
+}
 
 export function reply(result: Result<unknown>, status: number): Response {
   if (!result.ok) {
-    return Response.json(
-      { error: result.reason },
-      { status: rejectionStatus[result.reason] },
-    );
+    return rejected(result.reason);
   }
 
   return result.value === undefined
@@ -27,5 +44,5 @@ export function reply(result: Result<unknown>, status: number): Response {
 }
 
 export function notFound(): Response {
-  return Response.json({ error: "not_found" }, { status: 404 });
+  return rejected("not_found");
 }

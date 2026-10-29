@@ -213,7 +213,11 @@ test("a new Session runs with the Profile it names, or else the default", async 
   });
 
   expect(unknown.status).toBe(400);
-  expect(await unknown.json()).toEqual({ error: "unknown_profile" });
+
+  expect(await unknown.json()).toEqual({
+    error: "unknown_profile",
+    message: "There is no such Profile.",
+  });
 });
 
 test("keeps the default Profile and Profiles in use", async () => {
@@ -461,7 +465,10 @@ test("imports from git only over https or ssh", async () => {
 
   const notText = await api("/api/profiles/import", { body: { url: 5 } });
 
-  expect(await notText.json()).toEqual({ error: "url must be a string" });
+  expect(await notText.json()).toEqual({
+    error: "bad_request",
+    message: "url must be a string",
+  });
 });
 
 test("a Session whose Profile was deleted can't come back", async () => {
@@ -489,7 +496,11 @@ test("a Session whose Profile was deleted can't come back", async () => {
   });
 
   expect(unarchived.status).toBe(400);
-  expect(await unarchived.json()).toEqual({ error: "unknown_profile" });
+
+  expect(await unarchived.json()).toEqual({
+    error: "unknown_profile",
+    message: "There is no such Profile.",
+  });
 });
 
 test("keeps a repository trust answer for the next Session in it", async () => {

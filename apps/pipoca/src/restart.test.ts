@@ -139,7 +139,12 @@ test("asks first while a Session on the server's own runner is mid-turn", async 
   const asked = await api("/api/restart", {});
 
   expect(asked.status).toBe(409);
-  expect(await asked.json()).toEqual({ error: "busy", sessions: 1 });
+
+  expect(await asked.json()).toEqual({
+    error: "busy",
+    message: "Sessions are mid-turn on the server's own runner.",
+    sessions: 1,
+  });
 
   expect((await api("/api/restart", { force: true })).status).toBe(202);
 

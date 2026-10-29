@@ -159,7 +159,8 @@ test("saves a plugin's settings, refusing values that don't fit", async () => {
   expect(refused.status).toBe(400);
 
   expect(await refused.json()).toEqual({
-    error: "Times must be a number, at least 1, at most 5",
+    error: "bad_request",
+    message: "Times must be a number, at least 1, at most 5",
   });
 
   const saved = await api("PATCH", "/api/plugins/greeter", {

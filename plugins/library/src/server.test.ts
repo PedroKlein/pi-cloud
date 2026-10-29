@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { PluginRoute, RouteCaller } from "@pipoca/plugins";
-import { fakeContext, fakeSession, fakeUser } from "@pipoca/plugins/testing";
+import {
+  fakeContext,
+  fakeSession,
+  fakeUser,
+  served,
+} from "@pipoca/plugins/testing";
 import type { PluginSettings } from "@pipoca/protocol";
 import { library } from "./server";
 
@@ -39,7 +44,7 @@ function registered(
     throw new Error("library registered no route");
   }
 
-  return route;
+  return served(route);
 }
 
 async function put(
@@ -129,7 +134,8 @@ test("accepts everyday file names and refuses only unsafe ones", async () => {
   expect(refused.map(({ status }) => status)).toEqual(unsafe.map(() => 400));
 
   expect(await refused[0]?.json()).toEqual({
-    error:
+    error: "bad_request",
+    message:
       "file names can't be empty, longer than 200 characters or only dots, can't start or end with whitespace, and can't contain /, \\, control characters or text direction controls",
   });
 
@@ -194,7 +200,8 @@ test("refuses a file over the size limit in the settings as they are now", async
   expect(refused.status).toBe(413);
 
   expect(await refused.json()).toEqual({
-    error: "library files are limited to 1 MB",
+    error: "too_large",
+    message: "library files are limited to 1 MB",
   });
 
   settings = { fileLimitMb: 2 };

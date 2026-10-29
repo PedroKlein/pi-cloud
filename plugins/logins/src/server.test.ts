@@ -190,7 +190,11 @@ test("a write without the lease is refused", async () => {
   );
 
   expect(refused.status).toBe(409);
-  expect(await refused.json()).toEqual({ error: "lease_lapsed" });
+
+  expect(await refused.json()).toEqual({
+    error: "lease_lapsed",
+    message: "the lease lapsed, so this write could undo another",
+  });
 });
 
 test("a login that isn't one is refused", async () => {
@@ -351,6 +355,11 @@ test("a person dismisses a sign-in and it stops asking", async () => {
   });
 
   expect(late.status).toBe(409);
+
+  expect(await late.json()).toEqual({
+    error: "not_asked",
+    message: "the sign-in isn't waiting for that answer",
+  });
 });
 
 test("a sign-in a provider doesn't take is refused", async () => {

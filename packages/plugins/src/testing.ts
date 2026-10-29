@@ -140,7 +140,7 @@ export function served(route: PluginRoute): PluginRoute {
     } catch (error) {
       if (isHttpError(error)) {
         return Response.json(
-          { error: error.message },
+          { error: error.code, message: error.message },
           { status: error.status },
         );
       }

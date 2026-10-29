@@ -4,6 +4,7 @@ import { type TerminalControl, terminalTakenOver } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import type { Sessions } from "@pipoca/sessions";
 import type { Auth } from "./auth";
+import { errorReply, notFound, rejected } from "./replies";
 import {
   fromSessionHost,
   type SocketHandler,
@@ -62,11 +63,11 @@ export function terminalBroker(
   ): Response | "upgraded" => {
     const user = auth.userOf(request);
     if (user === undefined) {
-      return Response.json({ error: "signed_out" }, { status: 401 });
+      return errorReply(401, "signed_out", "Sign in again.");
     }
 
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-      return Response.json({ error: "expected a websocket" }, { status: 400 });
+      return errorReply(400, "bad_request", "expected a websocket");
     }
 
     const url = new URL(request.url);
@@ -84,10 +85,7 @@ export function terminalBroker(
     });
 
     if (!sent.ok) {
-      return Response.json(
-        { error: sent.reason },
-        { status: sent.reason === "not_found" ? 404 : 409 },
-      );
+      return rejected(sent.reason);
     }
 
     // Terminal ids are per Session.
@@ -112,7 +110,7 @@ export function terminalBroker(
 
     end(key, "browser upgrade failed");
 
-    return Response.json({ error: "expected a websocket" }, { status: 400 });
+    return errorReply(400, "bad_request", "expected a websocket");
   };
 
   const openHost = (
@@ -128,14 +126,14 @@ export function terminalBroker(
       pair.host !== undefined ||
       !fromSessionHost(request, sessions, auth, sessionId)
     ) {
-      return Response.json({ error: "not_found" }, { status: 404 });
+      return notFound();
     }
 
     return server.upgrade(request, {
       data: { kind: "terminal", role: "host", key },
     })
       ? "upgraded"
-      : Response.json({ error: "expected a websocket" }, { status: 400 });
+      : errorReply(400, "bad_request", "expected a websocket");
   };
 
   return {
