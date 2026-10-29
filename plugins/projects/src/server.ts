@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
 import {
   BadRequest,
-  fieldsOf,
   NotFound,
   type PluginStore,
-  readJson,
+  readBody,
   type RouteCaller,
   type SendOutcome,
   type ServerPlugin,
   type ServerPluginContext,
+  type Static,
+  Type,
 } from "@pipoca/plugins";
 import { type Actor, checkoutName } from "@pipoca/protocol";
-import type { ProjectSummary, ProjectView } from "./model";
+import { type ProjectSummary, type ProjectView, workStates } from "./model";
 import {
   coordinatorPrompt,
   runState,
@@ -26,9 +27,29 @@ import {
   projectStore,
   type Queued,
 } from "./projects";
-import { modelRef, projectTools, workState } from "./tools";
+import { modelRef, projectTools } from "./tools";
 import { projectsToolset } from "./toolset";
 import { lastReply, messagedCoordinator, turnError } from "./transcript";
+
+// The settings a Project can change after it starts. Null takes its Profile
+// away.
+const settingsChange = Type.Object({
+  name: Type.Optional(Type.String()),
+  goal: Type.Optional(Type.String()),
+  instructions: Type.Optional(Type.String()),
+  threadModel: Type.Optional(Type.String()),
+  profile: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+
+const newProject = Type.Object({
+  ...settingsChange.properties,
+  name: Type.String(),
+  repositories: Type.Array(Type.String()),
+  environment: Type.Optional(Type.String()),
+  model: Type.Optional(Type.String()),
+});
+
+const stateChange = Type.Object({ state: Type.Enum(workStates) });
 
 const deliveryMs = 1000;
 const errorLimit = 300;
@@ -334,7 +355,12 @@ async function route(
     if (request.method === "POST") {
       return Response.json(
         view(
-          create(await readJson(request), store, context, caller.actor),
+          create(
+            await readBody(request, newProject),
+            store,
+            context,
+            caller.actor,
+          ),
           store,
           context,
         ),
@@ -355,7 +381,10 @@ async function route(
   }
 
   if (project && child === "settings" && request.method === "POST") {
-    store.update(project.id, settings(project, await readJson(request)));
+    store.update(
+      project.id,
+      settings(project, await readBody(request, settingsChange)),
+    );
 
     return Response.json(
       view(store.get(project.id) ?? project, store, context),
@@ -382,8 +411,8 @@ async function route(
   }
 
   if (thread && child === "state" && request.method === "POST") {
-    const { state } = fieldsOf(await readJson(request));
-    store.setWorkState(thread.sessionId, toState(state));
+    const { state } = await readBody(request, stateChange);
+    store.setWorkState(thread.sessionId, state);
 
     return new Response(null, { status: 204 });
   }
@@ -399,47 +428,23 @@ function decoded(name: string): string {
   }
 }
 
-function toState(value: unknown): ReturnType<typeof workState> {
-  try {
-    return workState(value);
-  } catch (error) {
-    throw new BadRequest((error as Error).message);
-  }
-}
-
 // The settings a Project can change after it starts. The repositories and
 // Environment stay, since the coordinator's workspace was built from them.
 function settings(
   project: Project,
-  body: unknown,
+  {
+    name,
+    goal,
+    instructions,
+    threadModel,
+    profile,
+  }: Static<typeof settingsChange>,
 ): Pick<
   Project,
   "name" | "goal" | "instructions" | "threadModel" | "profileId"
 > {
-  const { name, goal, instructions, threadModel, profile } = fieldsOf(body);
-
-  if (
-    profile !== undefined &&
-    profile !== null &&
-    typeof profile !== "string"
-  ) {
-    throw new BadRequest("profile must be a Profile id");
-  }
-
-  if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
+  if (name?.trim() === "") {
     throw new BadRequest("name must not be empty");
-  }
-
-  if (goal !== undefined && typeof goal !== "string") {
-    throw new BadRequest("goal must be text");
-  }
-
-  if (instructions !== undefined && typeof instructions !== "string") {
-    throw new BadRequest("instructions must be text");
-  }
-
-  if (threadModel !== undefined && typeof threadModel !== "string") {
-    throw new BadRequest("thread model must be provider/id");
   }
 
   const model =
@@ -469,12 +474,7 @@ function profileOf(profile: string | null): string | null {
 }
 
 function create(
-  body: unknown,
-  store: ProjectStore,
-  { sessions, log }: ServerPluginContext,
-  user: `user:${string}`,
-): Project {
-  const {
+  {
     name,
     goal,
     instructions,
@@ -483,17 +483,16 @@ function create(
     profile,
     model,
     threadModel,
-  } = fieldsOf(body);
-
-  if (typeof name !== "string" || name.trim() === "") {
+  }: Static<typeof newProject>,
+  store: ProjectStore,
+  { sessions, log }: ServerPluginContext,
+  user: `user:${string}`,
+): Project {
+  if (name.trim() === "") {
     throw new BadRequest("name is required");
   }
 
-  const urls = Array.isArray(repositories)
-    ? repositories.filter(
-        (url): url is string => typeof url === "string" && url.trim() !== "",
-      )
-    : [];
+  const urls = repositories.filter((url) => url.trim() !== "");
 
   const names = urls.map(checkoutName);
   if (
@@ -510,18 +509,12 @@ function create(
     id: randomUUID(),
     ownerId: user.slice("user:".length),
     name: name.trim(),
-    goal: typeof goal === "string" ? goal.trim() : "",
-    instructions: typeof instructions === "string" ? instructions : "",
+    goal: goal?.trim() ?? "",
+    instructions: instructions ?? "",
     repositories: urls,
-    environmentId:
-      typeof environment === "string" && environment !== ""
-        ? environment
-        : null,
-    profileId: typeof profile === "string" && profile !== "" ? profile : null,
-    threadModel:
-      typeof threadModel === "string" && threadModel.trim() !== ""
-        ? threadModel.trim()
-        : null,
+    environmentId: (environment ?? "") || null,
+    profileId: (profile ?? "") || null,
+    threadModel: (threadModel ?? "").trim() || null,
     coordinatorId: "",
     createdAt: new Date().toISOString(),
   };
@@ -534,11 +527,7 @@ function create(
 
   let coordinator;
   try {
-    const ref = modelRef(
-      typeof model === "string" && model.trim() !== ""
-        ? model.trim()
-        : undefined,
-    );
+    const ref = modelRef((model ?? "").trim() || undefined);
 
     coordinator = sessions.start(
       {

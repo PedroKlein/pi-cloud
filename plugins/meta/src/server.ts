@@ -1,13 +1,27 @@
 import {
   BadRequest,
-  fieldsOf,
   NotFound,
-  readJson,
+  readBody,
   type ServerPlugin,
   type ServerPluginContext,
+  type Static,
+  Type,
 } from "@pipoca/plugins";
-import type { Actor, ModelRef, Session } from "@pipoca/protocol";
+import type { Actor, Session } from "@pipoca/protocol";
 import { metaPrompt } from "./prompt";
+
+const newMetaSession = Type.Object({
+  text: Type.String(),
+  model: Type.Optional(
+    Type.Union([
+      Type.Object({
+        provider: Type.String({ minLength: 1 }),
+        id: Type.String({ minLength: 1 }),
+      }),
+      Type.Null(),
+    ]),
+  ),
+});
 
 // Meta-sessions change Pipoca itself (ADR 0035). They run on the meta
 // Profile and stay out of the Session list.
@@ -45,7 +59,12 @@ export const meta: ServerPlugin = {
       }
 
       return Response.json(
-        start(context, caller.actor, profile, await readJson(request)),
+        start(
+          context,
+          caller.actor,
+          profile,
+          await readBody(request, newMetaSession),
+        ),
         { status: 201 },
       );
     });
@@ -56,15 +75,11 @@ function start(
   context: ServerPluginContext,
   user: Actor,
   profile: string,
-  body: unknown,
+  { text, model }: Static<typeof newMetaSession>,
 ): Session {
-  const { text, model } = fieldsOf(body);
-
-  if (typeof text !== "string" || text.trim() === "") {
-    throw new BadRequest("text must be a non-empty string");
+  if (text.trim() === "") {
+    throw new BadRequest("text must not be empty");
   }
-
-  const ref = modelRef(model);
 
   try {
     return context.sessions.start(
@@ -73,7 +88,7 @@ function start(
         profile,
         workspace: { kind: "repositories", repositories: [] },
         firstMessage: text,
-        ...(ref && { model: ref }),
+        ...(model && { model: { provider: model.provider, id: model.id } }),
       },
       context.owner,
     );
@@ -82,23 +97,4 @@ function start(
       error instanceof Error ? error.message : String(error),
     );
   }
-}
-
-function modelRef(value: unknown): ModelRef | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const { provider, id } = fieldsOf(value);
-
-  if (
-    typeof provider !== "string" ||
-    provider === "" ||
-    typeof id !== "string" ||
-    id === ""
-  ) {
-    throw new BadRequest("model must have a provider and an id");
-  }
-
-  return { provider, id };
 }
