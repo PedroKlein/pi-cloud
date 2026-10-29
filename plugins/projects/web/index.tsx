@@ -383,6 +383,7 @@ function Page({ context, path }: PageProps): ReactElement {
     useLoaded(
       async () => json<Environment[]>(fetch("/api/environments")),
       "environments",
+      { topics: ["environments"] },
     ).value ?? [];
 
   return open === "" ? (
@@ -410,6 +411,7 @@ function ProjectList({
   const list = useLoaded(
     async () => json<ProjectSummary[]>(context.request("projects")),
     "projects",
+    watched,
   ).value;
 
   const active = list?.filter(
@@ -492,8 +494,9 @@ function ProfileSelect({
   }) => void;
 }): ReactElement {
   const profiles =
-    useLoaded(async () => json<Profile[]>(fetch("/api/profiles")), "profiles")
-      .value ?? [];
+    useLoaded(async () => json<Profile[]>(fetch("/api/profiles")), "profiles", {
+      topics: ["profiles"],
+    }).value ?? [];
 
   return (
     <Select value={value} onChange={onChange}>
@@ -545,8 +548,9 @@ function CreateForm({
   readonly onCreated: (id: string) => void;
 }): ReactElement {
   const sessions =
-    useLoaded(async () => json<Session[]>(fetch("/api/sessions")), "sessions")
-      .value ?? [];
+    useLoaded(async () => json<Session[]>(fetch("/api/sessions")), "sessions", {
+      topics: ["sessions"],
+    }).value ?? [];
 
   const [repositories, setRepositories] = useState<readonly string[]>([]);
   const [environment, setEnvironment] = useState("");
