@@ -43,8 +43,9 @@ export interface AuthStore {
   readonly keyEnvironment: (keyHash: string) => string | undefined;
   // A join key belongs to no Environment until a runner joins with it, and
   // then becomes the key of the Environment made for that runner (ADR 0040).
-  readonly insertJoinKey: (keyHash: string) => void;
-  readonly hasJoinKey: (keyHash: string) => boolean;
+  readonly insertJoinKey: (keyHash: string, ownerId: string) => void;
+  // The person whose Environment a runner joining with the key gets.
+  readonly joinKeyOwner: (keyHash: string) => string | undefined;
   readonly claimJoinKey: (keyHash: string, provider: string) => void;
   // A Session holds one token, for its current attempt.
   readonly insertAgentToken: (
@@ -302,9 +303,9 @@ export class Auth {
     return key;
   }
 
-  newJoinKey(): string {
+  newJoinKey(ownerId: string): string {
     const key = `pck_${randomBytes(32).toString("base64url")}`;
-    this.#store.insertJoinKey(hash(key));
+    this.#store.insertJoinKey(hash(key), ownerId);
 
     return key;
   }
@@ -317,12 +318,13 @@ export class Auth {
     key: string,
     runner: string,
     environments: {
-      readonly create: (runner: string) => string;
+      readonly create: (runner: string, ownerId: string) => string;
       readonly online: (environment: string, runner: string) => boolean;
     },
   ): Joined | "online" | undefined {
-    if (this.#store.hasJoinKey(hash(key))) {
-      this.#store.claimJoinKey(hash(key), environments.create(runner));
+    const owner = this.#store.joinKeyOwner(hash(key));
+    if (owner !== undefined) {
+      this.#store.claimJoinKey(hash(key), environments.create(runner, owner));
     }
 
     const environment = this.#store.keyEnvironment(hash(key));

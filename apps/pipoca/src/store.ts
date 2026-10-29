@@ -130,7 +130,8 @@ create table if not exists agent_tokens (
 );
 create table if not exists join_keys (
   key_hash text primary key,
-  created_at text not null
+  created_at text not null,
+  owner_id text not null
 );
 create table if not exists browser_sessions (
   token_hash text primary key,
@@ -208,6 +209,18 @@ function migrate(db: DatabaseSync): void {
 
   if (!userColumns.some(({ name }) => name === "pinned_pages")) {
     db.exec("alter table users add column pinned_pages text");
+  }
+
+  // A join key from before keys had a person makes the first user's
+  // Environment, as an Environment from then is (ADR 0049).
+  const joinKeyColumns = db
+    .prepare("select name from pragma_table_info('join_keys')")
+    .all() as { name: string }[];
+
+  if (!joinKeyColumns.some(({ name }) => name === "owner_id")) {
+    db.exec(
+      `alter table join_keys add column owner_id text not null default '${owner}'`,
+    );
   }
 
   const tokenColumns = db
@@ -934,11 +947,11 @@ function authStore(db: DatabaseSync): AuthStore {
   );
 
   const insertJoinKey = db.prepare(
-    "insert into join_keys (key_hash, created_at) values (?, ?)",
+    "insert into join_keys (key_hash, created_at, owner_id) values (?, ?, ?)",
   );
 
   const selectJoinKey = db.prepare(
-    "select 1 from join_keys where key_hash = ?",
+    "select owner_id from join_keys where key_hash = ?",
   );
 
   const deleteJoinKey = db.prepare("delete from join_keys where key_hash = ?");
@@ -1061,10 +1074,12 @@ function authStore(db: DatabaseSync): AuthStore {
         deleteJoinedTokens.run(provider);
       });
     },
-    insertJoinKey: (keyHash) => {
-      insertJoinKey.run(keyHash, new Date().toISOString());
+    insertJoinKey: (keyHash, ownerId) => {
+      insertJoinKey.run(keyHash, new Date().toISOString(), ownerId);
     },
-    hasJoinKey: (keyHash) => selectJoinKey.get(keyHash) !== undefined,
+    joinKeyOwner: (keyHash) =>
+      (selectJoinKey.get(keyHash) as { owner_id: string } | undefined)
+        ?.owner_id,
     claimJoinKey: (keyHash, provider) => {
       transaction(db, () => {
         deleteJoinKey.run(keyHash);

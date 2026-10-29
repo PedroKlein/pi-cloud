@@ -136,12 +136,10 @@ test("a person sees, changes and starts Sessions only in their own Environments"
   expect((await session(anas)).environmentId).toBe(laptop);
 });
 
-test("an Environment a runner made with a join key is the first person's", async () => {
+test("an Environment a runner makes with a join key is the key maker's", async () => {
   const anas = await ana();
 
-  const { key } = await json<{ key: string }>(
-    api("/api/join-key", await pedro(), {}),
-  );
+  const { key } = await json<{ key: string }>(api("/api/join-key", anas, {}));
 
   await json<Joined>(
     fetch(new URL("/agent/join", server.url), {
@@ -155,12 +153,8 @@ test("an Environment a runner made with a join key is the first person's", async
     }),
   );
 
-  const theirs = await json<Environment[]>(
-    api("/api/environments", await pedro()),
-  );
-
-  expect(names(theirs)).toEqual(["vm"]);
-  expect(await json(api("/api/environments", anas))).toEqual([]);
+  expect(names(await json(api("/api/environments", anas)))).toEqual(["vm"]);
+  expect(await json(api("/api/environments", await pedro()))).toEqual([]);
 });
 
 test("a person sees and drives only their own Sessions", async () => {

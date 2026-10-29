@@ -155,6 +155,27 @@ test("counts a runner token from before tokens expired as used when the database
   expect((token?.lastUsed ?? "") >= opened).toBe(true);
 });
 
+test("keeps a join key from before keys had a person for the first user", () => {
+  const path = join(root, "server.db");
+  const old = new DatabaseSync(path);
+
+  old.exec(`
+    create table join_keys (
+      key_hash text primary key,
+      created_at text not null
+    );
+    insert into join_keys values ('h1', '2026-10-01T00:00:00.000Z');
+  `);
+
+  old.close();
+
+  const store = openStore(path);
+  const owner = store.auth.joinKeyOwner("h1");
+  store.close();
+
+  expect(owner).toBe("local");
+});
+
 test("lists the Sessions one owner holds and keeps an owner once given", () => {
   const store = openStore(":memory:");
   defaultProfile = store.defaultProfileId("local");
