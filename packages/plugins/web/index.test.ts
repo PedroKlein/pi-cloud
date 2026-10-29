@@ -85,3 +85,38 @@ test("watchChanges fetches once per burst of its topics and again after a reconn
     globals.EventSource = original;
   }
 });
+
+test("watchChanges fetches again after an error response closed the stream", async () => {
+  const globals = globalThis as unknown as { EventSource: unknown };
+  const original = globals.EventSource;
+  globals.EventSource = FakeStream;
+  FakeStream.opened = [];
+
+  try {
+    let sessions = 0;
+
+    const unwatch = watchChanges(["sessions"], () => {
+      sessions++;
+    });
+
+    const [refused] = FakeStream.opened;
+
+    if (refused !== undefined) {
+      refused.readyState = 2;
+    }
+
+    refused?.emit("error");
+    await sleep(1100);
+
+    expect(FakeStream.opened).toHaveLength(2);
+
+    FakeStream.opened[1]?.emit("open");
+    await sleep(300);
+
+    expect(sessions).toBe(1);
+
+    unwatch();
+  } finally {
+    globals.EventSource = original;
+  }
+});
