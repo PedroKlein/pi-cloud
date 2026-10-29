@@ -229,6 +229,22 @@ test("fails a plugin whose manifest this server can't load", async () => {
   expect((await listed("misnamed"))?.error).toContain("folder's name");
 });
 
+test("fails only the plugin whose settings are malformed", async () => {
+  await writePlugin("hello");
+
+  await writePlugin("broken", {
+    settings: {
+      mode: { type: "choice", title: "Mode", default: "fast" },
+      limit: "ten",
+    },
+  });
+
+  await start();
+
+  expect((await listed("broken"))?.error).toContain("pipoca.settings.mode");
+  expect(await listed("hello")).toMatchObject({ state: "off" });
+});
+
 test("turns built-in plugins on or off only through the server's options", async () => {
   await start();
 
