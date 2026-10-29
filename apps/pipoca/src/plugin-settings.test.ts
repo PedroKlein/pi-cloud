@@ -12,7 +12,7 @@ import {
   versionHeader,
   type WorkPoll,
 } from "@pipoca/protocol";
-import { sessionParts } from "./plugins";
+import { sessionParts } from "./session-parts";
 import { serve } from "./serve";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";

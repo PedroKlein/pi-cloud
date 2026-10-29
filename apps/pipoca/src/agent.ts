@@ -45,8 +45,7 @@ import {
   reportRemoval,
   reportStartFailure,
 } from "./client";
-import { sessionParts } from "./plugins";
-import { installedSessionParts } from "./session-parts";
+import { installedSessionParts, sessionParts } from "./session-parts";
 import { containerSession } from "./container";
 import { environmentSetup } from "./setup";
 import {

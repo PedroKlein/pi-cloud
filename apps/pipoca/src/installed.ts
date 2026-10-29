@@ -20,7 +20,7 @@ import {
 } from "@pipoca/protocol";
 import type { Log } from "@pipoca/providers";
 import { bundleParts, type PluginParts } from "./bundle";
-import { builtInPlugins } from "./plugins";
+import { builtInPlugins } from "./session-parts";
 import { fetchSource, type PluginSource } from "./sources";
 
 // A plugin installed into the plugins folder, one folder each, named by its

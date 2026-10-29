@@ -1,10 +1,15 @@
-import type { Toolset } from "@pipoca/plugins";
+import type { RouteTool, Toolset } from "@pipoca/plugins";
 import {
   isolations,
   type PluginInfo,
   type Profile,
   type Session,
+  type ToolNamespace,
+  type ToolResult,
+  type ToolSpec,
+  type UiAction,
 } from "@pipoca/protocol";
+import type { UserActor } from "./plugins";
 
 const workspaceSchema = {
   type: "object",
@@ -484,4 +489,140 @@ function profileView(profile: Profile): Record<string, unknown> {
 
 function titleOf({ title }: Session): string {
   return title === null || title === "" ? "the Session" : `“${title}”`;
+}
+
+export interface ToolsetTool {
+  // Undefined for the kernel's own toolsets.
+  readonly plugin: string | undefined;
+  readonly spec: ToolSpec;
+  readonly tool: RouteTool;
+}
+
+export function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
+  const namespace: ToolNamespace = toolset.namespace;
+
+  return toolset.tools.map((tool) => {
+    const { request: _request, result: _result, opens: _opens, ...spec } = tool;
+
+    return {
+      plugin,
+      tool,
+      spec: {
+        ...spec,
+        name: `${namespace.name}_${tool.name}`,
+        exposure: tool.exposure ?? "deferred",
+        namespace,
+      },
+    };
+  });
+}
+
+// A route of the web app such as a Session id or <project id>/<thread id>,
+// so what a tool opens stays a page of Pipoca.
+const appRoute = /^[\w-]+(\/[\w-]+)*$/;
+
+// Never sent anywhere: the request goes straight to the server's handler.
+const internalOrigin = "http://pipoca.internal";
+
+export async function runRouteTool(
+  found: ToolsetTool,
+  input: unknown,
+  actor: UserActor,
+  deps: {
+    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+  },
+  open: (action: UiAction) => void,
+): Promise<ToolResult> {
+  const { method, path, body } = found.tool.request(
+    typeof input === "object" && input !== null && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {},
+  );
+
+  const base =
+    found.plugin === undefined ? "/api/" : `/api/plugins/${found.plugin}/`;
+
+  const url = routeUrl(found.plugin === undefined ? path : base + path, base);
+
+  if (url === undefined) {
+    return { text: `${path} isn't one of its routes`, isError: true };
+  }
+
+  const response = await deps.api(
+    actor,
+    new Request(
+      url,
+      body === undefined
+        ? { method }
+        : {
+            method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+    ),
+  );
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    return {
+      text: text || `failed with ${String(response.status)}`,
+      isError: true,
+    };
+  }
+
+  if (text === "") {
+    return { text: "Done.", isError: false };
+  }
+
+  // The change is made by now, so a reply the tool can't read is still a
+  // success; an error would make the model try again.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { text, isError: false };
+  }
+
+  try {
+    const opened = found.tool.opens?.(parsed);
+
+    if (opened !== undefined && appRoute.test(opened.route)) {
+      open({
+        kind: "open",
+        route:
+          found.plugin === undefined
+            ? opened.route
+            : `plugin/${found.plugin}/${opened.route}`,
+        label: opened.label,
+      });
+    }
+
+    return {
+      text: JSON.stringify(
+        found.tool.result ? found.tool.result(parsed) : parsed,
+      ),
+      isError: false,
+    };
+  } catch {
+    return { text: "Done, with a reply it couldn't show.", isError: false };
+  }
+}
+
+// A tool's path stays under its own routes: dot segments, plain or
+// percent-encoded, would let input such as an id name another route.
+function routeUrl(path: string, base: string): string | undefined {
+  const [pathname = ""] = path.split("?");
+
+  const dotted = pathname.split("/").some((segment) => {
+    try {
+      return [".", ".."].includes(decodeURIComponent(segment));
+    } catch {
+      return true;
+    }
+  });
+
+  const url = new URL(path, internalOrigin);
+
+  return dotted || !url.pathname.startsWith(base) ? undefined : url.href;
 }

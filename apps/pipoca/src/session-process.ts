@@ -13,8 +13,7 @@ import {
 import { httpSessionStream } from "./client";
 import { type ContainerSession, serverInContainer } from "./container";
 import { stderrLog } from "./log";
-import { sessionParts } from "./plugins";
-import { installedSessionParts } from "./session-parts";
+import { installedSessionParts, sessionParts } from "./session-parts";
 
 export interface SessionSpec {
   readonly server: string;
