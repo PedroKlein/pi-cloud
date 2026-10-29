@@ -1,6 +1,6 @@
 # 0022: Plugin Model for v2
 
-- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx`, the binary's `import()` was checked, web parts get shared modules from a global, and Session parts are fetched per Session, step 6)
+- Status: accepted, amended 2026-10-22 (views the agent can use) and 2026-10-24 (no browser plugin yet; plugins per installation; channels deferred; Session tabs and code blocks first; no iframe for web parts; changing plugins restarts the server; amended 2026-10-25: in-place plugins in a local folder, [ADR 0035](0035-meta-sessions.md); settings, the manifest for built-ins and load failures built as [ADR 0036](0036-plugin-settings.md); capabilities name parts of `ctx`, the binary's `import()` was checked, web parts get shared modules from a global, and Session parts are fetched per Session, step 6) and 2026-10-29 (built-in plugins declare `capabilities` too; `requires` waits for a plugin that needs it)
 - Date: 2026-10-22
 
 ## Context
@@ -77,8 +77,8 @@ A plugin's `package.json` gets a `piCloud` field:
 - `id` and `version`.
 - `engine`: the plugin API versions it supports, like Obsidian's `minAppVersion`.
 - `parts`: the paths of its server, Session and web parts.
-- `capabilities`: the parts of `ctx` its server part uses, such as `sessions` or `routes` ([extensibility.md](../extensibility.md#trust-model)). Finer names like `sessions.start` can come later, once a plugin needs one part of a service without the rest.
-- `requires`: what its Session part needs on the provider, such as `git` or `chromium`. A Session part whose requirements the Environment can't meet isn't loaded, and the user is told why.
+- `capabilities`: the parts of `ctx` its server part uses, such as `sessions` or `routes` ([extensibility.md](../extensibility.md#trust-model)). Finer names like `sessions.start` can come later, once a plugin needs one part of a service without the rest. Built-in plugins declare them too and are held to them the same way, so a missing one fails them when they register. Only `auth` stays theirs alone, as in [ADR 0038](0038-single-sign-on-and-admins.md) (amended 2026-10-29: the owner decided that built-ins reach no more of `ctx` than they declare, like installed plugins).
+- `requires`: what its Session part needs on the provider, such as `git` or `chromium`. A Session part whose requirements the Environment can't meet isn't loaded, and the user is told why. Deferred: the server doesn't read it yet, and it is built with the first plugin that needs it (amended 2026-10-29).
 
 Contributions (tools, routes, slots, commands) stay in code. Declaring them in the manifest too, as VS Code does, would mean keeping two lists in step so that code loads lazily, which this scale doesn't need.
 

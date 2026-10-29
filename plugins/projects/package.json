@@ -20,6 +20,13 @@
   "pipoca": {
     "id": "projects",
     "title": "Projects",
-    "description": "Groups Sessions around a coordinator that works across repositories."
+    "description": "Groups Sessions around a coordinator that works across repositories.",
+    "capabilities": [
+      "tools",
+      "toolsets",
+      "events",
+      "sessions",
+      "routes"
+    ]
   }
 }

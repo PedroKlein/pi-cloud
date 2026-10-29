@@ -19,7 +19,12 @@ import {
   type ServerPlugin,
   type ServerPluginContext,
 } from "@pipoca/plugins";
-import type { Environment, Session, SessionEvent } from "@pipoca/protocol";
+import {
+  capabilities,
+  type Environment,
+  type Session,
+  type SessionEvent,
+} from "@pipoca/protocol";
 import { runAgent } from "./agent";
 import { sessionParts } from "./session-parts";
 import { serve } from "./serve";
@@ -70,6 +75,12 @@ async function start(
       models: { runtime, model: faux.getModel() },
     },
     plugins,
+    manifests: plugins.map(({ name }) => ({
+      id: name,
+      title: name,
+      description: "",
+      capabilities,
+    })),
     disabledPlugins,
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);

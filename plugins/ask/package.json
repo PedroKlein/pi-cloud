@@ -15,6 +15,7 @@
   "pipoca": {
     "id": "ask",
     "title": "Ask",
-    "description": "Lets the agent ask you structured questions in a form."
+    "description": "Lets the agent ask you structured questions in a form.",
+    "capabilities": []
   }
 }

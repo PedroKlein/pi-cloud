@@ -417,9 +417,7 @@ export function startPlugins(
     const stagedTaken = (name: string): boolean =>
       taken(name) || staged.tools.has(name) || staged.routeTools.has(name);
 
-    const declared = installedIds.has(plugin.name)
-      ? (manifest(plugin.name)?.capabilities ?? [])
-      : capabilities;
+    const declared = manifest(plugin.name)?.capabilities ?? [];
 
     try {
       plugin.register(
@@ -1124,9 +1122,9 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// An installed plugin reaches only the parts of its context it declared, so a
-// mistake shows when it registers. It isn't a sandbox: the plugin runs in the
-// server's process (ADR 0022).
+// A plugin, built-in or installed, reaches only the parts of its context its
+// manifest declares, so a mistake shows when it registers. It isn't a
+// sandbox: the plugin runs in the server's process (ADR 0022).
 function limited(
   plugin: string,
   declared: readonly Capability[],
