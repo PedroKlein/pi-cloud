@@ -32,6 +32,14 @@ const faux = fauxProvider({
   models: [{ id: "faux-1" }, { id: "faux-deep", reasoning: true }],
 });
 
+// Enough models that the menus fold providers away.
+const wideProvider = fauxProvider({
+  provider: "wide",
+  models: Array.from({ length: 8 }, (_, index) => ({
+    id: `wide-${String(index + 1)}`,
+  })),
+});
+
 beforeAll(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), "pipoca-e2e-")));
 
@@ -42,6 +50,7 @@ beforeAll(async () => {
   });
 
   runtime.registerNativeProvider(faux.provider);
+  runtime.registerNativeProvider(wideProvider.provider);
 
   const plugins = join(root, "plugins");
   await mkdir(join(plugins, "hello"), { recursive: true });
@@ -356,7 +365,8 @@ test("asks the assistant with the model picked last time", async () => {
     .getByRole("button", { name: "Model" });
 
   await model.click();
-  await page.getByRole("option", { name: "faux-deep" }).click();
+  await page.getByRole("combobox", { name: "Model" }).fill("faux-deep");
+  await page.getByRole("combobox", { name: "Model" }).press("Enter");
 
   await ask.fill("Think hard");
   await ask.press("Enter");
@@ -2365,15 +2375,20 @@ test("switches a session's model and reasoning level from the composer", async (
 
   const composer = page.locator("form#prompt");
   const model = composer.getByRole("button", { name: "Model" });
-  const reasoning = composer.getByRole("radiogroup", { name: "Reasoning" });
+  const reasoning = composer.getByRole("slider", { name: "Reasoning" });
 
   await model.filter({ hasText: "faux-1" }).waitFor();
   await model.click();
   expect(await reasoning.count()).toBe(0);
 
-  await composer.getByRole("option", { name: "faux-deep" }).click();
+  await composer
+    .getByRole("option", { name: "faux-deep", exact: true })
+    .click();
+
   await model.click();
-  await reasoning.getByRole("radio", { name: "high", exact: true }).click();
+  await composer.getByTitle("high", { exact: true }).click();
+  await reasoning.press("ArrowLeft");
+  await reasoning.press("ArrowRight");
   await model.filter({ hasText: "faux-deep · high" }).waitFor();
 
   let asked: { model: string; reasoning: unknown } | undefined;
@@ -2396,6 +2411,51 @@ test("switches a session's model and reasoning level from the composer", async (
   expect(asked).toEqual({ model: "faux-deep", reasoning: "high" });
 }, 30_000);
 
+test("folds other providers' models away in the composer's model menu, and keeps recent ones on top", async () => {
+  await page.goto(server.url.href);
+  await page.getByRole("button", { name: "New session" }).click();
+  const form = page.locator("form#create");
+
+  await pickWorkspace(form, root);
+  await form.getByRole("button", { name: "Start session" }).click();
+  await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  const composer = page.locator("form#prompt");
+  const model = composer.getByRole("button", { name: "Model" });
+  const search = composer.getByRole("combobox", { name: "Model" });
+
+  const option = (name: string) =>
+    composer.getByRole("option", { name, exact: true });
+
+  await model.filter({ hasText: "faux-1" }).waitFor();
+  await model.click();
+
+  await option("faux-deep").waitFor();
+  expect(await option("wide-1").count()).toBe(0);
+  expect(await option("wide (8)").getAttribute("aria-expanded")).toBe("false");
+
+  await search.fill("wide 3");
+
+  expect(await composer.getByRole("option").allTextContents()).toEqual([
+    "wide-3",
+  ]);
+
+  await search.fill("");
+  await option("wide (8)").click();
+  await option("wide-2").click();
+  await model.filter({ hasText: "wide-2" }).waitFor();
+
+  await model.click();
+
+  const options = composer.getByRole("option");
+
+  expect(await options.first().getAttribute("aria-label")).toMatch(/^Recent/);
+  expect(await options.nth(1).textContent()).toBe("wide-2wide");
+  expect(await option("faux (2)").getAttribute("aria-expanded")).toBe("false");
+
+  await page.keyboard.press("Escape");
+}, 30_000);
+
 test("starts a session at the reasoning level picked in the New session form", async () => {
   await page.goto(server.url.href);
   await page.getByRole("button", { name: "New session" }).click();
@@ -2406,7 +2466,7 @@ test("starts a session at the reasoning level picked in the New session form", a
   await form.getByRole("combobox", { name: "Model" }).fill("faux/faux-deep");
   await form.getByRole("combobox", { name: "Model" }).press("Enter");
   await form.getByRole("button", { name: "Model" }).click();
-  await form.getByRole("radio", { name: "high", exact: true }).click();
+  await form.getByTitle("high", { exact: true }).click();
   await form.getByRole("button", { name: "Start session" }).click();
   await page.locator("#status", { hasText: "idle" }).waitFor();
 

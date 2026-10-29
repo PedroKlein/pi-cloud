@@ -53,20 +53,21 @@ Hanken Grotesk is the interface face, Newsreader Light (`font-serif`) is for the
 
 ## Components
 
-| Component                                                    | Use                                                                                                                                 |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `Button`                                                     | `primary` for the one main action on a screen, `default` for others, `ghost` in toolbars, `danger` to delete. Presses scale to 97%. |
-| `Field` + `fieldClass`                                       | A label above, the control, and an optional `hint` below. Errors go in a `role="alert"` line.                                       |
-| `Picker`                                                     | A chip that opens a searchable list, for folders, models, Environments and Profiles. `quiet` draws it as plain text in a composer.  |
-| `Select`                                                     | The browser's select drawn as a field, for short fixed lists in settings.                                                           |
-| `Switch`                                                     | An on/off setting that saves when flipped.                                                                                          |
-| `FileButton`                                                 | A button that opens the file chooser. Never show a raw file input.                                                                  |
-| `ListInput`                                                  | A short list of values as chips, added with Enter.                                                                                  |
-| `KeyValues`                                                  | Variables and secrets.                                                                                                              |
-| `Badge`                                                      | A state, with a dot. Only the four state colours plus `offline`.                                                                    |
-| `PageTitle`, `Section`                                       | A page heading with its one-line description, and its sections.                                                                     |
-| `Icon`                                                       | Lucide paths at 1.75 stroke. 16px in controls and 14px in chips.                                                                    |
-| Card (`rounded-lg border border-line bg-elevated shadow-xs`) | Grouped content on a page.                                                                                                          |
+| Component                                                    | Use                                                                                                                                                                                     |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`                                                     | `primary` for the one main action on a screen, `default` for others, `ghost` in toolbars, `danger` to delete. Presses scale to 97%.                                                     |
+| `Field` + `fieldClass`                                       | A label above, the control, and an optional `hint` below. Errors go in a `role="alert"` line.                                                                                           |
+| `Picker`                                                     | A chip that opens a searchable list, for folders, models, Environments and Profiles. `quiet` draws it as plain text in a composer. `openGroups` folds the other groups to one row each. |
+| `Select`                                                     | The browser's select drawn as a field, for short fixed lists in settings.                                                                                                               |
+| `Slider`                                                     | A row of stops moved with arrow keys or a click, for an ordered choice such as the reasoning level.                                                                                     |
+| `Switch`                                                     | An on/off setting that saves when flipped.                                                                                                                                              |
+| `FileButton`                                                 | A button that opens the file chooser. Never show a raw file input.                                                                                                                      |
+| `ListInput`                                                  | A short list of values as chips, added with Enter.                                                                                                                                      |
+| `KeyValues`                                                  | Variables and secrets.                                                                                                                                                                  |
+| `Badge`                                                      | A state, with a dot. Only the four state colours plus `offline`.                                                                                                                        |
+| `PageTitle`, `Section`                                       | A page heading with its one-line description, and its sections.                                                                                                                         |
+| `Icon`                                                       | Lucide paths at 1.75 stroke. 16px in controls and 14px in chips.                                                                                                                        |
+| Card (`rounded-lg border border-line bg-elevated shadow-xs`) | Grouped content on a page.                                                                                                                                                              |
 
 ## Inputs
 

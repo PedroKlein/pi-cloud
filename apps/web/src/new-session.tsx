@@ -9,11 +9,11 @@ import {
 } from "@pipoca/protocol";
 import {
   Button,
-  cn,
   Icon,
   isComposing,
   Picker,
   type PickerOption,
+  Slider,
 } from "@pipoca/ui";
 import {
   type ReactElement,
@@ -23,8 +23,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { modelOptions, rememberModel } from "@pipoca/plugins/web";
 import { api } from "./api";
-import { modelName, modelRef } from "./names";
+import { modelRef } from "./names";
 import { searchRepositories } from "./plugins";
 
 // Typing searches the git hosts once it pauses for this long.
@@ -231,7 +232,9 @@ export function NewSessionDialog({
       })),
   ];
 
-  const models = (chosen?.models ?? []).map(modelName);
+  const { options: modelChoices, openGroups } = modelOptions(
+    chosen?.models ?? [],
+  );
 
   const sharing =
     choices.share &&
@@ -409,8 +412,9 @@ export function NewSessionDialog({
             label="Model"
             options={[
               { value: "", label: "Environment default" },
-              ...models.map((name) => ({ value: name, label: name })),
+              ...modelChoices,
             ]}
+            {...(openGroups && { openGroups })}
             selected={[choices.model]}
             placeholder="Search models"
             create={(query) =>
@@ -419,32 +423,23 @@ export function NewSessionDialog({
                 : { value: query, label: `Use ${query}` }
             }
             footer={
-              <div
-                role="radiogroup"
-                aria-label="Reasoning"
-                className="flex flex-wrap gap-1"
-              >
-                {(["", ...thinkingLevels] as const).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    role="radio"
-                    aria-checked={choices.thinking === level}
-                    onClick={() => {
-                      choose({ thinking: level });
-                    }}
-                    className={cn(
-                      "cursor-pointer rounded-md px-1.5 py-0.5 hover:bg-hover",
-                      choices.thinking === level &&
-                        "bg-accent-tint text-fg-strong",
-                    )}
-                  >
-                    {level === "" ? "default" : level}
-                  </button>
-                ))}
-              </div>
+              <Slider
+                label="Reasoning"
+                stops={(["", ...thinkingLevels] as const).map((level) => ({
+                  value: level,
+                  label: level === "" ? "default" : level,
+                }))}
+                value={choices.thinking}
+                onChange={(level) => {
+                  choose({ thinking: level });
+                }}
+              />
             }
             onChange={([model]) => {
+              if (model !== undefined && model !== "") {
+                rememberModel(model);
+              }
+
               choose({ model: model ?? "" });
             }}
           >

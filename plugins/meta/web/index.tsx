@@ -1,8 +1,10 @@
 import {
   type HomeProps,
   json,
+  modelOptions,
   type NavItemsProps,
   type PageProps,
+  rememberModel,
   useLoaded,
   type WebContext,
   type WebPlugin,
@@ -125,6 +127,14 @@ function Composer({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
 
+  const { options, openGroups } = modelOptions(
+    [...new Set([model, ...models])].flatMap((name) => {
+      const ref = modelRef(name);
+
+      return ref ? [ref] : [];
+    }),
+  );
+
   const send = (): void => {
     if (text.trim() === "" || sending) {
       return;
@@ -207,21 +217,17 @@ function Composer({
         <Picker
           label="Model"
           quiet
-          options={[
-            { value: "", label: "Default model" },
-            ...[...new Set([model, ...models])]
-              .filter((name) => name !== "")
-              .map((name) => ({
-                value: name,
-                label: name.slice(name.indexOf("/") + 1),
-                group: name.slice(0, name.indexOf("/")),
-              })),
-          ]}
+          options={[{ value: "", label: "Default model" }, ...options]}
+          {...(openGroups && { openGroups })}
           selected={[model]}
           {...(models.length > 6 && { placeholder: "Search models" })}
           onChange={([name = ""]) => {
             setModel(name);
             remember(name);
+
+            if (name !== "") {
+              rememberModel(name);
+            }
           }}
         >
           {model === "" ? "Default model" : model.slice(model.indexOf("/") + 1)}

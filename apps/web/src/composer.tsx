@@ -4,8 +4,12 @@ import {
   imageTypes,
   type ModelRef,
 } from "@pipoca/protocol";
-import type { MountedSession } from "@pipoca/plugins/web";
-import { Button, cn, Icon, isComposing, Picker } from "@pipoca/ui";
+import {
+  type MountedSession,
+  modelOptions,
+  rememberModel,
+} from "@pipoca/plugins/web";
+import { Button, Icon, isComposing, Picker, Slider } from "@pipoca/ui";
 import {
   type ReactElement,
   type RefObject,
@@ -537,52 +541,36 @@ function ModelMenu({
     ).values(),
   ];
 
+  const { options, openGroups } = modelOptions(known);
+
   return (
     <Picker
       label="Model"
       quiet
       trigger={modelMenu}
-      options={known.map((model) => ({
-        value: modelName(model),
-        label: model.id,
-        group: model.provider,
-      }))}
+      options={options}
+      {...(openGroups && { openGroups })}
       selected={[current]}
       {...(known.length > 6 && { placeholder: "Search models" })}
       actions={[{ label: "Log in to a provider…", run: onLogin }]}
       {...(settings.levels.length > 1 && {
         footer: (
-          <div
-            role="radiogroup"
-            aria-label="Reasoning"
-            className="flex flex-wrap items-center gap-1"
-          >
-            <span className="mr-1">Reasoning</span>
-            {settings.levels.map((level) => (
-              <button
-                key={level}
-                type="button"
-                role="radio"
-                aria-checked={settings.thinking === level}
-                onClick={() => {
-                  onThinking(level);
-                }}
-                className={cn(
-                  "cursor-pointer rounded-md px-1.5 py-0.5 hover:bg-hover",
-                  settings.thinking === level &&
-                    "bg-accent-tint text-fg-strong",
-                )}
-              >
-                {level}
-              </button>
-            ))}
-          </div>
+          <Slider
+            label="Reasoning"
+            stops={settings.levels.map((level) => ({
+              value: level,
+              label: level,
+            }))}
+            value={settings.thinking}
+            onChange={onThinking}
+          />
         ),
       })}
       onChange={([name]) => {
         const model = modelRef(name ?? "");
 
-        if (model) {
+        if (model && name !== undefined) {
+          rememberModel(name);
           onModel(model);
         }
       }}
