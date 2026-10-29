@@ -44,6 +44,9 @@ export function movable(workspace: Workspace): boolean {
 export interface RepositoryCheckout {
   readonly repository: string;
   readonly startPoint?: string;
+  // startPoint is the branch of the Session this one forked from, which a
+  // fresh clone gets only from the remote. Only the server sets it.
+  readonly forked?: boolean;
 }
 
 // The directory a repository is checked out into inside a repositories
@@ -84,6 +87,7 @@ export type Workspace =
       readonly repository: string;
       readonly branch: string;
       readonly startPoint?: string;
+      readonly forked?: boolean;
     } & Restorable)
   | {
       readonly kind: "repositories";
@@ -102,6 +106,7 @@ export type WorkspaceRequest =
       readonly kind: "clone";
       readonly repository: string;
       readonly startPoint?: string;
+      readonly forked?: boolean;
     }
   | {
       readonly kind: "repositories";
@@ -1030,6 +1035,10 @@ export interface Session {
   // Pi asked a question and waits for a person to answer it (ADR 0025).
   readonly waiting: boolean;
 }
+
+// A fork from a user message gives back that message's text for the new
+// Session's composer, as Pi's /fork puts it back in its editor.
+export type ForkedSession = Session & { readonly editorText?: string };
 
 export interface Runner {
   readonly name: string;

@@ -32,6 +32,14 @@ const sendNowKeys = /Mac|iPhone|iPad/.test(navigator.userAgent)
   ? "⌘Enter"
   : "Ctrl+Enter";
 
+// The message a fork from a message starts with in its composer, as Pi's
+// /fork puts it back in the editor.
+const prefills = new Map<string, string>();
+
+export function prefillComposer(sessionId: string, text: string): void {
+  prefills.set(sessionId, text);
+}
+
 export function Composer({
   sessionId,
   session,
@@ -76,6 +84,16 @@ export function Composer({
       clearTimeout(later);
     };
   }, [sessionId, columns, generation, hosted]);
+
+  useEffect(() => {
+    const prefilled = prefills.get(sessionId);
+
+    if (prefilled !== undefined && text.current) {
+      prefills.delete(sessionId);
+      text.current.value = prefilled;
+      text.current.focus();
+    }
+  }, [sessionId]);
 
   useEffect(() => {
     if (feed.editorText && text.current) {

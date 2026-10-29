@@ -10,6 +10,7 @@ const rejectionStatus = {
   environment_exists: 409,
   unknown_profile: 400,
   not_movable: 409,
+  unknown_entry: 400,
 } as const satisfies Record<Rejection, number>;
 
 export function reply(result: Result<unknown>, status: number): Response {

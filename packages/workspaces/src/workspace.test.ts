@@ -321,6 +321,41 @@ test("continues a session branch it already pushed when the clone moves to anoth
   expect(moved.checkouts).toEqual([{ path: moved.cwd, base: start }]);
 });
 
+test("forks a clone from its source's branch only once the remote has it", async () => {
+  const source = await prepareWorkspace(
+    { kind: "clone", repository, branch: "pipoca/s1" },
+    { dir: join(root, "first", "s1"), folders: [] },
+    noLog,
+  );
+
+  await commit(source.cwd, "work.txt");
+
+  const fork = async (branch: string): Promise<unknown> =>
+    prepareWorkspace(
+      {
+        kind: "clone",
+        repository,
+        branch,
+        startPoint: "pipoca/s1",
+        forked: true,
+      },
+      { dir: join(root, "forks", branch), folders: [] },
+      noLog,
+    );
+
+  const unpushed = fork("pipoca/f1");
+
+  expect(unpushed).rejects.toThrow("Push the Session's branch first");
+  await unpushed.catch(() => undefined);
+
+  await git(source.cwd, "push", "origin", "pipoca/s1");
+  await fork("pipoca/f2");
+
+  expect(await git(join(root, "forks", "pipoca/f2"), "rev-parse", "HEAD")).toBe(
+    await git(source.cwd, "rev-parse", "HEAD"),
+  );
+});
+
 test("reaches the remote with the environment it is given", async () => {
   const dir = join(root, "workspaces", "s1");
   const remote = "https://git.invalid/origin.git";

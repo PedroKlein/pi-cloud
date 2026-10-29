@@ -561,10 +561,8 @@ export function createHandler(
       "POST",
       /^\/api\/sessions\/([^/]+)\/fork$/,
       async (request, [id = ""], actor) => {
-        const { environment } = createFork(await readJson(request));
-
         const forked = sessions.fork(id, {
-          ...(environment !== undefined && { environment }),
+          ...createFork(await readJson(request)),
           actor,
         });
 
@@ -573,6 +571,7 @@ export function createHandler(
             sessionId: forked.value.id,
             from: id,
             environmentId: forked.value.environmentId,
+            fromMessage: forked.value.editorText !== undefined,
           });
         }
 

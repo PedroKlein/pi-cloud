@@ -1317,7 +1317,12 @@ test("archives a session, shows it only with archived sessions and unarchives it
   expect(await page.locator("#prompt").isVisible()).toBe(true);
 }, 30_000);
 
-test("forks a session into a new one and opens it", async () => {
+test("forks a session from a picked message and opens it with that message to edit", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first answer")]),
+    fauxAssistantMessage([fauxText("second answer")]),
+  ]);
+
   await page.goto(server.url.href);
 
   await page.getByRole("button", { name: "New session" }).click();
@@ -1328,13 +1333,42 @@ test("forks a session into a new one and opens it", async () => {
   await page.locator("#status", { hasText: "idle" }).waitFor();
   const id = new URL(page.url()).hash.slice(1);
 
+  for (const [text, answer] of [
+    ["Plan the release\nwith notes", "first answer"],
+    ["Write the changelog", "second answer"],
+  ] as const) {
+    await page.locator("#prompt-text").fill(text);
+    await page.locator("#prompt-text").press("Enter");
+
+    await page
+      .locator('#chat li[data-role="assistant"]', { hasText: answer })
+      .waitFor();
+  }
+
   await page.getByRole("button", { name: "Session actions" }).click();
   await page.getByRole("menuitem", { name: "Fork" }).click();
+
+  const messages = page.getByRole("listbox", { name: "Fork from a message" });
+
+  const options = await messages.getByRole("option").allInnerTexts();
+
+  expect(options.map((text) => text.replace(/\s+/g, " "))).toEqual([
+    "Write the changelog just now",
+    "Plan the release just now",
+  ]);
+
+  await messages.getByRole("option", { name: /Plan the release/ }).click();
   await page.waitForURL((url) => url.hash !== "" && url.hash !== `#${id}`);
   const fork = new URL(page.url()).hash.slice(1);
 
   await page.locator(`#sessions li[data-id="${fork}"]`).waitFor();
   await page.locator("#status", { hasText: "idle" }).waitFor();
+
+  expect(await page.locator("#prompt-text").inputValue()).toBe(
+    "Plan the release\nwith notes",
+  );
+
+  expect(await page.locator("#chat li[data-role]").count()).toBe(0);
 }, 30_000);
 
 test("finds sessions by search and notifies when one finishes", async () => {

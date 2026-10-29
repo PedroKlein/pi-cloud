@@ -25,6 +25,7 @@ import {
   type CreateSession,
   type Environment,
   protocolVersion,
+  type ForkedSession,
   type Session,
   type SessionEvent,
   type Work,
@@ -1662,6 +1663,27 @@ test("runs a session in a fresh clone on the server's own provider", async () =>
   expect(output).toContain(`branch=${branch}`);
 });
 
+test("fails a fork of a clone session whose branch isn't pushed", async () => {
+  await server.stop();
+  server = startServer("cloud");
+  const repository = await gitRepository();
+  const source = await createSession("cloud", { kind: "clone", repository });
+
+  await follow(source.id, status("idle"));
+
+  const response = await api(`/api/sessions/${source.id}/fork`, {});
+  const fork = (await response.json()) as Session;
+
+  const events = await follow(fork.id, status("failed"));
+  const failed = events.findLast((event) => event.type === "session");
+
+  expect(response.status).toBe(201);
+
+  expect(failed?.type === "session" && failed.session.error).toContain(
+    "Push the Session's branch first",
+  );
+});
+
 test("keeps the server's own runner when its Environment gets a key", async () => {
   await server.stop();
   server = startServer("cloud");
@@ -1977,6 +1999,87 @@ test("forks a session into a new one that remembers its chat and starts from its
 
   expect(missing.status).toBe(404);
   expect(stored.title).toBe(`${first} (fork)`);
+});
+
+test("forks from a user message into a session that remembers only what came before it", async () => {
+  faux.setResponses([
+    fauxAssistantMessage([fauxText("first answer")]),
+    fauxAssistantMessage([fauxText("second answer")]),
+    (context) => {
+      const seen = JSON.stringify(context.messages);
+
+      return fauxAssistantMessage([
+        fauxText(
+          seen.includes("first answer") && !seen.includes("second answer")
+            ? "only the first turn"
+            : "wrong history",
+        ),
+      ]);
+    },
+  ]);
+
+  const source = await createSession("laptop");
+
+  await follow(source.id, status("idle"));
+
+  for (const text of ["one", "two"]) {
+    await api(`/api/sessions/${source.id}/commands`, { type: "message", text });
+  }
+
+  const events = await follow(
+    source.id,
+    (seen) => roles(seen).filter((role) => role === "assistant").length === 2,
+  );
+
+  const second = events.flatMap((event) => {
+    if (event.type !== "entry") {
+      return [];
+    }
+
+    const entry = JSON.parse(event.entry) as {
+      id: string;
+      message?: { role: string; content: unknown };
+    };
+
+    return entry.message?.role === "user" &&
+      JSON.stringify(entry.message.content).includes("two")
+      ? [entry.id]
+      : [];
+  });
+
+  const response = await api(`/api/sessions/${source.id}/fork`, {
+    entry: second[0],
+  });
+
+  const fork = (await response.json()) as ForkedSession;
+
+  await follow(fork.id, status("idle"));
+
+  await api(`/api/sessions/${fork.id}/commands`, {
+    type: "message",
+    text: fork.editorText ?? "",
+  });
+
+  const replay = await follow(fork.id, (seen) =>
+    seen.some(
+      (e) => e.type === "entry" && e.entry.includes("only the first turn"),
+    ),
+  );
+
+  const invalid = await api(`/api/sessions/${source.id}/fork`, { entry: 5 });
+
+  expect(response.status).toBe(201);
+  expect(fork.editorText).toBe("two");
+
+  expect(roles(replay)).toEqual([
+    "system",
+    "user",
+    "assistant",
+    "user",
+    "assistant",
+  ]);
+
+  expect(invalid.status).toBe(400);
 });
 
 test("marks a session failed when its folder is not listed", async () => {

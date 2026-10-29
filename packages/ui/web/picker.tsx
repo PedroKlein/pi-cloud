@@ -4,6 +4,7 @@ import {
   type ReactNode,
   type RefObject,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -16,6 +17,8 @@ export interface PickerOption {
   readonly detail?: string;
   readonly group?: string;
 }
+
+const gutter = 16;
 
 // A chip that opens a searchable list, like Claude Code's composer pickers.
 // Options come grouped in the order given.
@@ -33,6 +36,7 @@ export function Picker({
   trigger: given,
   onSearch,
   onChange,
+  chip = true,
 }: {
   readonly label: string;
   readonly children: ReactNode;
@@ -56,6 +60,8 @@ export function Picker({
   // Hears what is typed, for a list that a search somewhere else fills in.
   readonly onSearch?: (query: string) => void;
   readonly onChange: (values: readonly string[]) => void;
+  // Without a chip, only trigger opens the list, such as from a menu item.
+  readonly chip?: boolean;
 }): ReactElement {
   const listId = useId();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -66,6 +72,26 @@ export function Picker({
   const [end, setEnd] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const panel = useRef<HTMLDivElement>(null);
+
+  // A chip in the middle of a phone screen has room on neither side, so the
+  // list moves back inside the 16px gutter.
+  useLayoutEffect(() => {
+    const box = panel.current;
+    if (box === null) {
+      return;
+    }
+
+    // Measured around its centre, which the pop-in animation doesn't scale.
+    const { left: scaledLeft, width } = box.getBoundingClientRect();
+    const left = scaledLeft + width / 2 - box.offsetWidth / 2;
+    const right = left + box.offsetWidth;
+
+    const shift =
+      left < gutter ? gutter - left : Math.min(0, innerWidth - gutter - right);
+
+    box.style.translate = `${String(shift)}px`;
+  }, [open]);
 
   const needle = query.trim().toLowerCase();
 
@@ -188,8 +214,10 @@ export function Picker({
             keys(event);
           }
         }}
+        {...(!chip && { tabIndex: -1 })}
         className={cn(
           "inline-flex max-w-64 cursor-pointer items-center gap-1.5 transition-colors duration-150 hover:bg-hover aria-expanded:bg-hover",
+          !chip && "sr-only",
           quiet
             ? "h-7 rounded-md px-2 text-caption text-fg-dim hover:text-fg aria-expanded:text-fg"
             : "h-8 rounded-full border border-line bg-elevated px-3 text-label text-fg shadow-xs hover:border-line-strong aria-expanded:border-line-focus",
@@ -200,6 +228,7 @@ export function Picker({
       </button>
       {open && (
         <div
+          ref={panel}
           className={cn(
             "absolute z-30 flex w-80 max-w-[calc(100vw-32px)] animate-pop-in flex-col gap-1 rounded-lg border border-line bg-elevated p-1.5 shadow-pop",
             above ? "bottom-full mb-1" : "top-full mt-1",

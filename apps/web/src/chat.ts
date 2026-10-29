@@ -10,6 +10,8 @@ export type ChatItem = (
       readonly role: "user";
       readonly text: string;
       readonly images?: readonly ImageAttachment[];
+      // The transcript entry, which a fork can start from.
+      readonly entryId?: string;
     }
   | {
       readonly role: "assistant";
@@ -138,7 +140,14 @@ function entryItems(entry: Entry): readonly ChatItem[] {
           : [];
       });
 
-      return [{ role: "user", text, ...(images.length > 0 && { images }) }];
+      return [
+        {
+          role: "user",
+          text,
+          ...(images.length > 0 && { images }),
+          ...(entry.id !== undefined && { entryId: entry.id }),
+        },
+      ];
     }
 
     case "assistant":

@@ -13,9 +13,9 @@ import {
 const line = (message: unknown): string =>
   JSON.stringify({ type: "message", id: "1", message });
 
-test("shows user and assistant text", () => {
+test("shows user and assistant text, with the entry a fork starts from", () => {
   expect(chatItems(line({ role: "user", content: "hi" }))).toEqual([
-    { role: "user", text: "hi" },
+    { role: "user", text: "hi", entryId: "1" },
   ]);
 
   expect(
@@ -44,6 +44,7 @@ test("keeps the images a user sent and drops unknown image types", () => {
       role: "user",
       text: "look",
       images: [{ mimeType: "image/png", data: "AAAA" }],
+      entryId: "1",
     },
   ]);
 

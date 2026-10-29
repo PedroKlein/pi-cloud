@@ -48,7 +48,9 @@ Projects (the `projects` plugin, [ADR 0016](adr/0016-projects.md)) group work on
 
 ### Fork and archive
 
-Fork, in a session's menu, starts a new session that remembers the chat so far, on its own branch from the forked session's branch. `POST /api/sessions/<id>/fork` with an `environment` forks it into another Environment; the new machine gets only what the session pushed.
+Fork, in a session's menu, works like Pi's `/fork`. Pick one of your messages, newest first, and a new session starts that remembers the chat up to that message, with the message back in its composer to edit and send. Messages after it and other branches stay behind. "Fork the whole Session" copies the whole chat instead, like Pi's `/clone`. The fork works on its own branch from the forked session's branch.
+
+`POST /api/sessions/<id>/fork` takes an optional `entry`, the id of a user message in the transcript, and answers with the new session and the message's text as `editorText`. Without `entry` it copies the whole transcript. With an `environment` it forks into another Environment; the new machine gets only what the session pushed. A clone session's fork checks out its branch from the remote, so push that branch first; otherwise the fork fails with "Push the Session's branch first".
 
 Archive hides a session from the list and stops it on its machine; its transcript stays readable under "Show archived", and Unarchive picks it up again. Archiving a worktree or clone session also deletes its workspace if Git says nothing would be lost: no uncommitted or untracked files, and every commit pushed. Otherwise the workspace is kept and the session shows "unpushed work" until you delete it yourself; Delete workspace says why it was kept. A clean workspace comes back from its pushed branch when you unarchive. Files listed in a `.worktreeinclude` at the checkout root, such as `.env`, are copied into new worktrees if Git ignores them.
 

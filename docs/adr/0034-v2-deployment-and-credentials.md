@@ -1,6 +1,6 @@
 # 0034: v2 Deployment and Credentials
 
-- Status: accepted
+- Status: accepted, amended 2026-10-29 (a fork starts from a chosen user message, as Pi's `/fork` does; a clone fork from an unpushed branch fails with a clear reason)
 - Date: 2026-10-24
 
 ## Context
@@ -44,6 +44,9 @@ ADRs [0031](0031-profiles.md), [0032](0032-environments-and-runners.md) and [003
 ### v2 scope
 
 - Forking a Session onto another runner, starting from the server's transcript, is part of step 2. It is the resume path of ADR 0032 started as a new Session.
+  - Amended 2026-10-29, by the owner's decision that a fork works like Pi's `/fork` ([Pi sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md)). A fork names one of the Session's user messages. The new Session's transcript is the path from the root to that message's parent, through Pi's `parentId` links, so later entries and other branches stay behind. The session header stays first. The message's text comes back in the reply as `editorText`, and the web puts it in the new Session's composer to edit, as Pi's `/tree` puts it back in the editor. A fork without a message copies the whole transcript, which is closest to Pi's `/clone`.
+  - The web's Fork opens a list of the Session's user messages, newest first, with "Fork the whole Session" under it.
+  - A clone gets the source's branch only from the remote. The server can't tell cheaply whether a running Session pushed it, so it doesn't check. The fork marks its start point as the source's branch, and when the runner's clone can't find that branch on the remote, the fork fails with "Push the Session's branch first" instead of git's error. A source that was archived forks from the restore point its removal recorded ([ADR 0013](0013-archive-and-workspace-lifecycle.md)).
 - Enforced network policy, brokered secrets and hardened runtimes move out of v2.
 
 ### Testing
