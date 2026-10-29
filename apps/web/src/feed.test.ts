@@ -344,3 +344,64 @@ test("an action the assistant opened is dropped once the next turn runs", () => 
   expect(offered).toBe("s2");
   expect(feeds.at(-1)?.uiAction).toBeUndefined();
 });
+
+test("a failed event stream reloads the page once the browser is signed out", async () => {
+  jest.useFakeTimers();
+  const realFetch = globalThis.fetch;
+  const globals = globalThis as unknown as { location?: unknown };
+  let reloads = 0;
+  globals.location = { reload: () => reloads++ };
+
+  globalThis.fetch = Object.assign(
+    async () =>
+      Promise.resolve(Response.json({ error: "signed_out" }, { status: 401 })),
+    { preconnect: realFetch.preconnect },
+  );
+
+  const errors: (() => void)[] = [];
+  const opened: string[] = [];
+
+  const stream = {
+    readyState: 2,
+    CLOSED: 2,
+    addEventListener: (type: string, listener: (event: never) => void) => {
+      if (type === "error") {
+        errors.push(listener as () => void);
+      }
+    },
+    close: () => undefined,
+  };
+
+  const reader = feedReader({
+    dispatch: () => undefined,
+    onChange: () => undefined,
+    onSession: () => undefined,
+  });
+
+  try {
+    followEvents("s 1", reader, (url) => {
+      opened.push(url);
+
+      return stream;
+    });
+
+    errors.forEach((listener) => {
+      listener();
+    });
+
+    for (let turn = 0; turn < 5; turn++) {
+      await Promise.resolve();
+    }
+
+    jest.advanceTimersByTime(60_000);
+
+    expect({ reloads, opened: opened.length }).toEqual({
+      reloads: 1,
+      opened: 1,
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+    delete globals.location;
+    jest.useRealTimers();
+  }
+});

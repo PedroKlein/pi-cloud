@@ -449,7 +449,8 @@ export interface EventStream {
 
 // Follows a Session's event stream into reader. A browser reconnects by
 // itself after the connection drops, but not after an error response, so the
-// stream is opened again, backing off, until the Session is gone.
+// stream is opened again, backing off, until the Session is gone or the
+// browser is signed out.
 export function followEvents(
   sessionId: string,
   reader: FeedReader,
@@ -462,16 +463,24 @@ export function followEvents(
   let closed = false;
 
   const reopen = async (): Promise<void> => {
-    const gone = await fetch(path).then(
-      (response) => response.status === 404,
-      () => false,
+    const status = await fetch(path).then(
+      (response) => response.status,
+      () => undefined,
     );
 
     if (closed) {
       return;
     }
 
-    if (gone) {
+    if (status === 401) {
+      (
+        globalThis as unknown as { location: { reload: () => void } }
+      ).location.reload();
+
+      return;
+    }
+
+    if (status === 404) {
       reader.lost();
 
       return;
