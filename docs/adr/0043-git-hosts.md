@@ -1,6 +1,6 @@
 # 0043: Git Hosts
 
-- Status: accepted
+- Status: accepted, amended 2026-10-29 (Sessions a plugin starts, [ADR 0038](0038-single-sign-on-and-admins.md))
 - Date: 2026-10-28
 
 ## Context
@@ -55,6 +55,7 @@ Claude Code handles GitHub Enterprise by having an admin connect each host once.
 ### On the runner
 
 - The server sends the connections of the person who owns the Session with each assignment, as it sends Environment secrets. The agent can read them, as ADR 0034 already says of `GH_TOKEN`.
+- A Session a plugin starts from one of its routes belongs to the person who called the route, not to the installation's owner, and a Session it starts in turn belongs to them too. A Project's coordinator and threads get the connections of the person who created the Project, also when they created it through a meta-session they started (amended 2026-10-29).
 - The runner sets up one git credential helper per connected host, the way `GH_TOKEN` works today, and writes a `gh` config with every connected host into a folder only that Session uses. Workspace clones, the Session's pushes and its `gh` commands all use them.
 - Profile packages install with the same credentials: those of the person whose Session starts (decided 2026-10-28). The runner keeps installing each package once per Profile and machine, so later Sessions with that Profile reuse it whoever starts them. A package on a host the person hasn't connected fails the Session with an error that names the host and says to connect it.
 - A person's connection wins for its host. An Environment's `GH_TOKEN` still signs github.com in for people who haven't connected github.com, so existing setups keep working (decided 2026-10-28).
