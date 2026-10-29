@@ -24,6 +24,9 @@ export interface KubernetesOptions {
   readonly api: ApiAccess | undefined;
   // The Pipoca image, and the image of an Environment that names none.
   readonly image: string | undefined;
+  // How the cluster pulls that image, as for the server's own pod. A moving
+  // tag such as main needs Always, or a node keeps copying an old binary.
+  readonly imagePullPolicy?: string | undefined;
   // The server's in-cluster address, which runner pods poll.
   readonly server: string | undefined;
   readonly variables?: Readonly<Record<string, string>>;
@@ -36,6 +39,7 @@ export interface KubernetesOptions {
 interface Pods {
   readonly cluster: Cluster;
   readonly image: string;
+  readonly imagePullPolicy: string | undefined;
   readonly server: string;
   readonly variables: Readonly<Record<string, string>>;
   // Pods made before the server started may have stopped while it was down.
@@ -58,6 +62,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
       const {
         api,
         image,
+        imagePullPolicy,
         server,
         variables = {},
         intervalMs = 2000,
@@ -168,6 +173,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
       const pods: Pods = {
         cluster: clusterAt(api),
         image,
+        imagePullPolicy,
         server,
         variables,
         since: Date.now(),
@@ -201,6 +207,7 @@ export const kubernetesPlugin = kubernetes(() => {
   return {
     api: inClusterApi(),
     image: process.env["PIPOCA_IMAGE"],
+    imagePullPolicy: process.env["PIPOCA_IMAGE_PULL_POLICY"],
     server: process.env["PIPOCA_RUNNER_URL"],
     // Tests run the binary on Pi's faux model, in pods too.
     variables: faux === undefined ? {} : { PIPOCA_FAUX_REPLY: faux },
@@ -409,7 +416,7 @@ async function scaleSessions(
 
 async function startPod(
   context: ServerPluginContext,
-  { cluster, image, server, variables }: Pods,
+  { cluster, image, imagePullPolicy, server, variables }: Pods,
   environment: Environment,
   settings: KubernetesSettings,
   name: string,
@@ -429,6 +436,7 @@ async function startPod(
         environmentId: environment.id,
         image: environment.image ?? image,
         binaryImage: image,
+        binaryPullPolicy: imagePullPolicy,
         server,
         variables,
         settings,

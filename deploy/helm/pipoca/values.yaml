@@ -2,7 +2,10 @@ image:
   repository: ghcr.io/pedroklein/pipoca
   # main follows the main branch; pin a sha-<commit> tag for a steady install.
   tag: main
-  pullPolicy: IfNotPresent
+  # Always, since main moves: a node that has an older main keeps running it,
+  # and runner pods copy the pipoca binary from it. A check finds the layers
+  # cached, so IfNotPresent saves little, and suits only a pinned tag.
+  pullPolicy: Always
 
 # Where people open the server, such as https://pi.example.com. The setup link
 # in the log points here. Defaults to https://<apiRule.host> on Kyma.

@@ -78,6 +78,8 @@ spec:
             {{- if .Values.runnerPods.enabled }}
             - name: PIPOCA_IMAGE
               value: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            - name: PIPOCA_IMAGE_PULL_POLICY
+              value: {{ .Values.image.pullPolicy | quote }}
             - name: PIPOCA_RUNNER_URL
               value: "http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}"
             {{- end }}
