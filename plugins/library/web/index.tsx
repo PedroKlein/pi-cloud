@@ -24,7 +24,8 @@ function Page({ context }: PageProps): ReactElement {
   const [selected, setSelected] = useState<string>();
 
   const projects = useLoaded(
-    async () => json<ProjectSummary[]>(fetch("/api/plugins/projects/projects")),
+    async () =>
+      json<ProjectSummary[]>(context.request("/api/plugins/projects/projects")),
     "projects",
   ).value;
 
@@ -84,13 +85,13 @@ function ProjectFiles({
 
   const [files, writes] = value ?? [[], []];
 
-  const fileUrl = (name: string): string =>
-    `/api/plugins/library/${base}/files/${encodeURIComponent(name)}`;
+  const filePath = (name: string): string =>
+    `${base}/files/${encodeURIComponent(name)}`;
 
   const upload = async (chosen: readonly File[]): Promise<void> => {
     const results = await Promise.allSettled(
       chosen.map(async (file) =>
-        ok(fetch(fileUrl(file.name), { method: "PUT", body: file })),
+        ok(context.request(filePath(file.name), { method: "PUT", body: file })),
       ),
     );
 
@@ -124,7 +125,7 @@ function ProjectFiles({
                 className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2.5"
               >
                 <a
-                  href={fileUrl(file.name)}
+                  href={`/api/plugins/library/${filePath(file.name)}`}
                   download={file.name}
                   className="font-mono text-mono text-accent hover:underline"
                 >

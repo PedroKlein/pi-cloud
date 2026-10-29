@@ -140,14 +140,8 @@ export function pluginContext(name: string): WebContext {
   }
 
   const context: WebContext = {
-    request: async (path, body) =>
-      fetch(`/api/plugins/${name}/${path}`, {
-        method: body === undefined ? "GET" : "POST",
-        ...(body !== undefined && {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-      }),
+    request: async (path, init) =>
+      fetch(path.startsWith("/") ? path : `/api/plugins/${name}/${path}`, init),
     openSession: (sessionId) => {
       location.hash = sessionId;
     },

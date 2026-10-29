@@ -48,7 +48,13 @@ function EnvironmentSection({
               loaded={value}
               processes={environment.isolation === "process"}
               save={async (settings) => {
-                await json(context.request(path, { settings }));
+                await json(
+                  context.request(path, {
+                    method: "POST",
+                    body: JSON.stringify({ settings }),
+                  }),
+                );
+
                 reload();
               }}
             />

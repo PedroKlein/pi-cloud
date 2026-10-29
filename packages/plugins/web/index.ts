@@ -30,8 +30,9 @@ export interface EmbeddedSessionProps {
 }
 
 export interface WebContext {
-  // Requests go to the plugin's own routes under /api/plugins/<name>/.
-  readonly request: (path: string, body?: unknown) => Promise<Response>;
+  // A fetch of the plugin's own routes under /api/plugins/<name>/, or of the
+  // server's, such as /api/sessions, for a path that starts with /.
+  readonly request: (path: string, init?: RequestInit) => Promise<Response>;
   readonly openSession: (sessionId: string) => void;
   // The link to a path inside the plugin's own page.
   readonly href: (path: string) => string;

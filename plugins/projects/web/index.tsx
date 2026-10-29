@@ -381,7 +381,7 @@ function Page({ context, path }: PageProps): ReactElement {
 
   const environments =
     useLoaded(
-      async () => json<Environment[]>(fetch("/api/environments")),
+      async () => json<Environment[]>(context.request("/api/environments")),
       "environments",
       { topics: ["environments"] },
     ).value ?? [];
@@ -485,18 +485,24 @@ function modelNames(environments: readonly Environment[]): string[] {
 }
 
 function ProfileSelect({
+  context,
   value,
   onChange,
 }: {
+  readonly context: WebContext;
   readonly value: string;
   readonly onChange: (event: {
     readonly target: { readonly value: string };
   }) => void;
 }): ReactElement {
   const profiles =
-    useLoaded(async () => json<Profile[]>(fetch("/api/profiles")), "profiles", {
-      topics: ["profiles"],
-    }).value ?? [];
+    useLoaded(
+      async () => json<Profile[]>(context.request("/api/profiles")),
+      "profiles",
+      {
+        topics: ["profiles"],
+      },
+    ).value ?? [];
 
   return (
     <Select value={value} onChange={onChange}>
@@ -548,9 +554,13 @@ function CreateForm({
   readonly onCreated: (id: string) => void;
 }): ReactElement {
   const sessions =
-    useLoaded(async () => json<Session[]>(fetch("/api/sessions")), "sessions", {
-      topics: ["sessions"],
-    }).value ?? [];
+    useLoaded(
+      async () => json<Session[]>(context.request("/api/sessions")),
+      "sessions",
+      {
+        topics: ["sessions"],
+      },
+    ).value ?? [];
 
   const [repositories, setRepositories] = useState<readonly string[]>([]);
   const [environment, setEnvironment] = useState("");
@@ -579,10 +589,13 @@ function CreateForm({
 
     json<ProjectView>(
       context.request("projects", {
-        name: field("name"),
-        goal: field("goal"),
-        repositories,
-        environment: chosen?.id ?? environments[0]?.id ?? "",
+        method: "POST",
+        body: JSON.stringify({
+          name: field("name"),
+          goal: field("goal"),
+          repositories,
+          environment: chosen?.id ?? environments[0]?.id ?? "",
+        }),
       }),
     ).then(
       (project) => {
@@ -946,7 +959,11 @@ function ProjectPage({
               <h3 className="text-label font-medium text-fg-dim">Memory</h3>
               <Memory context={context} path={path} project={project} />
             </section>
-            <ArchiveProject project={project} onDone={reload} />
+            <ArchiveProject
+              context={context}
+              project={project}
+              onDone={reload}
+            />
           </div>
         </aside>
       )}
@@ -1263,7 +1280,7 @@ function ThreadMenu({
                 run(
                   context.request(
                     `threads/${encodeURIComponent(thread.sessionId)}/state`,
-                    { state },
+                    { method: "POST", body: JSON.stringify({ state }) },
                   ),
                 );
               }}
@@ -1285,7 +1302,7 @@ function ThreadMenu({
             role="menuitem"
             onClick={() => {
               run(
-                fetch(
+                context.request(
                   `/api/sessions/${encodeURIComponent(thread.sessionId)}/archive`,
                   { method: "POST" },
                 ),
@@ -1363,7 +1380,12 @@ function Settings({
         setError("");
         setSaving(true);
 
-        ok(context.request(`${path}/settings`, draft))
+        ok(
+          context.request(`${path}/settings`, {
+            method: "POST",
+            body: JSON.stringify(draft),
+          }),
+        )
           .then(onSaved, (failure: unknown) => {
             setError(
               failure instanceof Error ? failure.message : String(failure),
@@ -1401,7 +1423,11 @@ function Settings({
         />
       </Field>
       <Field label="Profile">
-        <ProfileSelect value={draft.profile} onChange={edit("profile")} />
+        <ProfileSelect
+          context={context}
+          value={draft.profile}
+          onChange={edit("profile")}
+        />
       </Field>
       <datalist id="project-settings-models">
         {models.map((ref) => (
@@ -1437,9 +1463,11 @@ function Settings({
 }
 
 function ArchiveProject({
+  context,
   project,
   onDone,
 }: {
+  readonly context: WebContext;
   readonly project: ProjectView;
   readonly onDone: () => void;
 }): ReactElement {
@@ -1465,7 +1493,7 @@ function ArchiveProject({
           setError("");
 
           ok(
-            fetch(
+            context.request(
               `/api/sessions/${encodeURIComponent(project.coordinatorId)}/${archived ? "unarchive" : "archive"}`,
               { method: "POST" },
             ),
