@@ -3668,6 +3668,29 @@ test("previews a page the Session opened in a browser at its own origin", async 
   await app.stop(true);
 });
 
+test("ends a preview's visit when its user signs out", async () => {
+  const app = localApp();
+  const port = app.port ?? 0;
+  const session = await openedPage(`http://localhost:${String(port)}/`);
+  const preview = await visitPreview(session.id, port, "/");
+  const headers = { host: preview.host, cookie: preview.cookie };
+
+  const before = await fetch(new URL("/", server.url), { headers });
+
+  const signedOut = await fetch(new URL("/api/auth/logout", server.url), {
+    method: "POST",
+    headers: { cookie: await signedIn() },
+  });
+
+  const after = await fetch(new URL("/", server.url), { headers });
+
+  expect([before.status, signedOut.status, after.status]).toEqual([
+    200, 204, 401,
+  ]);
+
+  await app.stop(true);
+});
+
 test("keeps Pipoca's API and other ports out of a preview's origin", async () => {
   const app = localApp();
   const port = app.port ?? 0;

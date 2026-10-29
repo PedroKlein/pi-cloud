@@ -19,6 +19,8 @@ interface Target {
 
 interface Visit extends Target {
   readonly userId: string;
+  // The browser session that opened the preview, which signing out ends.
+  readonly browserSession: string;
   readonly expiresAt: number;
 }
 
@@ -267,7 +269,8 @@ export function previewBroker(options: {
       if (
         visit === undefined ||
         visit.expiresAt <= Date.now() ||
-        !same(visit, target)
+        !same(visit, target) ||
+        auth.userOfSession(visit.browserSession)?.id !== visit.userId
       ) {
         return refused();
       }
@@ -287,8 +290,14 @@ export function previewBroker(options: {
         return undefined;
       }
 
-      const user = auth.userOf(request);
-      if (user === undefined) {
+      const browserSession = auth.browserSessionOf(request);
+
+      const user =
+        browserSession === undefined
+          ? undefined
+          : auth.userOfSession(browserSession);
+
+      if (browserSession === undefined || user === undefined) {
         return Response.json({ error: "signed_out" }, { status: 401 });
       }
 
@@ -319,6 +328,7 @@ export function previewBroker(options: {
         sessionId,
         port,
         userId: user.id,
+        browserSession,
         expiresAt: now + grantMs,
       });
 
