@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { $ } from "bun";
 import type { PluginInfo } from "@pipoca/protocol";
 import { installedPlugins } from "./installed";
@@ -487,4 +488,26 @@ test("answers not found for a plugin or file that isn't there", async () => {
   );
 
   expect(statuses).toEqual([404, 404, 404, 404]);
+});
+
+test("lets only an admin write or build a plugin's files", async () => {
+  await start();
+  await write("hello", "package.json", manifest());
+  await write("hello", "server.ts", serverPart);
+
+  const db = new DatabaseSync(join(root, "server.db"));
+  db.exec("update users set admin = 0");
+  db.close();
+
+  const refused = await Promise.all([
+    write("hello", "server.ts", "export default {};"),
+    api("POST", "/api/plugin-builds/hello"),
+  ]);
+
+  expect(refused.map(({ status }) => status)).toEqual([403, 403]);
+  expect(await refused[0].json()).toMatchObject({ error: "admin_only" });
+
+  expect(await readFile(join(plugins, "hello", "server.ts"), "utf8")).toBe(
+    serverPart,
+  );
 });

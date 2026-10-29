@@ -183,6 +183,15 @@ export function createHandler(
             "Only admins change plugins and restart the server.",
           );
 
+  // A draft runs nothing until an admin turns it on, so an admin's
+  // meta-session may write one though it never acts as an admin.
+  const adminDraft =
+    (route: BrowserRoute): BrowserRoute =>
+    async (request, params, actor, isAdmin) =>
+      auth.userById(userIdOf(actor))?.admin === true
+        ? await route(request, params, actor, isAdmin)
+        : errorReply(403, "admin_only", "Only admins write and build plugins.");
+
   const sessionAction =
     (message: string, act: (id: string) => Result<unknown>): Route =>
     (_request, [id = ""]) => {
@@ -346,7 +355,7 @@ export function createHandler(
     [
       "PUT",
       /^\/api\/plugin-files\/([^/]+)$/,
-      async (request, [name = ""]) => {
+      adminDraft(async (request, [name = ""]) => {
         const { path, content } = fieldsOf(await readJson(request));
 
         if (typeof content !== "string") {
@@ -358,13 +367,14 @@ export function createHandler(
             plugins.files.write(name, textOf("path", path), content),
           ),
         );
-      },
+      }),
     ],
     [
       "POST",
       /^\/api\/plugin-builds\/([^/]+)$/,
-      async (_request, [name = ""]) =>
+      adminDraft(async (_request, [name = ""]) =>
         Response.json(await refused(plugins.files.build(name))),
+      ),
     ],
     [
       "DELETE",
