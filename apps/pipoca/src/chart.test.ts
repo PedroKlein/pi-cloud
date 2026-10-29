@@ -10,6 +10,8 @@ const deployment = readFileSync(
   "utf8",
 );
 
+const main = readFileSync(join(import.meta.dir, "main.ts"), "utf8");
+
 const plugin = readFileSync(
   join(import.meta.dir, "../../../plugins/kubernetes/src/server.ts"),
   "utf8",
@@ -45,4 +47,16 @@ test("the chart lets the server read its own pod, to replace runner pods with an
   expect(rbac).toContain(
     'resources: ["pods", "secrets", "persistentvolumeclaims"]\n    verbs: ["get",',
   );
+});
+
+// Behind the gateway every request comes from it, so failed sign-ins count
+// by the client address it forwards, and without a proxy nobody picks theirs.
+test("the chart trusts the proxy in front only when there is one", () => {
+  expect(values).toMatch(/^trustProxy: false$/m);
+
+  expect(deployment).toContain(
+    "{{- if or .Values.trustProxy .Values.apiRule.enabled }}\n            - --trust-proxy\n            {{- end }}",
+  );
+
+  expect(main).toContain('trustProxy: values["trust-proxy"]');
 });

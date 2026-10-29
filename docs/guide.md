@@ -12,7 +12,7 @@ bun run build
 apps/pipoca/dist/pipoca server
 ```
 
-The first time it starts, the server logs a setup link (`open the setup link to create the first user`). Open it to create your user; the link works once. After that, the page asks for that name and password, and a browser stays signed in for 30 days. Ten wrong passwords for a name lock it for 15 minutes.
+The first time it starts, the server logs a setup link (`open the setup link to create the first user`). Open it to create your user; the link works once. After that, the page asks for that name and password, and a browser stays signed in for 30 days. Ten wrong passwords for a name from one address lock that name there for 15 minutes, and 50 wrong passwords from one address, for any names, lock that address. A person signing in from somewhere else isn't locked out.
 
 On the Environments page, make an Environment named `laptop`. The page shows its key once, in the command that starts an agent:
 
@@ -62,6 +62,7 @@ Options:
 [PIPOCA_SECRET_KEY=<32 bytes, base64>] \
 pipoca server [--host 127.0.0.1] [--port 7420] [--url <public URL>]
                 [--database ~/.pipoca/server.db] [--plugins ~/.pipoca/plugins]
+                [--trust-proxy]
                 [--provider <name> [--data-dir ~/.pipoca/server]
                 [--folder <path>]... [--extension <path>]...]
 PIPOCA_KEY=<Environment key> | PIPOCA_TOKEN=<runner token> \
@@ -71,7 +72,7 @@ pipoca agent --name <runner> [--capacity <n>] [--exit-when-idle <seconds>]
                [--extension <path>]...
 ```
 
-`--host` is the address the server listens on; use `0.0.0.0` behind a proxy or in a container. `--url` is where people open it, when that differs, so the setup link points there. `--provider` also runs an agent inside the server, in the Environment of that name, which needs no key.
+`--host` is the address the server listens on; use `0.0.0.0` behind a proxy or in a container. `--url` is where people open it, when that differs, so the setup link points there. `--provider` also runs an agent inside the server, in the Environment of that name, which needs no key. `--trust-proxy` counts failed sign-ins by the client address that the proxy in front adds last to `X-Forwarded-For`. Set it only when every request comes through that proxy: otherwise anyone can send the header and pick their address. Without it, behind a proxy, everyone shares the proxy's address.
 
 ### Plugins
 
@@ -97,7 +98,7 @@ Several agents can join one Environment's pool with its key ([ADR 0032](adr/0032
 
 ## Run it in Kubernetes
 
-The `Dockerfile` builds an image that runs the server, and `deploy/helm/pipoca` installs it with one replica and its data on a ReadWriteOnce volume ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)). On install the chart makes a Secret holding the secret key, and it keeps that Secret on upgrades and uninstalls. Put HTTPS in front with your gateway, and set `url` to where people open it:
+The `Dockerfile` builds an image that runs the server, and `deploy/helm/pipoca` installs it with one replica and its data on a ReadWriteOnce volume ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)). On install the chart makes a Secret holding the secret key, and it keeps that Secret on upgrades and uninstalls. Put HTTPS in front with your gateway, and set `url` to where people open it. When every request comes through that gateway, `trustProxy=true` counts failed sign-ins by the client address it forwards:
 
 ```sh
 helm install pipoca deploy/helm/pipoca --set url=https://pi.example.com
@@ -113,7 +114,7 @@ helm install pipoca deploy/helm/pipoca --namespace pipoca --create-namespace \
   --set apiRule.enabled=true --set apiRule.host=pipoca.<cluster domain>
 ```
 
-The gateway lets through only what a browser needs: the web UI, sign-in and the `/api` routes it calls. The setup link, the runner routes under `/agent` and `/api/mcp` stay closed, so open the setup link through `kubectl port-forward svc/pipoca 7420`. Runner pods reach the server through its Service, and the chart adds an Istio policy that lets pods in the namespace reach `/agent`, since the APIRule's own policies only let the gateway in. `apiRule.exposeAgents=true` opens `/agent` for runners outside the cluster, such as a laptop, and `apiRule.exposeMcp=true` opens `/api/mcp` for MCP clients.
+The gateway lets through only what a browser needs: the web UI, sign-in and the `/api` routes it calls. The setup link, the runner routes under `/agent` and `/api/mcp` stay closed, so open the setup link through `kubectl port-forward svc/pipoca 7420`. Runner pods reach the server through its Service, and the chart adds an Istio policy that lets pods in the namespace reach `/agent`, since the APIRule's own policies only let the gateway in. Sign-ins come only through the gateway, so the chart trusts the client address it forwards. `apiRule.exposeAgents=true` opens `/agent` for runners outside the cluster, such as a laptop, and `apiRule.exposeMcp=true` opens `/api/mcp` for MCP clients.
 
 ### Single sign-on
 

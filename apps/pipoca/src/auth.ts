@@ -98,19 +98,29 @@ export interface Credentials {
 
 export class InvalidCredentials extends Error {}
 
+interface Failures {
+  count: number;
+  readonly since: number;
+}
+
 const cookieName = "pipoca-session";
 const sessionDays = 30;
 const minPasswordLength = 8;
 const maxNameLength = 64;
 const maxPasswordLength = 1024;
 
-// Failed sign-ins for a user before it is locked for the rest of the window.
+// Failed sign-ins for a name from one address before the name is locked
+// there for the rest of the window, and for any names from one address
+// before that address is. A stranger elsewhere can't lock a person out.
 const maxFailures = 10;
+const maxAddressFailures = 50;
 const failureWindowMs = 15 * 60_000;
+// Bounds memory when many addresses guess at once; the oldest go first.
+const maxTracked = 100_000;
 
 export class Auth {
   readonly #store: AuthStore;
-  readonly #failures = new Map<string, { count: number; since: number }>();
+  readonly #failures = new Map<string, Failures>();
   readonly #ownTokens = new Map<string, Agent>();
   #setupToken: string | undefined;
   readonly #passwordLogin: boolean;
@@ -189,10 +199,11 @@ export class Auth {
     }
   }
 
-  async signIn({
-    name,
-    password,
-  }: Credentials): Promise<User | "wrong" | "locked" | "off"> {
+  // The address is the client's, as the server or its trusted proxy saw it.
+  async signIn(
+    { name, password }: Credentials,
+    address: string,
+  ): Promise<User | "wrong" | "locked" | "off"> {
     if (!this.#passwordLogin) {
       return "off";
     }
@@ -201,38 +212,67 @@ export class Auth {
       return "wrong";
     }
 
+    const now = Date.now();
+    this.#prune(now);
+
+    const byAddress = this.#failuresOf(`address\n${address}`, now);
+    if (byAddress.count >= maxAddressFailures) {
+      return "locked";
+    }
+
     const user = this.#store.userByName(name);
 
     // An unknown name costs a verify too, so timing doesn't tell names apart.
     if (user === undefined || user.passwordHash === "") {
+      byAddress.count += 1;
       await Bun.password.verify(password, await unknownUserHash);
 
       return "wrong";
     }
 
-    const now = Date.now();
-    const seen = this.#failures.get(user.id);
-
-    const failures =
-      seen === undefined || now - seen.since > failureWindowMs
-        ? { count: 0, since: now }
-        : seen;
-
-    if (failures.count >= maxFailures) {
+    const nameKey = `user\n${user.id}\n${address}`;
+    const forName = this.#failuresOf(nameKey, now);
+    if (forName.count >= maxFailures) {
       return "locked";
     }
 
     // Counted before the verify, so parallel guesses can't all slip past.
-    failures.count += 1;
-    this.#failures.set(user.id, failures);
+    byAddress.count += 1;
+    forName.count += 1;
 
     if (!(await Bun.password.verify(password, user.passwordHash))) {
       return "wrong";
     }
 
-    this.#failures.delete(user.id);
+    byAddress.count -= 1;
+    this.#failures.delete(nameKey);
 
     return { id: user.id, name: user.name, admin: user.admin };
+  }
+
+  // A fresh window goes to the end, so the map stays in the order windows
+  // started and pruning stops at the first one still open.
+  #failuresOf(key: string, now: number): Failures {
+    const seen = this.#failures.get(key);
+    if (seen !== undefined && now - seen.since <= failureWindowMs) {
+      return seen;
+    }
+
+    const fresh = { count: 0, since: now };
+    this.#failures.delete(key);
+    this.#failures.set(key, fresh);
+
+    return fresh;
+  }
+
+  #prune(now: number): void {
+    for (const [key, { since }] of this.#failures) {
+      if (now - since <= failureWindowMs && this.#failures.size <= maxTracked) {
+        return;
+      }
+
+      this.#failures.delete(key);
+    }
   }
 
   // The key runners join the Environment with, shown only now.

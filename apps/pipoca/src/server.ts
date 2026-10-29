@@ -61,6 +61,16 @@ export function onBehalfOf(caller: OnBehalf, request: Request): Request {
   return request;
 }
 
+// The client's address, as serve saw it. Requests made inside the server,
+// and handlers called without serve, have none.
+const addresses = new WeakMap<Request, string>();
+
+export function fromAddress(address: string, request: Request): Request {
+  addresses.set(request, address);
+
+  return request;
+}
+
 export type BrowserRoute = (
   request: Request,
   params: readonly string[],
@@ -773,7 +783,8 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
       /^\/api\/auth\/login$/,
       async (request) => {
         const credentials = credentialsOf(fieldsOf(await readJson(request)));
-        const user = await auth.signIn(credentials);
+        const address = addresses.get(request) ?? "";
+        const user = await auth.signIn(credentials, address);
 
         if (user === "off") {
           return errorReply(
@@ -784,7 +795,7 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
         }
 
         if (user === "locked") {
-          log("sign-in locked", { name: credentials.name });
+          log("sign-in locked", { name: credentials.name, address });
 
           return errorReply(
             429,
@@ -794,7 +805,7 @@ function authRoutes(auth: Auth, plugins: PluginHost, log: Log): RouteTable {
         }
 
         if (user === "wrong") {
-          log("sign-in failed", { name: credentials.name });
+          log("sign-in failed", { name: credentials.name, address });
 
           return errorReply(401, "wrong_password", "Wrong name or password.");
         }

@@ -30,7 +30,7 @@ import { builtInPlugins } from "./session-parts";
 import { errorReply } from "./replies";
 import { previewBroker } from "./previews";
 import { changeFeed } from "./changes";
-import { createHandler, onBehalfOf } from "./server";
+import { createHandler, fromAddress, onBehalfOf } from "./server";
 import { kernelToolsets } from "./toolsets";
 import type { PreviewData, SocketData, TerminalData } from "./sockets";
 import { openStore } from "./store";
@@ -51,6 +51,10 @@ export interface ServeOptions {
   readonly secretKey?: Buffer;
   // False leaves only the setup link and plugin logins, such as OIDC.
   readonly passwordLogin?: boolean;
+  // Takes a client's address from the X-Forwarded-For entry the proxy in
+  // front added. Only behind one, since without it anyone can send that
+  // header and pick the address their failed sign-ins count against.
+  readonly trustProxy?: boolean;
   readonly sessions?: SessionsOptions;
   readonly agent?: Omit<
     AgentOptions,
@@ -294,7 +298,16 @@ export function serve(options: ServeOptions): {
         bunServer.timeout(request, 0);
       }
 
-      return upgraded ?? previews.open(request) ?? handler(request);
+      return (
+        upgraded ??
+        previews.open(request) ??
+        handler(
+          fromAddress(
+            clientAddress(request, bunServer, options.trustProxy === true),
+            request,
+          ),
+        )
+      );
     },
     websocket: {
       open: (ws) => {
@@ -366,6 +379,24 @@ export function serve(options: ServeOptions): {
       options.log("server stopped");
     },
   };
+}
+
+// A proxy adds the address it saw to the end of the header, after whatever
+// the client sent.
+function clientAddress(
+  request: Request,
+  server: Bun.Server<SocketData>,
+  trustProxy: boolean,
+): string {
+  const forwarded = trustProxy
+    ? request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim()
+    : undefined;
+
+  if (forwarded !== undefined && forwarded !== "") {
+    return forwarded;
+  }
+
+  return server.requestIP(request)?.address ?? "";
 }
 
 function isPreview(

@@ -59,6 +59,9 @@ spec:
             - --url
             - {{ . | quote }}
             {{- end }}
+            {{- if or .Values.trustProxy .Values.apiRule.enabled }}
+            - --trust-proxy
+            {{- end }}
             {{- if (.Values.oidc | default dict).ssoOnly }}
             - --sso-only
             {{- end }}
