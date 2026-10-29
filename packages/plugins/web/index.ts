@@ -206,14 +206,15 @@ function notify(watcher: Watcher): void {
 }
 
 // A browser reconnects by itself after the connection drops, but not after
-// an error response, such as while the server restarts.
+// an error response, such as while the server restarts. Either way changes
+// were missed, so watchers fetch again once the stream opens.
 function connect(): void {
   const { EventSource } = globalThis as unknown as {
     EventSource: new (url: string) => ChangeStream;
   };
 
   const source = new EventSource("/api/changes");
-  let lost = false;
+  let lost = failures > 0;
   stream = source;
 
   source.addEventListener("message", (event) => {
