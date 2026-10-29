@@ -1,7 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  BadRequest,
-  fieldsOf,
   type PluginStore,
   readJson,
   type ServerPlugin,
@@ -279,7 +277,7 @@ export const oidc: ServerPlugin = {
         return Response.json(viewOf(created), { status: 201 });
       }
 
-      if (id !== undefined && path[2] === "remove") {
+      if (id !== undefined && request.method === "DELETE") {
         return providers.remove(id)
           ? Response.json({ removed: id })
           : Response.json({ error: "not_found" }, { status: 404 });
@@ -337,13 +335,12 @@ export const oidc: ServerPlugin = {
         return Response.json(account(user));
       }
 
-      if (route === "unlink" && request.method === "POST") {
-        const { issuer } = fieldsOf(await readJson(request));
-
-        if (typeof issuer !== "string") {
-          throw new BadRequest("issuer must be text");
-        }
-
+      if (
+        route === "identities" &&
+        id !== undefined &&
+        request.method === "DELETE"
+      ) {
+        const issuer = decodeURIComponent(id);
         identities.unlink(user.id, issuer);
         context.log("identity unlinked", { userId: user.id, issuer });
 

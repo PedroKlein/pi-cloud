@@ -212,7 +212,7 @@ export const gitHosts: ServerPlugin = {
       request: Request,
       path: readonly string[],
     ): Promise<Response> => {
-      const [, name, action] = path;
+      const [, name] = path;
 
       if (name === undefined && request.method === "GET") {
         return Response.json(hosts.list().map(viewOf));
@@ -225,7 +225,7 @@ export const gitHosts: ServerPlugin = {
         return Response.json(viewOf(created), { status: 201 });
       }
 
-      if (name !== undefined && action === "remove") {
+      if (name !== undefined && request.method === "DELETE") {
         return hosts.remove(name)
           ? Response.json({ removed: name })
           : Response.json({ error: "not_found" }, { status: 404 });
@@ -303,13 +303,12 @@ export const gitHosts: ServerPlugin = {
         return Response.json(account(user));
       }
 
-      if (route === "disconnect" && request.method === "POST") {
-        const { host } = fieldsOf(await readJson(request));
-
-        if (typeof host !== "string") {
-          throw new BadRequest("host must be text");
-        }
-
+      if (
+        route === "connections" &&
+        name !== undefined &&
+        request.method === "DELETE"
+      ) {
+        const host = decodeURIComponent(name);
         connections.remove(user.id, host);
         context.log("host disconnected", { userId: user.id, host });
 

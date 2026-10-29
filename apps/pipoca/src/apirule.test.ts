@@ -58,3 +58,18 @@ test("the APIRule keeps streams and terminals open as long as Kyma allows", () =
     ),
   ).toEqual(["3900", "3900", "3900", "3900"]);
 });
+
+// Plugin routes remove things with DELETE, so the gateway has to let it
+// through to them.
+test("the APIRule lets plugin routes take DELETE", () => {
+  const methods = /\{\{- \$methods := list ((?:"[A-Z]+" ?)+)\}\}/
+    .exec(apiRule)?.[1]
+    ?.split(" ")
+    .map((method) => method.replaceAll('"', ""));
+
+  const plugins = /range list ((?:"[a-z-]+" ?)+)/.exec(apiRule)?.[1];
+
+  expect([methods?.includes("DELETE"), plugins?.includes('"plugins"')]).toEqual(
+    [true, true],
+  );
+});

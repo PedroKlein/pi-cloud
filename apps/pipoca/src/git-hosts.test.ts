@@ -204,7 +204,10 @@ test("sends no login for a host after the person disconnects it", async () => {
     token: goodToken,
   });
 
-  await api("POST", "/api/plugins/git-hosts/disconnect", { host: enterprise });
+  await api(
+    "DELETE",
+    `/api/plugins/git-hosts/connections/${encodeURIComponent(enterprise)}`,
+  );
 
   expect((await assignment())?.gitLogins).toBeUndefined();
 });

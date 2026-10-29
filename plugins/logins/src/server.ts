@@ -146,11 +146,10 @@ export const logins: ServerPlugin = {
 
     context.routes.handle(async (request, path, caller) => {
       const userId = userOf(caller);
-      const [route = "", key, action] = path.split("/");
+      const [route = "", key = "", action] = path.split("/");
+      const kind = [models, mcp].find(({ name }) => name === route);
 
       if (caller.kind === "session") {
-        const kind = [models, mcp].find(({ name }) => name === route);
-
         return kind === undefined
           ? Response.json({ error: "not_found" }, { status: 404 })
           : kind.sessionRoute(request, userId, key, action);
@@ -252,13 +251,8 @@ export const logins: ServerPlugin = {
         return Response.json(account(userId));
       }
 
-      if (route === "remove" && request.method === "POST") {
-        const fields = fieldsOf(await readJson(request));
-
-        const removed =
-          fields["server"] === undefined
-            ? await models.write(userId, textField(fields, "provider"), null)
-            : await mcp.write(userId, textField(fields, "server"), null);
+      if (kind !== undefined && key !== "" && request.method === "DELETE") {
+        const removed = await kind.write(userId, decodeURIComponent(key), null);
 
         return removed
           ? Response.json(account(userId))
