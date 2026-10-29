@@ -40,6 +40,10 @@ export interface Cluster {
   readonly createPod: (pod: object) => Promise<void>;
   readonly deletePod: (name: string) => Promise<void>;
   readonly deleteSecret: (name: string) => Promise<void>;
+  // The Secrets of runner pods, by Environment.
+  readonly runnerSecrets: () => Promise<
+    readonly { readonly name: string; readonly environmentId: string }[]
+  >;
   // The claims of Sessions' own workspaces, by Session.
   readonly sessionClaims: () => Promise<
     readonly { readonly name: string; readonly sessionId: string }[]
@@ -180,6 +184,24 @@ export function clusterAt(options: ApiAccess): Cluster {
     },
     deleteSecret: async (name) => {
       await call("DELETE", `secrets/${name}`);
+    },
+    runnerSecrets: async () => {
+      const list = (await call(
+        "GET",
+        `secrets?labelSelector=${encodeURIComponent(environmentLabel)}`,
+      )) as {
+        readonly items: readonly {
+          readonly metadata: {
+            readonly name: string;
+            readonly labels?: Readonly<Record<string, string>>;
+          };
+        }[];
+      };
+
+      return list.items.map(({ metadata }) => ({
+        name: metadata.name,
+        environmentId: metadata.labels?.[environmentLabel] ?? "",
+      }));
     },
     sessionClaims: async () => {
       const list = (await call(

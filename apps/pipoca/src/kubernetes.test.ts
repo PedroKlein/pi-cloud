@@ -640,6 +640,31 @@ test("doesn't count a pod made before the server started that never reached it",
   expect(await lastFailure(environment)).toBeNull();
 });
 
+test("revokes the token of a runner pod deleted from outside, and deletes its Secret", async () => {
+  const environment = await kubernetesEnvironment({});
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const [name = ""] = api.pods.keys();
+  const token = api.secrets.get(name)?.stringData["token"] ?? "";
+  api.pods.delete(name);
+
+  await eventually(() => !api.secrets.has(name) && api.pods.size === 1);
+
+  const work = await fetch(new URL("/agent/work", server.url), {
+    method: "POST",
+    headers: {
+      [versionHeader]: String(protocolVersion),
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ running: [], folders: [], models: [] }),
+  });
+
+  expect(work.status).toBe(401);
+  expect([...api.secrets.keys()]).toEqual([...api.pods.keys()]);
+});
+
 test("removes stopped runner pods of an Environment whose settings were removed", async () => {
   const environment = await kubernetesEnvironment({});
   await startSession(environment);

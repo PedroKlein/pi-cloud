@@ -269,6 +269,22 @@ async function reconcile(
 
   failures.record(failed, now);
 
+  // A pod deleted from outside leaves its Secret, and its token valid.
+  for (const secret of await pods.cluster.runnerSecrets()) {
+    const known = environments.some(({ id }) => id === secret.environmentId);
+    if (!known || all.some(({ name }) => name === secret.name)) {
+      continue;
+    }
+
+    context.environments.revokeRunner(secret.environmentId, secret.name);
+    await pods.cluster.deleteSecret(secret.name);
+
+    context.log("runner secret removed", {
+      environmentId: secret.environmentId,
+      secret: secret.name,
+    });
+  }
+
   // An archived Session's workspace is removed, as on any runner, so its
   // claim goes once no pod mounts it. A workspace its runner kept, or hasn't
   // checked yet, stays until removed or forced, as on any runner.
