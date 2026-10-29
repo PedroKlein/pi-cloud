@@ -50,6 +50,7 @@ function fakeKernel(): {
   readonly offline: Set<string>;
   readonly refused: string[];
   readonly unreadable: Set<string>;
+  readonly stuck: Set<string>;
   readonly logged: Logged[];
 } {
   const db = new DatabaseSync(":memory:");
@@ -61,6 +62,7 @@ function fakeKernel(): {
   const offline = new Set<string>();
   const refused: string[] = [];
   const unreadable = new Set<string>();
+  const stuck = new Set<string>();
   const logged: Logged[] = [];
   let route: PluginRoute | undefined;
 
@@ -158,6 +160,10 @@ function fakeKernel(): {
         }
       },
       archive: (id) => {
+        if (stuck.has(id)) {
+          throw new Error(`${id} is stuck`);
+        }
+
         const session = sessions.get(id);
         if (session?.archivedAt === null) {
           const archived: Session = {
@@ -171,6 +177,10 @@ function fakeKernel(): {
         }
       },
       unarchive: (id) => {
+        if (stuck.has(id)) {
+          throw new Error(`${id} is stuck`);
+        }
+
         const session = sessions.get(id);
         if (session && session.archivedAt !== null) {
           const back: Session = {
@@ -286,6 +296,7 @@ function fakeKernel(): {
     offline,
     refused,
     unreadable,
+    stuck,
     logged,
   };
 }
@@ -1113,6 +1124,44 @@ test("archives a Project's Sessions with its coordinator and brings back those i
   expect(kernel.session(threadId).archivedAt).toBeNull();
   expect(kernel.session(oldId).archivedAt).not.toBeNull();
   expect((await projectView(kernel)).coordinatorState).toBe("idle");
+});
+
+test("archives and brings back a Project's other Sessions when one of them fails", async () => {
+  const kernel = fakeKernel();
+  projects.register(kernel.context);
+  const { coordinatorId, threadId } = await startProject(kernel);
+
+  const started = await kernel
+    .tool("start_thread")
+    .run(
+      { title: "Docs", message: "write the docs" },
+      { session: kernel.session(coordinatorId), actor: user },
+    );
+
+  const docsId = /as (\S+)\.$/.exec(started.text)?.[1] ?? "";
+  kernel.stuck.add(threadId);
+
+  kernel.context.sessions.archive(coordinatorId);
+
+  expect(kernel.session(docsId).archivedAt).not.toBeNull();
+
+  expect(kernel.logged).toContainEqual({
+    message: "could not archive a Session with its Project",
+    fields: { sessionId: threadId, error: `Error: ${threadId} is stuck` },
+  });
+
+  kernel.stuck.delete(threadId);
+  kernel.context.sessions.archive(threadId);
+  kernel.stuck.add(threadId);
+
+  kernel.context.sessions.unarchive(coordinatorId);
+
+  expect(kernel.session(docsId).archivedAt).toBeNull();
+
+  expect(kernel.logged).toContainEqual({
+    message: "could not bring back a Session with its Project",
+    fields: { sessionId: threadId, error: `Error: ${threadId} is stuck` },
+  });
 });
 
 test("shows one thread's state and Project for a link to it", async () => {
