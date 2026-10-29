@@ -12,14 +12,22 @@ export function SettingsPage(): ReactElement {
     readonly secret: string;
   }>();
 
+  const [error, setError] = useState<string>();
+
   const revoke = (id: string, name: string): void => {
     if (!confirm(`${name} won't be able to reach Pipoca any more.`)) {
       return;
     }
 
-    void send(`/api/mcp-tokens/${encodeURIComponent(id)}`, "DELETE").then(
-      reload,
-      reload,
+    send(`/api/mcp-tokens/${encodeURIComponent(id)}`, "DELETE").then(
+      () => {
+        setError(undefined);
+        reload();
+      },
+      (reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+        reload();
+      },
     );
   };
 
@@ -76,6 +84,11 @@ export function SettingsPage(): ReactElement {
             </li>
           ))}
         </ul>
+        {error !== undefined && (
+          <p role="alert" className="text-caption text-failed">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

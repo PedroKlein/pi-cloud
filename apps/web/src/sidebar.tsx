@@ -391,7 +391,10 @@ function PluginNav({
       : pins.filter((known) => known !== name);
 
     setPins(next);
-    void send("/api/pinned-pages", "PUT", { pages: next });
+
+    send("/api/pinned-pages", "PUT", { pages: next }).catch(() => {
+      setPins(pins);
+    });
   };
 
   const pinned = nav.filter(({ name }) => pins.includes(name));
