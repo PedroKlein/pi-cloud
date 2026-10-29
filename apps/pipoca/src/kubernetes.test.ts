@@ -18,6 +18,7 @@ import {
 } from "@pipoca/protocol";
 import { runAgent } from "./agent";
 import { serve } from "./serve";
+import { builtInPlugins } from "./session-parts";
 import { firstUser } from "./testdata/sign-in";
 
 interface FakePod {
@@ -166,6 +167,7 @@ function startServer(database = ":memory:"): void {
         retryAfterMs: 300,
       })),
     ],
+    manifests: builtInPlugins,
     log: (message, fields) => {
       lines.push(`${message} ${JSON.stringify(fields)}`);
     },

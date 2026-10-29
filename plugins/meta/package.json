@@ -21,6 +21,12 @@
   "pipoca": {
     "id": "meta",
     "title": "Assistant",
-    "description": "Changes Pipoca from a chat: the home screen asks the assistant, which works through Pipoca's tools and asks before anything risky."
+    "description": "Changes Pipoca from a chat: the home screen asks the assistant, which works through Pipoca's tools and asks before anything risky.",
+    "capabilities": [
+      "toolsets",
+      "sessions",
+      "profiles",
+      "routes"
+    ]
   }
 }
