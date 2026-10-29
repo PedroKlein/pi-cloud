@@ -3,8 +3,23 @@ import {
   isObject,
   type PluginConfig,
   type PluginStore,
+  type Static,
+  Type,
 } from "@pipoca/plugins";
 import type { HostView } from "./model";
+
+// What Settings sends to change a host. An empty or missing client secret
+// keeps the one the host has, and null takes it away.
+export const hostChange = Type.Object({
+  label: Type.Optional(Type.String()),
+  clientId: Type.Optional(Type.String()),
+  clientSecret: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+
+export const newHost = Type.Object({
+  ...hostChange.properties,
+  host: Type.String(),
+});
 
 export interface HostConfig {
   readonly host: string;
@@ -24,10 +39,11 @@ export interface OAuthApp {
 export interface HostStore {
   readonly list: () => readonly HostConfig[];
   readonly get: (host: string) => HostConfig | undefined;
-  readonly create: (input: unknown) => HostConfig;
-  // An empty or missing client secret keeps the one the host has, and null
-  // takes it away.
-  readonly update: (host: string, input: unknown) => HostConfig | undefined;
+  readonly create: (input: Static<typeof newHost>) => HostConfig;
+  readonly update: (
+    host: string,
+    input: Static<typeof hostChange>,
+  ) => HostConfig | undefined;
   readonly remove: (host: string) => boolean;
 }
 
@@ -130,18 +146,12 @@ export function hostStore(
 
   const changed = (
     host: string,
-    input: unknown,
+    input: Static<typeof hostChange>,
     before: Entry | undefined,
   ): Entry => {
-    const fields = objectOf(input);
-    const secret = fields["clientSecret"];
-
-    if (secret !== undefined && secret !== null && typeof secret !== "string") {
-      throw new BadRequest("clientSecret must be text");
-    }
-
-    const label = text(fields["label"], "label").trim() || host;
-    const clientId = text(fields["clientId"], "clientId").trim();
+    const secret = input.clientSecret;
+    const label = (input.label ?? "").trim() || host;
+    const clientId = input.clientId?.trim() ?? "";
     const base = { ...hostConfig(host, before?.config.api), label };
 
     if (clientId === "") {
@@ -181,7 +191,7 @@ export function hostStore(
     list: () => current().map((entry) => entry.config),
     get: (host) => get(host)?.config,
     create: (input) => {
-      const host = hostName(objectOf(input)["host"]);
+      const host = hostName(input.host);
 
       if (get(host) !== undefined) {
         throw new BadRequest(`${host} is already listed`);
@@ -430,12 +440,4 @@ function isHttp(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-function objectOf(input: unknown): Readonly<Record<string, unknown>> {
-  if (!isObject(input)) {
-    throw new BadRequest("expected an object");
-  }
-
-  return input;
 }

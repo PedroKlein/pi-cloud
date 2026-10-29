@@ -54,7 +54,29 @@ export default {
 } satisfies ServerPlugin;
 ```
 
-The server and Session parts import `@pipoca/plugins` from the server they run on, the way a web part gets React from the page, so don't list it in `dependencies`. It changes with the server, and `engine` says which version a plugin was written for ([ADR 0046](adr/0046-plugin-sdk-from-the-server.md)). A route throws `BadRequest(message)`, `NotFound(message)` or `HttpError(status, message, code?)` to answer with that status and `{ "error": code, "message": message }`, the body every error from the server has ([ADR 0047](adr/0047-api-errors-and-removal.md)). The code is a stable snake_case string a program checks, and it defaults to one for the status, such as `bad_request` for 400 and `not_found` for 404. Pass a more specific one, such as `busy`, when a client should tell it apart. The message is what a person reads, and `ok()` and `json()` in the web part show it. `readJson(request)` reads a JSON body or throws a `BadRequest`, and `fieldsOf(body)` gives a body's fields to check one by one.
+The server and Session parts import `@pipoca/plugins` from the server they run on, the way a web part gets React from the page, so don't list it in `dependencies`. It changes with the server, and `engine` says which version a plugin was written for ([ADR 0046](adr/0046-plugin-sdk-from-the-server.md)). A route throws `BadRequest(message)`, `NotFound(message)` or `HttpError(status, message, code?)` to answer with that status and `{ "error": code, "message": message }`, the body every error from the server has ([ADR 0047](adr/0047-api-errors-and-removal.md)). The code is a stable snake_case string a program checks, and it defaults to one for the status, such as `bad_request` for 400 and `not_found` for 404. Pass a more specific one, such as `busy`, when a client should tell it apart. The message is what a person reads, and `ok()` and `json()` in the web part show it. `readBody(request, schema)` reads a JSON body and checks it against a [TypeBox](https://github.com/sinclairzx81/typebox) schema, the way Pi checks a tool's parameters ([ADR 0048](adr/0048-typebox-checks-in-plugins.md)). It returns the body with the schema's type, or throws a `BadRequest` that names the first field that doesn't fit, such as `name must be string`. Build the schema with `Type` from `@pipoca/plugins`, and get its type with `Static<typeof schema>`:
+
+```ts
+import { readBody, type ServerPlugin, Type } from "@pipoca/plugins";
+
+const greetingChange = Type.Object({
+  greeting: Type.String(),
+  shout: Type.Optional(Type.Boolean()),
+});
+
+export default {
+  name: "greeter",
+  register: (context) => {
+    context.routes.handle(async (request) => {
+      const { greeting, shout } = await readBody(request, greetingChange);
+
+      return Response.json({
+        greeting: shout ? greeting.toUpperCase() : greeting,
+      });
+    });
+  },
+} satisfies ServerPlugin;
+```
 
 `context.routes.handle` answers everything under `/api/plugins/greeter/`. The handler gets the request, the rest of the path, and its caller. The caller is `{ kind: "user", actor, admin }` for a signed-in user, also when a toolset tool sends the request for them (from a meta-session, `admin` is always false), and `{ kind: "session", session, actor }` when the plugin's Session part sent it. A route acts as its caller: a Session it starts for a user takes `actor: caller.actor`, so it gets that user's git logins. A route that changes config every user shares calls `requireAdmin(caller, message)` first, which answers 403 with the message unless `caller.kind === "user" && caller.admin` ([ADR 0038](adr/0038-single-sign-on-and-admins.md#admins)). The part can use only the context members its manifest lists in `capabilities`. Reaching for any other member fails the plugin when it registers. The built-in plugins in `plugins/` declare theirs the same way and are held to them, and a manifest without `capabilities` gets none. `owner`, `store`, `settings`, `config`, `changes`, `signal` and `log` are always there, and `auth` is only for built-in plugins. `context.store` is the plugin's own SQLite database, with `exec`, `all` and `run` for SQL and `seal` and `open` for secrets it keeps in a table. Name its tables `<id>_<table>`. `context.config.get()` is the plugin's key in the server's `pipoca.json`, read again when the file changes, `context.config.set(value)` replaces that key, and `context.config.dir` is a folder of the plugin's own next to it. The plugin decides whether its configuration lives there, in its store, or in both ([ADR 0039](adr/0039-plugin-config-files.md)). `context.changes.publish(name)` tells open pages that something of the plugin's changed; they hear the topic `<id>.<name>` ([ADR 0038](adr/0038-tool-repair-change-events-and-context.md)).
 
