@@ -170,7 +170,7 @@ docs/            guide, vision, architecture, design system and decision records
 
 ## Development
 
-`bun run dev` runs the server with a built-in provider named `cloud` and an agent named `local` that may use this repository's folder, and restarts both when a file under `apps/` or `packages/` changes. Its data lives in `~/.pipoca/dev`.
+`bun run dev` runs the server with a built-in provider named `cloud`, and restarts it when a file under `apps/` or `packages/` changes. Its data lives in `~/.pipoca/dev`. With `PIPOCA_KEY` set to an Environment's key from the Environments page, it also runs an agent named `local` that may use this repository's folder.
 
 ```sh
 bun run dev

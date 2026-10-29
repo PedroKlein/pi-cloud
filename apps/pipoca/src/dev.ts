@@ -9,6 +9,10 @@ const main = join(import.meta.dirname, "main.ts");
 const repo = join(import.meta.dirname, "..", "..", "..");
 const dataRoot = join(dataFolder(), "dev");
 
+// The agent joins with an Environment's key, which exists only once the
+// server is set up, so it runs when one is given.
+const key = process.env["PIPOCA_KEY"];
+
 const commands = [
   [
     "server",
@@ -19,15 +23,19 @@ const commands = [
     "--data-dir",
     join(dataRoot, "server"),
   ],
-  [
-    "agent",
-    "--name",
-    "local",
-    "--data-dir",
-    join(dataRoot, "agent"),
-    "--folder",
-    repo,
-  ],
+  ...(key === undefined
+    ? []
+    : [
+        [
+          "agent",
+          "--name",
+          "local",
+          "--data-dir",
+          join(dataRoot, "agent"),
+          "--folder",
+          repo,
+        ],
+      ]),
 ];
 
 let children: Supervisor[] = [];
@@ -75,9 +83,13 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
-log("starting server and agent", {
-  providers: ["cloud", "local"],
-  dataRoot,
-});
+if (key === undefined) {
+  log("starting the server without the local agent", {
+    dataRoot,
+    hint: "set PIPOCA_KEY to an Environment's key from the Environments page to run it too",
+  });
+} else {
+  log("starting server and agent", { providers: ["cloud", "local"], dataRoot });
+}
 
 start();
