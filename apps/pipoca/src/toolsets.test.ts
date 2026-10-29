@@ -19,6 +19,7 @@ import type {
   UiAction,
 } from "@pipoca/protocol";
 import { serve, type ServeOptions } from "./serve";
+import { builtInPlugins } from "./session-parts";
 import { firstUser } from "./testdata/sign-in";
 import { readSse } from "./sse";
 
@@ -49,7 +50,18 @@ function start(
   const logs: string[] = [];
 
   server = serve({
-    ...(plugins && { plugins }),
+    ...(plugins && {
+      plugins,
+      manifests: plugins.map(
+        ({ name }) =>
+          builtInPlugins.find(({ id }) => id === name) ?? {
+            id: name,
+            title: name,
+            description: "",
+            capabilities: ["toolsets", "routes"],
+          },
+      ),
+    }),
     ...(installed && { installed }),
     port: 0,
     database: ":memory:",

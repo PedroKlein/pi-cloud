@@ -34,6 +34,9 @@ export interface KubernetesOptions {
   readonly imagePullPolicy?: string | undefined;
   // The server's in-cluster address, which runner pods poll.
   readonly server: string | undefined;
+  // The server's own pod. The image ID its node ran tells an old binary from
+  // a new one under a moving tag such as main.
+  readonly pod?: string | undefined;
   readonly variables?: Readonly<Record<string, string>>;
   readonly intervalMs?: number;
   // How long an Environment waits for a new pod after one fails. It doubles
@@ -47,6 +50,7 @@ interface Pods {
   readonly imagePullPolicy: string | undefined;
   readonly server: string;
   readonly variables: Readonly<Record<string, string>>;
+  readonly imageId: () => Promise<string | undefined>;
   // Pods made before the server started may have stopped while it was down.
   readonly since: number;
 }
@@ -69,6 +73,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         image,
         imagePullPolicy,
         server,
+        pod,
         variables = {},
         intervalMs = 2000,
         retryAfterMs = 10_000,
@@ -170,12 +175,22 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         return;
       }
 
+      const cluster = clusterAt(api);
+      let imageId: string | undefined;
+
       const pods: Pods = {
-        cluster: clusterAt(api),
+        cluster,
         image,
         imagePullPolicy,
         server,
         variables,
+        imageId: async () => {
+          if (imageId === undefined && pod !== undefined) {
+            imageId = await cluster.imageId(pod, image).catch(() => undefined);
+          }
+
+          return imageId;
+        },
         since: Date.now(),
       };
 
@@ -209,6 +224,7 @@ export const kubernetesPlugin = kubernetes(() => {
     image: process.env["PIPOCA_IMAGE"],
     imagePullPolicy: process.env["PIPOCA_IMAGE_PULL_POLICY"],
     server: process.env["PIPOCA_RUNNER_URL"],
+    pod: process.env["POD_NAME"] ?? process.env["HOSTNAME"],
     // Tests run the binary on Pi's faux model, in pods too.
     variables: faux === undefined ? {} : { PIPOCA_FAUX_REPLY: faux },
   };
@@ -222,6 +238,7 @@ async function reconcile(
 ): Promise<void> {
   const environments = context.environments.list();
   const all = await pods.cluster.runnerPods();
+  const imageId = await pods.imageId();
   const now = Date.now();
 
   // Pods of an Environment without settings run until their agent stops.
@@ -234,11 +251,24 @@ async function reconcile(
   }[] = [];
 
   const failed: FailedPod[] = [];
+  const outdated: RunnerPod[] = [];
 
   for (const pod of all) {
     const environment = environments.find(({ id }) => id === pod.environmentId);
     const reason = removalReason(pod, now);
-    if (environment === undefined || reason === undefined) {
+    if (environment === undefined) {
+      continue;
+    }
+
+    if (reason === undefined) {
+      if (
+        store.get(pod.environmentId) !== undefined &&
+        !pod.deleting &&
+        !sameBinary(pod, pods.image, imageId)
+      ) {
+        outdated.push(pod);
+      }
+
       continue;
     }
 
@@ -287,6 +317,33 @@ async function reconcile(
       phase: pod.phase,
       reason,
       ...(problem !== undefined && { problem }),
+    });
+  }
+
+  // After an upgrade a pod would run the old binary against the new server.
+  // Deleting it gracefully lets its agent halt its Sessions first, and once
+  // it is gone the pass below revokes its token, as for any pod deleted from
+  // outside. A Session's claim stays, so its Session goes on in the new pod.
+  for (const pod of outdated) {
+    try {
+      await pods.cluster.deletePod(pod.name);
+    } catch (error) {
+      context.log("runner pod not replaced", {
+        environmentId: pod.environmentId,
+        pod: pod.name,
+        error: String(error),
+      });
+
+      continue;
+    }
+
+    context.log("runner pod replaced", {
+      environmentId: pod.environmentId,
+      pod: pod.name,
+      binaryImage: pod.binaryImage,
+      binaryImageId: pod.binaryImageId,
+      image: pods.image,
+      imageId,
     });
   }
 
@@ -519,6 +576,38 @@ function failureOf(
   }
 
   return joined ? undefined : `its agent never reached the server at ${server}`;
+}
+
+// The digests the nodes ran decide. Until both are known, as for a pod
+// still pending or a server outside a pod, the names in the specs do.
+function sameBinary(
+  pod: RunnerPod,
+  image: string,
+  imageId: string | undefined,
+): boolean {
+  if (pod.binaryImage === undefined) {
+    return true;
+  }
+
+  const ran = digestOf(pod.binaryImageId);
+  const runs = digestOf(imageId);
+  if (ran !== undefined && runs !== undefined) {
+    return ran === runs;
+  }
+
+  const named = digestOf(pod.binaryImage);
+  const names = digestOf(image);
+
+  return named !== undefined && names !== undefined
+    ? named === names
+    : pod.binaryImage === image;
+}
+
+// An image ID such as repo@sha256:..., with a runtime's prefix or none.
+function digestOf(image: string | undefined): string | undefined {
+  const digest = image?.slice(image.lastIndexOf("@") + 1);
+
+  return digest?.startsWith("sha256:") === true ? digest : undefined;
 }
 
 function removalReason(pod: RunnerPod, now: number): string | undefined {

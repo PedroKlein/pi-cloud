@@ -121,7 +121,9 @@ function startServer(
       runners: { token: () => "pct_test", revoke: () => undefined },
       events: eventBus(() => undefined),
       changes: () => undefined,
-      manifests: [],
+      manifests: [
+        { id: "echo", title: "Echo", description: "", capabilities: ["tools"] },
+      ],
       store: store.plugin,
       settings: store.pluginSettings,
       config: (name) => ({
@@ -480,7 +482,14 @@ test("lists a plugin's own Sessions only while the plugin is on", async () => {
         runners: { token: () => "pct_test", revoke: () => undefined },
         events: eventBus(() => undefined),
         changes: () => undefined,
-        manifests: [],
+        manifests: [
+          {
+            id: "keeper",
+            title: "Keeper",
+            description: "",
+            capabilities: ["sessions"],
+          },
+        ],
         store: store.plugin,
         settings: store.pluginSettings,
         config: (name) => ({

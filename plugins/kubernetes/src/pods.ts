@@ -46,6 +46,9 @@ export function runnerPod(options: PodOptions): object {
     },
     spec: {
       restartPolicy: "Never",
+      // The agent halts its Sessions on SIGTERM, each within 10 seconds,
+      // before a replaced pod is killed.
+      terminationGracePeriodSeconds: 30,
       automountServiceAccountToken: false,
       // A new volume is root's. The Pipoca image and most images built on
       // node run as uid and gid 1000, as the server does.

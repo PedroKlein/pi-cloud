@@ -34,6 +34,14 @@ const greeter: PluginManifest = {
     greeting: { type: "string", title: "Greeting", default: "hello" },
     times: { type: "number", title: "Times", default: 1, min: 1, max: 5 },
   },
+  capabilities: ["tools", "events", "routes"],
+};
+
+const broken: PluginManifest = {
+  id: "broken",
+  title: "Broken",
+  description: "Throws while it registers.",
+  capabilities: ["tools", "events", "routes"],
 };
 
 function start(plugins: readonly ServerPlugin[]): void {
@@ -44,7 +52,7 @@ function start(plugins: readonly ServerPlugin[]): void {
     database: ":memory:",
     sessions: { pollWaitMs: 0 },
     plugins,
-    manifests: [greeter],
+    manifests: [greeter, broken],
     log: (message, fields) => {
       logs.push(`${message} ${JSON.stringify(fields)}`);
     },
@@ -245,6 +253,43 @@ test("turns off a plugin that throws while it registers and keeps the rest", asy
       ({ name }) => name,
     ),
   ).toEqual(["shared"]);
+});
+
+test("fails a built-in plugin that reaches past the capabilities it declared, as an installed one", async () => {
+  start([
+    {
+      name: "greeter",
+      register: ({ sessions }) => {
+        sessions.owned("x");
+      },
+    },
+    {
+      name: "unlisted",
+      register: ({ routes }) => {
+        routes.handle(() => Response.json({ reached: true }));
+      },
+    },
+  ]);
+
+  const listed = (await (
+    await api("GET", "/api/plugins")
+  ).json()) as PluginInfo[];
+
+  expect(listed.map(({ id, state, error }) => ({ id, state, error }))).toEqual([
+    {
+      id: "greeter",
+      state: "failed",
+      error:
+        "greeter uses sessions without declaring it in pipoca.capabilities",
+    },
+    {
+      id: "unlisted",
+      state: "failed",
+      error: "unlisted uses routes without declaring it in pipoca.capabilities",
+    },
+  ]);
+
+  expect((await api("GET", "/api/plugins/unlisted/anything")).status).toBe(404);
 });
 
 test("gives a Session part its defaults when the server sends no settings", async () => {

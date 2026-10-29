@@ -17,6 +17,7 @@
   "pipoca": {
     "id": "usage",
     "title": "Usage",
-    "description": "Shows a Session's token use and cost in its header."
+    "description": "Shows a Session's token use and cost in its header.",
+    "capabilities": []
   }
 }

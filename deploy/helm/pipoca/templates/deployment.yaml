@@ -82,6 +82,11 @@ spec:
               value: {{ .Values.image.pullPolicy | quote }}
             - name: PIPOCA_RUNNER_URL
               value: "http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}"
+            # Its image ID tells runner pods with an old binary apart.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

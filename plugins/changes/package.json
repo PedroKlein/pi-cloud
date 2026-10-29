@@ -18,6 +18,7 @@
   "pipoca": {
     "id": "changes",
     "title": "Changes",
-    "description": "Shows a Session's changes as a diff and opens pull requests."
+    "description": "Shows a Session's changes as a diff and opens pull requests.",
+    "capabilities": []
   }
 }

@@ -22,6 +22,10 @@
   "pipoca": {
     "id": "models",
     "title": "Models",
-    "description": "Model aliases per Environment, with fallbacks when a model fails."
+    "description": "Model aliases per Environment, with fallbacks when a model fails.",
+    "capabilities": [
+      "routes",
+      "models"
+    ]
   }
 }
