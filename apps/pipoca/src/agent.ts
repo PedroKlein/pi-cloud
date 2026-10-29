@@ -314,16 +314,13 @@ export async function runAgent(options: AgentOptions): Promise<void> {
 
       // Every Session of the Environment shares what its setup script makes,
       // so the script signs in only with the Environment's own token.
-      const image = await setUp({
-        ...assignment.environment,
-        variables: {
+      const image = await setUp(
+        assignment.environment,
+        gitCredentials(hostLogins([], environment), {
+          ...process.env,
           ...environment,
-          ...gitCredentials(hostLogins([], environment), {
-            ...process.env,
-            ...environment,
-          }),
-        },
-      });
+        }),
+      );
 
       const { cwd, checkouts } = await prepareWorkspace(
         workspace,
