@@ -1,5 +1,5 @@
 export { type EventBus, eventBus } from "./events";
-export { checkedSettings, settingValues } from "./settings";
+export { checkedSettings, settingSpecs, settingValues } from "./settings";
 export type {
   AskQuestions,
   Checkout,

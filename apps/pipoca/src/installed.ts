@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { ServerPlugin } from "@pipoca/plugins";
+import { type ServerPlugin, settingSpecs } from "@pipoca/plugins";
 import {
   type Capability,
   capabilities,
@@ -504,7 +504,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
     );
   }
 
-  const settings = field["settings"] as PluginManifest["settings"];
+  const settings = field["settings"];
 
   return {
     id,
@@ -519,7 +519,7 @@ function manifestOf(packageJson: unknown, folder: string): PluginManifest {
       ...(typeof web === "string" && { web }),
       ...(typeof session === "string" && { session }),
     },
-    ...(settings !== undefined && { settings }),
+    ...(settings !== undefined && { settings: settingSpecs(settings) }),
   };
 }
 

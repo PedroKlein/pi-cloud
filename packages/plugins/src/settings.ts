@@ -45,6 +45,71 @@ export function checkedSettings(
   return settingValues(schema, body);
 }
 
+// The settings a plugin's manifest declares, or throws with what is wrong
+// with them.
+export function settingSpecs(settings: unknown): Schema {
+  if (!isRecord(settings)) {
+    throw new Error("pipoca.settings must name each setting the plugin has");
+  }
+
+  for (const [name, spec] of Object.entries(settings)) {
+    if (!isSpec(spec)) {
+      throw new Error(
+        `pipoca.settings.${name} needs a title, a type this server knows and a default that fits it`,
+      );
+    }
+  }
+
+  return settings as Schema;
+}
+
+const types: readonly unknown[] = [
+  "string",
+  "number",
+  "boolean",
+  "choice",
+  "strings",
+] satisfies readonly SettingSpec["type"][];
+
+function isSpec(spec: unknown): spec is SettingSpec {
+  if (!isRecord(spec)) {
+    return false;
+  }
+
+  const { title, description, type, min, max, options } = spec;
+
+  if (
+    typeof title !== "string" ||
+    (description !== undefined && typeof description !== "string") ||
+    !types.includes(type)
+  ) {
+    return false;
+  }
+
+  if (
+    type === "number" &&
+    ![min, max].every(
+      (bound) =>
+        bound === undefined ||
+        (typeof bound === "number" && Number.isFinite(bound)),
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    type === "choice" &&
+    !(
+      Array.isArray(options) &&
+      options.every((option) => typeof option === "string")
+    )
+  ) {
+    return false;
+  }
+
+  return fits(spec as unknown as SettingSpec, spec["default"]);
+}
+
 function fits(spec: SettingSpec, value: unknown): value is SettingValue {
   switch (spec.type) {
     case "string":
