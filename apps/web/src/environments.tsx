@@ -1,4 +1,8 @@
-import { availability, type Environment } from "@pipoca/protocol";
+import {
+  availability,
+  type Environment,
+  type EnvironmentTemplate,
+} from "@pipoca/protocol";
 import {
   Badge,
   Button,
@@ -13,8 +17,10 @@ import {
 } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useRef, useState } from "react";
 import { api, send } from "./api";
+import { useTemplates } from "./hooks";
 import { PluginBoundary } from "./plugin-boundary";
 import { enabledPlugins, pluginContext } from "./plugins";
+import { Templates } from "./templates";
 
 export function EnvironmentsPage({
   environments,
@@ -28,6 +34,8 @@ export function EnvironmentsPage({
   const environment =
     environments.find(({ id }) => id === selected) ?? environments[0];
 
+  const templates = useTemplates();
+
   // A key shows once, right after it is made (ADR 0033).
   const [madeKey, setMadeKey] = useState<{
     readonly environmentId: string;
@@ -39,7 +47,7 @@ export function EnvironmentsPage({
       id="environments-page"
       className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10"
     >
-      <PageTitle description="An Environment is where Sessions run: a pool of runners, the machines whose agents joined it, with a setup script, variables and secrets for every Session. Edits reach a Session the next time it starts.">
+      <PageTitle description="An Environment is where your Sessions run: a pool of runners, the machines whose agents joined it, with a setup script, variables and secrets for every Session. It is yours alone, and one made from a template runs as the template says. Edits reach a Session the next time it starts.">
         Environments
       </PageTitle>
       <div className="flex flex-wrap gap-2">
@@ -62,6 +70,7 @@ export function EnvironmentsPage({
         ))}
       </div>
       <NewEnvironment
+        templates={templates.value}
         onCreated={(environmentId, key) => {
           setMadeKey({ environmentId, key });
           onChange();
@@ -72,6 +81,9 @@ export function EnvironmentsPage({
         <Editor
           key={environment.id}
           environment={environment}
+          template={templates.value.find(
+            ({ id }) => id === environment.templateId,
+          )}
           madeKey={
             madeKey?.environmentId === environment.id ? madeKey.key : undefined
           }
@@ -82,13 +94,16 @@ export function EnvironmentsPage({
           onChange={onChange}
         />
       )}
+      <Templates templates={templates.value} onChange={templates.reload} />
     </div>
   );
 }
 
 function NewEnvironment({
+  templates,
   onCreated,
 }: {
+  readonly templates: readonly EnvironmentTemplate[];
   readonly onCreated: (environmentId: string, key: string) => void;
 }): ReactElement {
   const [error, setError] = useState<string>();
@@ -96,9 +111,13 @@ function NewEnvironment({
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const form = event.currentTarget;
-    const name = new FormData(form).get("name");
+    const fields = new FormData(form);
+    const template = fields.get("template");
 
-    void api("/api/environments", { name })
+    void api("/api/environments", {
+      name: fields.get("name"),
+      ...(typeof template === "string" && template !== "" && { template }),
+    })
       .then(async (response) => {
         const created = (await response.json()) as {
           readonly environment: Environment;
@@ -127,6 +146,16 @@ function NewEnvironment({
         placeholder="laptops"
         className={cn(fieldClass, "w-48 font-mono")}
       />
+      {templates.length > 0 && (
+        <Select name="template" aria-label="Template" defaultValue="">
+          <option value="">Machines I join</option>
+          {templates.map(({ id, name }) => (
+            <option key={id} value={id}>
+              From {name}
+            </option>
+          ))}
+        </Select>
+      )}
       <Button type="submit">New Environment</Button>
       {error !== undefined && (
         <p role="alert" className="text-caption text-failed">
@@ -204,11 +233,13 @@ function JoinKey({
 
 function Editor({
   environment,
+  template,
   madeKey,
   onKey,
   onChange,
 }: {
   readonly environment: Environment;
+  readonly template: EnvironmentTemplate | undefined;
   readonly madeKey: string | undefined;
   readonly onKey: (key: string) => void;
   readonly onChange: () => void;
@@ -218,7 +249,10 @@ function Editor({
 
   // What the form's fields started from. Only fields edited since are sent,
   // so a save keeps changes made elsewhere meanwhile.
-  const shown = useRef<Readonly<Record<string, string>>>(fieldsOf(environment));
+  const shown = useRef<Readonly<Record<string, string>>>(
+    fieldsOf(environment, template),
+  );
+
   const [rows, setRows] = useState(() => rowsOf(environment));
 
   const update = (body: unknown, then?: () => void): void => {
@@ -341,43 +375,52 @@ function Editor({
               className={fieldClass}
             />
           </Field>
-          <Field label="Setup script, run once per machine or image before its first Session">
-            <textarea
-              name="setupScript"
-              rows={4}
-              defaultValue={environment.setupScript}
-              placeholder="apt-get install -y ripgrep"
-              className={area}
-            />
-          </Field>
+          {template === undefined ? (
+            <Field label="Setup script, run once per machine or image before its first Session">
+              <textarea
+                name="setupScript"
+                rows={4}
+                defaultValue={environment.setupScript}
+                placeholder="apt-get install -y ripgrep"
+                className={area}
+              />
+            </Field>
+          ) : (
+            <p className="text-ui text-fg-dim">
+              Made from the template {template.name}, which sets its setup
+              script, isolation and image, and the variables under yours.
+            </p>
+          )}
           <KeyValues
             label="Variables. A lock keeps one secret; GH_TOKEN also signs git in to GitHub."
             rows={rows}
             onChange={setRows}
           />
-          <details className="group flex flex-col gap-4">
-            <summary className="cursor-pointer text-label font-medium text-fg-dim">
-              Advanced
-            </summary>
-            <div className="mt-4 flex flex-col gap-4">
-              <Field label="Run each Session">
-                <Select name="isolation" defaultValue={environment.isolation}>
-                  <option value="process">As a process on its machine</option>
-                  <option value="container">
-                    In a container (needs Docker)
-                  </option>
-                </Select>
-              </Field>
-              <Field label="Container image, empty for the default">
-                <input
-                  name="image"
-                  defaultValue={environment.image ?? ""}
-                  placeholder="node:22-bookworm"
-                  className={cn(fieldClass, "font-mono")}
-                />
-              </Field>
-            </div>
-          </details>
+          {template === undefined && (
+            <details className="group flex flex-col gap-4">
+              <summary className="cursor-pointer text-label font-medium text-fg-dim">
+                Advanced
+              </summary>
+              <div className="mt-4 flex flex-col gap-4">
+                <Field label="Run each Session">
+                  <Select name="isolation" defaultValue={environment.isolation}>
+                    <option value="process">As a process on its machine</option>
+                    <option value="container">
+                      In a container (needs Docker)
+                    </option>
+                  </Select>
+                </Field>
+                <Field label="Container image, empty for the default">
+                  <input
+                    name="image"
+                    defaultValue={environment.image ?? ""}
+                    placeholder="node:22-bookworm"
+                    className={cn(fieldClass, "font-mono")}
+                  />
+                </Field>
+              </div>
+            </details>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" type="submit">
               Save
@@ -468,11 +511,17 @@ function changedValues(
   };
 }
 
-function fieldsOf(environment: Environment): Record<string, string> {
+// A template sets the other fields, so the form has only the name then.
+function fieldsOf(
+  environment: Environment,
+  template: EnvironmentTemplate | undefined,
+): Record<string, string> {
   return {
     name: environment.name,
-    isolation: environment.isolation,
-    image: environment.image ?? "",
-    setupScript: environment.setupScript,
+    ...(template === undefined && {
+      isolation: environment.isolation,
+      image: environment.image ?? "",
+      setupScript: environment.setupScript,
+    }),
   };
 }

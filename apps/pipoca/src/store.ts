@@ -73,6 +73,7 @@ interface EnvironmentRow {
   variables: string;
   secrets: string;
   key_hash: string | null;
+  template_id: string | null;
 }
 
 const environmentsTable = `
@@ -87,7 +88,8 @@ create table if not exists environments (
   setup_script text not null default '',
   variables text not null default '{}',
   secrets text not null default '{}',
-  key_hash text unique
+  key_hash text unique,
+  template_id text
 );
 create table if not exists runner_models (
   provider text not null,
@@ -257,6 +259,7 @@ function migrate(db: DatabaseSync): void {
     ["variables", "text not null default '{}'"],
     ["secrets", "text not null default '{}'"],
     ["key_hash", "text"],
+    ["template_id", "text"],
   ] as const) {
     if (!environmentColumns.some(({ name }) => name === column)) {
       db.exec(`alter table environments add column ${column} ${definition}`);
@@ -511,10 +514,18 @@ function insertEnvironment(
   db: DatabaseSync,
   provider: string,
   ownerId: string,
+  templateId: string | null = null,
 ): void {
   db.prepare(
-    "insert into environments (id, name, provider, owner_id, created_at) values (?, ?, ?, ?, ?) on conflict (provider) do nothing",
-  ).run(randomUUID(), provider, provider, ownerId, new Date().toISOString());
+    "insert into environments (id, name, provider, owner_id, created_at, template_id) values (?, ?, ?, ?, ?, ?) on conflict (provider) do nothing",
+  ).run(
+    randomUUID(),
+    provider,
+    provider,
+    ownerId,
+    new Date().toISOString(),
+    templateId,
+  );
 }
 
 // Seals secrets stored before they were encrypted, and fails the start when
@@ -677,6 +688,7 @@ export function openStore(
         : row.secrets,
     ) as Record<string, string>,
     hasKey: row.key_hash !== null,
+    templateId: row.template_id,
   });
 
   const updateEnvironment = db.prepare(
@@ -817,8 +829,8 @@ export function openStore(
           "forced" satisfies WorkspaceRemoval,
         ) as unknown as SessionRow[]
       ).map(toSession),
-    ensureEnvironment: (provider, ownerId = owner) => {
-      insertEnvironment(db, provider, ownerId);
+    ensureEnvironment: (provider, ownerId = owner, templateId = null) => {
+      insertEnvironment(db, provider, ownerId, templateId);
     },
     environments: () =>
       (selectEnvironments.all() as unknown as EnvironmentRow[]).map(

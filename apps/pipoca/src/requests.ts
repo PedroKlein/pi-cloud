@@ -557,7 +557,13 @@ export function joinRequest(body: unknown): JoinRequest {
 }
 
 export function createEnvironment(body: unknown): CreateEnvironment {
-  return { name: nameOf("name", fieldsOf(body)["name"]) };
+  const fields = fieldsOf(body);
+  const template = fields["template"];
+
+  return {
+    name: nameOf("name", fields["name"]),
+    ...(template !== undefined && { template: textOf("template", template) }),
+  };
 }
 
 export function workPoll(body: unknown): WorkPoll {

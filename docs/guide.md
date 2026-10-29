@@ -88,6 +88,25 @@ An Environment can have a setup script, variables and secrets (`PATCH /api/envir
 
 Model provider and MCP server logins belong to each person and live on the server, sealed with the same key ([ADR 0045](adr/0045-server-kept-logins.md)). `/login` and `/mcp login` in any Session save the login there, and every Session that person starts uses it, on any runner, so a Kubernetes pod that exits keeps nothing. Runners read and write a login through the server, which lets one runner at a time refresh it, since providers rotate refresh tokens. An MCP sign-in opens on your device; when the server sends you back to an address on the runner, paste the address your browser lands on. Settings lists your logins under Logins, where you can log out of one or connect one of Pi's own model providers without a Session: the server runs Pi's sign-in, the sign-in page opens on your device, and for providers that send you to an address on your own machine you paste the address your browser lands on. Providers that extensions add take `/login` in a Session. The same page lists the MCP servers of the base Profile and your Profiles that sign in with OAuth, each with Sign in: the sign-in page sends your browser back to Pipoca at `<url>/api/plugins/logins/callback`, or, for a client registered with a loopback `callbackUrl`, you paste the address you land on. Servers with a `clientSecret` or `clientRegistration: "cimd"` take `/mcp login` in a Session. With the `logins` plugin off, each runner keeps its own logins in its data folder as before.
 
+### Templates
+
+Admins can share an Environment's settings as a template ([ADR 0049](adr/0049-personal-environments-and-templates.md)): a setup script, isolation, image and variables, but never secrets or runners. Make one under Templates on the Environments page, or list them under `templates` in the config folder's `pipoca.json`, for example from the chart's `config` value:
+
+```json
+{
+  "templates": [
+    {
+      "id": "pods",
+      "name": "Cluster pods",
+      "setupScript": "apt-get install -y ripgrep",
+      "variables": { "REGION": "eu" }
+    }
+  ]
+}
+```
+
+Anyone can then make an Environment from a template, by picking it next to New Environment or with `"template": "<id>"` in `POST /api/environments`. That Environment is theirs, with their own secrets, variables and runners. Its setup script, isolation and image come from the template, and the template's variables sit under its own. A change to a template reaches each of those Environments when a Session next starts. If a template is deleted, its Environments go back to their own settings.
+
 ### Containers
 
 With `isolation: "container"`, each session's Pi process runs in a container from the Environment's `image` (default `node:22-bookworm`; any image with glibc, bash and git works), as the agent's user, with the agent's data directory, its `--folder`s and the workspace mounted at the same paths. The agent needs Docker. It mounts its own Linux binary into the container, so a Linux agent built with `bun run build` needs nothing else, and an agent on a Mac or run from source needs `--session-binary <path to a Linux pipoca binary>`. The setup script then runs once in the image as root, and sessions run in the image it leaves. Terminals open a shell in the session's container.

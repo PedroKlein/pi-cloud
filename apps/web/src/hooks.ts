@@ -7,6 +7,7 @@ import {
 } from "react";
 import type {
   Environment,
+  EnvironmentTemplate,
   PluginInfo,
   Profile,
   Session,
@@ -94,6 +95,13 @@ export function useEnvironments(): WatchedList<Environment> {
     "/api/environments",
     "environments",
   ) as WatchedList<Environment>;
+}
+
+export function useTemplates(): WatchedList<EnvironmentTemplate> {
+  return useWatchedList(
+    "/api/templates",
+    "environments",
+  ) as WatchedList<EnvironmentTemplate>;
 }
 
 export interface McpToken {

@@ -20,6 +20,7 @@ import web from "@pipoca/web/index.html";
 import { type AgentOptions, runAgent } from "./agent";
 import { Auth } from "./auth";
 import { configFolder } from "./config";
+import { environmentTemplates } from "./templates";
 import {
   buildPlugin,
   pluginFiles,
@@ -186,6 +187,8 @@ export function serve(options: ServeOptions): {
 
   const changes = changeFeed();
 
+  const templates = environmentTemplates(config("templates"), options.log);
+
   const sessions = new Sessions(store, {
     ...options.sessions,
     events: events.publish,
@@ -201,6 +204,7 @@ export function serve(options: ServeOptions): {
     startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),
     pluginProfile: (id) => pluginHost.profile(id),
     gitLogins: (userId) => pluginHost.gitLogins(userId),
+    templates: () => templates.list(),
   });
 
   const pluginsStop = new AbortController();
@@ -277,6 +281,7 @@ export function serve(options: ServeOptions): {
           ).length,
       now: options.restart,
     },
+    templates,
   );
 
   const terminals = terminalBroker(sessions, auth, options.log);

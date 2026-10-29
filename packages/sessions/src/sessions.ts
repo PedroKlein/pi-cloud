@@ -6,6 +6,7 @@ import {
   type Attempt,
   type Command,
   type Environment,
+  type EnvironmentTemplate,
   type EnvironmentUpdate,
   type ForkedSession,
   type GitLogin,
@@ -69,7 +70,11 @@ export interface SessionStore {
     repository: string,
     trusted: boolean,
   ) => void;
-  ensureEnvironment: (provider: string, ownerId?: string) => void;
+  ensureEnvironment: (
+    provider: string,
+    ownerId?: string,
+    templateId?: string | null,
+  ) => void;
   // The models each runner of an Environment last reported (ADR 0044).
   registeredModels: (provider: string) => readonly ModelRef[];
   setRegisteredModels: (
@@ -121,6 +126,8 @@ export type Rejection =
   | "not_kept"
   | "unknown_environment"
   | "environment_exists"
+  | "unknown_template"
+  | "from_template"
   | "unknown_profile"
   | "not_movable"
   | "unknown_entry";
@@ -160,6 +167,8 @@ export interface SessionsOptions {
   readonly pluginProfile?: (id: string) => PluginProfile | undefined;
   // The git hosts a user connected (ADR 0043).
   readonly gitLogins?: (userId: string) => readonly GitLogin[];
+  // The admins' Environment templates (ADR 0049).
+  readonly templates?: () => readonly EnvironmentTemplate[];
 }
 
 export interface PluginProfile {
@@ -195,6 +204,7 @@ export class Sessions {
   readonly #startsRunners: (environmentId: string) => boolean;
   readonly #pluginProfile: (id: string) => PluginProfile | undefined;
   readonly #gitLogins: (userId: string) => readonly GitLogin[];
+  readonly #templates: () => readonly EnvironmentTemplate[];
   readonly #watchers = new Map<string, Set<Listener<SessionEvent>>>();
   readonly #hosts = new Map<
     string,
@@ -232,6 +242,7 @@ export class Sessions {
     this.#startsRunners = options.startsRunners ?? (() => false);
     this.#pluginProfile = options.pluginProfile ?? (() => undefined);
     this.#gitLogins = options.gitLogins ?? (() => []);
+    this.#templates = options.templates ?? (() => []);
   }
 
   // The one way a Session starts, for the UI and plugins alike (ADR 0015).
@@ -564,12 +575,17 @@ export class Sessions {
   createEnvironment(
     provider: string,
     ownerId?: string,
-  ): Result<Environment, "environment_exists"> {
+    templateId?: string,
+  ): Result<Environment, "environment_exists" | "unknown_template"> {
     if (this.#store.environments().some((each) => each.provider === provider)) {
       return { ok: false, reason: "environment_exists" };
     }
 
-    this.#store.ensureEnvironment(provider, ownerId);
+    if (templateId !== undefined && this.#template(templateId) === undefined) {
+      return { ok: false, reason: "unknown_template" };
+    }
+
+    this.#store.ensureEnvironment(provider, ownerId, templateId);
 
     const created = this.environments().find(
       (each) => each.provider === provider,
@@ -585,13 +601,22 @@ export class Sessions {
   updateEnvironment(
     id: string,
     update: EnvironmentUpdate,
-  ): Result<Environment, "unknown_environment"> {
+  ): Result<Environment, "unknown_environment" | "from_template"> {
     const environment = this.#store
       .environments()
       .find((each) => each.id === id);
 
     if (!environment) {
       return { ok: false, reason: "unknown_environment" };
+    }
+
+    if (
+      this.#template(environment.templateId) !== undefined &&
+      (update.isolation !== undefined ||
+        update.image !== undefined ||
+        update.setupScript !== undefined)
+    ) {
+      return { ok: false, reason: "from_template" };
     }
 
     const secrets = Object.fromEntries(
@@ -626,6 +651,7 @@ export class Sessions {
 
       return {
         ...environment,
+        ...this.#templated(environment),
         secrets: Object.keys(environment.secrets),
         online: runners.some(({ online }) => online),
         onDemand: this.#startsRunners(environment.id),
@@ -1293,12 +1319,36 @@ export class Sessions {
       .environments()
       .find((each) => each.id === id);
 
+    const template = this.#template(environment?.templateId ?? null);
+    const own = environment && this.#templated(environment);
+
     return {
-      isolation: environment?.isolation ?? "process",
-      image: environment?.image ?? null,
-      setupScript: environment?.setupScript ?? "",
-      variables: { ...environment?.variables, ...environment?.secrets },
+      isolation: own?.isolation ?? "process",
+      image: own?.image ?? null,
+      setupScript: own?.setupScript ?? "",
+      variables: {
+        ...template?.variables,
+        ...environment?.variables,
+        ...environment?.secrets,
+      },
     };
+  }
+
+  #template(id: string | null): EnvironmentTemplate | undefined {
+    return id === null
+      ? undefined
+      : this.#templates().find((each) => each.id === id);
+  }
+
+  // An Environment made from a template runs as the template says. One whose
+  // template is gone keeps its own settings.
+  #templated(
+    environment: StoredEnvironment,
+  ): Pick<Environment, "isolation" | "image" | "setupScript"> {
+    const { isolation, image, setupScript } =
+      this.#template(environment.templateId) ?? environment;
+
+    return { isolation, image, setupScript };
   }
 
   // A turn running on a runner whose lease lapsed is reported as interrupted,
