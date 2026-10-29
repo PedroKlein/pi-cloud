@@ -467,3 +467,19 @@ test("leaves no folder behind for a write it refuses, nor reads one that isn't a
     400,
   );
 });
+
+test("answers not found for a plugin or file that isn't there", async () => {
+  await start();
+  await write("hello", "package.json", manifest());
+
+  const statuses = await Promise.all(
+    [
+      ["GET", "/api/plugin-files/nope"],
+      ["GET", "/api/plugin-files/nope?path=server.ts"],
+      ["POST", "/api/plugin-builds/nope"],
+      ["GET", "/api/plugin-files/hello?path=server.ts"],
+    ].map(async ([method = "", path = ""]) => (await api(method, path)).status),
+  );
+
+  expect(statuses).toEqual([404, 404, 404, 404]);
+});

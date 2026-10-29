@@ -50,6 +50,7 @@ import {
   type User,
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
+import { NotFound } from "./in-place";
 import { mcpHandler } from "./mcp";
 import type { PluginHost } from "./plugins";
 import { sseResponse } from "./sse";
@@ -934,6 +935,10 @@ export function createHandler(
         try {
           return await route(request, match.slice(1));
         } catch (error) {
+          if (error instanceof NotFound) {
+            return Response.json({ error: error.message }, { status: 404 });
+          }
+
           if (
             error instanceof BadRequest ||
             error instanceof InvalidProfile ||
@@ -1403,6 +1408,10 @@ class BadRequest extends Error {}
 // What an in-place plugin's change can't do is the caller's to fix.
 async function refused<T>(change: Promise<T>): Promise<T> {
   return change.catch((error: unknown) => {
+    if (error instanceof NotFound) {
+      throw error;
+    }
+
     throw new BadRequest(
       error instanceof Error ? error.message : String(error),
     );

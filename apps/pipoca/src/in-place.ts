@@ -17,6 +17,8 @@ import { build, idProblem, isReserved, sourceOf, turnOn } from "./installed";
 
 const maxFileBytes = 1024 * 1024;
 
+export class NotFound extends Error {}
+
 export async function pluginFiles(root: string, id: string): Promise<string[]> {
   const folder = await pluginFolder(root, id);
 
@@ -39,7 +41,13 @@ export async function readPluginFile(
 ): Promise<string> {
   const target = await insideFolder(await pluginFolder(root, id), path);
 
-  if ((await lstat(target)).size > maxFileBytes) {
+  const found = await lstat(target).catch(() => undefined);
+
+  if (found === undefined) {
+    throw new NotFound(`${id} has no file ${path}`);
+  }
+
+  if (found.size > maxFileBytes) {
     throw new Error(`${path} is bigger than 1 MB`);
   }
 
@@ -130,7 +138,7 @@ async function pluginFolder(root: string, id: string): Promise<string> {
   const found = await lstat(folder).catch(() => undefined);
 
   if (found === undefined) {
-    throw new Error(`no installed plugin ${id}`);
+    throw new NotFound(`no installed plugin ${id}`);
   }
 
   if (!found.isDirectory()) {
