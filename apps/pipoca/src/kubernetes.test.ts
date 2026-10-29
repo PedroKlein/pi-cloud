@@ -50,11 +50,14 @@ function fakeApi(): {
   readonly pods: Map<string, FakePod>;
   readonly secrets: Map<string, FakeSecret>;
   readonly claims: Map<string, Labelled>;
+  // Objects whose delete fails, as on an API server that is down for them.
+  readonly undeletable: Set<string>;
   readonly stop: () => Promise<void>;
 } {
   const pods = new Map<string, FakePod>();
   const secrets = new Map<string, FakeSecret>();
   const claims = new Map<string, Labelled>();
+  const undeletable = new Set<string>();
   const prefix = "/api/v1/namespaces/pi";
 
   const stores: Record<string, Map<string, unknown>> = {
@@ -105,6 +108,10 @@ function fakeApi(): {
         return Response.json(body, { status: 201 });
       }
 
+      if (request.method === "DELETE" && undeletable.has(name ?? "")) {
+        return Response.json({}, { status: 500 });
+      }
+
       if (request.method === "DELETE" && name !== undefined) {
         return store.delete(name)
           ? Response.json({})
@@ -120,6 +127,7 @@ function fakeApi(): {
     pods,
     secrets,
     claims,
+    undeletable,
     stop: async () => api.stop(true),
   };
 }
@@ -663,6 +671,34 @@ test("revokes the token of a runner pod deleted from outside, and deletes its Se
 
   expect(work.status).toBe(401);
   expect([...api.secrets.keys()]).toEqual([...api.pods.keys()]);
+});
+
+test("keeps starting runner pods while one stopped pod can't be deleted", async () => {
+  const environment = await kubernetesEnvironment({});
+
+  api.undeletable.add("pi-runner-stuck");
+
+  api.pods.set("pi-runner-stuck", {
+    metadata: {
+      name: "pi-runner-stuck",
+      labels: { "pipoca.dev/environment": environment.id },
+      creationTimestamp: new Date(Date.now() - 60_000).toISOString(),
+    },
+    spec: { containers: [] },
+    status: { phase: "Succeeded" },
+  });
+
+  await startSession(environment);
+  await eventually(() => api.pods.size === 2);
+
+  expect(api.pods.has("pi-runner-stuck")).toBe(true);
+
+  expect(
+    logs.some(
+      (line) =>
+        line.includes("pi-runner-stuck") && line.includes("not removed"),
+    ),
+  ).toBe(true);
 });
 
 test("removes stopped runner pods of an Environment whose settings were removed", async () => {
