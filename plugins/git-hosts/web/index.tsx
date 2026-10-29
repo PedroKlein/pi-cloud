@@ -133,10 +133,10 @@ function HostRow({
             aria-label={`Disconnect ${host.label}`}
             onClick={() => {
               void json(
-                context.request("disconnect", {
-                  method: "POST",
-                  body: JSON.stringify({ host: host.host }),
-                }),
+                context.request(
+                  `connections/${encodeURIComponent(host.host)}`,
+                  { method: "DELETE" },
+                ),
               ).then(onChange, onChange);
             }}
           >
@@ -205,8 +205,8 @@ function Hosts({
     }
 
     void json(
-      context.request(`hosts/${encodeURIComponent(host.host)}/remove`, {
-        method: "POST",
+      context.request(`hosts/${encodeURIComponent(host.host)}`, {
+        method: "DELETE",
       }),
     ).then(changed, changed);
   };

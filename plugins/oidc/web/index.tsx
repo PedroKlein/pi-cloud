@@ -64,10 +64,10 @@ function SettingsSection({
                     <Button
                       onClick={() => {
                         void json(
-                          context.request("unlink", {
-                            method: "POST",
-                            body: JSON.stringify({ issuer: linked.issuer }),
-                          }),
+                          context.request(
+                            `identities/${encodeURIComponent(linked.issuer)}`,
+                            { method: "DELETE" },
+                          ),
                         ).then(reload, reload);
                       }}
                     >
@@ -111,8 +111,8 @@ function Providers({
     }
 
     void json(
-      context.request(`providers/${encodeURIComponent(provider.id)}/remove`, {
-        method: "POST",
+      context.request(`providers/${encodeURIComponent(provider.id)}`, {
+        method: "DELETE",
       }),
     ).then(changed, changed);
   };

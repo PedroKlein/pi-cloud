@@ -104,10 +104,10 @@ function SettingsSection({
               aria-label={`Log out of ${login.provider}`}
               onClick={() => {
                 void json(
-                  context.request("remove", {
-                    method: "POST",
-                    body: JSON.stringify({ provider: login.provider }),
-                  }),
+                  context.request(
+                    `credentials/${encodeURIComponent(login.provider)}`,
+                    { method: "DELETE" },
+                  ),
                 ).then(reload, reload);
               }}
             >
@@ -138,9 +138,8 @@ function SettingsSection({
                 aria-label={`Log out of ${name}`}
                 onClick={() => {
                   void json(
-                    context.request("remove", {
-                      method: "POST",
-                      body: JSON.stringify({ server }),
+                    context.request(`mcp/${encodeURIComponent(server)}`, {
+                      method: "DELETE",
                     }),
                   ).then(reload, reload);
                 }}

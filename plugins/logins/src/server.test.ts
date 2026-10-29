@@ -92,9 +92,11 @@ test("a person sees their own logins and can log out of one", async () => {
     logins: [{ provider: "anthropic", type: "api_key" }],
   });
 
-  const removed = await call(route, fakeUser({ id: "ana" }), "remove", {
-    provider: "anthropic",
-  });
+  const removed = await route(
+    new Request("http://logins/credentials/anthropic", { method: "DELETE" }),
+    "credentials/anthropic",
+    fakeUser({ id: "ana" }),
+  );
 
   expect(await removed.json()).toEqual({ logins: [], mcp: [] });
 
@@ -103,6 +105,30 @@ test("a person sees their own logins and can log out of one", async () => {
   expect(await other.json()).toMatchObject({
     logins: [{ provider: "openai" }],
   });
+});
+
+test("a person logs out of an MCP server by its name and address", async () => {
+  const { route } = registered();
+  const server = encodeURIComponent("linear https://mcp.linear.app/mcp");
+
+  const { lease } = (await (
+    await call(route, runnerOf("ana"), `mcp/${server}/lock`, {})
+  ).json()) as { lease: string };
+
+  const saved = await call(route, runnerOf("ana"), `mcp/${server}/release`, {
+    lease,
+    value: { tokens: {} },
+  });
+
+  expect(saved.status).toBe(200);
+
+  const removed = await route(
+    new Request(`http://logins/mcp/${server}`, { method: "DELETE" }),
+    `mcp/${server}`,
+    fakeUser({ id: "ana" }),
+  );
+
+  expect(await removed.json()).toEqual({ logins: [], mcp: [] });
 });
 
 test("a person saves a login, such as an API key, that their Sessions read", async () => {

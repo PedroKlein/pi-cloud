@@ -261,14 +261,8 @@ test("lets only admins see and change providers", async () => {
         providerInput(provider.issuer),
       )
     ).status,
-    (
-      await api(
-        "POST",
-        `/api/plugins/oidc/providers/${providerId}/remove`,
-        cookie,
-        {},
-      )
-    ).status,
+    (await api("DELETE", `/api/plugins/oidc/providers/${providerId}`, cookie))
+      .status,
   ];
 
   expect(statuses).toEqual([403, 403, 403]);
@@ -294,10 +288,9 @@ test("refuses a provider without an issuer URL or a client ID", async () => {
 
 test("stops offering a provider once it is removed", async () => {
   const removed = await api(
-    "POST",
-    `/api/plugins/oidc/providers/${providerId}/remove`,
+    "DELETE",
+    `/api/plugins/oidc/providers/${providerId}`,
     await pedro(),
-    {},
   );
 
   const status = (await (
@@ -754,10 +747,9 @@ test("lets a password user link their account and sign in with it", async () => 
   });
 
   const unlinked = await api(
-    "POST",
-    "/api/plugins/oidc/unlink",
+    "DELETE",
+    `/api/plugins/oidc/identities/${encodeURIComponent(provider.issuer)}`,
     await pedro(),
-    { issuer: provider.issuer },
   );
 
   expect(await unlinked.json()).toMatchObject({ identities: [] });
