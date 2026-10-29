@@ -1010,27 +1010,65 @@ test("lists a Profile's packages as chips and edits its folder's files", async (
   expect(await packages.getByRole("listitem").count()).toBe(1);
 
   const profilesPage = page.locator("#profiles-page");
+  const tabs = profilesPage.getByRole("navigation", { name: "Profile" });
 
+  await tabs.getByRole("link", { name: "Files" }).click();
   await profilesPage.getByRole("button", { name: "settings.json" }).waitFor();
 
   await profilesPage
     .getByPlaceholder("skills/review/SKILL.md")
-    .fill("skills/review/SKILL.md");
+    .fill("prompts/fix.md");
 
-  await profilesPage.getByRole("button", { name: "New file" }).click();
-  await profilesPage.getByLabel("skills/review/SKILL.md").fill("# Review");
+  await profilesPage.getByRole("button", { name: "New", exact: true }).click();
+  await profilesPage.getByLabel("prompts/fix.md").fill("Fix $1.");
   await profilesPage.getByRole("button", { name: "Save file" }).click();
+  await profilesPage.getByRole("button", { name: "prompts/fix.md" }).waitFor();
 
-  await profilesPage
-    .getByRole("button", { name: "skills/review/SKILL.md" })
-    .waitFor();
+  await tabs.getByRole("link", { name: "Prompts" }).click();
+  await profilesPage.getByRole("button", { name: /^fix/ }).waitFor();
 
+  await tabs.getByRole("link", { name: "Skills" }).click();
+  await profilesPage.getByLabel("New in Skills").fill("review");
+  await profilesPage.getByRole("button", { name: "New", exact: true }).click();
+
+  expect(
+    await profilesPage.getByLabel("skills/review/SKILL.md").inputValue(),
+  ).toContain("name: review");
+
+  await profilesPage.getByRole("button", { name: "Save file" }).click();
+  await profilesPage.getByRole("button", { name: /^review/ }).waitFor();
+
+  await tabs.getByRole("link", { name: "Overview" }).click();
   page.once("dialog", async (dialog) => dialog.accept());
   await editor.getByRole("button", { name: "Delete" }).click();
 
   await page
     .getByRole("link", { name: "Tools" })
     .waitFor({ state: "detached" });
+});
+
+test("imports a Profile from a picked folder with its files", async () => {
+  const folder = join(root, "agent-folder");
+
+  await mkdir(join(folder, "skills", "lint"), { recursive: true });
+  await writeFile(join(folder, "skills", "lint", "SKILL.md"), "# Lint");
+  await writeFile(join(folder, "auth.json"), "{}");
+
+  await page.goto(server.url.href);
+  await openSettings("Profiles");
+
+  await page
+    .locator("#profiles-page")
+    .getByLabel("Choose a folder")
+    .setInputFiles(folder);
+
+  await page.getByRole("link", { name: "agent-folder" }).waitFor();
+  await page.getByRole("link", { name: "Skills" }).click();
+
+  await page
+    .locator("#profiles-page")
+    .getByRole("button", { name: /^lint/ })
+    .waitFor();
 });
 
 test("makes a Profile and starts a session that follows its instructions", async () => {
@@ -1051,9 +1089,20 @@ test("makes a Profile and starts a session that follows its instructions", async
   const editor = page.locator("#profiles-page form");
 
   await editor.getByLabel("Name").fill("Pirate");
-  await editor.getByLabel("AGENTS.md").fill("Answer like a pirate.");
   await editor.getByRole("button", { name: "Create Profile" }).click();
   await page.getByRole("link", { name: "Pirate" }).waitFor();
+  await page.getByRole("link", { name: "Instructions" }).click();
+
+  const instructions = page.locator("#profiles-page");
+
+  await instructions.getByLabel("AGENTS.md").fill("Answer like a pirate.");
+  await instructions.getByRole("button", { name: "Save" }).first().click();
+
+  await instructions
+    .getByRole("button", { name: "Save" })
+    .first()
+    .and(page.locator(":disabled"))
+    .waitFor();
 
   await page.getByRole("button", { name: "New session" }).click();
   const form = page.locator("form#create");

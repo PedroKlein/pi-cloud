@@ -1,10 +1,5 @@
-import { json, ok, useLoaded } from "@pipoca/plugins/web";
-import {
-  type PiPackage,
-  type Profile,
-  type ProfileContent,
-  profilePath,
-} from "@pipoca/protocol";
+import { json, useLoaded } from "@pipoca/plugins/web";
+import type { PiPackage, Profile, ProfileContent } from "@pipoca/protocol";
 import {
   Badge,
   Button,
@@ -19,17 +14,14 @@ import {
 } from "@pipoca/ui";
 import { type ReactElement, type SubmitEvent, useState } from "react";
 import { api, send } from "./api";
-
-const errors: Readonly<Record<string, string>> = {
-  default: "Make another Profile the default before deleting this one.",
-  in_use: "Sessions still use this Profile. Archive them first.",
-  admin_only: "Only admins change shared Profiles.",
-};
-
-interface ProfileFile {
-  readonly path: string;
-  readonly size: number;
-}
+import {
+  type Kind,
+  KindFiles,
+  messageOf,
+  NamedFiles,
+  type OneFile,
+  upload,
+} from "./profile-files";
 
 // A package is a source such as npm:name, or a JSON object with Pi's
 // filters.
@@ -39,50 +31,6 @@ function packageText(pkg: PiPackage): string {
 
 function packageOf(text: string): unknown {
   return text.startsWith("{") ? JSON.parse(text) : text;
-}
-
-function messageOf(reason: unknown): string {
-  const code = reason instanceof Error ? reason.message : String(reason);
-
-  return errors[code] ?? code;
-}
-
-function sizeText(bytes: number): string {
-  return bytes < 1024
-    ? `${String(bytes)} B`
-    : `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function base64(bytes: Uint8Array): string {
-  let text = "";
-  for (let at = 0; at < bytes.length; at += 0x8000) {
-    text += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-  }
-
-  return btoa(text);
-}
-
-// Files picked one by one keep their names. A picked folder, such as
-// ~/.pi/agent, leaves its own name out, and what machines keep for
-// themselves, such as auth.json, is never sent (ADR 0041).
-async function upload(
-  url: string,
-  picked: readonly File[],
-  folder: boolean,
-): Promise<void> {
-  const files: Record<string, string> = {};
-
-  for (const file of picked) {
-    const path = folder
-      ? file.webkitRelativePath.split("/").slice(1).join("/")
-      : file.name;
-
-    if (profilePath(path)) {
-      files[path] = base64(new Uint8Array(await file.arrayBuffer()));
-    }
-  }
-
-  await api(url, { files });
 }
 
 // Not a Profile id, so no Profile's page can take it.
@@ -97,7 +45,8 @@ export function ProfilesPage({
   readonly selected: string;
   readonly onChange: () => void;
 }): ReactElement {
-  const profile = profiles.find(({ id }) => id === selected);
+  const [id = "", tab = "overview"] = selected.split("/");
+  const profile = profiles.find((each) => each.id === id);
   // The editor starts again when its files change, so it doesn't keep this.
   const [savedId, setSavedId] = useState<string>();
 
@@ -114,7 +63,7 @@ export function ProfilesPage({
           <a
             key={each.id}
             href={`#profiles/${each.id}`}
-            aria-current={each.id === selected ? "page" : undefined}
+            aria-current={each.id === id ? "page" : undefined}
             className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:border-accent aria-[current=page]:text-fg-strong"
           >
             {each.name}
@@ -124,7 +73,7 @@ export function ProfilesPage({
         ))}
         <a
           href={`#profiles/${baseHash}`}
-          aria-current={selected === baseHash ? "page" : undefined}
+          aria-current={id === baseHash ? "page" : undefined}
           className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-1.5 text-ui text-fg hover:bg-hover aria-[current=page]:border-accent aria-[current=page]:text-fg-strong"
         >
           Base
@@ -140,24 +89,31 @@ export function ProfilesPage({
         </a>
       </div>
       {profile && (
-        <>
-          <Editor
-            key={`${profile.id}:${profile.agentsMd}:${JSON.stringify(profile.packages)}`}
-            profile={profile}
-            saved={savedId === profile.id}
-            onSaved={() => {
-              setSavedId(profile.id);
-            }}
-            onChange={onChange}
-          />
-          <Files
-            key={`${profile.id}-files`}
-            url={`/api/profiles/${profile.id}/files`}
-          />
-        </>
+        <ProfileTabs
+          url={`/api/profiles/${profile.id}/files`}
+          hash={profile.id}
+          tab={tab}
+          overview={
+            <Editor
+              key={`${profile.id}:${JSON.stringify(profile.packages)}`}
+              profile={profile}
+              saved={savedId === profile.id}
+              onSaved={() => {
+                setSavedId(profile.id);
+              }}
+              onChange={onChange}
+            />
+          }
+        />
       )}
-      {selected === baseHash && <BaseEditor />}
-      {selected === baseHash && <Files url="/api/base/files" />}
+      {id === baseHash && (
+        <ProfileTabs
+          url="/api/base/files"
+          hash={baseHash}
+          tab={tab}
+          overview={<BaseEditor />}
+        />
+      )}
       {selected === "new" && <Editor key="new" onChange={onChange} />}
       {selected === "" && <Import onChange={onChange} />}
     </div>
@@ -207,7 +163,6 @@ function Editor({
       const body = {
         name: text("name"),
         packages: packages.map(packageOf),
-        agentsMd: text("agentsMd"),
       };
 
       if (profile) {
@@ -264,17 +219,6 @@ function Editor({
           placeholder="npm:pi-subagents, git:… or a path, then Enter"
           onChange={setPackages}
         />
-        <Field label="AGENTS.md">
-          <textarea
-            name="agentsMd"
-            rows={5}
-            defaultValue={profile?.agentsMd ?? ""}
-            className={cn(
-              fieldClass,
-              "min-h-24 resize-y font-mono text-mono-sm",
-            )}
-          />
-        </Field>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" type="submit">
             {profile ? "Save" : "Create Profile"}
@@ -331,6 +275,169 @@ function Editor({
 
 // The base Profile's packages and AGENTS.md, which every Session loads under
 // its own Profile's (ADR 0044).
+const tabs: readonly (readonly [string, string])[] = [
+  ["overview", "Overview"],
+  ["instructions", "Instructions"],
+  ["skills", "Skills"],
+  ["prompts", "Prompts"],
+  ["extensions", "Extensions"],
+  ["mcp", "MCP"],
+  ["models", "Models"],
+  ["settings", "Settings"],
+  ["files", "Files"],
+];
+
+const kinds: Readonly<Record<string, Kind>> = {
+  skills: {
+    title: "Skills",
+    about:
+      "A skill is a folder with a SKILL.md. Pi lists each skill's name and description to the model, which reads the rest when a task needs it. /skill:name runs one.",
+    nameOf: (path) => /^skills\/(?:.+\/)?([^/]+)\/SKILL\.md$/.exec(path)?.[1],
+    newPath: (name) => `skills/${name}/SKILL.md`,
+    template: (name) =>
+      `---\nname: ${name}\ndescription: What it does, and when to use it.\n---\n\n# ${name}\n`,
+    placeholder: "review",
+    folder: "skills/",
+  },
+  prompts: {
+    title: "Prompts",
+    about:
+      "A prompt template becomes a slash command named after its file, so prompts/review.md is /review. $1, $@ and ${1:-default} take its arguments.",
+    nameOf: (path) => /^prompts\/([^/]+)\.md$/.exec(path)?.[1],
+    newPath: (name) => `prompts/${name}.md`,
+    template: () =>
+      '---\ndescription: What the command does\nargument-hint: "[focus]"\n---\nDo the task. Focus on ${1:-correctness}.\n',
+    placeholder: "review",
+    folder: "prompts/",
+  },
+  extensions: {
+    title: "Extensions",
+    about:
+      "An extension is a TypeScript file, or a folder with an index.ts, that adds tools, commands or model providers. One that needs npm dependencies goes in Overview as a Pi package instead.",
+    nameOf: (path) =>
+      /^extensions\/([^/]+?)(?:\.[jt]s|\/index\.[jt]s)$/.exec(path)?.[1],
+    newPath: (name) => `extensions/${name}.ts`,
+    template: (name) =>
+      `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";\n\nexport default function (pi: ExtensionAPI) {\n  pi.registerCommand("${name}", {\n    description: "Say hello",\n    handler: async (_args, ctx) => {\n      ctx.ui.notify("Hello!", "info");\n    },\n  });\n}\n`,
+    placeholder: "hello",
+    folder: "extensions/",
+  },
+  files: {
+    title: "Files",
+    about:
+      "Every file in the folder, as Pi reads them from ~/.pi/agent, such as themes/ and keybindings.json for Pi in a terminal. Uploading a folder such as ~/.pi/agent leaves out logins and history.",
+    nameOf: (path) => path,
+    newPath: (path) => path,
+    template: () => "",
+    placeholder: "skills/review/SKILL.md",
+  },
+};
+
+const namedFiles: Readonly<
+  Record<string, { readonly title: string; readonly files: readonly OneFile[] }>
+> = {
+  instructions: {
+    title: "Instructions",
+    files: [
+      {
+        path: "AGENTS.md",
+        about:
+          "Instructions for every Session, next to the AGENTS.md files of the repository it works in.",
+        example: "Answer briefly. Run the tests before saying something works.",
+      },
+      {
+        path: "APPEND_SYSTEM.md",
+        about: "Added to the end of Pi's system prompt.",
+        example: "Always reply in English.",
+      },
+      {
+        path: "SYSTEM.md",
+        about:
+          "Replaces Pi's whole system prompt. Leave it empty unless you mean that.",
+        example: "You are a careful coding assistant…",
+      },
+    ],
+  },
+  mcp: {
+    title: "MCP servers",
+    files: [
+      {
+        path: "mcp.json",
+        about:
+          "MCP servers every Session can use. ${NAME} in a value reads an Environment secret.",
+        example: `{\n  "mcpServers": {\n    "docs": {\n      "url": "https://example.com/mcp",\n      "headers": { "Authorization": "Bearer \${DOCS_TOKEN}" }\n    }\n  }\n}`,
+      },
+    ],
+  },
+  models: {
+    title: "Models",
+    files: [
+      {
+        path: "models.json",
+        about:
+          "Endpoints that speak an API Pi knows, such as Ollama or a proxy, and overrides for existing models. Keys can name an Environment secret as $NAME.",
+        example: `{\n  "providers": {\n    "ollama": {\n      "baseUrl": "http://localhost:11434/v1",\n      "api": "openai-completions",\n      "apiKey": "ollama",\n      "models": [{ "id": "qwen2.5-coder:7b" }]\n    }\n  }\n}`,
+      },
+    ],
+  },
+  settings: {
+    title: "Settings",
+    files: [
+      {
+        path: "settings.json",
+        about:
+          "Pi's settings, such as defaultProvider, defaultModel and defaultThinkingLevel. Its packages are the ones in Overview.",
+        example: `{\n  "defaultThinkingLevel": "medium"\n}`,
+      },
+    ],
+  },
+};
+
+function ProfileTabs({
+  url,
+  hash,
+  tab,
+  overview,
+}: {
+  readonly url: string;
+  readonly hash: string;
+  readonly tab: string;
+  readonly overview: ReactElement;
+}): ReactElement {
+  const kind = kinds[tab];
+  const named = namedFiles[tab];
+
+  return (
+    <>
+      <nav
+        aria-label="Profile"
+        className="mt-6 flex gap-1 overflow-x-auto border-b border-line"
+      >
+        {tabs.map(([key, label]) => (
+          <a
+            key={key}
+            href={`#profiles/${hash}/${key}`}
+            aria-current={key === tab ? "page" : undefined}
+            className="-mb-px shrink-0 border-b-2 border-transparent px-2 py-2 text-ui text-fg-dim hover:text-fg aria-[current=page]:border-accent aria-[current=page]:text-fg-strong"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+      {(tab === "overview" || (!kind && !named)) && overview}
+      {kind && <KindFiles key={`${url}:${tab}`} url={url} kind={kind} />}
+      {named && (
+        <NamedFiles
+          key={`${url}:${tab}`}
+          url={url}
+          title={named.title}
+          files={named.files}
+        />
+      )}
+    </>
+  );
+}
+
 function BaseEditor(): ReactElement | null {
   const { value: base, reload } = useLoaded(
     async () => json<ProfileContent>(fetch("/api/base")),
@@ -343,7 +450,7 @@ function BaseEditor(): ReactElement | null {
 
   return base ? (
     <BaseForm
-      key={`${base.agentsMd}:${JSON.stringify(base.packages)}`}
+      key={JSON.stringify(base.packages)}
       base={base}
       saved={saved}
       onSaved={() => {
@@ -367,16 +474,12 @@ function BaseForm({
     base.packages.map(packageText),
   );
 
-  const [agentsMd, setAgentsMd] = useState(base.agentsMd);
   const [error, setError] = useState<string>();
 
   const submit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault();
 
-    send("/api/base", "PUT", {
-      packages: packages.map(packageOf),
-      agentsMd,
-    }).then(
+    send("/api/base", "PUT", { packages: packages.map(packageOf) }).then(
       () => {
         setError(undefined);
         onSaved();
@@ -388,7 +491,7 @@ function BaseForm({
   };
 
   return (
-    <Section title="Base">
+    <Section title="Overview">
       <form
         onSubmit={submit}
         className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5"
@@ -404,19 +507,6 @@ function BaseForm({
           placeholder="npm:pi-subagents, git:… or a path, then Enter"
           onChange={setPackages}
         />
-        <Field label="AGENTS.md">
-          <textarea
-            value={agentsMd}
-            rows={5}
-            onChange={(event) => {
-              setAgentsMd(event.target.value);
-            }}
-            className={cn(
-              fieldClass,
-              "min-h-24 resize-y font-mono text-mono-sm",
-            )}
-          />
-        </Field>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" type="submit">
             Save
@@ -431,175 +521,6 @@ function BaseForm({
         </div>
       </form>
     </Section>
-  );
-}
-
-// Every file in a Profile's folder, as Pi reads them from ~/.pi/agent.
-function Files({ url }: { readonly url: string }): ReactElement {
-  const { value: files = [], reload } = useLoaded(
-    async () => json<ProfileFile[]>(fetch(url)),
-    url,
-    { topics: ["profiles"] },
-  );
-
-  const [open, setOpen] = useState<{ path: string; text: string }>();
-  const [error, setError] = useState<string>();
-
-  const run = (action: () => Promise<void>): void => {
-    action().then(
-      () => {
-        setError(undefined);
-        reload();
-      },
-      (reason: unknown) => {
-        setError(messageOf(reason));
-      },
-    );
-  };
-
-  const fileUrl = (path: string): string =>
-    `${url}/${encodeURIComponent(path)}`;
-
-  const show = (path: string): void => {
-    run(async () => {
-      const text = await (await ok(fetch(fileUrl(path)))).text();
-      setOpen({ path, text });
-    });
-  };
-
-  const picker = (folder: boolean): ReactElement => (
-    <FileButton
-      multiple
-      {...(folder && { webkitdirectory: "" })}
-      onFiles={(picked) => {
-        run(async () => upload(url, picked, folder));
-      }}
-    >
-      {folder ? "Upload a folder" : "Upload files"}
-    </FileButton>
-  );
-
-  return (
-    <Section title="Files">
-      <div className="flex flex-col gap-4 rounded-lg border border-line bg-elevated shadow-xs p-5">
-        <ul className="flex flex-col divide-y divide-line">
-          {files.map(({ path, size }) => (
-            <li key={path} className="flex items-center gap-3 py-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  show(path);
-                }}
-                className="flex-1 truncate text-left font-mono text-mono-sm text-fg hover:text-accent"
-              >
-                {path}
-              </button>
-              <span className="text-caption text-fg-dim">{sizeText(size)}</span>
-            </li>
-          ))}
-          {files.length === 0 && (
-            <li className="py-1.5 text-caption text-fg-dim">
-              No files yet, so this is plain Pi.
-            </li>
-          )}
-        </ul>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const path = new FormData(event.currentTarget).get("path");
-            if (typeof path === "string" && path.trim() !== "") {
-              setOpen({ path: path.trim(), text: "" });
-              event.currentTarget.reset();
-            }
-          }}
-          className="flex flex-wrap gap-2"
-        >
-          <input
-            name="path"
-            placeholder="skills/review/SKILL.md"
-            className={cn(fieldClass, "min-w-48 flex-1 font-mono")}
-          />
-          <Button type="submit">New file</Button>
-          {picker(false)}
-          {picker(true)}
-        </form>
-        {open && (
-          <FileEditor
-            key={open.path}
-            file={open}
-            onSave={(text) => {
-              run(async () => {
-                await ok(
-                  fetch(fileUrl(open.path), { method: "PUT", body: text }),
-                );
-              });
-            }}
-            onDelete={() => {
-              run(async () => {
-                await send(fileUrl(open.path), "DELETE");
-                setOpen(undefined);
-              });
-            }}
-            onClose={() => {
-              setOpen(undefined);
-            }}
-          />
-        )}
-        <p role="alert" className="text-caption text-failed">
-          {error}
-        </p>
-      </div>
-    </Section>
-  );
-}
-
-function FileEditor({
-  file,
-  onSave,
-  onDelete,
-  onClose,
-}: {
-  readonly file: { readonly path: string; readonly text: string };
-  readonly onSave: (text: string) => void;
-  readonly onDelete: () => void;
-  readonly onClose: () => void;
-}): ReactElement {
-  const [text, setText] = useState(file.text);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Field label={file.path}>
-        <textarea
-          value={text}
-          rows={12}
-          onChange={(event) => {
-            setText(event.target.value);
-          }}
-          className={cn(fieldClass, "min-h-48 resize-y font-mono text-mono-sm")}
-        />
-      </Field>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="primary"
-          onClick={() => {
-            onSave(text);
-          }}
-        >
-          Save file
-        </Button>
-        <Button onClick={onClose}>Close</Button>
-        <Button
-          variant="danger"
-          onClick={() => {
-            if (confirm(`Delete ${file.path}?`)) {
-              onDelete();
-            }
-          }}
-        >
-          Delete file
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -640,7 +561,10 @@ function Import({ onChange }: { readonly onChange: () => void }): ReactElement {
   const fromFolder = async (picked: readonly File[]): Promise<Profile> => {
     const name = picked[0]?.webkitRelativePath.split("/")[0] ?? "Imported";
     const profile = await json<Profile>(api("/api/profiles", { name }));
-    await upload(profile.id, picked, true);
+
+    await upload(`/api/profiles/${profile.id}/files`, picked, {
+      picked: true,
+    });
 
     return profile;
   };
