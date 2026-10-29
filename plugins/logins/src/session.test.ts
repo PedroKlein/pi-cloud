@@ -12,9 +12,11 @@ import { logins } from "./session";
 
 function serverRoute(): PluginRoute {
   const routes: PluginRoute[] = [];
+  const faked = fakeContext();
 
   server.register(
     fakeContext({
+      auth: { ...faked.auth, handlePublic: () => undefined },
       routes: {
         handle: (route) => {
           routes.push(route);

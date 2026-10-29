@@ -34,6 +34,16 @@ function SettingsSection({
     return null;
   }
 
+  // The servers of the person's Profiles, and any other they signed in to
+  // from a Session.
+  const stored = new Set(value.mcp.map(({ server }) => server));
+
+  const mcpServers = [
+    ...new Set([...value.servers.map(({ key }) => key), ...stored]),
+  ]
+    .sort()
+    .map((key) => ({ key, signedIn: stored.has(key) }));
+
   const send = (path: string, init: RequestInit): void => {
     json(context.request(path, init)).then(
       () => {
@@ -120,33 +130,48 @@ function SettingsSection({
         aria-label="Your MCP logins"
         className="flex flex-col gap-2 rounded-lg border border-line bg-elevated shadow-xs p-3 text-ui"
       >
-        {value.mcp.length === 0 && (
+        {mcpServers.length === 0 && (
           <li className="text-fg-dim">
-            You haven't signed in to any MCP server yet.
+            None of your Profiles has an MCP server that signs in.
           </li>
         )}
-        {value.mcp.map(({ server }) => {
-          const [name = server, address = ""] = server.split(" ");
+        {mcpServers.map(({ key, signedIn }) => {
+          const [name = key, address = ""] = key.split(" ");
 
           return (
-            <li key={server} className="flex items-center gap-2">
+            <li key={key} className="flex items-center gap-2">
               <span className="flex-1 truncate text-fg">
                 {name}
-                <span className="text-fg-dim">{` · ${address}`}</span>
+                <span className="text-fg-dim">
+                  {` · ${address}${signedIn ? "" : " · not signed in"}`}
+                </span>
               </span>
-              <Button
-                aria-label={`Log out of ${name}`}
-                onClick={() => {
-                  void json(
-                    context.request("remove", {
+              {signedIn ? (
+                <Button
+                  aria-label={`Log out of ${name}`}
+                  onClick={() => {
+                    send("remove", {
                       method: "POST",
-                      body: JSON.stringify({ server }),
-                    }),
-                  ).then(reload, reload);
-                }}
-              >
-                Log out
-              </Button>
+                      body: JSON.stringify({ server: key }),
+                    });
+                  }}
+                >
+                  Log out
+                </Button>
+              ) : (
+                <Button
+                  aria-label={`Sign in to ${name}`}
+                  disabled={value.connection?.state === "running"}
+                  onClick={() => {
+                    send("connect-mcp", {
+                      method: "POST",
+                      body: JSON.stringify({ server: key }),
+                    });
+                  }}
+                >
+                  Sign in
+                </Button>
+              )}
             </li>
           );
         })}

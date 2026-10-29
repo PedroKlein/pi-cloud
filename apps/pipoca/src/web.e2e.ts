@@ -826,6 +826,89 @@ test("connects a model provider from Settings by answering its prompts", async (
   await page.getByRole("button", { name: "Log out of mistral" }).click();
 });
 
+test("signs in to an MCP server of the base Profile from Settings and comes back to Pipoca", async () => {
+  // An MCP server whose authorization server signs anyone in at once.
+  const linear: Bun.Server<undefined> = Bun.serve({
+    port: 0,
+    fetch: (request): Response => {
+      const url = new URL(request.url);
+      const origin = linear.url.origin;
+
+      if (url.pathname.startsWith("/.well-known/oauth-protected-resource")) {
+        return Response.json({
+          resource: `${origin}/mcp`,
+          authorization_servers: [origin],
+        });
+      }
+
+      if (url.pathname.startsWith("/.well-known/")) {
+        return Response.json({
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          registration_endpoint: `${origin}/register`,
+          response_types_supported: ["code"],
+          code_challenge_methods_supported: ["S256"],
+          token_endpoint_auth_methods_supported: ["none"],
+        });
+      }
+
+      if (url.pathname === "/authorize") {
+        const back = new URL(url.searchParams.get("redirect_uri") ?? "");
+        back.searchParams.set("code", "granted");
+        back.searchParams.set("state", url.searchParams.get("state") ?? "");
+
+        return Response.redirect(back.href, 302);
+      }
+
+      if (url.pathname === "/register") {
+        return Response.json({ client_id: "client-1" }, { status: 201 });
+      }
+
+      if (url.pathname === "/token") {
+        return Response.json({
+          access_token: "access-1",
+          refresh_token: "refresh-1",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      }
+
+      return new Response("unauthorized", { status: 401 });
+    },
+  });
+
+  const base = async (mcpServers: unknown): Promise<void> => {
+    await fetch(new URL("/api/base", server.url), {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ mcpServers }),
+    });
+  };
+
+  try {
+    await base({ linear: { url: `${linear.url.origin}/mcp` } });
+
+    await page.goto(server.url.href);
+    await openSettings("Logins");
+    await page.getByRole("button", { name: "Sign in to linear" }).click();
+
+    const card = page.getByRole("region", { name: "Connecting linear" });
+    const opened = page.context().waitForEvent("page");
+    await card.getByRole("link", { name: "Open the sign-in page" }).click();
+
+    const tab = await opened;
+    await tab.getByText("Signed in. You can close this tab.").waitFor();
+    await tab.close();
+
+    await card.getByText("Connected to linear.").waitFor();
+    await page.getByRole("button", { name: "Log out of linear" }).waitFor();
+  } finally {
+    await base({});
+    await linear.stop(true);
+  }
+});
+
 test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.goto(server.url.href);
   await openSettings("MCP clients");
