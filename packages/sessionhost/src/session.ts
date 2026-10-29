@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, sep } from "node:path";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, CredentialStore, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   type AgentSessionServices,
@@ -62,6 +62,8 @@ export interface SessionHost {
   // Pi package sources plugins load in every Session.
   readonly packages: readonly string[];
   readonly onError: (error: ExtensionError) => void;
+  // Model logins kept elsewhere than the machine's auth file (ADR 0045).
+  readonly credentials?: CredentialStore;
 }
 
 // The tool that lets the model reach tools of each exposure it isn't
@@ -131,6 +133,7 @@ export async function startSession(
       ...(host?.extensions ?? []),
     ],
     ...(host && { packages: host.packages, onError: host.onError }),
+    ...(host?.credentials && { credentials: host.credentials }),
   });
 
   const sessionManager = SessionManager.continueRecent(cwd, options.sessionDir);
@@ -220,8 +223,10 @@ async function loadServices(
     packages = [],
     onError = () => undefined,
     projectTrusted = true,
+    credentials,
     ...resources
   }: {
+    readonly credentials?: CredentialStore;
     readonly projectTrusted?: boolean;
     readonly appendSystemPrompt?: string[];
     readonly extensionFactories?: InlineExtension[];
@@ -255,7 +260,7 @@ async function loadServices(
     modelRuntime:
       options.models?.runtime ??
       (await ModelRuntime.create({
-        authPath: options.authPath,
+        ...(credentials ? { credentials } : { authPath: options.authPath }),
         modelsPath: options.modelsPath,
       })),
   });

@@ -12,11 +12,17 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type Credential,
+  type CredentialStore,
   fauxAssistantMessage,
   fauxText,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { type AgentSession, defineTool } from "@earendil-works/pi-coding-agent";
+import {
+  type AgentSession,
+  defineTool,
+  ModelRuntime,
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import {
   modelLister,
@@ -314,6 +320,62 @@ test("refuses to start on a model the provider cannot use", async () => {
   );
 
   expect(start).rejects.toThrow("model not available: proxy/proxy-huge");
+});
+
+test("starts on a model that the host's credentials log in to", async () => {
+  const stored = new Map<string, Credential>([
+    ["anthropic", { type: "api_key", key: "sk-test" }],
+  ]);
+
+  const credentials: CredentialStore = {
+    read: async (id) => Promise.resolve(stored.get(id)),
+    list: async () =>
+      Promise.resolve(
+        [...stored].map(([providerId, { type }]) => ({ providerId, type })),
+      ),
+    modify: async (id, fn) => {
+      const next = await fn(stored.get(id));
+      if (next !== undefined) {
+        stored.set(id, next);
+      }
+
+      return next ?? stored.get(id);
+    },
+    delete: async (id) => {
+      stored.delete(id);
+      await Promise.resolve();
+    },
+  };
+
+  const catalog = await ModelRuntime.create({
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
+
+  const model = catalog
+    .getModels()
+    .find(({ provider }) => provider === "anthropic");
+
+  if (model === undefined) {
+    throw new Error("Pi lists no anthropic model");
+  }
+
+  const session = await startSession(
+    sessionOptions(root, { model: { provider: "anthropic", id: model.id } }),
+    {
+      ui: {} as SessionHost["ui"],
+      tools: [],
+      extensions: [],
+      packages: [],
+      onError: () => undefined,
+      credentials,
+    },
+  );
+
+  await stopSession(session);
+
+  expect(modelName(session)).toBe(`anthropic/${model.id}`);
+  expect(await readdir(root)).not.toContain("auth.json");
 });
 
 test("keeps a resumed session on the model it last used", async () => {

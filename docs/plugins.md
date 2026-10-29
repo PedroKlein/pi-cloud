@@ -128,7 +128,7 @@ export default {
 } satisfies SessionPlugin;
 ```
 
-`extension` returns a Pi extension (Pi's `docs/extensions.md`). `cloud.request` calls the plugin's own routes on behalf of the Session, and `cloud.settings` holds its settings as they were when the Session started. `cloud.publish(key, data)` shares a value with everyone watching the Session, `cloud.checkouts` lists the git checkouts in its workspace, `cloud.askQuestions` asks the user questions, and `cloud.log` logs a message with fields. Instead of an extension, a part can list Pi `packages` to load, or return `tools`. Runners fetch the bundle by its hash when a Session starts. The part can't import files other than code.
+`extension` returns a Pi extension (Pi's `docs/extensions.md`). `cloud.request` calls the plugin's own routes on behalf of the Session, and `cloud.settings` holds its settings as they were when the Session started. `cloud.publish(key, data)` shares a value with everyone watching the Session, `cloud.checkouts` lists the git checkouts in its workspace, `cloud.askQuestions` asks the user questions, and `cloud.log` logs a message with fields. Instead of an extension, a part can list Pi `packages` to load, or return `tools`. A part can also return `credentials`, a Pi `CredentialStore` that keeps the Session's model logins instead of the runner's auth file, as the `logins` plugin does; the first part that returns one is used. Runners fetch the bundle by its hash when a Session starts. The part can't import files other than code.
 
 ## Install it
 

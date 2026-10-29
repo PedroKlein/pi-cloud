@@ -18,6 +18,7 @@
     "@pipoca/git-hosts": "workspace:*",
     "@pipoca/kubernetes": "workspace:*",
     "@pipoca/library": "workspace:*",
+    "@pipoca/logins": "workspace:*",
     "@pipoca/meta": "workspace:*",
     "@pipoca/models": "workspace:*",
     "@pipoca/oidc": "workspace:*",

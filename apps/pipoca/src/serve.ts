@@ -153,7 +153,8 @@ export function serve(options: ServeOptions): {
       changes.publish("environments");
     },
     sessionPlugins: () => pluginHost.sessionPlugins(),
-    offeredModels: (environmentId) => pluginHost.offeredModels(environmentId),
+    offeredModels: (environmentId, userId) =>
+      pluginHost.offeredModels(environmentId, userId),
     startsRunners: (environmentId) => pluginHost.startsRunners(environmentId),
     pluginProfile: (id) => pluginHost.profile(id),
     gitLogins: (userId) => pluginHost.gitLogins(userId),
