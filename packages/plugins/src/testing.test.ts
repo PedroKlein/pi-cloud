@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import { BadRequest } from "./http";
 import type { PluginRoute } from "./plugin";
-import { fakeContext, fakeSession, memoryStore, served } from "./testing";
+import {
+  fakeContext,
+  fakeSession,
+  fakeUser,
+  memoryStore,
+  served,
+} from "./testing";
 
 test("a memory store keeps rows and seals nothing", () => {
   const store = memoryStore();
@@ -68,7 +74,7 @@ test("a served route answers what it throws as the server does", async () => {
   const response = await route(
     new Request("http://plugin/names"),
     "names",
-    undefined,
+    fakeUser(),
   );
 
   expect(response.status).toBe(400);

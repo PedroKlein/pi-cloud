@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
-import type { PluginRoute, ToolCaller } from "@pipoca/plugins";
-import { fakeContext, fakeSession } from "@pipoca/plugins/testing";
+import type { PluginRoute, RouteCaller } from "@pipoca/plugins";
+import { fakeContext, fakeSession, fakeUser } from "@pipoca/plugins/testing";
 import type { PluginSettings } from "@pipoca/protocol";
 import { library } from "./server";
 
-const member: ToolCaller = {
-  session: fakeSession(),
+const session = fakeSession();
+
+const member: RouteCaller = {
+  kind: "session",
+  session,
   actor: "session:session-1",
 };
 
@@ -27,7 +30,7 @@ function registered(
 
   context.events.publish({
     type: "projects.MemberAdded",
-    sessionId: member.session.id,
+    sessionId: session.id,
     projectId: "p1",
   });
 
@@ -43,7 +46,7 @@ async function put(
   route: PluginRoute,
   path: string,
   body: string,
-  caller?: ToolCaller,
+  caller: RouteCaller = fakeUser(),
 ): Promise<void> {
   const request = new Request(`http://library/${path}`, {
     method: "PUT",
@@ -54,7 +57,7 @@ async function put(
 }
 
 async function get(route: PluginRoute, path: string): Promise<Response> {
-  return route(new Request(`http://library/${path}`), path, undefined);
+  return route(new Request(`http://library/${path}`), path, fakeUser());
 }
 
 test("lists each file of a Project by name with its latest size and writer", async () => {
@@ -94,7 +97,7 @@ test("accepts everyday file names and refuses only unsafe ones", async () => {
     return route(
       new Request(`http://library/${path}`, { method: "PUT", body: "x" }),
       path,
-      undefined,
+      fakeUser(),
     );
   };
 
@@ -183,7 +186,7 @@ test("refuses a file over the size limit in the settings as they are now", async
         body: new Uint8Array(1024 * 1024 + 1),
       }),
       path,
-      undefined,
+      fakeUser(),
     );
 
   const refused = await putBig();

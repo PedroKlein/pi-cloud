@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   isObject,
   readJson,
+  requireAdmin,
   type ServerPlugin,
   type ServerPluginContext,
 } from "@pipoca/plugins";
@@ -96,7 +97,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           .find(({ id }) => id === environmentId);
 
         if (
-          caller !== undefined ||
+          caller.kind !== "user" ||
           resource !== "environments" ||
           environmentId === undefined ||
           environment === undefined
@@ -114,12 +115,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
 
         // A pod patch can mount the namespace's Secrets or run privileged,
         // so it is as much as the server's own access (ADR 0038).
-        if (context.auth.userOf(request)?.admin !== true) {
-          return Response.json(
-            { error: "only admins change Kubernetes settings" },
-            { status: 403 },
-          );
-        }
+        requireAdmin(caller, "only admins change Kubernetes settings");
 
         const body = await readJson(request);
 

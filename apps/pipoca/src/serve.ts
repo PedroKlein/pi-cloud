@@ -177,7 +177,7 @@ export function serve(options: ServeOptions): {
     settings: store.pluginSettings,
     config,
     toolsets: kernelToolsets,
-    api: async (actor, request) => handler(onBehalfOf(actor, request)),
+    api: async (onBehalf, request) => handler(onBehalfOf(onBehalf, request)),
     auth: {
       userOf: (request) => auth.userOf(request),
       createUser: (name, admin) => auth.createUser(name, admin),

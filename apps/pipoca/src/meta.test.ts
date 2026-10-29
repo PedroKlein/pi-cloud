@@ -140,6 +140,15 @@ test("starts a meta-session on the meta Profile and keeps it out of the Session 
   expect(owned.map(({ id }) => id)).toEqual([session.id]);
 });
 
+test("starts a meta-session as the person who asked for it", async () => {
+  faux.setResponses([fauxAssistantMessage([fauxText("hello")])]);
+
+  const session = await startMeta("What can you do?");
+  const { user } = await json<{ user: { id: string } }>(api("/api/auth"));
+
+  expect(session.startedBy).toBe(user.id);
+});
+
 test("refuses a meta-session without a first message", async () => {
   await environmentReady();
   const response = await api("/api/plugins/meta/sessions", { text: " " });

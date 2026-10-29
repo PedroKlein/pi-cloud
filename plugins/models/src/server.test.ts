@@ -1,12 +1,19 @@
 import { expect, test } from "bun:test";
 import { getEventListeners } from "node:events";
-import type { PluginRoute, ToolCaller } from "@pipoca/plugins";
-import { fakeContext, fakeSession, served } from "@pipoca/plugins/testing";
+import type { PluginRoute, RouteCaller } from "@pipoca/plugins";
+import {
+  fakeContext,
+  fakeSession,
+  fakeUser,
+  served,
+} from "@pipoca/plugins/testing";
 import { models } from "./server";
 
 const environmentId = "environment-1";
+const admin = fakeUser({ admin: true });
 
-const caller: ToolCaller = {
+const caller: RouteCaller = {
+  kind: "session",
   session: fakeSession({ environmentId }),
   actor: "session:session-1",
 };
@@ -53,7 +60,7 @@ async function clearAliases(route: PluginRoute): Promise<void> {
     body: JSON.stringify({ aliases: null }),
   });
 
-  await route(request, `environments/${environmentId}`, undefined);
+  await route(request, `environments/${environmentId}`, admin);
 }
 
 async function saveAliases(
@@ -65,12 +72,12 @@ async function saveAliases(
     body,
   });
 
-  return route(request, `environments/${environmentId}`, undefined);
+  return route(request, `environments/${environmentId}`, admin);
 }
 
 async function savedAliases(route: PluginRoute): Promise<unknown> {
   const request = new Request("http://models/environments");
-  const response = await route(request, "environments", undefined);
+  const response = await route(request, "environments", admin);
   const [saved] = (await response.json()) as { aliases: unknown }[];
 
   return saved?.aliases;

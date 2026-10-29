@@ -6,6 +6,7 @@ export {
   isObject,
   NotFound,
   readJson,
+  requireAdmin,
 } from "./http";
 export { checkedSettings, settingSpecs, settingValues } from "./settings";
 export type {
@@ -22,6 +23,7 @@ export type {
   PluginRoute,
   PluginStore,
   PublicRoute,
+  RouteCaller,
   RouteRequest,
   RouteTool,
   SendOutcome,

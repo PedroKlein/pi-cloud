@@ -2,7 +2,6 @@ import { BadRequest, fieldsOf, readJson } from "@pipoca/plugins";
 import type { Profiles } from "@pipoca/profiles";
 import type { Log } from "@pipoca/providers";
 import { notFound, reply } from "./replies";
-import type { UserActor } from "./plugins";
 import type { BrowserRoute } from "./server";
 
 const profileRejectionStatus = {
@@ -15,7 +14,6 @@ const profileRejectionStatus = {
 // Shared Profiles are changed only by admins (ADR 0041).
 export function profileRoutes(
   profiles: Profiles,
-  isAdmin: (actor: UserActor) => boolean,
   log: Log,
 ): readonly (readonly [string, RegExp, BrowserRoute])[] {
   const replied = (
@@ -39,11 +37,8 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/profiles$/,
-      async (request, _params, actor) => {
-        const created = profiles.create(
-          await readJson(request),
-          isAdmin(actor),
-        );
+      async (request, _params, _actor, admin) => {
+        const created = profiles.create(await readJson(request), admin);
 
         if (created.ok) {
           log("profile created", { profileId: created.value.id });
@@ -101,12 +96,8 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/profiles\/([^/]+)$/,
-      async (request, [id = ""], actor) => {
-        const updated = profiles.update(
-          id,
-          await readJson(request),
-          isAdmin(actor),
-        );
+      async (request, [id = ""], _actor, admin) => {
+        const updated = profiles.update(id, await readJson(request), admin);
 
         if (updated.ok) {
           log("profile updated", { profileId: id });
@@ -118,8 +109,8 @@ export function profileRoutes(
     [
       "DELETE",
       /^\/api\/profiles\/([^/]+)$/,
-      (_request, [id = ""], actor) => {
-        const removed = profiles.remove(id, isAdmin(actor));
+      (_request, [id = ""], _actor, admin) => {
+        const removed = profiles.remove(id, admin);
         if (removed.ok) {
           log("profile deleted", { profileId: id });
         }
@@ -154,11 +145,8 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/base$/,
-      async (request, _params, actor) => {
-        const updated = profiles.updateBase(
-          await readJson(request),
-          isAdmin(actor),
-        );
+      async (request, _params, _actor, admin) => {
+        const updated = profiles.updateBase(await readJson(request), admin);
 
         if (updated.ok) {
           log("base profile updated");
@@ -171,9 +159,9 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/base\/files$/,
-      async (request, _params, actor) => {
+      async (request, _params, _actor, admin) => {
         const files = uploadedFiles(await readJson(request));
-        const written = profiles.writeBaseFiles(files, isAdmin(actor));
+        const written = profiles.writeBaseFiles(files, admin);
         if (written.ok) {
           log("base profile files uploaded", { files: files.size });
         }
@@ -193,10 +181,10 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/base\/files\/(.+)$/,
-      async (request, [path = ""], actor) => {
+      async (request, [path = ""], _actor, admin) => {
         const written = profiles.writeBaseFiles(
           new Map([[filePath(path), Buffer.from(await request.bytes())]]),
-          isAdmin(actor),
+          admin,
         );
 
         if (written.ok) {
@@ -209,8 +197,8 @@ export function profileRoutes(
     [
       "DELETE",
       /^\/api\/base\/files\/(.+)$/,
-      (_request, [path = ""], actor) => {
-        const removed = profiles.deleteBaseFile(filePath(path), isAdmin(actor));
+      (_request, [path = ""], _actor, admin) => {
+        const removed = profiles.deleteBaseFile(filePath(path), admin);
 
         if (removed.ok) {
           log("base profile file deleted");
@@ -234,9 +222,9 @@ export function profileRoutes(
     [
       "POST",
       /^\/api\/profiles\/([^/]+)\/files$/,
-      async (request, [id = ""], actor) => {
+      async (request, [id = ""], _actor, admin) => {
         const decoded = uploadedFiles(await readJson(request));
-        const written = profiles.writeFiles(id, decoded, isAdmin(actor));
+        const written = profiles.writeFiles(id, decoded, admin);
         if (written.ok) {
           log("profile files uploaded", {
             profileId: id,
@@ -259,11 +247,11 @@ export function profileRoutes(
     [
       "PUT",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
-      async (request, [id = "", path = ""], actor) => {
+      async (request, [id = "", path = ""], _actor, admin) => {
         const written = profiles.writeFiles(
           id,
           new Map([[filePath(path), Buffer.from(await request.bytes())]]),
-          isAdmin(actor),
+          admin,
         );
 
         if (written.ok) {
@@ -276,8 +264,8 @@ export function profileRoutes(
     [
       "DELETE",
       /^\/api\/profiles\/([^/]+)\/files\/(.+)$/,
-      (_request, [id = "", path = ""], actor) => {
-        const removed = profiles.deleteFile(id, filePath(path), isAdmin(actor));
+      (_request, [id = "", path = ""], _actor, admin) => {
+        const removed = profiles.deleteFile(id, filePath(path), admin);
 
         if (removed.ok) {
           log("profile file deleted", { profileId: id });

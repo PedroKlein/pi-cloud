@@ -13,8 +13,6 @@ import { metaPrompt } from "./prompt";
 export const meta: ServerPlugin = {
   name: "meta",
   register: (context) => {
-    const user: Actor = `user:${context.owner}`;
-
     // Other Session parts would add tools the confirm can't see into, such
     // as subagents, whose own sessions don't load it.
     context.sessions.loadOnly(["ask", "models", "meta"]);
@@ -32,8 +30,8 @@ export const meta: ServerPlugin = {
       settings: { defaultTools: ["-read", "-bash", "-edit", "-write"] },
     });
 
-    context.routes.handle(async (request, path) => {
-      if (path !== "sessions") {
+    context.routes.handle(async (request, path, caller) => {
+      if (path !== "sessions" || caller.kind !== "user") {
         return Response.json({ error: "not_found" }, { status: 404 });
       }
 
@@ -46,7 +44,7 @@ export const meta: ServerPlugin = {
       }
 
       return Response.json(
-        start(context, user, profile, await readJson(request)),
+        start(context, caller.actor, profile, await readJson(request)),
         { status: 201 },
       );
     });

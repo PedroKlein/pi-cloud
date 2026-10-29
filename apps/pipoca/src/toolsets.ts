@@ -9,7 +9,7 @@ import {
   type ToolSpec,
   type UiAction,
 } from "@pipoca/protocol";
-import type { UserActor } from "./plugins";
+import type { OnBehalf } from "./plugins";
 
 const workspaceSchema = {
   type: "object",
@@ -74,7 +74,7 @@ Its package.json has "type": "module", any npm "dependencies" its parts import, 
 Type each part with import type from @pipoca/plugins (ServerPlugin, SessionPlugin) or @pipoca/plugins/web (WebPlugin) and check its default export with satisfies.
 
 The server part's default export is a ServerPlugin { name: <id>, register(context) }. Reaching a context member whose capability isn't declared fails the plugin when it registers.
-- context.routes.handle((request, path, caller) => Response | Promise<Response>) answers /api/plugins/<id>/<path>, so it needs no web framework such as Express; caller is { session, actor } when its Session part sent the request.
+- context.routes.handle((request, path, caller) => Response | Promise<Response>) answers /api/plugins/<id>/<path>, so it needs no web framework such as Express. caller is { kind: "user", actor, admin } for a signed-in user, also through a toolset tool (admin is false from a meta-session), or { kind: "session", session, actor } when its Session part sent the request. A route acts as its caller: a Session it starts for a user takes actor: caller.actor. A route that changes config every user shares answers 403 unless caller.kind === "user" && caller.admin.
 - context.store is its SQLite database: exec(sql), all(sql, ...params), run(sql, ...params), and seal(text, context)/open(sealed, context) for secrets. Name its tables <id>_<table>.
 - context.settings.get() returns its settings. context.config.get() and set(value) read and replace its key in the server's pipoca.json, and context.config.dir is a folder of its own.
 - context.changes.publish(name) tells open pages that something changed; they hear the topic "<id>.<name>".
@@ -527,9 +527,9 @@ const internalOrigin = "http://pipoca.internal";
 export async function runRouteTool(
   found: ToolsetTool,
   input: unknown,
-  actor: UserActor,
+  onBehalf: OnBehalf,
   deps: {
-    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+    readonly api: (onBehalf: OnBehalf, request: Request) => Promise<Response>;
   },
   open: (action: UiAction) => void,
 ): Promise<ToolResult> {
@@ -549,7 +549,7 @@ export async function runRouteTool(
   }
 
   const response = await deps.api(
-    actor,
+    onBehalf,
     new Request(
       url,
       body === undefined

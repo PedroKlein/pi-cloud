@@ -2,7 +2,12 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import type { Session } from "@pipoca/protocol";
 import { eventBus } from "./events";
 import { HttpError } from "./http";
-import type { PluginRoute, PluginStore, ServerPluginContext } from "./plugin";
+import type {
+  PluginRoute,
+  PluginStore,
+  RouteCaller,
+  ServerPluginContext,
+} from "./plugin";
 
 // A store in memory that seals nothing, for a plugin's tests.
 export function memoryStore(): PluginStore {
@@ -112,6 +117,15 @@ export function fakeSession(fields: Partial<Session> = {}): Session {
     waiting: false,
     ...fields,
   };
+}
+
+// A signed-in user calling a route, the context's owner unless the test
+// names another. Not an admin unless the test says.
+export function fakeUser({
+  id = "owner",
+  admin = false,
+}: { readonly id?: string; readonly admin?: boolean } = {}): RouteCaller {
+  return { kind: "user", actor: `user:${id}`, admin };
 }
 
 // A plugin's route that answers what it throws as the server does, for a

@@ -26,7 +26,7 @@ import {
 } from "./auth";
 import { type Changes, changedBy } from "./changes";
 import { mcpHandler } from "./mcp";
-import type { PluginHost, UserActor } from "./plugins";
+import type { OnBehalf, PluginHost, UserActor } from "./plugins";
 import { type AgentRoute, agentRoutes } from "./agent-routes";
 import { profileRoutes } from "./profile-routes";
 import { notFound, reply } from "./replies";
@@ -52,10 +52,10 @@ type RouteTable = readonly (readonly [string, RegExp, Route])[];
 
 // Requests a toolset tool makes as a user (ADR 0035). They never come from
 // the network, so they carry no sign-in cookie.
-const onBehalf = new WeakMap<Request, UserActor>();
+const onBehalf = new WeakMap<Request, OnBehalf>();
 
-export function onBehalfOf(actor: UserActor, request: Request): Request {
-  onBehalf.set(request, actor);
+export function onBehalfOf(caller: OnBehalf, request: Request): Request {
+  onBehalf.set(request, caller);
 
   return request;
 }
@@ -64,6 +64,7 @@ export type BrowserRoute = (
   request: Request,
   params: readonly string[],
   actor: UserActor,
+  admin: boolean,
 ) => Response | Promise<Response>;
 
 // Tells one run of the server from the next, so a page waiting out a restart
@@ -126,16 +127,21 @@ export function createHandler(
   const signedIn = (route: BrowserRoute): Route => {
     return async (request, params) => {
       const user = auth.userOf(request);
+      const behalf = onBehalf.get(request);
 
       const actor =
-        onBehalf.get(request) ??
+        behalf?.actor ??
         (user === undefined ? undefined : (`user:${user.id}` as const));
 
       if (actor === undefined) {
         return Response.json({ error: "signed_out" }, { status: 401 });
       }
 
-      const response = await route(request, params, actor);
+      const admin =
+        behalf?.mayAdmin !== false &&
+        auth.userById(userIdOf(actor))?.admin === true;
+
+      const response = await route(request, params, actor, admin);
       const topic = changedBy(request, response);
       if (topic !== undefined) {
         changes.publish(topic);
@@ -148,9 +154,9 @@ export function createHandler(
   // Plugins run code inside the server, so only admins change them.
   const admin =
     (route: BrowserRoute): BrowserRoute =>
-    async (request, params, actor) =>
-      auth.userById(userIdOf(actor))?.admin === true
-        ? await route(request, params, actor)
+    async (request, params, actor, isAdmin) =>
+      isAdmin
+        ? await route(request, params, actor, isAdmin)
         : Response.json({ error: "admin_only" }, { status: 403 });
 
   const sessionAction =
@@ -215,7 +221,12 @@ export function createHandler(
       async (request, [name = "", path = ""]) =>
         (await plugins.publicRoute(request, name, path)) ??
         signedIn(
-          async () => (await plugins.route(request, name, path)) ?? notFound(),
+          async (_request, _params, actor, isAdmin) =>
+            (await plugins.route(request, name, path, {
+              kind: "user",
+              actor,
+              admin: isAdmin,
+            })) ?? notFound(),
         )(request, [name, path]),
     ],
     ["ANY", /^\/api\/mcp$/, mcpHandler(auth, plugins, serverVersion, log)],
@@ -521,11 +532,7 @@ export function createHandler(
         return Response.json(updated.value);
       },
     ],
-    ...profileRoutes(
-      profiles,
-      (actor) => auth.userById(userIdOf(actor))?.admin === true,
-      log,
-    ),
+    ...profileRoutes(profiles, log),
     [
       "GET",
       /^\/api\/sessions$/,

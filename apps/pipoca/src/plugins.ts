@@ -16,11 +16,11 @@ import {
   type PluginRoute,
   type PluginStore,
   type PublicRoute,
+  type RouteCaller,
   type ServerPlugin,
   type ServerPluginContext,
   type ServerTool,
   settingValues,
-  type ToolCaller,
   type Toolset,
 } from "@pipoca/plugins";
 import {
@@ -60,6 +60,13 @@ export const serverPlugins: readonly ServerPlugin[] = [
 ];
 
 export type UserActor = `user:${string}`;
+
+// Who a toolset tool's request acts as (ADR 0035). A meta-session's acts as
+// the user who started it, but never as an admin (ADR 0038).
+export interface OnBehalf {
+  readonly actor: UserActor;
+  readonly mayAdmin: boolean;
+}
 
 export interface PluginHost {
   // The plugins that are on, without any that failed to register.
@@ -120,7 +127,7 @@ export interface PluginHost {
     request: Request,
     name: string,
     path: string,
-    caller?: ToolCaller,
+    caller: RouteCaller,
   ) => Promise<Response | undefined>;
   readonly publicRoute: (
     request: Request,
@@ -183,7 +190,7 @@ export function startPlugins(
     // The kernel's own toolsets (ADR 0035).
     readonly toolsets: readonly Toolset[];
     // Handles a toolset tool's request as the user.
-    readonly api: (actor: UserActor, request: Request) => Promise<Response>;
+    readonly api: (onBehalf: OnBehalf, request: Request) => Promise<Response>;
     readonly auth: Pick<
       ServerPluginContext["auth"],
       "userOf" | "createUser" | "setAdmin" | "startSession"
@@ -860,7 +867,10 @@ export function startPlugins(
           return runRouteTool(
             routed,
             call.input,
-            `user:${session.ownerId}`,
+            {
+              actor: `user:${session.startedBy ?? session.ownerId}`,
+              mayAdmin: false,
+            },
             deps,
             (action) => {
               deps.sessions.publish(session.id, {
@@ -898,9 +908,13 @@ export function startPlugins(
 
       return found === undefined
         ? { text: `no tool named ${name}`, isError: true }
-        : runRouteTool(found, input, actor, deps, () => undefined).catch(
-            (error: unknown) => ({ text: String(error), isError: true }),
-          );
+        : runRouteTool(
+            found,
+            input,
+            { actor, mayAdmin: true },
+            deps,
+            () => undefined,
+          ).catch((error: unknown) => ({ text: String(error), isError: true }));
     },
     offeredModels: (environmentId) => {
       const offered = offers.map((offer) => offer(environmentId));

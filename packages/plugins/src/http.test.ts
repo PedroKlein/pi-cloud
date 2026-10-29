@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { BadRequest, fieldsOf, NotFound, readJson } from "@pipoca/plugins";
+import {
+  BadRequest,
+  fieldsOf,
+  NotFound,
+  readJson,
+  requireAdmin,
+} from "@pipoca/plugins";
+import { fakeSession, fakeUser } from "@pipoca/plugins/testing";
 
 const post = (body: string): Request =>
   new Request("http://plugin/items", { method: "POST", body });
@@ -29,4 +36,26 @@ test("carries the status the server answers with", () => {
     status: 404,
     message: "no item 7",
   });
+});
+
+test("lets only an admin through to a route that changes shared config", () => {
+  const session = fakeSession();
+
+  expect(() => {
+    requireAdmin(fakeUser({ admin: true }), "only admins change names");
+  }).not.toThrow();
+
+  for (const caller of [
+    fakeUser(),
+    { kind: "session", session, actor: `session:${session.id}` } as const,
+  ]) {
+    expect(() => {
+      requireAdmin(caller, "only admins change names");
+    }).toThrow(
+      expect.objectContaining({
+        status: 403,
+        message: "only admins change names",
+      }),
+    );
+  }
 });
