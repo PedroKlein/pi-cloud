@@ -15,7 +15,9 @@ spec:
     port: {{ .Values.service.port }}
   # The server signs people and runners in itself, so the gateway only keeps
   # out the paths a browser never needs. A path no rule matches is refused,
-  # so the setup link only works through a port-forward.
+  # so the setup link only works through a port-forward. Kyma ends a request
+  # after 180 seconds unless its rule says otherwise, so the rules that serve
+  # streams and terminals take 3900, the most an APIRule allows.
   rules:
     - path: /
       methods: [GET]
@@ -36,7 +38,16 @@ spec:
     - path: /api/changes
       methods: [GET]
       noAuth: true
-    {{- range list "sessions" "environments" "profiles" "base" "plugins" "plugin-files" "plugin-builds" "plugin-parts" "pinned-pages" "mcp-tokens" "join-key" "restart" }}
+      timeout: 3900
+    # A Session's events and terminal.
+    - path: /api/sessions
+      methods: {{ toJson $methods }}
+      noAuth: true
+    - path: /api/sessions/{**}
+      methods: {{ toJson $methods }}
+      noAuth: true
+      timeout: 3900
+    {{- range list "environments" "profiles" "base" "plugins" "plugin-files" "plugin-builds" "plugin-parts" "pinned-pages" "mcp-tokens" "join-key" "restart" }}
     - path: /api/{{ . }}
       methods: {{ toJson $methods }}
       noAuth: true
@@ -48,11 +59,13 @@ spec:
     - path: /api/mcp
       methods: [GET, POST, DELETE]
       noAuth: true
+      timeout: 3900
     {{- end }}
     {{- if .Values.apiRule.exposeAgents }}
     - path: /agent/{**}
       methods: {{ toJson $methods }}
       noAuth: true
+      timeout: 3900
     {{- end }}
 {{- end }}
 {{- if .Values.apiRule.enabled }}

@@ -24,12 +24,37 @@ test("the APIRule lets the browser reach every API the server serves", () => {
     ),
   ];
 
-  // Sign-in, change events and MCP have rules of their own.
-  const own = ["auth", "changes", "mcp"];
+  // Sign-in, change events, Sessions and MCP have rules of their own.
+  const own = ["auth", "changes", "sessions", "mcp"];
 
   expect(
     served.filter(
       (name) => !own.includes(name ?? "") && !listed.includes(name ?? ""),
     ),
   ).toEqual([]);
+});
+
+// Kyma's gateway ends a request after 180 seconds unless its rule says
+// otherwise, which would cut change feeds, Session event streams, terminals
+// and MCP streams. 3900 seconds is the most an APIRule allows.
+test("the APIRule keeps streams and terminals open as long as Kyma allows", () => {
+  const rules = new Map(
+    apiRule
+      .split("\n    - path: ")
+      .slice(1)
+      .map((rule) => [rule.split("\n")[0], rule]),
+  );
+
+  const streaming = [
+    "/api/changes",
+    "/api/sessions/{**}",
+    "/api/mcp",
+    "/agent/{**}",
+  ];
+
+  expect(
+    streaming.map(
+      (path) => /^ {6}timeout: (\d+)$/m.exec(rules.get(path) ?? "")?.[1],
+    ),
+  ).toEqual(["3900", "3900", "3900", "3900"]);
 });
