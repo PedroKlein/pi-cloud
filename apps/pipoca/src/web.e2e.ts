@@ -770,6 +770,35 @@ test("pins a plugin page to the sidebar and keeps the rest under More", async ()
   expect(await library.count()).toBe(0);
 });
 
+test("puts a pin back when the server doesn't save it", async () => {
+  const { promise: pinned, resolve: refuse } = Promise.withResolvers();
+
+  await page.route("**/api/pinned-pages", async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+
+      return;
+    }
+
+    await pinned;
+    await route.fulfill({ status: 500, json: { error: "disk full" } });
+  });
+
+  await page.goto(server.url.href);
+  const nav = page.locator("#plugin-nav");
+
+  await nav.getByRole("button", { name: "More" }).click();
+  await nav.getByRole("button", { name: "Pin Library" }).click();
+  await nav.getByRole("button", { name: "Unpin Library" }).waitFor();
+  refuse(undefined);
+
+  await nav
+    .getByRole("button", { name: "Pin Library", exact: true })
+    .waitFor({ timeout: 2000 });
+
+  await page.unroute("**/api/pinned-pages");
+});
+
 test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.goto(server.url.href);
   await openSettings("MCP clients");
@@ -804,6 +833,29 @@ test("makes an MCP token that works once shown, and revokes it", async () => {
   await page.getByRole("button", { name: "Revoke My laptop" }).click();
   await page.getByText("No client has a token.").waitFor();
   expect(await ping()).toBe(401);
+});
+
+test("says why an MCP token wasn't revoked", async () => {
+  await page.goto(server.url.href);
+  await openSettings("MCP clients");
+
+  await page.getByLabel("Client name").fill("Old laptop");
+  await page.getByRole("button", { name: "New token" }).click();
+  const revoke = page.getByRole("button", { name: "Revoke Old laptop" });
+
+  await page.route("**/api/mcp-tokens/*", async (route) =>
+    route.fulfill({ status: 500, json: { error: "token store is locked" } }),
+  );
+
+  page.once("dialog", async (dialog) => dialog.accept());
+  await revoke.click();
+  await page.getByRole("alert").getByText("token store is locked").waitFor();
+  await page.unroute("**/api/mcp-tokens/*");
+
+  page.once("dialog", async (dialog) => dialog.accept());
+  await revoke.click();
+  await page.getByText("No client has a token.").waitFor();
+  expect(await page.getByRole("alert").count()).toBe(0);
 });
 
 test("edits an Environment's variables and secrets without showing secret values", async () => {
