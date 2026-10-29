@@ -263,3 +263,46 @@ test("lists an Environment's aliases first and gives a session with no model its
     "idle",
   );
 });
+
+test("routes an alias set after its Session started", async () => {
+  primary.setResponses([fauxAssistantMessage("from primary")]);
+
+  const started = (await (
+    await api("/api/sessions", {
+      workspace: { kind: "folder", path: root },
+      firstMessage: "hi",
+    })
+  ).json()) as Session;
+
+  await until(async () => session(started.id), settled);
+
+  const { id: environmentId } = await environment();
+
+  await api(`/api/plugins/models/environments/${environmentId}`, {
+    aliases: { models: { "medium-1": [`fallback/${fallback.getModel().id}`] } },
+  });
+
+  fallback.setResponses([fauxAssistantMessage("from fallback")]);
+
+  // The Session learns of the alias a moment after the server has it.
+  await until(
+    async () => {
+      await api(`/api/sessions/${started.id}/commands`, {
+        type: "set_model",
+        model: { provider: "alias", id: "medium-1" },
+      });
+
+      await api(`/api/sessions/${started.id}/commands`, {
+        type: "message",
+        text: "hi again",
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      return fallback.state.callCount;
+    },
+    (count) => count > 0,
+  );
+
+  expect(fallback.state.callCount).toBe(1);
+});
