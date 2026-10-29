@@ -10,9 +10,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { $ } from "bun";
 import type { PluginInfo } from "@pipoca/protocol";
 import { installedPlugins } from "./installed";
-import { serve } from "./serve";
+import { serve, type ServeOptions } from "./serve";
 import { firstUser } from "./testdata/sign-in";
 
 let root: string;
@@ -33,12 +34,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function start(): Promise<void> {
+async function start(
+  options: Pick<ServeOptions, "idleTimeout"> = {},
+): Promise<void> {
   await server?.stop();
 
   const logs: string[] = [];
 
   server = serve({
+    ...options,
     port: 0,
     database: join(root, "server.db"),
     sessions: { pollWaitMs: 0 },
@@ -165,6 +169,45 @@ test("builds a plugin turned off without running it, and says why one doesn't bu
     "doesn't build",
   );
 });
+
+test("finishes a build that takes longer than the server's idle timeout", async () => {
+  const dependency = join(root, "slow", "package");
+  await mkdir(dependency, { recursive: true });
+
+  await writeFile(
+    join(dependency, "package.json"),
+    JSON.stringify({ name: "slow", version: "1.0.0" }),
+  );
+
+  await $`tar -czf ${join(root, "slow.tgz")} -C ${join(root, "slow")} package`;
+
+  using registry = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: async () => {
+      await Bun.sleep(6000);
+
+      return new Response(Bun.file(join(root, "slow.tgz")));
+    },
+  });
+
+  await start({ idleTimeout: 1 });
+
+  await write(
+    "hello",
+    "package.json",
+    JSON.stringify({
+      ...(JSON.parse(manifest()) as object),
+      dependencies: { slow: new URL("/slow.tgz", registry.url).href },
+    }),
+  );
+
+  await write("hello", "server.ts", serverPart);
+
+  const built = await api("POST", "/api/plugin-builds/hello");
+
+  expect(built.status).toBe(200);
+}, 30_000);
 
 test("won't build a plugin with no parts, since it would do nothing", async () => {
   await start();

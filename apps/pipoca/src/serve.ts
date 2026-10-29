@@ -67,7 +67,27 @@ export interface ServeOptions {
   // Exits so that whatever runs the server starts it again. Without it the
   // server can't restart itself.
   readonly restart?: () => void;
+  // Seconds a connection may go quiet before the server closes it; 30 when
+  // unset.
+  readonly idleTimeout?: number;
   readonly log: Log;
+}
+
+// Installing, updating or building a plugin, or importing a Profile from
+// git, can take minutes with nothing sent until it is done.
+const longRoutes = [
+  ["POST", /^\/api\/plugins$/],
+  ["PATCH", /^\/api\/plugins\/[^/]+$/],
+  ["POST", /^\/api\/plugin-builds\/[^/]+$/],
+  ["POST", /^\/api\/profiles\/import$/],
+] as const;
+
+function takesLong(request: Request): boolean {
+  const { pathname } = new URL(request.url);
+
+  return longRoutes.some(
+    ([method, path]) => request.method === method && path.test(pathname),
+  );
 }
 
 export function serve(options: ServeOptions): {
@@ -229,7 +249,7 @@ export function serve(options: ServeOptions): {
   const server = Bun.serve<SocketData>({
     hostname: options.hostname ?? "127.0.0.1",
     port: options.port,
-    idleTimeout: 30,
+    idleTimeout: options.idleTimeout ?? 30,
     development: false,
     routes: { [webPath]: web },
     fetch: async (request, bunServer) => {
@@ -256,6 +276,10 @@ export function serve(options: ServeOptions): {
 
       if (upgraded === "upgraded") {
         return undefined;
+      }
+
+      if (takesLong(request)) {
+        bunServer.timeout(request, 0);
       }
 
       return upgraded ?? previews.open(request) ?? handler(request);
