@@ -1714,6 +1714,47 @@ test("stops a runner the server let go when its Environment got a new key", asyn
   expect(stopped).toEqual(new Error("the server let this runner go"));
 });
 
+test("stops a runner whose server speaks another protocol version instead of retrying", async () => {
+  const older = Bun.serve({
+    port: 0,
+    fetch: () =>
+      Response.json(
+        { error: "unsupported protocol version 1" },
+        { status: 400 },
+      ),
+  });
+
+  const run = async (
+    credential: { readonly key: string } | { readonly token: string },
+  ): Promise<unknown> =>
+    runAgent({
+      server: older.url.href,
+      provider: "mac",
+      credential,
+      dataDir: join(root, "mac"),
+      extensionPaths: [],
+      folders: [root],
+      models: { runtime, model: faux.getModel() },
+      log: () => undefined,
+      signal: AbortSignal.timeout(5000),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  const stopped = await Promise.all([
+    run({ key: "pk_old" }),
+    run({ token: "prt_old" }),
+  ]);
+
+  await older.stop(true);
+
+  expect(stopped.map(String)).toEqual([
+    `Error: the server at ${older.url.href} doesn't speak this runner's protocol version ${String(protocolVersion)}; run the same Pipoca version on both`,
+    `Error: the server at ${older.url.href} doesn't speak this runner's protocol version ${String(protocolVersion)}; run the same Pipoca version on both`,
+  ]);
+});
+
 test("lists an Environment for each provider with the folders and models its agent offers", async () => {
   let environments: Environment[] = [];
   while (!environments.some((e) => e.provider === "laptop" && e.online)) {
