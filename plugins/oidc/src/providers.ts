@@ -4,8 +4,27 @@ import {
   isObject,
   type PluginConfig,
   type PluginStore,
+  type Static,
+  Type,
 } from "@pipoca/plugins";
 import type { ProviderInput, ProviderView } from "./model";
+
+// What Settings sends to add or change a provider. An empty or missing client
+// secret keeps the one the provider has, and null takes it away.
+export const providerChange = Type.Object({
+  label: Type.Optional(Type.String()),
+  issuer: Type.Optional(Type.String()),
+  clientId: Type.Optional(Type.String()),
+  clientSecret: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  groupsClaim: Type.Optional(Type.String()),
+  accessGroup: Type.Optional(Type.String()),
+  adminGroup: Type.Optional(Type.String()),
+  allowedEmails: Type.Optional(Type.Array(Type.String())),
+  allowedDomains: Type.Optional(Type.Array(Type.String())),
+  adminEmails: Type.Optional(Type.Array(Type.String())),
+});
+
+type ProviderChange = Static<typeof providerChange>;
 
 // A provider as the plugin uses it. Lists are lower case.
 export interface ProviderConfig {
@@ -27,10 +46,11 @@ export interface ProviderConfig {
 export interface ProviderStore {
   readonly list: () => readonly ProviderConfig[];
   readonly get: (id: string) => ProviderConfig | undefined;
-  readonly create: (input: unknown) => ProviderConfig;
-  // An empty or missing client secret keeps the one the provider has, and
-  // null takes it away.
-  readonly update: (id: string, input: unknown) => ProviderConfig | undefined;
+  readonly create: (input: ProviderChange) => ProviderConfig;
+  readonly update: (
+    id: string,
+    input: ProviderChange,
+  ) => ProviderConfig | undefined;
   readonly remove: (id: string) => boolean;
 }
 
@@ -130,17 +150,11 @@ export function providerStore(
 
   const changed = (
     id: string,
-    input: unknown,
+    input: ProviderChange,
     before: Entry | undefined,
   ): Entry => {
-    const fields = fieldsOf(input);
-    const secret = fields["clientSecret"];
-
-    if (secret !== undefined && secret !== null && typeof secret !== "string") {
-      throw new BadRequest("clientSecret must be text");
-    }
-
-    const provider = providerFrom(id, fields);
+    const secret = input.clientSecret;
+    const provider = providerFrom(id, input);
 
     if (secret === null) {
       return { provider, sealed: undefined };
@@ -169,11 +183,7 @@ export function providerStore(
     create: (input) => {
       const taken = new Set(current().map(({ provider }) => provider.id));
 
-      const entry = changed(
-        freeId(fieldsOf(input)["label"], taken),
-        input,
-        undefined,
-      );
+      const entry = changed(freeId(input.label, taken), input, undefined);
 
       save([...current(), entry]);
 
@@ -340,9 +350,9 @@ function fileEntry({ provider, sealed }: Entry): Record<string, unknown> {
 }
 
 // A readable id for the file, such as "sap" for "Sign in with SAP".
-function freeId(label: unknown, taken: ReadonlySet<string>): string {
+function freeId(label: string | undefined, taken: ReadonlySet<string>): string {
   const base =
-    (typeof label === "string" ? label : "")
+    (label ?? "")
       .toLowerCase()
       .replace(/^sign in with\s+/, "")
       .replace(/[^a-z0-9]+/g, "-")

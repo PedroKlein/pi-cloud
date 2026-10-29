@@ -1,13 +1,14 @@
 import {
   BadRequest,
   HttpError,
-  isObject,
   NotFound,
   type OfferedModels,
   type PluginStore,
+  readBody,
   readJson,
   requireAdmin,
   type ServerPlugin,
+  Type,
 } from "@pipoca/plugins";
 import { aliasesOf, gatewayProvider } from "./gateway";
 import {
@@ -21,6 +22,25 @@ import {
   type SessionConfig,
   storedAliases,
 } from "./model";
+
+const aliasConfig = Type.Object({
+  models: Type.Record(Type.String(), Type.Array(Type.String())),
+  providers: Type.Optional(
+    Type.Record(
+      Type.String(),
+      Type.Object({
+        resetSchedule: Type.Optional(Type.String()),
+        capStatusCodes: Type.Optional(Type.Array(Type.Integer())),
+      }),
+    ),
+  ),
+  defaultAlias: Type.Optional(Type.String()),
+});
+
+// Null turns an Environment's aliases off.
+const aliasesChange = Type.Object({
+  aliases: Type.Union([aliasConfig, Type.Null()]),
+});
 
 // Below the server's 30 second idle timeout.
 const waitMs = 20_000;
@@ -105,18 +125,13 @@ export const models: ServerPlugin = {
       if (method === "POST" && environmentId !== undefined) {
         requireAdmin(caller, "only admins change model aliases");
 
-        const body = await readJson(request);
-        if (!isObject(body) || !("aliases" in body)) {
-          throw new BadRequest("aliases must be a config or null");
-        }
-
-        const { aliases } = body;
+        const { aliases } = await readBody(request, aliasesChange);
         const problem = aliases === null ? undefined : aliasProblem(aliases);
         if (problem !== undefined) {
           throw new BadRequest(problem);
         }
 
-        store.setAliases(environmentId, aliases as AliasConfig | null);
+        store.setAliases(environmentId, aliases);
         versions.bump(environmentId);
         context.log("aliases changed", { environmentId });
 

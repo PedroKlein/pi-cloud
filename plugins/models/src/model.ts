@@ -60,9 +60,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStrings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
-const isIntegers = (value: unknown): value is number[] =>
-  Array.isArray(value) && value.every((item) => Number.isInteger(item));
-
 const isQuota = (value: unknown): value is NonNullable<Unhealthy["quota"]> =>
   isRecord(value) &&
   typeof value["spent"] === "number" &&
@@ -81,12 +78,8 @@ export function modelRef(value: string): ModelRef | undefined {
 
 // The shape a gateway needs to start. Sessions report anything finer, such as
 // a model their machine doesn't have.
-export function aliasProblem(value: unknown): string | undefined {
-  if (!isRecord(value) || !isRecord(value["models"])) {
-    return "aliases need a models object";
-  }
-
-  const aliases = Object.entries(value["models"]);
+export function aliasProblem(config: AliasConfig): string | undefined {
+  const aliases = Object.entries(config.models);
   if (aliases.length === 0) {
     return "aliases need at least one alias";
   }
@@ -96,7 +89,7 @@ export function aliasProblem(value: unknown): string | undefined {
       return `alias ${name} must be letters, digits, dots, dashes or underscores`;
     }
 
-    if (!isStrings(models) || models.length === 0) {
+    if (models.length === 0) {
       return `alias ${name} needs a list of models`;
     }
 
@@ -106,42 +99,9 @@ export function aliasProblem(value: unknown): string | undefined {
     }
   }
 
-  const { providers, defaultAlias } = value;
-  if (providers !== undefined) {
-    if (!isRecord(providers)) {
-      return "providers must be an object";
-    }
-
-    for (const [name, settings] of Object.entries(providers)) {
-      const problem = providerProblem(name, settings);
-      if (problem !== undefined) {
-        return problem;
-      }
-    }
-  }
-
-  if (
-    defaultAlias !== undefined &&
-    (typeof defaultAlias !== "string" || !(defaultAlias in value["models"]))
-  ) {
+  const { defaultAlias } = config;
+  if (defaultAlias !== undefined && !(defaultAlias in config.models)) {
     return "defaultAlias must be one of the aliases";
-  }
-
-  return undefined;
-}
-
-function providerProblem(name: string, settings: unknown): string | undefined {
-  if (!isRecord(settings)) {
-    return `provider ${name} needs a settings object`;
-  }
-
-  const { capStatusCodes, resetSchedule } = settings;
-  if (capStatusCodes !== undefined && !isIntegers(capStatusCodes)) {
-    return `capStatusCodes of ${name} must be a list of status codes`;
-  }
-
-  if (resetSchedule !== undefined && typeof resetSchedule !== "string") {
-    return `resetSchedule of ${name} must be a schedule name`;
   }
 
   return undefined;

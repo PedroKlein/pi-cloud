@@ -3,12 +3,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   BadRequest,
   HttpError,
-  isObject,
   NotFound,
-  readJson,
+  readBody,
   requireAdmin,
   type ServerPlugin,
   type ServerPluginContext,
+  Type,
 } from "@pipoca/plugins";
 import { type Environment, movable } from "@pipoca/protocol";
 import {
@@ -26,7 +26,29 @@ import {
   type SettingsStore,
   settingsFrom,
   settingsStore,
+  workspaces,
 } from "./settings";
+
+const positive = Type.Integer({
+  minimum: 1,
+  maximum: Number.MAX_SAFE_INTEGER,
+});
+
+// Null settings stop runner pods in the Environment.
+const settingsChange = Type.Object({
+  settings: Type.Union([
+    Type.Object({
+      workspace: Type.Optional(Type.Enum(workspaces)),
+      capacity: Type.Optional(positive),
+      maxPods: Type.Optional(positive),
+      idleSeconds: Type.Optional(positive),
+      claimSize: Type.Optional(Type.String()),
+      storageClass: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+      podPatch: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    }),
+    Type.Null(),
+  ]),
+});
 
 export interface KubernetesOptions {
   readonly api: ApiAccess | undefined;
@@ -125,15 +147,9 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
         // so it is as much as the server's own access (ADR 0038).
         requireAdmin(caller, "only admins change Kubernetes settings");
 
-        const body = await readJson(request);
+        const body = await readBody(request, settingsChange);
 
-        if (!isObject(body)) {
-          throw new BadRequest(
-            "send { settings }, or { settings: null } to stop",
-          );
-        }
-
-        if (body["settings"] === null) {
+        if (body.settings === null) {
           store.remove(environmentId);
           failures.clearEnvironment(environmentId);
           context.log("kubernetes settings removed", { environmentId });
@@ -141,7 +157,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           return answer(environmentId, null);
         }
 
-        const settings = settingsFrom(body["settings"]);
+        const settings = settingsFrom(body.settings);
 
         if (typeof settings === "string") {
           throw new BadRequest(settings);

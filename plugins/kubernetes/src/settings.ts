@@ -1,11 +1,11 @@
-import { isObject, type PluginStore } from "@pipoca/plugins";
+import type { PluginStore } from "@pipoca/plugins";
 
 // A Kubernetes Environment's runner pods (ADR 0032). With "claim", each
 // Session gets a pod of its own that mounts a claim of claimSize, so its
 // workspace outlives the pod; capacity doesn't apply. The patch is a JSON
 // merge patch on the pod, so a list in it, such as containers, replaces the
 // whole list.
-const workspaces = ["pod", "claim"] as const;
+export const workspaces = ["pod", "claim"] as const;
 
 export interface KubernetesSettings {
   readonly workspace: (typeof workspaces)[number];
@@ -44,40 +44,14 @@ export const defaultSettings: KubernetesSettings = {
   podPatch: {},
 };
 
-export function settingsFrom(body: unknown): KubernetesSettings | string {
-  if (!isObject(body)) {
-    return "settings must be an object";
-  }
+// A setting the change leaves out takes its default.
+export function settingsFrom(
+  change: Partial<KubernetesSettings>,
+): KubernetesSettings | string {
+  const settings = { ...defaultSettings, ...change };
 
-  const settings = { ...defaultSettings, ...body };
-
-  for (const field of ["capacity", "maxPods", "idleSeconds"] as const) {
-    const value = settings[field];
-    if (!(Number.isSafeInteger(value) && value > 0)) {
-      return `${field} must be a positive integer`;
-    }
-  }
-
-  if (!isObject(settings.podPatch)) {
-    return "podPatch must be an object";
-  }
-
-  if (!workspaces.some((workspace) => workspace === settings.workspace)) {
-    return 'workspace must be "pod" or "claim"';
-  }
-
-  if (
-    typeof settings.claimSize !== "string" ||
-    !/^\d+(Ki|Mi|Gi|Ti)$/.test(settings.claimSize)
-  ) {
+  if (!/^\d+(Ki|Mi|Gi|Ti)$/.test(settings.claimSize)) {
     return "claimSize must be a size such as 10Gi";
-  }
-
-  if (
-    settings.storageClass !== null &&
-    typeof settings.storageClass !== "string"
-  ) {
-    return "storageClass must be a name or null";
   }
 
   return {

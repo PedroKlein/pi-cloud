@@ -3,7 +3,7 @@ import {
   HttpError,
   NotFound,
   type PluginStore,
-  readJson,
+  readBody,
   type ServerPlugin,
   type User,
 } from "@pipoca/plugins";
@@ -19,7 +19,12 @@ import {
   type Provider,
   redeem,
 } from "./oidc";
-import { type ProviderConfig, providerStore, viewOf } from "./providers";
+import {
+  type ProviderConfig,
+  providerChange,
+  providerStore,
+  viewOf,
+} from "./providers";
 
 // A browser has this long to come back from the provider.
 const attemptMs = 10 * 60_000;
@@ -273,7 +278,10 @@ export const oidc: ServerPlugin = {
       }
 
       if (id === undefined && request.method === "POST") {
-        const created = providers.create(await readJson(request));
+        const created = providers.create(
+          await readBody(request, providerChange),
+        );
+
         context.log("provider added", { provider: created.id });
 
         return Response.json(viewOf(created), { status: 201 });
@@ -288,7 +296,10 @@ export const oidc: ServerPlugin = {
       }
 
       if (id !== undefined && request.method === "POST") {
-        const updated = providers.update(id, await readJson(request));
+        const updated = providers.update(
+          id,
+          await readBody(request, providerChange),
+        );
 
         if (updated === undefined) {
           throw new NotFound(`no provider ${id}`);

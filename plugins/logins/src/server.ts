@@ -6,15 +6,15 @@ import type {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
   BadRequest,
-  fieldsOf,
   HttpError,
   type McpLoginState,
   NotFound,
   type PluginStore,
-  readJson,
+  readBody,
   type RouteCaller,
   type ServerPlugin,
   type ServerPluginContext,
+  Type,
 } from "@pipoca/plugins";
 import type { ModelRef } from "@pipoca/protocol";
 import { callbacks, callbackUrl } from "./callback";
@@ -34,6 +34,19 @@ import {
   mcpStateOf,
   type Stored,
 } from "./model";
+
+const text = Type.String({ minLength: 1 });
+
+const savedLogin = Type.Object({ provider: text, credential: Type.Unknown() });
+const modelConnect = Type.Object({ provider: text, type: Type.String() });
+const mcpConnect = Type.Object({ server: text });
+const promptAnswer = Type.Object({ prompt: text, answer: text });
+
+// A value of null removes the login, and none keeps it.
+const leaseRelease = Type.Object({
+  lease: Type.String(),
+  value: Type.Optional(Type.Unknown()),
+});
 
 // Long enough for a token refresh, short enough that a runner that went away
 // doesn't keep everyone else out for long.
@@ -164,12 +177,12 @@ export const logins: ServerPlugin = {
       }
 
       if (route === "save" && request.method === "POST") {
-        const fields = fieldsOf(await readJson(request));
+        const { provider, credential } = await readBody(request, savedLogin);
 
         const saved = await models.write(
           userId,
-          textField(fields, "provider"),
-          models.validated(fields["credential"]),
+          provider,
+          models.validated(credential),
         );
 
         if (!saved) {
@@ -184,9 +197,7 @@ export const logins: ServerPlugin = {
       }
 
       if (route === "connect" && request.method === "POST") {
-        const fields = fieldsOf(await readJson(request));
-        const provider = textField(fields, "provider");
-        const type = fields["type"];
+        const { provider, type } = await readBody(request, modelConnect);
 
         const offered = connectable.find(({ id }) => id === provider);
 
@@ -208,7 +219,7 @@ export const logins: ServerPlugin = {
       }
 
       if (route === "connect-mcp" && request.method === "POST") {
-        const wanted = textField(fieldsOf(await readJson(request)), "server");
+        const { server: wanted } = await readBody(request, mcpConnect);
         const server = servers().find(({ key: each }) => each === wanted);
 
         if (server === undefined) {
@@ -238,13 +249,8 @@ export const logins: ServerPlugin = {
         key === "answer" &&
         request.method === "POST"
       ) {
-        const fields = fieldsOf(await readJson(request));
-
-        const answered = signIns.answer(
-          userId,
-          textField(fields, "prompt"),
-          textField(fields, "answer"),
-        );
+        const { prompt, answer } = await readBody(request, promptAnswer);
+        const answered = signIns.answer(userId, prompt, answer);
 
         if (!answered) {
           throw new HttpError(
@@ -328,15 +334,6 @@ function mcpStateOfUser(
 // Another Session of the person's holds the login, so the caller asks again.
 function busy(): HttpError {
   return new HttpError(409, "another Session is changing this login", "busy");
-}
-
-function textField(fields: Readonly<Record<string, unknown>>, name: string) {
-  const value = fields[name];
-  if (typeof value !== "string" || value === "") {
-    throw new BadRequest(`${name} must be text`);
-  }
-
-  return value;
 }
 
 // A Session uses the logins of the person who started it, or who started the
@@ -445,11 +442,7 @@ function loginKind<T>(
     userId: string,
     key: string,
   ): Promise<Response> => {
-    const { lease: given, value } = fieldsOf(await readJson(request));
-
-    if (typeof given !== "string") {
-      throw new BadRequest("lease must be text");
-    }
+    const { lease: given, value } = await readBody(request, leaseRelease);
 
     const next =
       value === undefined || value === null ? value : validated(value);
