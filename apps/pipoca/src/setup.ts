@@ -14,15 +14,20 @@ const failedOutputLines = 20;
 // variables and its image, before the first Session that needs it (ADR 0032).
 // A process Session's script runs on this machine. A container Session's
 // runs in its image, and the result is kept as an image that the Session then
-// runs. A failed run is tried again by the next Session.
+// runs. A failed run is tried again by the next Session. The Environment's
+// variables are its secrets, masked in the script's output, while git's are
+// the helpers that sign it in.
 export function environmentSetup(
   dir: string,
   log: Log,
   signal: AbortSignal,
-): (environment: SessionEnvironment) => Promise<string | undefined> {
+): (
+  environment: SessionEnvironment,
+  git?: Readonly<Record<string, string>>,
+) => Promise<string | undefined> {
   const running = new Map<string, Promise<string | undefined>>();
 
-  return async (environment) => {
+  return async (environment, git = {}) => {
     const image =
       environment.isolation === "container"
         ? (environment.image ?? defaultImage)
@@ -32,12 +37,18 @@ export function environmentSetup(
       return image;
     }
 
+    const script = {
+      setupScript: environment.setupScript,
+      variables: { ...environment.variables, ...git },
+      secrets: Object.values(environment.variables),
+    };
+
     const version = createHash("sha256")
       .update(
         JSON.stringify([
           image ?? null,
-          environment.setupScript,
-          Object.entries(environment.variables).sort(([a], [b]) =>
+          script.setupScript,
+          Object.entries(script.variables).sort(([a], [b]) =>
             a.localeCompare(b),
           ),
         ]),
@@ -47,8 +58,8 @@ export function environmentSetup(
 
     const setUp = async (): Promise<string | undefined> =>
       image === undefined
-        ? setUpMachine(join(dir, version), environment, log, signal)
-        : setUpImage(image, version, environment, log, signal);
+        ? setUpMachine(join(dir, version), script, log, signal)
+        : setUpImage(image, version, script, log, signal);
 
     const pending =
       running.get(version) ??
@@ -62,9 +73,15 @@ export function environmentSetup(
   };
 }
 
+interface Script {
+  readonly setupScript: string;
+  readonly variables: Readonly<Record<string, string>>;
+  readonly secrets: readonly string[];
+}
+
 async function setUpMachine(
   dir: string,
-  { setupScript, variables }: SessionEnvironment,
+  { setupScript, variables, secrets }: Script,
   log: Log,
   signal: AbortSignal,
 ): Promise<undefined> {
@@ -90,13 +107,13 @@ async function setUpMachine(
   });
 
   const outputPath = join(dir, "output.log");
-  await writeFile(outputPath, output);
+  await writeFile(outputPath, masked(output, secrets));
 
   const durationMs = Date.now() - started;
   if (code !== 0) {
     log("setup script failed", { code, durationMs, output: outputPath });
 
-    throw setupFailure(code, output, variables);
+    throw setupFailure(code, output, secrets);
   }
 
   await writeFile(done, new Date().toISOString());
@@ -112,7 +129,7 @@ async function setUpMachine(
 async function setUpImage(
   image: string,
   version: string,
-  { setupScript, variables }: SessionEnvironment,
+  { setupScript, variables, secrets }: Script,
   log: Log,
   signal: AbortSignal,
 ): Promise<string> {
@@ -165,7 +182,7 @@ async function setUpImage(
     if (code !== 0) {
       log("setup script failed", { image, code, durationMs });
 
-      throw setupFailure(code, output, variables);
+      throw setupFailure(code, output, secrets);
     }
 
     const committed = await run(["docker", "commit", container, tag], {
@@ -190,12 +207,10 @@ async function setUpImage(
 function setupFailure(
   code: number | null,
   output: string,
-  variables: Readonly<Record<string, string>>,
+  secrets: readonly string[],
 ): Error {
   // The error is shown to users, who may not see the secrets.
-  const tail = Object.values(variables)
-    .filter((value) => value.length > 0)
-    .reduce((masked, value) => masked.replaceAll(value, "***"), output)
+  const tail = masked(output, secrets)
     .trimEnd()
     .split("\n")
     .slice(-failedOutputLines);
@@ -203,6 +218,14 @@ function setupFailure(
   return new Error(
     `the Environment's setup script exited with code ${String(code)}:\n${tail.join("\n")}`,
   );
+}
+
+// Longest first, so a secret that holds another is masked whole.
+function masked(output: string, secrets: readonly string[]): string {
+  return secrets
+    .filter((value) => value !== "")
+    .toSorted((a, b) => b.length - a.length)
+    .reduce((text, value) => text.replaceAll(value, "***"), output);
 }
 
 async function run(
