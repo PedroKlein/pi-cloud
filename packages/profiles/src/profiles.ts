@@ -167,10 +167,10 @@ export class Profiles {
     return { ok: true, value: this.#view(profile) };
   }
 
-  // A Profile's files, as a .tar.gz runners would unpack to the same folder
-  // (ADR 0041).
+  // A Profile's own files, without the admin's base Profile, as a .tar.gz
+  // runners would unpack to the same folder (ADR 0041).
   async archive(id: string): Promise<Uint8Array | undefined> {
-    const files = this.#visible(id) && this.#folders.files(id);
+    const files = this.#visible(id) && this.#folders.ownFiles(id);
     if (!files) {
       return undefined;
     }
