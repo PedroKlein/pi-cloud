@@ -110,6 +110,7 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 ### Extension system
 
 - What is the smallest stable Pipoca extension interface? v1 has an internal one with server, session and web parts ([ADR 0015](adr/0015-plugins.md)); what to freeze for the public SDK is open.
+- Resolved for now: installed plugins' server and Session parts import `@pipoca/plugins` from the running server, versioned with it, and it isn't published to npm ([ADR 0046](adr/0046-plugin-sdk-from-the-server.md)).
 - Resolved: a Session may propose a plugin but only the user enables it, and third-party plugins install turned off ([ADR 0022](adr/0022-plugin-model-v2.md#installing-third-party-plugins)).
 - Resolved for v2: plugins are installed and turned on for the whole installation, and changing them restarts the server; each user's Pi personalization stays in their Profile ([ADR 0022](adr/0022-plugin-model-v2.md#plugins-are-per-installation)).
 - Resolved for v2: third-party web parts run in the page like first-party ones, with no sandboxed iframe ([ADR 0022](adr/0022-plugin-model-v2.md#trust)).
