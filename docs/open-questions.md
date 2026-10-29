@@ -105,6 +105,8 @@ These depend on the Kubernetes provider or the public extension SDK, which [visi
 - Which network-policy claims can be strongly enforced on each provider? Network rules are deferred past v2 ([ADR 0034](adr/0034-v2-deployment-and-credentials.md#v2-scope)).
 - Resolved for the first v2 slice: Environment secrets are stored on the server and readable by the Session; brokered secrets come after v2. Stored values are encrypted with a master key, and a git token among them gives runners git access ([ADR 0034](adr/0034-v2-deployment-and-credentials.md)).
 - Resolved: git credentials are per person, from a `git-hosts` plugin with admin-listed hosts (github.com and GitHub Enterprise), connected by OAuth or a personal access token. Runners use them for workspaces, pushes, `gh` and Profile packages, and an Environment's `GH_TOKEN` stays a github.com fallback ([ADR 0043](adr/0043-git-hosts.md)).
+- Resolved: every Environment is one person's, made from an admin's template or by joining a machine, and its runners serve only that person; admins see others' Environments and Sessions as metadata only ([ADR 0049](adr/0049-personal-environments-and-templates.md)).
+- Do model aliases move from Environments to templates ([ADR 0049](adr/0049-personal-environments-and-templates.md))?
 - May Project coordinators and worker Threads use different default Environments?
 
 ### Extension system

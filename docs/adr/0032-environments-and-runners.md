@@ -1,6 +1,6 @@
 # 0032: Environments and Runners
 
-- Status: accepted, amended 2026-10-29 (runner pods with an older Pipoca image are replaced at once; a Session that comes back to a runner after running elsewhere starts fresh; a runner can't join under the name of one online in its Environment)
+- Status: accepted, amended 2026-10-29 (runner pods with an older Pipoca image are replaced at once; a Session that comes back to a runner after running elsewhere starts fresh; a runner can't join under the name of one online in its Environment), Environments made personal by [ADR 0049](0049-personal-environments-and-templates.md)
 - Date: 2026-10-24
 
 ## Context
@@ -20,7 +20,7 @@ Pi Cloud's agent already works like that runner. It connects outbound, long-poll
 - Machines either already exist, like a laptop or a VM, or are created on demand, like Kubernetes pods. That is the runner's business, not the Environment's.
 - A laptop is a pool of one. Its Sessions use the laptop's own checkouts ([ADR 0007](0007-session-workspaces.md)), so its runner isn't interchangeable with another one.
 - Amended 2026-10-29, by the owner's decision: a runner is known by its name within its Environment, so a runner that joins under the name of one that is online there is refused with `a runner named <name> is online here`, and its agent stops instead of trying again. Online is what the Environments page shows: a runner polled within the last 30 seconds. A runner that joins under the name of one that is offline takes over the name, and the old runner's token and its Sessions' tokens are revoked, so it can't come back as a second copy. A runner that comes back with its own token isn't joining and keeps its name. An agent that joined with a key keeps its token in its data folder (mode 0600), with the server URL and a hash of the key it is for, and a restart polls with it. It joins again only when there is no saved token for that server and key, or the server answers 401 before any poll gets through. Runners a plugin starts, such as Kubernetes pods, get their token from the plugin without joining, so this doesn't apply to them.
-- Once there is more than one user, a runner serves one owner at a time, as Claude Code's do. The first Session it claims locks it to that owner. Records already carry `ownerId` ([ADR 0015](0015-plugins.md#actors-and-owners)).
+- Once there is more than one user, a runner serves one owner at a time, as Claude Code's do. The first Session it claims locks it to that owner. Records already carry `ownerId` ([ADR 0015](0015-plugins.md#actors-and-owners)). Replaced by [ADR 0049](0049-personal-environments-and-templates.md): every Environment is one person's, so its runners serve only that person and no lock is needed.
 
 ### Baseline: an image and a setup script
 

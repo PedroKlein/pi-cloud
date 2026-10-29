@@ -1,6 +1,6 @@
 # 0038: Single Sign-On and Admins
 
-- Status: accepted, amended 2026-10-29 (plugin routes and meta-sessions act as the user who calls or starts them, never as an admin from a meta-session; admin-only shared config in plugins)
+- Status: accepted, amended 2026-10-29 (plugin routes and meta-sessions act as the user who calls or starts them, never as an admin from a meta-session; admin-only shared config in plugins), what people see of others' Environments and Sessions replaced by [ADR 0049](0049-personal-environments-and-templates.md)
 - Date: 2026-10-25
 
 ## Context
@@ -43,7 +43,7 @@ The step 6 checkpoint decided that installing, updating, removing and turning on
 ## Consequences
 
 - Pi Cloud can sit behind a company identity provider, and MFA comes from the provider's own rules.
-- Everyone in the access group sees every Session, Environment and secret until v3 brings roles and per-user ownership, so the group should hold only the people who would get the password.
+- Everyone in the access group sees every Session, Environment and secret until v3 brings roles and per-user ownership, so the group should hold only the people who would get the password. Replaced by [ADR 0049](0049-personal-environments-and-templates.md): people see their own Environments, runners and Sessions, and admins see everyone's as metadata only.
 - The server's `--sso-only` flag (`oidc.ssoOnly` in the Helm chart) turns the password login off, for a public host. The setup link still works, so the first user can link their provider account from Settings.
 - A sign-in started before a restart has to start again, since its state lives in memory.
 - A meta-session's toolset tools act as the user who started it, but never as an admin, even when that user is one, so a meta-session still can't do anything that needs an admin. A Session a plugin route starts belongs to the user who called the route, and gets their git logins ([ADR 0043](0043-git-hosts.md)), also when a meta-session called it (amended 2026-10-29).
