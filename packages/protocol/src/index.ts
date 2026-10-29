@@ -425,6 +425,19 @@ export interface SessionStart extends Assignment {
   readonly token: string;
 }
 
+// A Session's start for logs: without its token, environment or git logins.
+export function loggedStart({
+  token: _token,
+  environment: _environment,
+  gitLogins: _gitLogins,
+  ...start
+}: Assignment & { readonly token?: string }): Omit<
+  Assignment,
+  "environment" | "gitLogins"
+> {
+  return start;
+}
+
 export interface Work {
   readonly start: readonly SessionStart[];
   readonly unload: readonly Attempt[];

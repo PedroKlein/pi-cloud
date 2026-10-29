@@ -166,6 +166,8 @@ test("connects a host with a token and signs the person's Sessions in with it", 
   expect((await assignment())?.gitLogins).toEqual([
     { host: enterprise, token: goodToken },
   ]);
+
+  expect(logs.join("\n")).not.toContain(goodToken);
 });
 
 test("sends no login for a host after the person disconnects it", async () => {
