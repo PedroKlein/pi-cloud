@@ -9,6 +9,8 @@ import gitHostsPackage from "@pipoca/git-hosts/package.json";
 import kubernetesPackage from "@pipoca/kubernetes/package.json";
 import libraryPackage from "@pipoca/library/package.json";
 import { library as librarySession } from "@pipoca/library/session";
+import loginsPackage from "@pipoca/logins/package.json";
+import { logins } from "@pipoca/logins/session";
 import metaPackage from "@pipoca/meta/package.json";
 import { metaSession } from "@pipoca/meta/session";
 import modelsPackage from "@pipoca/models/package.json";
@@ -42,6 +44,7 @@ export const builtInPlugins: readonly PluginManifest[] = [
   metaPackage,
   oidcPackage,
   gitHostsPackage,
+  loginsPackage,
 ].map(({ pipoca }) => pipoca as PluginManifest);
 
 export const sessionPlugins: readonly SessionPlugin[] = [
@@ -51,6 +54,7 @@ export const sessionPlugins: readonly SessionPlugin[] = [
   modelsSession,
   subagents,
   metaSession,
+  logins,
 ];
 
 // The Session parts an assignment names, each with its settings. A server

@@ -463,7 +463,8 @@ export function createHandler(
     [
       "GET",
       /^\/api\/environments$/,
-      () => Response.json(sessions.environments()),
+      (_request, _params, actor) =>
+        Response.json(sessions.environments(userIdOf(actor))),
     ],
     [
       "POST",

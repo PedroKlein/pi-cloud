@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -97,18 +97,6 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
   await mkdir(dataDir, { recursive: true });
   await mkdir(folder, { recursive: true });
 
-  await writeFile(
-    join(dataDir, "auth.json"),
-    JSON.stringify({
-      "github-copilot": {
-        type: "oauth",
-        refresh: "ghu_test",
-        access: "tid=test;exp=9999999999;proxy-ep=proxy.copilot.test;",
-        expires: Date.now() + 3_600_000,
-      },
-    }),
-  );
-
   const connects: string[] = [];
 
   const proxy = createServer().on("connect", (request, socket) => {
@@ -131,6 +119,22 @@ test("a compiled server sends requests with a Copilot OAuth login", async () => 
   );
 
   try {
+    const saved = await fetch(new URL("/api/plugins/logins/save", url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        provider: "github-copilot",
+        credential: {
+          type: "oauth",
+          refresh: "ghu_test",
+          access: "tid=test;exp=9999999999;proxy-ep=proxy.copilot.test;",
+          expires: Date.now() + 3_600_000,
+        },
+      }),
+    });
+
+    expect(saved.status).toBe(200);
+
     let environment: Environment | undefined;
     while (environment === undefined) {
       const environments = (await (

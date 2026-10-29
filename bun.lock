@@ -30,6 +30,7 @@
         "@pipoca/git-hosts": "workspace:*",
         "@pipoca/kubernetes": "workspace:*",
         "@pipoca/library": "workspace:*",
+        "@pipoca/logins": "workspace:*",
         "@pipoca/meta": "workspace:*",
         "@pipoca/models": "workspace:*",
         "@pipoca/oidc": "workspace:*",
@@ -57,6 +58,7 @@
         "@pipoca/git-hosts": "workspace:*",
         "@pipoca/kubernetes": "workspace:*",
         "@pipoca/library": "workspace:*",
+        "@pipoca/logins": "workspace:*",
         "@pipoca/meta": "workspace:*",
         "@pipoca/models": "workspace:*",
         "@pipoca/oidc": "workspace:*",
@@ -89,6 +91,7 @@
     "packages/plugins": {
       "name": "@pipoca/plugins",
       "dependencies": {
+        "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-coding-agent": "1.3.0",
         "@pipoca/protocol": "workspace:*",
         "react": "19.3.1",
@@ -198,6 +201,20 @@
     },
     "plugins/library": {
       "name": "@pipoca/library",
+      "dependencies": {
+        "@earendil-works/pi-ai": "1.3.0",
+        "@earendil-works/pi-coding-agent": "1.3.0",
+        "@pipoca/plugins": "workspace:*",
+        "@pipoca/protocol": "workspace:*",
+        "@pipoca/ui": "workspace:*",
+        "react": "19.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/logins": {
+      "name": "@pipoca/logins",
       "dependencies": {
         "@earendil-works/pi-ai": "1.3.0",
         "@earendil-works/pi-coding-agent": "1.3.0",
@@ -456,6 +473,8 @@
     "@pipoca/kubernetes": ["@pipoca/kubernetes@workspace:plugins/kubernetes"],
 
     "@pipoca/library": ["@pipoca/library@workspace:plugins/library"],
+
+    "@pipoca/logins": ["@pipoca/logins@workspace:plugins/logins"],
 
     "@pipoca/meta": ["@pipoca/meta@workspace:plugins/meta"],
 

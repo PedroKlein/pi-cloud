@@ -1,3 +1,4 @@
+import type { CredentialStore } from "@earendil-works/pi-ai";
 import type {
   ExtensionFactory,
   ToolDefinition,
@@ -173,7 +174,12 @@ export interface OfferedModels {
   readonly default?: ModelRef;
 }
 
-export type ModelOffer = (environmentId: string) => OfferedModels;
+// The user is the one who looks at the models, when there is one, such as
+// models their own logins reach.
+export type ModelOffer = (
+  environmentId: string,
+  userId?: string,
+) => OfferedModels;
 
 // offline means the Session's host isn't connected right now, so a later send
 // can still reach it.
@@ -361,4 +367,7 @@ export interface SessionPlugin {
   readonly tools?: (
     cloud: SessionCloud,
   ) => readonly ToolDefinition[] | Promise<readonly ToolDefinition[]>;
+  // Where the Session keeps its model logins instead of the machine's auth
+  // file, such as the server (ADR 0045). The first plugin that gives one wins.
+  readonly credentials?: (cloud: SessionCloud) => CredentialStore;
 }

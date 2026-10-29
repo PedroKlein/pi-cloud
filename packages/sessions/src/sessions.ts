@@ -560,10 +560,12 @@ export class Sessions {
       : { ok: false, reason: "unknown_environment" };
   }
 
-  environments(): readonly Environment[] {
+  // A user sees the models plugins offer them, such as those their own
+  // logins reach (ADR 0045).
+  environments(userId?: string): readonly Environment[] {
     return this.#store.environments().map((environment) => {
       const runners = this.#polls.runners(environment.provider);
-      const offered = this.#offeredModels(environment.id).models;
+      const offered = this.#offeredModels(environment.id, userId).models;
 
       return {
         ...environment,

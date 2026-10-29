@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { gitHosts } from "@pipoca/git-hosts/server";
 import { kubernetesPlugin } from "@pipoca/kubernetes/server";
 import { library } from "@pipoca/library/server";
+import { logins as loginsPlugin } from "@pipoca/logins/server";
 import { meta } from "@pipoca/meta/server";
 import { models } from "@pipoca/models/server";
 import { oidc } from "@pipoca/oidc/server";
@@ -11,7 +12,6 @@ import {
   type EventBus,
   type Login,
   type ModelOffer,
-  type OfferedModels,
   type PluginConfig,
   type PluginRoute,
   type PluginStore,
@@ -57,6 +57,7 @@ export const serverPlugins: readonly ServerPlugin[] = [
   meta,
   oidc,
   gitHosts,
+  loginsPlugin,
 ];
 
 export type UserActor = `user:${string}`;
@@ -120,7 +121,7 @@ export interface PluginHost {
     input: unknown,
     actor: UserActor,
   ) => Promise<ToolResult>;
-  readonly offeredModels: (environmentId: string) => OfferedModels;
+  readonly offeredModels: ModelOffer;
   readonly startsRunners: (environmentId: string) => boolean;
   readonly gitLogins: (userId: string) => readonly GitLogin[];
   readonly route: (
@@ -916,8 +917,8 @@ export function startPlugins(
             () => undefined,
           ).catch((error: unknown) => ({ text: String(error), isError: true }));
     },
-    offeredModels: (environmentId) => {
-      const offered = offers.map((offer) => offer(environmentId));
+    offeredModels: (environmentId, userId) => {
+      const offered = offers.map((offer) => offer(environmentId, userId));
       const fallback = offered.find((each) => each.default)?.default;
 
       return {
