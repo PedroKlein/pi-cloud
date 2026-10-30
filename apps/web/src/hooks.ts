@@ -97,6 +97,32 @@ export function useEnvironments(): WatchedList<Environment> {
   ) as WatchedList<Environment>;
 }
 
+export interface Person {
+  readonly id: string;
+  readonly name: string;
+  readonly admin: boolean;
+}
+
+// For admins: everyone, and an outline of their Environments and active
+// Sessions (ADR 0049).
+export function usePeople(): WatchedList<Person> {
+  return useWatchedList("/api/people", "environments") as WatchedList<Person>;
+}
+
+export function useEveryonesEnvironments(): WatchedList<Environment> {
+  return useWatchedList(
+    "/api/environments?people=all",
+    "environments",
+  ) as WatchedList<Environment>;
+}
+
+export function useEveryonesSessions(): WatchedList<Session> {
+  return useWatchedList(
+    "/api/sessions?archived=false&owner=all&people=all",
+    "sessions",
+  ) as WatchedList<Session>;
+}
+
 export function useTemplates(): WatchedList<EnvironmentTemplate> {
   return useWatchedList(
     "/api/templates",

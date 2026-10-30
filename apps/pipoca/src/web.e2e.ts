@@ -1141,6 +1141,18 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   expect(await settings()).toBeNull();
 });
 
+test("lists everyone's Environments on the admins' People page", async () => {
+  await page.goto(server.url.href);
+  await openSettings("People");
+
+  const pedro = page.getByLabel("pedro", { exact: true });
+  await pedro.getByRole("list", { name: "Environments" }).waitFor();
+
+  expect(
+    await page.getByRole("heading", { name: "pedro (admin)" }).count(),
+  ).toBe(1);
+});
+
 test("shows why an Environment's last runner pod failed", async () => {
   await page.route("**/api/plugins/kubernetes/environments/*", async (route) =>
     route.fulfill({

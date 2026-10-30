@@ -23,6 +23,7 @@ export interface AuthStore {
   readonly userCount: () => number;
   readonly userByName: (name: string) => StoredUser | undefined;
   readonly userById: (id: string) => User | undefined;
+  readonly users: () => readonly User[];
   readonly insertUser: (user: StoredUser) => void;
   readonly setAdmin: (id: string, admin: boolean) => void;
   readonly insertBrowserSession: (
@@ -499,6 +500,10 @@ export class Auth {
 
   userById(id: string): User | undefined {
     return this.#store.userById(id);
+  }
+
+  users(): readonly User[] {
+    return this.#store.users();
   }
 
   // A user without a password, or undefined when the name is taken.

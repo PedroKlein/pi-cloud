@@ -253,6 +253,21 @@ test("an admin sees everyone's Environments and Sessions as an outline and can s
   ]);
 });
 
+test("only an admin lists everyone", async () => {
+  const anas = await ana();
+
+  const everyone = await json<{ name: string; admin: boolean }[]>(
+    api("/api/people", await pedro()),
+  );
+
+  expect(everyone.map(({ name, admin }) => [name, admin])).toEqual([
+    ["pedro", true],
+    ["ana", false],
+  ]);
+
+  expect((await api("/api/people", anas)).status).toBe(403);
+});
+
 test("a person lists only the meta-sessions they started", async () => {
   const anas = await ana();
   await environment(await pedro(), "mac");

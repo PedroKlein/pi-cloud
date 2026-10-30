@@ -667,6 +667,14 @@ export function createHandler(
         return reply(updated, 200);
       },
     ],
+    [
+      "GET",
+      /^\/api\/people$/,
+      (_request, _params, _actor, isAdmin) =>
+        isAdmin
+          ? Response.json(auth.users())
+          : errorReply(403, "admin_only", "Only admins list everyone."),
+    ],
     ...profileRoutes(profiles, log),
     ["GET", /^\/api\/templates$/, () => Response.json(templates?.list() ?? [])],
     [
