@@ -84,6 +84,8 @@ export interface SessionStore {
   ) => void;
   environments: () => readonly StoredEnvironment[];
   updateEnvironment: (environment: StoredEnvironment) => void;
+  // With its runners' tokens and its Sessions, transcripts included.
+  deleteEnvironment: (id: string) => void;
   insert: (session: StoredSession) => void;
   update: (session: StoredSession) => void;
   get: (id: string) => StoredSession | undefined;
@@ -128,6 +130,7 @@ export type Rejection =
   | "environment_exists"
   | "unknown_template"
   | "from_template"
+  | "environment_in_use"
   | "unknown_profile"
   | "not_movable"
   | "unknown_entry";
@@ -644,6 +647,29 @@ export class Sessions {
     return updated
       ? { ok: true, value: updated }
       : { ok: false, reason: "unknown_environment" };
+  }
+
+  // Only once every Session in it is archived, so nothing still runs there.
+  deleteEnvironment(
+    id: string,
+  ): Result<undefined, "unknown_environment" | "environment_in_use"> {
+    if (!this.#store.environments().some((each) => each.id === id)) {
+      return { ok: false, reason: "unknown_environment" };
+    }
+
+    const active = this.#store
+      .list({ includeArchived: false })
+      .some(({ environmentId }) => environmentId === id);
+
+    if (active) {
+      return { ok: false, reason: "environment_in_use" };
+    }
+
+    this.#store.deleteEnvironment(id);
+    this.#changed();
+    this.#runnersChanged();
+
+    return { ok: true, value: undefined };
   }
 
   templates(): readonly EnvironmentTemplate[] {

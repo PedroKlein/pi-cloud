@@ -695,6 +695,15 @@ export function openStore(
     "update environments set name = ?, isolation = ?, image = ?, setup_script = ?, variables = ?, secrets = ? where id = ?",
   );
 
+  const deleteEnvironment = [
+    "delete from transcript where session_id in (select id from sessions where environment_id = ?)",
+    "delete from agent_tokens where session_id in (select id from sessions where environment_id = ?)",
+    "delete from sessions where environment_id = ?",
+    "delete from agent_tokens where environment = (select provider from environments where id = ?)",
+    "delete from runner_models where provider = (select provider from environments where id = ?)",
+    "delete from environments where id = ?",
+  ].map((sql) => db.prepare(sql));
+
   const selectEnvironments = db.prepare(
     "select * from environments order by created_at, name",
   );
@@ -864,6 +873,13 @@ export function openStore(
         box.seal(JSON.stringify(environment.secrets), environment.id),
         environment.id,
       );
+    },
+    deleteEnvironment: (id) => {
+      transaction(db, () => {
+        for (const statement of deleteEnvironment) {
+          statement.run(id);
+        }
+      });
     },
     transcriptLength: (id) => (countTranscript.get(id) as { n: number }).n,
     appendTranscript: (id, start, lines) => {

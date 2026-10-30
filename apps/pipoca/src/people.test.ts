@@ -253,6 +253,62 @@ test("an admin sees everyone's Environments and Sessions as an outline and can s
   ]);
 });
 
+test("an owner or an admin deletes an Environment once its Sessions are archived", async () => {
+  const anas = await ana();
+
+  const { environment: laptop, key } = await json<{
+    environment: Environment;
+    key: string;
+  }>(api("/api/environments", anas, { name: "laptop" }));
+
+  const { token } = await json<Joined>(
+    fetch(new URL("/agent/join", server.url), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "pipoca-protocol": "4",
+        authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ name: "mac" }),
+    }),
+  );
+
+  const hers = await session(anas, laptop.id);
+  const path = `/api/environments/${laptop.id}`;
+
+  const whileActive = await api(path, anas, undefined, "DELETE");
+  await api(`/api/sessions/${hers.id}/archive`, anas, {});
+
+  const theirs = await environment(await pedro(), "mac");
+
+  const byOther = await api(
+    `/api/environments/${theirs}`,
+    anas,
+    undefined,
+    "DELETE",
+  );
+
+  const byAdmin = await api(path, await pedro(), undefined, "DELETE");
+
+  const work = await fetch(new URL("/agent/work", server.url), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "pipoca-protocol": "4",
+      authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ running: [], folders: [root], models: [] }),
+  });
+
+  expect([whileActive.status, byOther.status, byAdmin.status]).toEqual([
+    409, 404, 204,
+  ]);
+
+  expect(await json(api("/api/environments", anas))).toEqual([]);
+  expect((await api(`/api/sessions/${hers.id}`, anas)).status).toBe(404);
+  expect(work.status).toBe(401);
+});
+
 test("only an admin lists everyone", async () => {
   const anas = await ana();
 

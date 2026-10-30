@@ -1150,6 +1150,28 @@ test("starts and stops runner pods from a template's Kubernetes section", async 
   });
 });
 
+test("deletes an Environment from its page", async () => {
+  const { environment } = (await (
+    await fetch(new URL("/api/environments", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ name: "throwaway" }),
+    })
+  ).json()) as { readonly environment: { readonly id: string } };
+
+  await page.goto(`${server.url.href}#environments/${environment.id}`);
+
+  page.once("dialog", (dialog) => {
+    void dialog.accept();
+  });
+
+  await page.getByRole("button", { name: "Delete throwaway" }).click();
+
+  await page.getByRole("link", { name: /^throwaway/ }).waitFor({
+    state: "detached",
+  });
+});
+
 test("lists everyone's Environments on the admins' People page", async () => {
   await page.goto(server.url.href);
   await openSettings("People");
