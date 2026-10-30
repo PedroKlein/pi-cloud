@@ -8,6 +8,7 @@ import type {
   Actor,
   CreateSession,
   Environment,
+  EnvironmentTemplate,
   GitLogin,
   ModelRef,
   PluginSettings,
@@ -98,6 +99,9 @@ export interface RouteRequest {
   readonly path: string;
   readonly body?: unknown;
 }
+
+// What decides where an Environment's runners come from (ADR 0049).
+export type RunnerSource = Pick<Environment, "id" | "templateId">;
 
 // Who sent a request to a plugin's routes: a signed-in user, also through a
 // toolset tool that acts for them (ADR 0035), or a Session through the
@@ -269,8 +273,10 @@ export interface ServerPluginContext {
     // Says which Environments the plugin starts runners for on demand, so
     // they don't read as offline while none is running.
     readonly startsRunners: (
-      starts: (environmentId: string) => boolean,
+      starts: (environment: RunnerSource) => boolean,
     ) => void;
+    // The admins' Environment templates (ADR 0049).
+    readonly templates: () => readonly EnvironmentTemplate[];
   };
   readonly profiles: {
     // Returns the id the plugin starts its Sessions with.

@@ -162,7 +162,9 @@ export interface SessionsOptions {
   readonly sessionPlugins?: () => SessionPlugins;
   readonly offeredModels?: ModelOffer;
   // Whether a plugin starts runners for the Environment on demand.
-  readonly startsRunners?: (environmentId: string) => boolean;
+  readonly startsRunners?: (
+    environment: Pick<Environment, "id" | "templateId">,
+  ) => boolean;
   // A Profile a plugin provides, which only the plugin's own Sessions run on.
   readonly pluginProfile?: (id: string) => PluginProfile | undefined;
   // The git hosts a user connected (ADR 0043).
@@ -201,7 +203,9 @@ export class Sessions {
   readonly #runnersChanged: () => void;
   readonly #sessionPlugins: () => SessionPlugins;
   readonly #offeredModels: ModelOffer;
-  readonly #startsRunners: (environmentId: string) => boolean;
+  readonly #startsRunners: (
+    environment: Pick<Environment, "id" | "templateId">,
+  ) => boolean;
   readonly #pluginProfile: (id: string) => PluginProfile | undefined;
   readonly #gitLogins: (userId: string) => readonly GitLogin[];
   readonly #templates: () => readonly EnvironmentTemplate[];
@@ -642,6 +646,10 @@ export class Sessions {
       : { ok: false, reason: "unknown_environment" };
   }
 
+  templates(): readonly EnvironmentTemplate[] {
+    return this.#templates();
+  }
+
   // A user sees the models plugins offer them, such as those their own
   // logins reach (ADR 0045).
   environments(userId?: string): readonly Environment[] {
@@ -654,7 +662,7 @@ export class Sessions {
         ...this.#templated(environment),
         secrets: Object.keys(environment.secrets),
         online: runners.some(({ online }) => online),
-        onDemand: this.#startsRunners(environment.id),
+        onDemand: this.#startsRunners(environment),
         runners: runners.map(({ name, online, capacity }) => ({
           name,
           online,

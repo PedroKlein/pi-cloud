@@ -161,15 +161,15 @@ Every push to main publishes the image as `ghcr.io/pedroklein/pipoca:main` and `
 
 ### Runner pods
 
-The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. To make an Environment use pods, turn on runner pods in its Kubernetes section on the Environments page, or save its settings:
+The kubernetes plugin can start runner pods for an Environment in the server's namespace ([ADR 0032](adr/0032-environments-and-runners.md)). The chart gives the server a service account that may create and delete pods and Secrets there; set `runnerPods.enabled=false` to leave that out. Pods come from a pod template ([ADR 0049](adr/0049-personal-environments-and-templates.md)): an admin turns on runner pods in a template's Kubernetes section under Templates on the Environments page, or saves its settings:
 
 ```sh
-curl <server>/api/plugins/kubernetes/environments/<environment id> \
+curl <server>/api/plugins/kubernetes/templates/<template id> \
   -H 'content-type: application/json' --cookie <session cookie> \
   -d '{"settings": {"workspace": "pod", "capacity": 1, "maxPods": 5, "idleSeconds": 300, "podPatch": {}}}'
 ```
 
-`{"settings": null}` turns them off again.
+`{"settings": null}` turns them off again. Each person then makes an Environment from that template and gets pods of their own, which never serve anyone else; `maxPods` applies to each Environment. Only an Environment made from a pod template shows a Kubernetes section, read-only. An Environment that had Kubernetes settings of its own before templates keeps them, at `/api/plugins/kubernetes/environments/<environment id>`, until an admin removes them.
 
 When some of its Sessions can't go to any runner, the plugin starts one pod for each `capacity` of them, up to `maxPods`. A pod runs the Environment's image, or the Pipoca image when it names none, with the `pipoca` binary copied in. Its agent stops after `idleSeconds` without a Session, and the plugin then deletes the pod and its token. A pod that hasn't started after 10 minutes is deleted too. When a pod fails, or stops without its agent ever reaching the server, the next pod for that Environment waits 10 seconds, twice as long after each failure in a row up to about 5 minutes, and the Environment's Kubernetes section shows why. `podPatch` is a JSON merge patch on the pod, such as `{"spec": {"nodeSelector": {"pool": "agents"}}}`; it can't give the pod a service account token. Only admins change these settings, since a patch can still mount the namespace's Secrets. Pods run Sessions as processes, so the Environment's isolation must be `process`. With `"workspace": "pod"`, the default, a workspace lives only as long as its pod, so use clone or repositories workspaces there. With `"workspace": "claim"`, each Session gets a pod of its own, named after it, whose home is a claim of `claimSize` (with `storageClass`, or the cluster's default). If that pod stops or is deleted, the plugin starts it again with the same claim, and the claim goes once the Session is archived.
 

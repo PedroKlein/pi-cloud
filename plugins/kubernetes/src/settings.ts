@@ -17,12 +17,15 @@ export interface KubernetesSettings {
   readonly podPatch: Readonly<Record<string, unknown>>;
 }
 
-// What the plugin's route answers for an Environment. Without settings it
-// starts no pods there; outside a cluster it starts none anywhere.
+// What the plugin's route answers for an Environment or a template. Without
+// settings it starts no pods there; outside a cluster it starts none
+// anywhere. An Environment made from a template shows the template's, which
+// only admins change, on the template (ADR 0049).
 export interface KubernetesEnvironment {
   readonly settings: KubernetesSettings | null;
   readonly startsPods: boolean;
   readonly lastFailure: PodFailure | null;
+  readonly editable: boolean;
 }
 
 // The last runner pod of an Environment that failed, while no pod since has
@@ -66,53 +69,52 @@ export function settingsFrom(
 }
 
 export interface SettingsStore {
-  readonly get: (environmentId: string) => KubernetesSettings | undefined;
+  readonly get: (id: string) => KubernetesSettings | undefined;
   readonly all: () => readonly (readonly [string, KubernetesSettings])[];
-  readonly set: (environmentId: string, settings: KubernetesSettings) => void;
-  readonly remove: (environmentId: string) => void;
+  readonly set: (id: string, settings: KubernetesSettings) => void;
+  readonly remove: (id: string) => void;
 }
 
-export function settingsStore(store: PluginStore): SettingsStore {
-  store.exec(`create table if not exists kubernetes_environments (
-    environment_id text primary key,
+// Settings by template, or by an Environment from before templates.
+export function settingsStore(
+  store: PluginStore,
+  of: "environment" | "template",
+): SettingsStore {
+  const table = `kubernetes_${of}s`;
+  const key = `${of}_id`;
+
+  store.exec(`create table if not exists ${table} (
+    ${key} text primary key,
     settings text not null
   )`);
 
-  const parsed = (row: { environment_id: string; settings: string }) =>
-    [
-      row.environment_id,
-      { ...defaultSettings, ...(JSON.parse(row.settings) as object) },
-    ] as const;
+  const rows = (where = "", ...values: string[]) =>
+    (
+      store.all(
+        `select ${key} as id, settings from ${table} ${where}`,
+        ...values,
+      ) as { id: string; settings: string }[]
+    ).map(
+      (row) =>
+        [
+          row.id,
+          { ...defaultSettings, ...(JSON.parse(row.settings) as object) },
+        ] as const,
+    );
 
   return {
-    get: (environmentId) => {
-      const rows = store.all(
-        "select environment_id, settings from kubernetes_environments where environment_id = ?",
-        environmentId,
-      ) as { environment_id: string; settings: string }[];
-
-      return rows.map(parsed)[0]?.[1];
-    },
-    all: () =>
-      (
-        store.all(
-          "select environment_id, settings from kubernetes_environments",
-        ) as { environment_id: string; settings: string }[]
-      ).map(parsed),
-    set: (environmentId, settings) => {
+    get: (id) => rows(`where ${key} = ?`, id)[0]?.[1],
+    all: () => rows(),
+    set: (id, settings) => {
       store.run(
-        `insert into kubernetes_environments (environment_id, settings)
-         values (?, ?)
-         on conflict (environment_id) do update set settings = excluded.settings`,
-        environmentId,
+        `insert into ${table} (${key}, settings) values (?, ?)
+         on conflict (${key}) do update set settings = excluded.settings`,
+        id,
         JSON.stringify(settings),
       );
     },
-    remove: (environmentId) => {
-      store.run(
-        "delete from kubernetes_environments where environment_id = ?",
-        environmentId,
-      );
+    remove: (id) => {
+      store.run(`delete from ${table} where ${key} = ?`, id);
     },
   };
 }

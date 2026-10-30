@@ -6,6 +6,7 @@ import {
   NotFound,
   readBody,
   requireAdmin,
+  type RunnerSource,
   type ServerPlugin,
   type ServerPluginContext,
   Type,
@@ -23,7 +24,6 @@ import { runnerPod, sessionClaim, sessionPodName } from "./pods";
 import {
   type KubernetesEnvironment,
   type KubernetesSettings,
-  type SettingsStore,
   settingsFrom,
   settingsStore,
   workspaces,
@@ -91,7 +91,8 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
   return {
     name: "kubernetes",
     register: (context) => {
-      const store = settingsStore(context.store);
+      const byEnvironment = settingsStore(context.store, "environment");
+      const byTemplate = settingsStore(context.store, "template");
 
       const {
         api,
@@ -109,52 +110,41 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
       const startsPods =
         api !== undefined && image !== undefined && server !== undefined;
 
+      const template = (id: string | null) =>
+        context.environments.templates().find((each) => each.id === id);
+
+      // An Environment made from a template starts pods as its template says.
+      // One from before templates, or whose template is gone, keeps its own
+      // (ADR 0049).
+      const settingsOf: Settings = (environment) =>
+        template(environment.templateId) === undefined
+          ? byEnvironment.get(environment.id)
+          : byTemplate.get(environment.templateId ?? "");
+
       const answer = (
-        environmentId: string,
-        settings: KubernetesSettings | null,
+        settings: KubernetesSettings | undefined,
+        editable: boolean,
+        environmentId?: string,
       ): Response =>
         Response.json({
-          settings,
+          settings: settings ?? null,
           startsPods,
-          lastFailure: failures.last(environmentId),
+          lastFailure:
+            environmentId === undefined ? null : failures.last(environmentId),
+          editable,
         } satisfies KubernetesEnvironment);
 
-      context.routes.handle(async (request, path, caller) => {
-        const [resource, environmentId] = path.split("/");
-
-        const environment = context.environments
-          .list()
-          .find(({ id }) => id === environmentId);
-
-        if (
-          caller.kind !== "user" ||
-          resource !== "environments" ||
-          environmentId === undefined ||
-          environment === undefined
-        ) {
-          throw new NotFound(`no route ${path}`);
-        }
-
-        if (request.method === "GET") {
-          return answer(environmentId, store.get(environmentId) ?? null);
-        }
-
-        if (request.method !== "POST") {
-          throw new NotFound(`no route ${path}`);
-        }
-
-        // A pod patch can mount the namespace's Secrets or run privileged,
-        // so it is as much as the server's own access (ADR 0038).
-        requireAdmin(caller, "only admins change Kubernetes settings");
-
+      const changed = async (
+        request: Request,
+        isolation: string,
+        save: (settings: KubernetesSettings | null) => void,
+      ): Promise<KubernetesSettings | undefined> => {
         const body = await readBody(request, settingsChange);
 
         if (body.settings === null) {
-          store.remove(environmentId);
-          failures.clearEnvironment(environmentId);
-          context.log("kubernetes settings removed", { environmentId });
+          save(null);
 
-          return answer(environmentId, null);
+          return undefined;
         }
 
         const settings = settingsFrom(body.settings);
@@ -163,20 +153,124 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
           throw new BadRequest(settings);
         }
 
-        if (environment.isolation !== "process") {
+        if (isolation !== "process") {
           throw new HttpError(409, "runner pods run Sessions as processes");
         }
 
-        store.set(environmentId, settings);
-        failures.clearEnvironment(environmentId);
-        context.log("kubernetes settings saved", { environmentId });
+        save(settings);
 
-        return answer(environmentId, settings);
+        return settings;
+      };
+
+      context.routes.handle(async (request, path, caller) => {
+        const [resource, id] = path.split("/");
+
+        if (
+          caller.kind !== "user" ||
+          id === undefined ||
+          (request.method !== "GET" && request.method !== "POST")
+        ) {
+          throw new NotFound(`no route ${path}`);
+        }
+
+        if (resource === "templates") {
+          const found = template(id);
+          if (found === undefined) {
+            throw new NotFound(`no template ${id}`);
+          }
+
+          if (request.method === "GET") {
+            return answer(byTemplate.get(id), caller.admin);
+          }
+
+          // A pod patch can mount the namespace's Secrets or run privileged,
+          // so it is as much as the server's own access (ADR 0038).
+          requireAdmin(caller, "only admins change Kubernetes settings");
+
+          const settings = await changed(request, found.isolation, (saved) => {
+            if (saved === null) {
+              byTemplate.remove(id);
+            } else {
+              byTemplate.set(id, saved);
+            }
+          });
+
+          for (const environment of context.environments.list()) {
+            if (environment.templateId === id) {
+              failures.clearEnvironment(environment.id);
+            }
+          }
+
+          context.log("kubernetes template settings saved", {
+            templateId: id,
+            on: settings !== undefined,
+          });
+
+          return answer(settings, true);
+        }
+
+        const environment = context.environments
+          .list()
+          .find((each) => each.id === id);
+
+        if (
+          resource !== "environments" ||
+          environment === undefined ||
+          (environment.ownerId !== caller.actor.slice("user:".length) &&
+            !caller.admin)
+        ) {
+          throw new NotFound(`no route ${path}`);
+        }
+
+        const own = template(environment.templateId) === undefined;
+        const legacy = byEnvironment.get(id);
+
+        if (request.method === "GET") {
+          return answer(
+            settingsOf(environment),
+            own && legacy !== undefined && caller.admin,
+            id,
+          );
+        }
+
+        requireAdmin(caller, "only admins change Kubernetes settings");
+
+        // Pods come from a pod template now. An Environment from before
+        // templates keeps the settings it has until they are removed.
+        if (!own || legacy === undefined) {
+          throw new HttpError(
+            409,
+            "runner pods come from a pod template: make the Environment from one",
+          );
+        }
+
+        const settings = await changed(
+          request,
+          environment.isolation,
+          (saved) => {
+            if (saved === null) {
+              byEnvironment.remove(id);
+            } else {
+              byEnvironment.set(id, saved);
+            }
+          },
+        );
+
+        failures.clearEnvironment(id);
+
+        context.log(
+          settings === undefined
+            ? "kubernetes settings removed"
+            : "kubernetes settings saved",
+          { environmentId: id },
+        );
+
+        return answer(settings, settings !== undefined, id);
       });
 
       if (startsPods) {
         context.environments.startsRunners(
-          (environmentId) => store.get(environmentId) !== undefined,
+          (environment) => settingsOf(environment) !== undefined,
         );
       }
 
@@ -218,7 +312,7 @@ export function kubernetes(options: () => KubernetesOptions): ServerPlugin {
             () => false,
           )
         ) {
-          await reconcile(context, pods, store, failures).catch(
+          await reconcile(context, pods, settingsOf, failures).catch(
             (error: unknown) => {
               context.log("kubernetes runner pods not reconciled", {
                 error: String(error),
@@ -245,10 +339,12 @@ export const kubernetesPlugin = kubernetes(() => {
   };
 });
 
+type Settings = (environment: RunnerSource) => KubernetesSettings | undefined;
+
 async function reconcile(
   context: ServerPluginContext,
   pods: Pods,
-  store: SettingsStore,
+  settingsOf: Settings,
   failures: PodFailures,
 ): Promise<void> {
   const environments = context.environments.list();
@@ -277,7 +373,7 @@ async function reconcile(
 
     if (reason === undefined) {
       if (
-        store.get(pod.environmentId) !== undefined &&
+        settingsOf(environment) !== undefined &&
         !pod.deleting &&
         !sameBinary(pod, pods.image, imageId)
       ) {
@@ -413,9 +509,10 @@ async function reconcile(
     }
   }
 
-  for (const [environmentId, settings] of store.all()) {
-    const environment = environments.find(({ id }) => id === environmentId);
-    if (environment === undefined) {
+  for (const environment of environments) {
+    const environmentId = environment.id;
+    const settings = settingsOf(environment);
+    if (settings === undefined) {
       continue;
     }
 

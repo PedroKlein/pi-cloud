@@ -32,6 +32,7 @@ export type {
   RouteCaller,
   RouteRequest,
   RouteTool,
+  RunnerSource,
   SendOutcome,
   ServerPlugin,
   ServerPluginContext,

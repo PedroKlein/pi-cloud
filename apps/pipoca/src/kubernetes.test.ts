@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   fauxAssistantMessage,
@@ -12,6 +13,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { kubernetes } from "@pipoca/kubernetes/server";
 import {
   type Environment,
+  type EnvironmentTemplate,
   protocolVersion,
   type Session,
   versionHeader,
@@ -213,20 +215,27 @@ async function call(
   });
 }
 
+// An Environment made from a new pod template.
 async function kubernetesEnvironment(settings: object): Promise<Environment> {
-  const { environment } = (await (
-    await call("POST", "/api/environments", { name: "pods" })
-  ).json()) as { environment: Environment };
+  const template = (await (
+    await call("POST", "/api/templates", { name: "pods" })
+  ).json()) as EnvironmentTemplate;
 
-  const saved = await call(
-    "POST",
-    `/api/plugins/kubernetes/environments/${environment.id}`,
-    { settings },
-  );
-
+  const saved = await call("POST", templatePath(template.id), { settings });
   expect(saved.status).toBe(200);
 
+  const { environment } = (await (
+    await call("POST", "/api/environments", {
+      name: "pods",
+      template: template.id,
+    })
+  ).json()) as { environment: Environment };
+
   return environment;
+}
+
+function templatePath(id: string | null): string {
+  return `/api/plugins/kubernetes/templates/${id ?? ""}`;
 }
 
 async function startSession(environment: Environment): Promise<Session> {
@@ -285,9 +294,7 @@ test("reads an Environment that starts runner pods as on demand, not offline", a
 
   expect(listed.find(({ id }) => id === plain.id)?.onDemand).toBe(false);
 
-  await call("POST", `/api/plugins/kubernetes/environments/${pods.id}`, {
-    settings: null,
-  });
+  await call("POST", templatePath(pods.templateId), { settings: null });
 
   expect(
     (await environments()).find(({ id }) => id === pods.id)?.onDemand,
@@ -417,11 +424,11 @@ test("lets the runner in a started pod run the Session, and forgets an earlier f
 }, 30_000);
 
 test("refuses Kubernetes settings it can't use", async () => {
-  const { environment } = (await (
-    await call("POST", "/api/environments", { name: "pods" })
-  ).json()) as { environment: Environment };
+  const template = (await (
+    await call("POST", "/api/templates", { name: "pods" })
+  ).json()) as EnvironmentTemplate;
 
-  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  const path = templatePath(template.id);
 
   const responses = await Promise.all([
     call("POST", path, { settings: { capacity: 0 } }),
@@ -429,14 +436,12 @@ test("refuses Kubernetes settings it can't use", async () => {
     call("POST", path, { settings: { workspace: "disk" } }),
     call("POST", path, { settings: { claimSize: "lots" } }),
     call("POST", path, { capacity: 1 }),
-    call("POST", "/api/plugins/kubernetes/environments/nope", {
-      settings: {},
-    }),
+    call("POST", templatePath("nope"), { settings: {} }),
   ]);
 
   const unsaved = await (await call("GET", path)).json();
 
-  await call("PATCH", `/api/environments/${environment.id}`, {
+  await call("PATCH", `/api/templates/${template.id}`, {
     isolation: "container",
   });
 
@@ -450,9 +455,81 @@ test("refuses Kubernetes settings it can't use", async () => {
     settings: null,
     startsPods: true,
     lastFailure: null,
+    editable: true,
   });
 
   expect(inContainers.status).toBe(409);
+});
+
+test("takes runner pods from a pod template, never from an Environment's own settings", async () => {
+  const { environment: laptop } = (await (
+    await call("POST", "/api/environments", { name: "laptop" })
+  ).json()) as { environment: Environment };
+
+  const path = `/api/plugins/kubernetes/environments/${laptop.id}`;
+  const refused = await call("POST", path, { settings: {} });
+
+  const pods = await kubernetesEnvironment({ maxPods: 2 });
+
+  const fromTemplate = await call(
+    "POST",
+    `/api/plugins/kubernetes/environments/${pods.id}`,
+    { settings: {} },
+  );
+
+  const shown = await (
+    await call("GET", `/api/plugins/kubernetes/environments/${pods.id}`)
+  ).json();
+
+  expect([refused.status, fromTemplate.status]).toEqual([409, 409]);
+
+  expect(await (await call("GET", path)).json()).toMatchObject({
+    settings: null,
+  });
+
+  expect(shown).toMatchObject({
+    settings: { maxPods: 2 },
+    editable: false,
+  });
+
+  await startSession(pods);
+  await eventually(() => api.pods.size === 1);
+});
+
+test("keeps starting pods for an Environment's settings from before templates, until removed", async () => {
+  const database = join(root, "server.db");
+  await server.stop();
+  startServer(database);
+
+  const { environment } = (await (
+    await call("POST", "/api/environments", { name: "old-pods" })
+  ).json()) as { environment: Environment };
+
+  const cookie = await signedIn();
+  await server.stop();
+
+  const db = new DatabaseSync(database);
+
+  db.prepare(
+    "insert into kubernetes_environments (environment_id, settings) values (?, ?)",
+  ).run(environment.id, JSON.stringify({ maxPods: 1 }));
+
+  db.close();
+
+  startServer(database);
+  signedIn = async () => Promise.resolve(cookie);
+
+  const path = `/api/plugins/kubernetes/environments/${environment.id}`;
+  const shown = await (await call("GET", path)).json();
+
+  await startSession(environment);
+  await eventually(() => api.pods.size === 1);
+
+  const removed = await call("POST", path, { settings: null });
+  const again = await call("POST", path, { settings: {} });
+
+  expect(shown).toMatchObject({ settings: { maxPods: 1 }, editable: true });
+  expect([removed.status, again.status]).toEqual([200, 409]);
 });
 
 test("keeps a pod patch from giving runner pods a service account token", async () => {
@@ -646,7 +723,7 @@ test("forgets a failure once the Environment's settings are saved again", async 
   await eventually(() => api.pods.size === 0);
   const failed = await lastFailure(environment);
 
-  await call("POST", `/api/plugins/kubernetes/environments/${environment.id}`, {
+  await call("POST", templatePath(environment.templateId), {
     settings: { idleSeconds: 120 },
   });
 
@@ -732,9 +809,7 @@ test("removes stopped runner pods of an Environment whose settings were removed"
   await startSession(environment);
   await eventually(() => api.pods.size === 1);
 
-  await call("POST", `/api/plugins/kubernetes/environments/${environment.id}`, {
-    settings: null,
-  });
+  await call("POST", templatePath(environment.templateId), { settings: null });
 
   const [pod] = api.pods.values();
   if (pod) {

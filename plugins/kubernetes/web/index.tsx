@@ -1,11 +1,13 @@
 import {
   type EnvironmentSectionProps,
   json,
+  type TemplateSectionProps,
   useLoaded,
+  type WebContext,
   type WebPlugin,
 } from "@pipoca/plugins/web";
 import { Button, cn, Field, fieldClass, Section, Select } from "@pipoca/ui";
-import { type ReactElement, type SubmitEvent, useState } from "react";
+import { Fragment, type ReactElement, type SubmitEvent, useState } from "react";
 import {
   defaultSettings,
   type KubernetesEnvironment,
@@ -16,19 +18,58 @@ import {
 export const kubernetes: WebPlugin = {
   name: "kubernetes",
   EnvironmentSection,
+  TemplateSection,
 };
 
+// Only an Environment whose runners are pods shows the section (ADR 0049).
 function EnvironmentSection({
   context,
   environment,
-}: EnvironmentSectionProps): ReactElement {
-  const path = `environments/${encodeURIComponent(environment.id)}`;
+}: EnvironmentSectionProps): ReactElement | null {
+  return (
+    <Pods
+      context={context}
+      path={`environments/${encodeURIComponent(environment.id)}`}
+      processes={environment.isolation === "process"}
+      hiddenWhenOff
+    />
+  );
+}
 
+function TemplateSection({
+  context,
+  template,
+}: TemplateSectionProps): ReactElement {
+  return (
+    <Pods
+      context={context}
+      path={`templates/${encodeURIComponent(template.id)}`}
+      processes={template.isolation === "process"}
+      hiddenWhenOff={false}
+    />
+  );
+}
+
+function Pods({
+  context,
+  path,
+  processes,
+  hiddenWhenOff,
+}: {
+  readonly context: WebContext;
+  readonly path: string;
+  readonly processes: boolean;
+  readonly hiddenWhenOff: boolean;
+}): ReactElement | null {
   const { value, reload } = useLoaded(
     async () => json<KubernetesEnvironment>(context.request(path)),
     path,
     { everyMs: 10_000 },
   );
+
+  if (hiddenWhenOff && value?.settings === null) {
+    return null;
+  }
 
   return (
     <Section title="Kubernetes">
@@ -43,25 +84,65 @@ function EnvironmentSection({
             {value.lastFailure !== null && (
               <Failure failure={value.lastFailure} />
             )}
-            <Settings
-              key={JSON.stringify(value.settings)}
-              loaded={value}
-              processes={environment.isolation === "process"}
-              save={async (settings) => {
-                await json(
-                  context.request(path, {
-                    method: "POST",
-                    body: JSON.stringify({ settings }),
-                  }),
-                );
+            {value.editable ? (
+              <Settings
+                key={JSON.stringify(value.settings)}
+                loaded={value}
+                processes={processes}
+                save={async (settings) => {
+                  await json(
+                    context.request(path, {
+                      method: "POST",
+                      body: JSON.stringify({ settings }),
+                    }),
+                  );
 
-                reload();
-              }}
-            />
+                  reload();
+                }}
+              />
+            ) : (
+              value.settings !== null && <Summary settings={value.settings} />
+            )}
           </>
         )}
       </div>
     </Section>
+  );
+}
+
+// What an admin set on the template, for everyone else.
+function Summary({
+  settings,
+}: {
+  readonly settings: KubernetesSettings;
+}): ReactElement {
+  const rows: readonly (readonly [string, string])[] = [
+    [
+      "Workspace",
+      settings.workspace === "claim"
+        ? `A pod and ${settings.claimSize} claim for each Session`
+        : `In the pod, ${String(settings.capacity)} Sessions per pod`,
+    ],
+    ["Most pods", String(settings.maxPods)],
+    ["Seconds idle before a pod stops", String(settings.idleSeconds)],
+  ];
+
+  return (
+    <>
+      <p className="text-fg-dim">
+        The server starts runner pods in its namespace for this
+        Environment&apos;s Sessions, as its template says. Only admins change
+        these settings.
+      </p>
+      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+        {rows.map(([term, detail]) => (
+          <Fragment key={term}>
+            <dt className="text-fg-dim">{term}</dt>
+            <dd>{detail}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </>
   );
 }
 

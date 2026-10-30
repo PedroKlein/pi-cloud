@@ -1084,9 +1084,18 @@ test("edits an Environment's variables and secrets without showing secret values
   );
 }, 30_000);
 
-test("starts and stops runner pods from an Environment's Kubernetes section", async () => {
+test("starts and stops runner pods from a template's Kubernetes section", async () => {
+  const template = (await (
+    await fetch(new URL("/api/templates", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ name: "Pods" }),
+    })
+  ).json()) as { readonly id: string };
+
   await page.goto(server.url.href);
   await openSettings("Environments");
+  await page.locator("summary", { hasText: "Pods" }).click();
 
   const section = page.getByLabel("Kubernetes", { exact: true });
   await section.getByText("isn't running in a cluster").waitFor();
@@ -1097,18 +1106,12 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   await section.getByRole("button", { name: "Start runner pods" }).click();
   await section.getByRole("button", { name: "Stop runner pods" }).waitFor();
 
-  const [environment] = (await (
-    await fetch(new URL("/api/environments", server.url), {
-      headers: { cookie },
-    })
-  ).json()) as { readonly id: string }[];
-
   const settings = async (): Promise<unknown> =>
     (
       (await (
         await fetch(
           new URL(
-            `/api/plugins/kubernetes/environments/${environment?.id ?? ""}`,
+            `/api/plugins/kubernetes/templates/${template.id}`,
             server.url,
           ),
           { headers: { cookie } },
@@ -1124,6 +1127,7 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   });
 
   await page.reload();
+  await page.locator("summary", { hasText: "Pods" }).click();
 
   expect(await section.getByLabel("Claim size").inputValue()).toBe("2Gi");
 
@@ -1139,14 +1143,28 @@ test("starts and stops runner pods from an Environment's Kubernetes section", as
   await section.getByRole("button", { name: "Start runner pods" }).waitFor();
 
   expect(await settings()).toBeNull();
+
+  await fetch(new URL(`/api/templates/${template.id}`, server.url), {
+    method: "DELETE",
+    headers: { cookie },
+  });
 });
 
 test("shows why an Environment's last runner pod failed", async () => {
   await page.route("**/api/plugins/kubernetes/environments/*", async (route) =>
     route.fulfill({
       json: {
-        settings: null,
+        settings: {
+          workspace: "pod",
+          capacity: 1,
+          maxPods: 5,
+          idleSeconds: 300,
+          claimSize: "10Gi",
+          storageClass: null,
+          podPatch: {},
+        },
         startsPods: true,
+        editable: false,
         lastFailure: {
           pod: "pi-runner-1a2b3c4d",
           problem: "runner exited with 1: EACCES: permission denied",
