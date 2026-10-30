@@ -668,6 +668,29 @@ export function createHandler(
       },
     ],
     [
+      "DELETE",
+      /^\/api\/environments\/([^/]+)$/,
+      (_request, [id = ""], actor, isAdmin) => {
+        if (
+          !sessions
+            .environments()
+            .some(
+              (each) =>
+                each.id === id && (isAdmin || each.ownerId === userIdOf(actor)),
+            )
+        ) {
+          return notFound();
+        }
+
+        const deleted = sessions.deleteEnvironment(id);
+        if (deleted.ok) {
+          log("environment deleted", { environmentId: id });
+        }
+
+        return reply(deleted, 204);
+      },
+    ],
+    [
       "GET",
       /^\/api\/people$/,
       (_request, _params, _actor, isAdmin) =>

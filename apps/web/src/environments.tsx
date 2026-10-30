@@ -425,6 +425,27 @@ function Editor({
             <Button variant="primary" type="submit">
               Save
             </Button>
+            <Button
+              variant="danger"
+              aria-label={`Delete ${environment.name}`}
+              onClick={() => {
+                deleteEnvironment(environment).then(
+                  (deleted) => {
+                    if (deleted) {
+                      location.hash = "#environments";
+                      onChange();
+                    }
+                  },
+                  (reason: unknown) => {
+                    setError(
+                      reason instanceof Error ? reason.message : String(reason),
+                    );
+                  },
+                );
+              }}
+            >
+              Delete
+            </Button>
             <p role="status" className="text-caption">
               {error !== undefined ? (
                 <span className="text-failed">{error}</span>
@@ -448,6 +469,24 @@ function Editor({
       )}
     </>
   );
+}
+
+// Whether the person went ahead. The server refuses while any of its
+// Sessions isn't archived.
+export async function deleteEnvironment(
+  environment: Environment,
+): Promise<boolean> {
+  if (
+    !confirm(
+      `Delete ${environment.name}? Its runners stop working, and its archived Sessions go with it.`,
+    )
+  ) {
+    return false;
+  }
+
+  await send(`/api/environments/${environment.id}`, "DELETE");
+
+  return true;
 }
 
 function rowsOf(environment: Environment): readonly KeyValue[] {

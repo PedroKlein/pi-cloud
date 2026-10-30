@@ -13,6 +13,10 @@ const rejections = {
     409,
     "The Environment's template sets its isolation, image and setup script.",
   ],
+  environment_in_use: [
+    409,
+    "Archive the Environment's Sessions before deleting it.",
+  ],
   unknown_profile: [400, "There is no such Profile."],
   not_movable: [
     409,

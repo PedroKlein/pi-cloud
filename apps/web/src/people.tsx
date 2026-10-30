@@ -2,6 +2,7 @@ import { availability, type Environment, type Session } from "@pipoca/protocol";
 import { Badge, Button, PageTitle, Section } from "@pipoca/ui";
 import { type ReactElement, useState } from "react";
 import { api, command } from "./api";
+import { deleteEnvironment } from "./environments";
 import {
   type Person,
   useEveryonesEnvironments,
@@ -39,7 +40,7 @@ export function PeoplePage(): ReactElement {
 
   return (
     <div className="mx-auto flex w-full max-w-form flex-col px-4 py-10 md:px-10">
-      <PageTitle description="Everyone's Environments and running Sessions, as admins see them: names and states, never transcripts, files or variable values. Admins can stop or archive a Session.">
+      <PageTitle description="Everyone's Environments and running Sessions, as admins see them: names and states, never transcripts, files or variable values. Admins can stop or archive a Session, and delete an Environment once its Sessions are archived.">
         People
       </PageTitle>
       {error !== undefined && (
@@ -59,6 +60,9 @@ export function PeoplePage(): ReactElement {
           )}
           onStop={(session) => {
             act(command(session.id, { type: "abort" }));
+          }}
+          onDelete={(environment) => {
+            act(deleteEnvironment(environment).then(environments.reload));
           }}
           onArchive={(session) => {
             act(
@@ -80,12 +84,14 @@ function PersonSection({
   sessions,
   onStop,
   onArchive,
+  onDelete,
 }: {
   readonly person: Person;
   readonly environments: readonly Environment[];
   readonly sessions: readonly Session[];
   readonly onStop: (session: Session) => void;
   readonly onArchive: (session: Session) => void;
+  readonly onDelete: (environment: Environment) => void;
 }): ReactElement {
   const environmentName = (id: string): string =>
     environments.find((each) => each.id === id)?.name ?? id;
@@ -115,6 +121,15 @@ function PersonSection({
                     ? "On demand"
                     : availability(environment)}
                 </Badge>
+                <Button
+                  variant="ghost"
+                  aria-label={`Delete ${environment.name}`}
+                  onClick={() => {
+                    onDelete(environment);
+                  }}
+                >
+                  Delete
+                </Button>
               </li>
             ))}
           </ul>
