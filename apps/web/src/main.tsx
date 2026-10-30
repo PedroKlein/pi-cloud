@@ -15,7 +15,10 @@ const status = await fetch("/api/auth")
   .then(
     async (response) =>
       (await response.json()) as {
-        readonly user: { readonly name: string } | null;
+        readonly user: {
+          readonly name: string;
+          readonly admin: boolean;
+        } | null;
         readonly setup: boolean;
         readonly logins: readonly Login[];
         readonly passwordLogin: boolean;
@@ -38,5 +41,12 @@ if (status === undefined) {
   );
 } else {
   await loadPlugins().catch(() => undefined);
-  createRoot(root).render(<App nav={navEntries()} user={status.user.name} />);
+
+  createRoot(root).render(
+    <App
+      nav={navEntries()}
+      user={status.user.name}
+      admin={status.user.admin}
+    />,
+  );
 }

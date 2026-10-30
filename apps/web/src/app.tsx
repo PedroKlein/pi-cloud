@@ -26,14 +26,17 @@ import { SessionView } from "./session-view";
 import { SettingsPage } from "./settings";
 import { isSettingsRoute, SettingsLayout } from "./settings-layout";
 import { Mark } from "./mark";
+import { PeoplePage } from "./people";
 import { Sidebar } from "./sidebar";
 
 export function App({
   nav,
   user,
+  admin,
 }: {
   readonly nav: readonly NavEntry[];
   readonly user: string;
+  readonly admin: boolean;
 }): ReactElement {
   const route = useHash();
   const [showArchived, setShowArchived] = useState(false);
@@ -129,6 +132,10 @@ export function App({
       return <PluginsPage />;
     }
 
+    if (route === "people" && admin) {
+      return <PeoplePage />;
+    }
+
     const name = /^settings\/(.+)$/.exec(route)?.[1];
 
     const Section =
@@ -168,7 +175,7 @@ export function App({
 
     if (isSettingsRoute(route)) {
       return (
-        <SettingsLayout route={route} onMenu={openDrawer}>
+        <SettingsLayout route={route} admin={admin} onMenu={openDrawer}>
           {settingsContent()}
         </SettingsLayout>
       );

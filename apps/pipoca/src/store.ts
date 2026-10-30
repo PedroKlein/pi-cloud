@@ -932,6 +932,10 @@ function authStore(db: DatabaseSync): AuthStore {
     "select id, name, admin from users where id = ?",
   );
 
+  const selectUsers = db.prepare(
+    "select id, name, admin from users order by created_at",
+  );
+
   const insertUser = db.prepare(
     "insert into users (id, name, password_hash, created_at, admin) values (?, ?, ?, ?, ?)",
   );
@@ -1057,6 +1061,10 @@ function authStore(db: DatabaseSync): AuthStore {
       );
     },
     userById: (id) => userOf(selectUserById.get(id) as UserRow | undefined),
+    users: () =>
+      (selectUsers.all() as unknown as UserRow[]).flatMap(
+        (row) => userOf(row) ?? [],
+      ),
     insertUser: (user) => {
       insertUser.run(
         user.id,

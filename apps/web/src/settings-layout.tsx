@@ -10,7 +10,7 @@ interface SettingsSection {
 
 // Everything that configures Pipoca sits on one page with sections, opened
 // from the account menu, like Claude Code's settings (ADR 0040).
-function sections(route: string): readonly SettingsSection[] {
+function sections(route: string, admin: boolean): readonly SettingsSection[] {
   return [
     {
       href: "#environments",
@@ -23,6 +23,9 @@ function sections(route: string): readonly SettingsSection[] {
       current: route.startsWith("profiles"),
     },
     { href: "#plugins", label: "Plugins", current: route === "plugins" },
+    ...(admin
+      ? [{ href: "#people", label: "People", current: route === "people" }]
+      : []),
     { href: "#settings", label: "MCP clients", current: route === "settings" },
     ...enabledPlugins().flatMap(({ name, SettingsSection }) =>
       SettingsSection
@@ -39,15 +42,17 @@ function sections(route: string): readonly SettingsSection[] {
 }
 
 export function isSettingsRoute(route: string): boolean {
-  return /^(environments|profiles|plugins|settings)(\/|$)/.test(route);
+  return /^(environments|profiles|plugins|people|settings)(\/|$)/.test(route);
 }
 
 export function SettingsLayout({
   route,
+  admin,
   onMenu,
   children,
 }: {
   readonly route: string;
+  readonly admin: boolean;
   readonly onMenu: () => void;
   readonly children: ReactNode;
 }): ReactElement {
@@ -69,7 +74,7 @@ export function SettingsLayout({
         <h2 className="px-2 pb-2 text-caption font-medium text-fg-dim max-md:hidden">
           Settings
         </h2>
-        {sections(route).map(({ href, label, current }) => (
+        {sections(route, admin).map(({ href, label, current }) => (
           <a
             key={href}
             href={href}
