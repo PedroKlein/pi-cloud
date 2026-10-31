@@ -610,6 +610,40 @@ test("fetches an extension provider's models with the host's login, and the runn
   ]);
 }, 20_000);
 
+test("starts a new session on a model its provider lists only from the network", async () => {
+  const extension = await fetchingProviderExtension(root);
+
+  delete process.env["PI_OFFLINE"];
+
+  try {
+    const session = await startSession(
+      sessionOptions(root, {
+        extensionPaths: [extension],
+        model: { provider: "vault", id: "vault-large" },
+      }),
+      {
+        ui: {} as SessionHost["ui"],
+        tools: [],
+        extensions: [],
+        packages: [],
+        onError: () => undefined,
+        logins: {
+          models: memoryLogins([
+            ["vault", { type: "api_key", key: "vault-key" }],
+          ]),
+          mcp: noMcpLogins,
+        },
+      },
+    );
+
+    await stopSession(session);
+
+    expect(modelName(session)).toBe("vault/vault-large");
+  } finally {
+    process.env["PI_OFFLINE"] = "1";
+  }
+}, 20_000);
+
 async function until(condition: () => boolean): Promise<void> {
   const deadline = Date.now() + 5000;
 
