@@ -9,7 +9,7 @@ import {
   Type,
   type User,
 } from "@pipoca/plugins";
-import type { GitLogin, RepositoryChoice } from "@pipoca/protocol";
+import type { RepositoryChoice } from "@pipoca/protocol";
 import {
   authorizationUrl,
   HostRefused,
@@ -17,6 +17,7 @@ import {
   redeem,
   repositoriesOf,
 } from "./github";
+import { type HostSearch, repositoriesTool } from "./tool";
 import {
   type HostConfig,
   hostChange,
@@ -56,8 +57,9 @@ export const gitHosts: ServerPlugin = {
 
     context.auth.gitLogins((userId) =>
       connections
-        .logins(userId)
-        .filter(({ host }) => hosts.get(host) !== undefined),
+        .accounts(userId)
+        .filter(({ host }) => hosts.get(host) !== undefined)
+        .map(({ host, token }) => ({ host, token })),
     );
 
     const connect = async (
@@ -76,38 +78,63 @@ export const gitHosts: ServerPlugin = {
     };
 
     // A host that can't be reached offers nothing, so the others still show.
-    const repositories = async (
+    const search = async (
       userId: string,
       query: string,
-    ): Promise<readonly RepositoryChoice[]> => {
-      const found = await Promise.all(
-        connections.logins(userId).map(async ({ host: name, token }) => {
+      only?: string,
+    ): Promise<readonly HostSearch[]> =>
+      Promise.all(
+        connections.accounts(userId).flatMap(({ host: name, login, token }) => {
           const host = hosts.get(name);
-          if (host === undefined) {
-            return [];
-          }
 
-          try {
-            return (await repositoriesOf(host, token, query)).map(
-              ({ url, name: full }) => ({ url, name: full, group: host.label }),
-            );
-          } catch (failure) {
-            if (!(failure instanceof HostRefused)) {
-              throw failure;
-            }
+          return host === undefined || (only !== undefined && only !== name)
+            ? []
+            : [
+                repositoriesOf(host, token, query).then(
+                  (repositories): HostSearch => ({ host, login, repositories }),
+                  (failure: unknown): HostSearch => {
+                    if (!(failure instanceof HostRefused)) {
+                      throw failure;
+                    }
 
-            context.log("repository search failed", {
-              host: name,
-              error: failure.message,
-            });
+                    context.log("repository search failed", {
+                      host: name,
+                      error: failure.message,
+                    });
 
-            return [];
-          }
+                    return {
+                      host,
+                      login,
+                      repositories: [],
+                      failure: failure.message,
+                    };
+                  },
+                ),
+              ];
         }),
       );
 
-      return found.flat();
-    };
+    const repositories = async (
+      userId: string,
+      query: string,
+    ): Promise<readonly RepositoryChoice[]> =>
+      (await search(userId, query)).flatMap(({ host, repositories: found }) =>
+        found.map(({ url, name }) => ({ url, name, group: host.label })),
+      );
+
+    context.tools.register(
+      repositoriesTool({
+        accounts: (userId) =>
+          connections.accounts(userId).flatMap(({ host: name, login }) => {
+            const host = hosts.get(name);
+
+            return host === undefined
+              ? []
+              : [{ host: host.host, label: host.label, login }];
+          }),
+        search,
+      }),
+    );
 
     const account = (user: User): Account => ({
       admin: user.admin,
@@ -340,9 +367,15 @@ export const gitHosts: ServerPlugin = {
   },
 };
 
+interface Signed {
+  readonly host: string;
+  readonly login: string;
+  readonly token: string;
+}
+
 interface ConnectionStore {
   readonly of: (userId: string) => readonly Connection[];
-  readonly logins: (userId: string) => readonly GitLogin[];
+  readonly accounts: (userId: string) => readonly Signed[];
   readonly save: (
     userId: string,
     host: string,
@@ -388,10 +421,12 @@ function connectionStore(store: PluginStore): ConnectionStore {
       })),
     // A token sealed under another server key can't be opened, and its
     // Sessions go without it, as if it weren't connected.
-    logins: (userId) =>
-      rows(userId).flatMap(({ host, token }) => {
+    accounts: (userId) =>
+      rows(userId).flatMap(({ host, login, token }) => {
         try {
-          return [{ host, token: store.open(token, `${userId} ${host}`) }];
+          return [
+            { host, login, token: store.open(token, `${userId} ${host}`) },
+          ];
         } catch {
           return [];
         }

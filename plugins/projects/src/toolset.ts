@@ -57,7 +57,7 @@ export const projectsToolset: Toolset = {
           repositories: {
             type: "array",
             description:
-              "Clone URLs of git repositories, such as https://github.com/owner/name.git, each with a different name. A folder that isn't a git repository can't be one.",
+              "Clone URLs of git repositories, such as https://github.com/owner/name.git, each with a different name. Use URLs the user gave or a tool found, never guessed ones. A folder that isn't a git repository can't be one.",
             items: { type: "string" },
           },
           environment: { type: "string", description: "Environment id" },
