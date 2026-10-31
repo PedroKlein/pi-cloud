@@ -404,7 +404,13 @@ test("hands a runner only the allowed Session parts and requires the meta one", 
     const of = (id: string): Assignment | undefined =>
       work.start.find(({ sessionId }) => sessionId === id);
 
-    expect(of(metaSession.id)?.plugins).toEqual(["ask", "models", "meta"]);
+    expect(of(metaSession.id)?.plugins).toEqual([
+      "ask",
+      "models",
+      "meta",
+      "logins",
+    ]);
+
     expect(of(metaSession.id)?.requiredPlugins).toEqual(["meta"]);
     expect(of(ordinary.id)?.plugins).not.toContain("meta");
     expect(of(ordinary.id)?.requiredPlugins).toEqual([]);
