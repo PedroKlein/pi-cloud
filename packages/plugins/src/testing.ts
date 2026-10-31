@@ -43,6 +43,7 @@ export function fakeContext(
     toolsets: {
       register: notFaked("toolsets.register"),
       loadInOwnSessions: notFaked("toolsets.loadInOwnSessions"),
+      asks: notFaked("toolsets.asks"),
     },
     events: eventBus((_type, error) => {
       throw error;

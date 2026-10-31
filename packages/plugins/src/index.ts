@@ -13,6 +13,7 @@ export {
 export { type Static, Type } from "typebox";
 export { checkedSettings, settingSpecs, settingValues } from "./settings";
 export type {
+  AskPermission,
   AskQuestions,
   Checkout,
   Explain,

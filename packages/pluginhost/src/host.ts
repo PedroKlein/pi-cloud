@@ -39,7 +39,12 @@ import {
   type SessionPlugins,
   type Sessions,
 } from "@pipoca/sessions";
-import { runRouteTool, type ToolsetTool, toolsetTools } from "./toolsets";
+import {
+  routeToolQuestion,
+  runRouteTool,
+  type ToolsetTool,
+  toolsetTools,
+} from "./toolsets";
 
 export type UserActor = `user:${string}`;
 
@@ -452,6 +457,15 @@ export function startPlugins(
             loadInOwnSessions: () => {
               staged.loadsToolsets = true;
             },
+            asks: async (session, name, input) => {
+              const found = loadsToolsets(session)
+                ? routeTools.get(name)
+                : undefined;
+
+              return (
+                found && routeToolQuestion(found, input, ownerOf(session), deps)
+              );
+            },
           },
           events: {
             publish: deps.events.publish,
@@ -863,10 +877,7 @@ export function startPlugins(
           return runRouteTool(
             routed,
             call.input,
-            {
-              actor: `user:${session.startedBy ?? session.ownerId}`,
-              mayAdmin: false,
-            },
+            ownerOf(session),
             deps,
             (action) => {
               deps.sessions.publish(session.id, {
@@ -1145,4 +1156,13 @@ function limited(
       return Reflect.get(target, key, receiver) as unknown;
     },
   });
+}
+
+// A meta-session's tools act as the person who started it, never as an admin
+// (ADR 0035).
+function ownerOf(session: Session): OnBehalf {
+  return {
+    actor: `user:${session.startedBy ?? session.ownerId}`,
+    mayAdmin: false,
+  };
 }

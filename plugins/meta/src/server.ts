@@ -23,6 +23,11 @@ const newMetaSession = Type.Object({
   ),
 });
 
+const toolCall = Type.Object({
+  tool: Type.String(),
+  input: Type.Unknown(),
+});
+
 // Meta-sessions change Pipoca itself (ADR 0035). They run on the meta
 // Profile and stay out of the Session list.
 export const meta: ServerPlugin = {
@@ -47,6 +52,19 @@ export const meta: ServerPlugin = {
     });
 
     context.routes.handle(async (request, path, caller) => {
+      if (
+        path === "asks" &&
+        caller.kind === "session" &&
+        request.method === "POST"
+      ) {
+        const { tool, input } = await readBody(request, toolCall);
+
+        return Response.json({
+          text:
+            (await context.toolsets.asks(caller.session, tool, input)) ?? null,
+        });
+      }
+
       if (path !== "sessions" || caller.kind !== "user") {
         throw new NotFound(`no route ${path}`);
       }

@@ -196,7 +196,11 @@ function fakeKernel(): {
       },
       transcriptLength: (id) => transcripts.get(id)?.length ?? 0,
     },
-    toolsets: { register: () => undefined, loadInOwnSessions: () => undefined },
+    toolsets: {
+      register: () => undefined,
+      loadInOwnSessions: () => undefined,
+      asks: async () => Promise.resolve(undefined),
+    },
     routes: {
       handle: (handler) => {
         route = served(handler);

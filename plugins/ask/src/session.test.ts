@@ -19,6 +19,7 @@ async function askUser(
 
       return Promise.resolve(null);
     },
+    askPermission: unused,
     checkouts: [],
     settings: {},
     request: unused,

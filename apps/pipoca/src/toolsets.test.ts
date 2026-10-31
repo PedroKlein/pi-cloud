@@ -150,10 +150,7 @@ const call = (
 ): ReturnType<typeof fauxAssistantMessage> =>
   fauxAssistantMessage([fauxToolCall(name, input)], { stopReason: "toolUse" });
 
-async function answerNext(
-  sessionId: string,
-  allowed: boolean,
-): Promise<Prompt> {
+async function allowNext(sessionId: string): Promise<Prompt> {
   const [asked] = prompts(
     await follow(sessionId, (all) => prompts(all).length > 0),
   );
@@ -165,20 +162,19 @@ async function answerNext(
   await api(`/api/sessions/${sessionId}/commands`, {
     type: "answer",
     id: asked.id,
-    value: allowed,
+    value: "once",
   });
 
   return asked;
 }
 
-test("starts a Session from a meta-session through the Sessions route once the user allows it", async () => {
+test("starts a Session from a meta-session through the Sessions route without asking", async () => {
   faux.setResponses([
     call("sessions_start", { workspace: { kind: "folder", path: root } }),
     fauxAssistantMessage([fauxText("started it")]),
   ]);
 
   const metaSession = await startMeta("Start a Session in my folder");
-  const asked = await answerNext(metaSession.id, true);
   const events = await follow(metaSession.id, entriesInclude("started it"));
 
   const [started] = await json<Session[]>(api("/api/sessions"));
@@ -187,7 +183,7 @@ test("starts a Session from a meta-session through the Sessions route once the u
     api("/api/profiles"),
   );
 
-  expect(asked.title).toBe("Allow sessions_start?");
+  expect(prompts(events)).toEqual([]);
   expect(started?.workspace).toEqual({ kind: "folder", path: root });
 
   expect(started?.profileId).toBe(
@@ -204,7 +200,6 @@ test("hands the route's own validation error back to the model", async () => {
   ]);
 
   const metaSession = await startMeta("Start a Session");
-  await answerNext(metaSession.id, true);
   const events = await follow(metaSession.id, entriesInclude("that failed"));
 
   expect(transcriptOf(events)).toContain("workspace must be a folder");
@@ -225,14 +220,14 @@ test("finds deferred tools through tool_search, and asks before changing an Envi
   ]);
 
   const metaSession = await startMeta("Set up my Environment");
-  const asked = await answerNext(metaSession.id, true);
+  const asked = await allowNext(metaSession.id);
   const events = await follow(metaSession.id, entriesInclude("changed it"));
 
   const [changed] = await json<{ setupScript: string }[]>(
     api("/api/environments"),
   );
 
-  expect(asked.title).toBe("Allow environments_update?");
+  expect(asked.title).toBe("Change the Environment “local”?");
   expect(transcriptOf(events)).toContain("Tool environments_update not found");
   expect(changed?.setupScript).toBe("echo ready");
 });
@@ -267,8 +262,11 @@ test("creates a Project through the Projects plugin's route", async () => {
   ]);
 
   const metaSession = await startMeta("Make a Project for my shop");
-  await answerNext(metaSession.id, true);
-  await follow(metaSession.id, entriesInclude("created the Project"));
+
+  const events = await follow(
+    metaSession.id,
+    entriesInclude("created the Project"),
+  );
 
   const projects = await json<{ id: string; name: string }[]>(
     api("/api/plugins/projects/projects"),
@@ -284,6 +282,7 @@ test("creates a Project through the Projects plugin's route", async () => {
 
   const { user } = await json<{ user: { id: string } }>(api("/api/auth"));
 
+  expect(prompts(events)).toEqual([]);
   expect(projects.map(({ name }) => name)).toEqual(["Shop"]);
   expect(project.goal).toBe("Sell more shoes");
   expect(coordinator.startedBy).toBe(user.id);
@@ -305,7 +304,7 @@ test("never acts as an admin from a meta-session, even one an admin started", as
   ]);
 
   const metaSession = await startMeta("Rename the shared Profile");
-  await answerNext(metaSession.id, true);
+  await allowNext(metaSession.id);
   const events = await follow(metaSession.id, entriesInclude("tried it"));
 
   const after = await json<{ name: string }>(api(`/api/profiles/${id}`));
@@ -337,13 +336,14 @@ test("changes a Project's goal from a meta-session", async () => {
   ]);
 
   const metaSession = await startMeta("Add boots to the shop's goal");
-  await answerNext(metaSession.id, true);
+  const asked = await allowNext(metaSession.id);
   await follow(metaSession.id, entriesInclude("changed the goal"));
 
   const project = await json<{ goal: string }>(
     api(`/api/plugins/projects/projects/${id}`),
   );
 
+  expect(asked.title).toBe("Change the settings of “Shop”?");
   expect(project.goal).toBe("Sell boots too");
 });
 
@@ -623,14 +623,13 @@ test("writes and builds an in-place plugin from a meta-session, and leaves turni
   ]);
 
   const metaSession = await startMeta("Make me a hello plugin");
-  const asked = await answerNext(metaSession.id, true);
   const events = await follow(metaSession.id, entriesInclude("built it"));
 
   const hello = (await json<PluginInfo[]>(api("/api/plugins"))).find(
     ({ id }) => id === "hello",
   );
 
-  expect(asked.title).toBe("Allow plugins_build?");
+  expect(prompts(events)).toEqual([]);
   expect(transcriptOf(events)).toContain("It builds.");
   expect(hello).toMatchObject({ state: "off", turnedOn: false });
 

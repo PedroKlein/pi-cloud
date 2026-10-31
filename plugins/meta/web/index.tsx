@@ -207,7 +207,7 @@ function Composer({
       <div className="flex items-center gap-2">
         {error === undefined ? (
           <span className="flex-1 truncate text-caption text-fg-dim pointer-coarse:hidden">
-            Enter sends · the assistant asks before anything risky
+            Enter sends · the assistant asks before anything destructive
           </span>
         ) : (
           <p role="alert" className="flex-1 text-caption text-failed">

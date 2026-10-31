@@ -627,6 +627,12 @@ export type Prompt =
     }
   | {
       readonly id: string;
+      readonly kind: "permission";
+      readonly title: string;
+      readonly details: readonly PermissionDetail[];
+    }
+  | {
+      readonly id: string;
       readonly kind: "select";
       readonly title: string;
       readonly options: readonly string[];
@@ -643,6 +649,16 @@ export type Prompt =
       readonly title: string;
       readonly prefill: string | null;
     };
+
+// One field of a tool call a permission prompt shows, such as a new name.
+export interface PermissionDetail {
+  readonly label: string;
+  readonly value: string;
+}
+
+// How the user answered a permission prompt: run the call, run every call of
+// that tool for the rest of the Session, or don't run it.
+export type Permission = "once" | "session" | "deny";
 
 // What a meta-session's tool asks the browsers watching it to do (ADR 0035):
 // open a route of the web app, such as a Session's id or plugin/projects/<id>.

@@ -28,6 +28,30 @@ export function PromptCard({
     handlers.answer(prompt.id, value);
   };
 
+  const body = (): ReactElement => {
+    switch (prompt.kind) {
+      case "permission":
+        return <PermissionPrompt prompt={prompt} onAnswer={answer} />;
+      case "questions":
+        return (
+          <QuestionsForm
+            prompt={prompt}
+            explanations={open.explanations}
+            onAnswer={answer}
+            onExplain={(questionId, value, question) => {
+              handlers.explain(prompt.id, questionId, value, question);
+            }}
+          />
+        );
+      case "confirm":
+      case "select":
+      case "input":
+      case "secret":
+      case "editor":
+        return <SimplePrompt prompt={prompt} onAnswer={answer} />;
+    }
+  };
+
   return (
     <section
       data-role="prompt"
@@ -35,21 +59,63 @@ export function PromptCard({
       className="flex flex-col gap-3 rounded-xl border border-line-strong border-t-3 border-t-waiting bg-elevated p-4 shadow-card"
     >
       <strong className="text-label font-semibold text-waiting">
-        {prompt.title}
+        {prompt.kind === "permission" ? "Permission needed" : prompt.title}
       </strong>
-      {prompt.kind === "questions" ? (
-        <QuestionsForm
-          prompt={prompt}
-          explanations={open.explanations}
-          onAnswer={answer}
-          onExplain={(questionId, value, question) => {
-            handlers.explain(prompt.id, questionId, value, question);
-          }}
-        />
-      ) : (
-        <SimplePrompt prompt={prompt} onAnswer={answer} />
-      )}
+      {body()}
     </section>
+  );
+}
+
+function PermissionPrompt({
+  prompt,
+  onAnswer,
+}: {
+  readonly prompt: Extract<Prompt, { kind: "permission" }>;
+  readonly onAnswer: (value: Answer) => void;
+}): ReactElement {
+  return (
+    <>
+      <h2 className="text-title font-semibold text-fg-strong">
+        {prompt.title}
+      </h2>
+      {prompt.details.length > 0 && (
+        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-ui">
+          {prompt.details.map(({ label, value }) => (
+            <div key={label} className="contents">
+              <dt className="text-fg-dim">{label}</dt>
+              <dd className="max-h-48 overflow-auto break-words whitespace-pre-wrap">
+                {value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <Actions>
+        <Button
+          variant="primary"
+          onClick={() => {
+            onAnswer("once");
+          }}
+        >
+          Allow
+        </Button>
+        <Button
+          onClick={() => {
+            onAnswer("session");
+          }}
+        >
+          Allow for this session
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => {
+            onAnswer("deny");
+          }}
+        >
+          Deny
+        </Button>
+      </Actions>
+    </>
   );
 }
 
@@ -57,7 +123,7 @@ function SimplePrompt({
   prompt,
   onAnswer,
 }: {
-  readonly prompt: Exclude<Prompt, { kind: "questions" }>;
+  readonly prompt: Exclude<Prompt, { kind: "questions" | "permission" }>;
   readonly onAnswer: (value: Answer) => void;
 }): ReactElement {
   const [text, setText] = useState(
