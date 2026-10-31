@@ -29,8 +29,9 @@ export const meta: ServerPlugin = {
   name: "meta",
   register: (context) => {
     // Other Session parts would add tools the confirm can't see into, such
-    // as subagents, whose own sessions don't load it.
-    context.sessions.loadOnly(["ask", "models", "meta"]);
+    // as subagents, whose own sessions don't load it. Logins adds no tools,
+    // and without it a provider that needs a stored login has no models.
+    context.sessions.loadOnly(["ask", "logins", "models", "meta"]);
 
     context.toolsets.loadInOwnSessions();
 
