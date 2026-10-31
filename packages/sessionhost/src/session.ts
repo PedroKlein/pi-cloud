@@ -360,8 +360,20 @@ export async function availableModel(
   runtime: ModelRuntime,
   { provider, id }: ModelRef,
 ): Promise<Model<Api>> {
-  const models = await runtime.getAvailable(provider);
-  const model = models.find((m) => m.id === id);
+  const find = async (): Promise<Model<Api> | undefined> =>
+    (await runtime.getAvailable(provider)).find((m) => m.id === id);
+
+  // A provider that lists its models only from the network, like SAP AI
+  // Core, has none until the background refresh ends.
+  const model =
+    (await find()) ??
+    (await runtime
+      .refresh({
+        providers: [provider],
+        signal: AbortSignal.timeout(refreshMs),
+      })
+      .then(find, () => undefined));
+
   if (model === undefined) {
     throw new Error(`model not available: ${provider}/${id}`);
   }
