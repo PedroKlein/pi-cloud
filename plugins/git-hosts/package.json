@@ -21,7 +21,8 @@
     "title": "Git hosts",
     "description": "Lets each person connect their own GitHub and GitHub Enterprise accounts, so their Sessions clone, push, use gh and install Profile packages as them. Admins list the hosts in Settings.",
     "capabilities": [
-      "routes"
+      "routes",
+      "tools"
     ]
   }
 }
