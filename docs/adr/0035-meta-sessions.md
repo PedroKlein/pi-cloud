@@ -22,6 +22,7 @@ The kernel already has most of the pieces. Server tools pick their Sessions with
 
 - A meta-session is a Session whose job is to change Pi Cloud itself. It is a full Pi Session like any other.
 - Every meta-session runs on one built-in, read-only Profile, the meta Profile. Pi Cloud ships its system prompt and skills, and users can't edit it. A user's own Profiles never load in a meta-session, so their extensions, MCP servers and skills stay out of a Session that has admin tools ([ADR 0031](0031-profiles.md) is amended for this). The meta Profile also turns off Pi's `read`, `bash`, `edit` and `write`: a meta-session's workspace is empty, so they could only reach the runner's own machine.
+- (Amended 2026-10-31: the meta Profile loads the extensions and packages of the admin's base Profile, so model providers they add work in meta-sessions. Their tools go through the confirm below like any other tool without read-only hints. See [ADR 0044](0044-base-profile.md).)
 - Provider logins aren't part of a Profile, so a meta-session uses the machine's logins like any Session.
 - A user can have any number of meta-sessions. They are separate conversations with the same Profile and tools.
 - A `meta` plugin, on by default, owns them, so they stay out of the Session list. It also provides the home screen and the core toolset.

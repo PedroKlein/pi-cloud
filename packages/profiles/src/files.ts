@@ -97,6 +97,25 @@ export function contentFiles(content: ProfileContent): ProfileFiles {
   );
 }
 
+// A plugin's Profile over only the extensions and packages of the admin's
+// base Profile, which add model providers. The base's skills, context, MCP
+// servers and other settings stay out.
+export function overBaseExtensions(
+  base: ProfileFiles,
+  own: ProfileFiles,
+): ProfileFiles {
+  const kept = new Map(
+    [...decoded(base)].filter(([path]) => path.startsWith("extensions/")),
+  );
+
+  const packages = jsonOf(base, "settings.json")?.["packages"];
+  if (Array.isArray(packages) && packages.length > 0) {
+    kept.set("settings.json", Buffer.from(JSON.stringify({ packages })));
+  }
+
+  return layered(encoded(kept), own);
+}
+
 // A Profile's files over the admin's base Profile, layered as Pi layers its
 // global and project config (ADR 0044).
 export function layered(base: ProfileFiles, own: ProfileFiles): ProfileFiles {

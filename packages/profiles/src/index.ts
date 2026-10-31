@@ -1,4 +1,9 @@
-export { contentFiles, maxProfileBytes, ProfileTooBig } from "./files";
+export {
+  contentFiles,
+  overBaseExtensions,
+  maxProfileBytes,
+  ProfileTooBig,
+} from "./files";
 export {
   defaultProfileId,
   type Log,

@@ -907,6 +907,62 @@ test("layers the admin's base Profile under every Profile runners get", async ()
   expect((await filesOf("default")).hash).not.toBe(plain.hash);
 });
 
+test("gives assistant sessions the base Profile's extensions and packages only", async () => {
+  await vmEnvironment();
+
+  const put = async (path: string, text: string): Promise<void> => {
+    await fetch(new URL(`/api/base/files/${path}`, server.url), {
+      method: "PUT",
+      headers: { cookie: await signedIn() },
+      body: text,
+    });
+  };
+
+  await put("AGENTS.md", "Use the team's style.");
+  await put("skills%2Fshared%2FSKILL.md", "# Shared");
+  await put("extensions%2Fprovider.ts", "export default () => {};");
+  await put("mcp.json", JSON.stringify({ mcpServers: { docs: { url: "x" } } }));
+
+  await put(
+    "settings.json",
+    JSON.stringify({
+      packages: ["npm:ai-provider"],
+      defaultThinkingLevel: "low",
+    }),
+  );
+
+  const session = await json<Session>(
+    api("/api/plugins/meta/sessions", { body: { text: "hi" } }),
+  );
+
+  await poll();
+
+  const { files } = await json<ProfileFiles>(
+    fetch(new URL(`/agent/sessions/${session.id}/profile`, server.url), {
+      headers: {
+        "pipoca-protocol": "4",
+        authorization: `Bearer ${await runners.token("vm")}`,
+      },
+    }),
+  );
+
+  const text = (path: string): string =>
+    Buffer.from(files[path] ?? "", "base64").toString("utf8");
+
+  expect(Object.keys(files).sort()).toEqual([
+    "APPEND_SYSTEM.md",
+    "extensions/provider.ts",
+    "settings.json",
+  ]);
+
+  expect(text("extensions/provider.ts")).toBe("export default () => {};");
+
+  expect(JSON.parse(text("settings.json"))).toEqual({
+    defaultTools: ["-read", "-bash", "-edit", "-write"],
+    packages: ["npm:ai-provider"],
+  });
+});
+
 test("edits the base Profile's packages and AGENTS.md like a Profile's", async () => {
   expect(await json<unknown>(api("/api/base"))).toEqual(emptyProfile);
 

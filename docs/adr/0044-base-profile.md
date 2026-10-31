@@ -38,7 +38,7 @@ The base is to the Profile what Pi's `~/.pi/agent` is to a repository's `.pi/` (
 
 - The server layers the base into each Profile's files before a runner downloads them. A Profile's hash covers the base, so an edit to either reaches runners the way a Profile edit does, and runners need nothing new. A runner installs the base's packages with each Profile's, once per Profile and machine.
 - The 20 MB cap applies to the base on its own.
-- The built-in meta Profile ([ADR 0035](0035-meta-sessions.md)) isn't layered, so meta-sessions stay read-only.
+- The built-in meta Profile ([ADR 0035](0035-meta-sessions.md)) gets only the base's extensions and packages, so meta-sessions can use the model providers they add (amended 2026-10-31). Their tools go through the meta-session's confirm like any other tool without read-only hints. The base's skills, context, MCP servers and other settings stay out.
 - A base package that fails to install or load stops the Session with an error that names it, as a Profile package does.
 - The runner's `--extension` flag stays for a single machine.
 
