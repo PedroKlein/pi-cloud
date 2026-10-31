@@ -5,11 +5,13 @@ import { join } from "node:path";
 import {
   type Assignment,
   protocolVersion,
+  type ToolSpec,
   versionHeader,
   type Work,
   type WorkPoll,
 } from "@pipoca/protocol";
 import { serve } from "./serve";
+import { readSse } from "./sse";
 import { runnerCredentials } from "./testdata/runners";
 import { firstUser } from "./testdata/sign-in";
 
@@ -144,6 +146,58 @@ async function polled(token: string): Promise<Assignment | undefined> {
   ).json()) as Work;
 
   return work.start[0];
+}
+
+// What a new Session of Pedro's sees of the repositories tool, and what it
+// answers to the query.
+async function repositoriesTool(
+  query: string,
+): Promise<{ offered: boolean; answer: unknown }> {
+  const token = await runnerToken();
+
+  await api("POST", "/api/sessions", {
+    workspace: { kind: "folder", path: "/srv/a" },
+  });
+
+  const { sessionId, generation } = (await polled(token)) ?? {
+    sessionId: "",
+    generation: 0,
+  };
+
+  const agent = async (path: string, body?: unknown): Promise<Response> =>
+    fetch(new URL(`/agent/sessions/${sessionId}/${path}`, server.url), {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        [versionHeader]: String(protocolVersion),
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
+
+  const tools = (await (
+    await agent(`tools?generation=${String(generation)}`)
+  ).json()) as ToolSpec[];
+
+  await agent("tool-calls", {
+    generation,
+    id: "call-1",
+    name: "git_hosts_repositories",
+    input: { query },
+  });
+
+  const stream = await agent(`commands?generation=${String(generation)}`);
+
+  for await (const command of readSse(stream, 3000)) {
+    if ((command as { type?: unknown }).type === "tool_result") {
+      return {
+        offered: tools.some(({ name }) => name === "git_hosts_repositories"),
+        answer: (command as { result: unknown }).result,
+      };
+    }
+  }
+
+  throw new Error("no tool result");
 }
 
 test("lists only github.com when the config file names no hosts", async () => {
@@ -356,4 +410,36 @@ test("finds the repositories of each connected host for what the person typed", 
       group: "SAP GitHub",
     },
   ]);
+});
+
+test("gives a Session the person's accounts and real repository URLs instead of a guess", async () => {
+  await api("POST", "/api/plugins/git-hosts/connect", {
+    host: enterprise,
+    token: goodToken,
+  });
+
+  const { offered, answer } = await repositoriesTool("aicore");
+
+  expect(offered).toBe(true);
+
+  expect(answer).toEqual({
+    isError: false,
+    text: [
+      `Signed in on ${enterprise} (SAP GitHub) as pedro-sap.`,
+      [
+        'Repositories whose name holds "aicore":',
+        `- ${enterprise} I572543/pi-aicore-provider https://${enterprise}/I572543/pi-aicore-provider.git`,
+        `- ${enterprise} ai-core/aicore-sdk https://${enterprise}/ai-core/aicore-sdk.git`,
+      ].join("\n"),
+    ].join("\n\n"),
+  });
+});
+
+test("tells a Session where the person connects a git host when they have none", async () => {
+  const { answer } = await repositoriesTool("");
+
+  expect(answer).toEqual({
+    isError: false,
+    text: "The user hasn't connected a git host. They can connect one in Pipoca's Settings, under Git hosts.",
+  });
 });
