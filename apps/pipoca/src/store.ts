@@ -904,6 +904,7 @@ export function openStore(
     },
     profile: (id) => profiles?.read(id),
     profileFiles: (id) => profiles?.files(id),
+    baseProfileFiles: () => profiles?.base?.files(),
     defaultProfileId: (ownerId) => defaultProfileId(db, ownerId),
     setDefaultProfile: (ownerId, id) => {
       upsertDefault.run(ownerId, id);

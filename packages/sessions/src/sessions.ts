@@ -34,7 +34,7 @@ import {
   type WorkPoll,
   type WorkspaceRequest,
 } from "@pipoca/protocol";
-import { contentFiles } from "@pipoca/profiles";
+import { contentFiles, overBaseExtensions } from "@pipoca/profiles";
 import { placesOn, placesOnNewRunner, uniqueModels } from "./placement";
 import { RunnerPolls } from "./runner-polls";
 
@@ -63,6 +63,8 @@ export interface SessionStore {
     | undefined;
   // Throws ProfileTooBig for a Profile runners shouldn't download.
   profileFiles: (id: string) => ProfileFiles | undefined;
+  // The admin's base Profile (ADR 0044), if there is one.
+  baseProfileFiles: () => ProfileFiles | undefined;
   defaultProfileId: (ownerId: string) => string;
   repositoryTrust: (ownerId: string, repository: string) => boolean | null;
   setRepositoryTrust: (
@@ -1338,10 +1340,14 @@ export class Sessions {
   // What a runner downloads for a Profile (ADR 0041).
   profileFiles(id: string): ProfileFiles | undefined {
     const provided = this.#pluginProfile(id);
+    if (!provided) {
+      return this.#store.profileFiles(id);
+    }
 
-    return provided
-      ? contentFiles(provided.profile)
-      : this.#store.profileFiles(id);
+    const own = contentFiles(provided.profile);
+    const base = this.#store.baseProfileFiles();
+
+    return base ? overBaseExtensions(base, own) : own;
   }
 
   #profile(id: string): (ProfileContent & { readonly id: string }) | undefined {
