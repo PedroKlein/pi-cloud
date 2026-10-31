@@ -81,12 +81,13 @@ export const gitHosts: ServerPlugin = {
     const search = async (
       userId: string,
       query: string,
+      only?: string,
     ): Promise<readonly HostSearch[]> =>
       Promise.all(
         connections.accounts(userId).flatMap(({ host: name, login, token }) => {
           const host = hosts.get(name);
 
-          return host === undefined
+          return host === undefined || (only !== undefined && only !== name)
             ? []
             : [
                 repositoriesOf(host, token, query).then(
@@ -121,7 +122,19 @@ export const gitHosts: ServerPlugin = {
         found.map(({ url, name }) => ({ url, name, group: host.label })),
       );
 
-    context.tools.register(repositoriesTool(search));
+    context.tools.register(
+      repositoriesTool({
+        accounts: (userId) =>
+          connections.accounts(userId).flatMap(({ host: name, login }) => {
+            const host = hosts.get(name);
+
+            return host === undefined
+              ? []
+              : [{ host: host.host, label: host.label, login }];
+          }),
+        search,
+      }),
+    );
 
     const account = (user: User): Account => ({
       admin: user.admin,

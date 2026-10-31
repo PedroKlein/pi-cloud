@@ -151,7 +151,7 @@ async function polled(token: string): Promise<Assignment | undefined> {
 // What a new Session of Pedro's sees of the repositories tool, and what it
 // answers to the query.
 async function repositoriesTool(
-  query: string,
+  input: Readonly<Record<string, string>>,
 ): Promise<{ offered: boolean; answer: unknown }> {
   const token = await runnerToken();
 
@@ -183,7 +183,7 @@ async function repositoriesTool(
     generation,
     id: "call-1",
     name: "git_hosts_repositories",
-    input: { query },
+    input,
   });
 
   const stream = await agent(`commands?generation=${String(generation)}`);
@@ -418,7 +418,7 @@ test("gives a Session the person's accounts and real repository URLs instead of 
     token: goodToken,
   });
 
-  const { offered, answer } = await repositoriesTool("aicore");
+  const { offered, answer } = await repositoriesTool({ query: "aicore" });
 
   expect(offered).toBe(true);
 
@@ -436,10 +436,41 @@ test("gives a Session the person's accounts and real repository URLs instead of 
 });
 
 test("tells a Session where the person connects a git host when they have none", async () => {
-  const { answer } = await repositoriesTool("");
+  const { answer } = await repositoriesTool({});
 
   expect(answer).toEqual({
     isError: false,
     text: "The user hasn't connected a git host. They can connect one in Pipoca's Settings, under Git hosts.",
+  });
+});
+
+test("names only the person's accounts when a Session searches for nothing", async () => {
+  await api("POST", "/api/plugins/git-hosts/connect", {
+    host: enterprise,
+    token: goodToken,
+  });
+
+  const { answer } = await repositoriesTool({});
+
+  expect(answer).toEqual({
+    isError: false,
+    text: `Signed in on ${enterprise} (SAP GitHub) as pedro-sap.\n\nGive a query to search their repositories by name.`,
+  });
+});
+
+test("tells a Session the person hasn't connected the host it asked to search", async () => {
+  await api("POST", "/api/plugins/git-hosts/connect", {
+    host: enterprise,
+    token: goodToken,
+  });
+
+  const { answer } = await repositoriesTool({
+    query: "aicore",
+    host: "github.com",
+  });
+
+  expect(answer).toEqual({
+    isError: false,
+    text: "The user hasn't connected github.com. They can connect it in Pipoca's Settings, under Git hosts.",
   });
 });
