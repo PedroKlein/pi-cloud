@@ -346,6 +346,7 @@ export async function hostSession(
         live.push({ type: "plugin", plugin: plugin.name, key, data });
       },
       askQuestions: prompts.questions,
+      askPermission: prompts.permission,
       checkouts: options.checkouts ?? [],
       settings: options.pluginSettings?.[plugin.name] ?? {},
       request: async (path: string, init?: RequestInit) =>

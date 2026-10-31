@@ -78,6 +78,7 @@ async function pr(
       outcome = (data as readonly PullRequest[]).at(-1);
     },
     askQuestions: unused,
+    askPermission: unused,
     checkouts: [checkout],
     settings: {},
     request: unused,

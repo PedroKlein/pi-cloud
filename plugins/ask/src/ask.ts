@@ -89,6 +89,8 @@ export function askUserTool(ask: AskQuestions): ToolDefinition {
       "Supports single choice, multiple choice, a point on an ordered scale, ranking, free text and numbers on a slider. " +
       "Users can annotate their choices, add their own option, and ask about an option before answering. " +
       "Always provide a description for each option: it is shown in the detail panel when the option is highlighted.",
+    // Asking changes nothing, so a meta-session never asks before it.
+    annotations: { readOnlyHint: true },
     promptSnippet:
       "Ask the user structured questions in a form (single/multi choice, scale, rank, text, number)",
     promptGuidelines: [

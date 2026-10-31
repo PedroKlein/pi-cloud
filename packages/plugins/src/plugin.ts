@@ -11,6 +11,8 @@ import type {
   EnvironmentTemplate,
   GitLogin,
   ModelRef,
+  Permission,
+  PermissionDetail,
   PluginSettings,
   ProfileContent,
   Question,
@@ -90,6 +92,17 @@ export interface RouteTool extends Omit<ToolSpec, "namespace"> {
   readonly opens?: (
     body: unknown,
   ) => { readonly route: string; readonly label: string } | undefined;
+  // The question a meta-session asks before a call that isn't read-only or
+  // marked not destructive, such as Archive “Fix login”?. lookup is a GET
+  // path whose reply text gets, to name what the call changes; text gets
+  // undefined when that fails.
+  readonly asks?: {
+    readonly lookup?: (input: Readonly<Record<string, unknown>>) => string;
+    readonly text: (
+      input: Readonly<Record<string, unknown>>,
+      found: unknown,
+    ) => string;
+  };
 }
 
 // A plugin's tool paths are relative to its own routes; the kernel's start
@@ -213,6 +226,13 @@ export interface ServerPluginContext {
     // Every plugin's toolsets load in the Sessions this plugin owns, as the
     // meta plugin's do.
     readonly loadInOwnSessions: () => void;
+    // The question to ask before a Session's call of a toolset tool, or
+    // undefined for a tool that has none.
+    readonly asks: (
+      session: Session,
+      name: string,
+      input: unknown,
+    ) => Promise<string | undefined>;
   };
   readonly events: {
     readonly publish: (event: PluginEvent) => void;
@@ -343,6 +363,14 @@ export type AskQuestions = (
   signal: AbortSignal | undefined,
 ) => Promise<QuestionsAnswer | null>;
 
+// Asks the user whether a tool call may run, and resolves to "deny" when the
+// prompt goes away unanswered.
+export type AskPermission = (
+  title: string,
+  details: readonly PermissionDetail[],
+  signal: AbortSignal | undefined,
+) => Promise<Permission>;
+
 // A git checkout in the Session's workspace, and the commit its session
 // branch started from when it has one.
 export interface Checkout {
@@ -356,6 +384,7 @@ export interface SessionCloud {
   // Session, and for anyone who opens it later.
   readonly publish: (key: string, data: unknown) => void;
   readonly askQuestions: AskQuestions;
+  readonly askPermission: AskPermission;
   readonly checkouts: readonly Checkout[];
   // The plugin's settings when the Session started (ADR 0036).
   readonly settings: PluginSettings;

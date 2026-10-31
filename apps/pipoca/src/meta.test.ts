@@ -11,6 +11,7 @@ import {
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type {
   Assignment,
+  Permission,
   Prompt,
   Session,
   SessionEvent,
@@ -189,7 +190,7 @@ const searched = fauxAssistantMessage(
   { stopReason: "toolUse" },
 );
 
-test("asks before a risky call, runs it only when allowed, and never asks for reads", async () => {
+test("asks before a destructive call, names what it changes, runs it only when allowed, and never asks for reads", async () => {
   const environment = await environmentId();
 
   faux.setResponses([
@@ -208,7 +209,7 @@ test("asks before a risky call, runs it only when allowed, and never asks for re
 
   const asked: Prompt[] = [];
 
-  const answer = async (allowed: boolean): Promise<void> => {
+  const answer = async (value: Permission): Promise<void> => {
     const events = await follow(session.id, (all) =>
       prompts(all).some(({ id }) => !asked.some((seen) => seen.id === id)),
     );
@@ -222,12 +223,12 @@ test("asks before a risky call, runs it only when allowed, and never asks for re
     await api(`/api/sessions/${session.id}/commands`, {
       type: "answer",
       id: prompt?.id,
-      value: allowed,
+      value,
     });
   };
 
-  await answer(false);
-  await answer(true);
+  await answer("deny");
+  await answer("once");
 
   const events = await follow(session.id, entriesInclude("all done"));
 
@@ -239,9 +240,9 @@ test("asks before a risky call, runs it only when allowed, and never asks for re
     ({ name }) => name,
   );
 
-  expect(asked.map(({ title }) => title)).toEqual([
-    "Allow environments_update?",
-    "Allow environments_update?",
+  expect(asked.map(({ kind, title }) => [kind, title])).toEqual([
+    ["permission", "Change the Environment “local”?"],
+    ["permission", "Change the Environment “local”?"],
   ]);
 
   expect(transcript).toContain("The user didn't allow environments_update.");
@@ -302,7 +303,7 @@ test("loads only the Session parts the meta plugin allows in a meta-session", as
   expect(await names(metaSession.id)).not.toContain("pr");
 });
 
-test("shows the whole input of a risky call it asks about", async () => {
+test("shows a destructive call's fields as labelled values, leaving out ids and empty ones", async () => {
   const id = await environmentId();
 
   faux.setResponses([
@@ -311,7 +312,9 @@ test("shows the whole input of a risky call it asks about", async () => {
       [
         fauxToolCall("environments_update", {
           id,
+          name: "",
           setupScript: `echo ${"x".repeat(900)}; echo the end`,
+          variables: { API_URL: "https://example.test" },
         }),
       ],
       { stopReason: "toolUse" },
@@ -328,10 +331,82 @@ test("shows the whole input of a risky call it asks about", async () => {
   await api(`/api/sessions/${session.id}/commands`, {
     type: "answer",
     id: asked?.id,
-    value: false,
+    value: "deny",
   });
 
-  expect(asked?.kind === "confirm" && asked.message).toContain("the end");
+  expect(asked?.kind === "permission" && asked.details).toEqual([
+    {
+      label: "Setup script",
+      value: `echo ${"x".repeat(900)}; echo the end`,
+    },
+    { label: "Variables", value: "API_URL: https://example.test" },
+  ]);
+});
+
+test("stops asking about a tool the user allowed for the rest of the Session", async () => {
+  const environment = await environmentId();
+
+  faux.setResponses([
+    searched,
+    fauxAssistantMessage([rename(environment, "first")], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([rename(environment, "second")], {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage([fauxText("all done")]),
+  ]);
+
+  const session = await startMeta("Rename it twice");
+
+  const [asked] = prompts(
+    await follow(session.id, (all) => prompts(all).length > 0),
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "answer",
+    id: asked?.id,
+    value: "session",
+  });
+
+  const events = await follow(session.id, entriesInclude("all done"));
+
+  const names = (await json<{ name: string }[]>(api("/api/environments"))).map(
+    ({ name }) => name,
+  );
+
+  expect(prompts(events).filter(({ id }) => id !== asked?.id)).toEqual([]);
+  expect(names).toEqual(["second"]);
+});
+
+test("asks the user questions without asking permission first", async () => {
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("ask_user", {
+          questions: [
+            { id: "repo", label: "Repo", prompt: "Which one?", type: "text" },
+          ],
+        }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage([fauxText("all done")]),
+  ]);
+
+  const session = await startMeta("Ask me something");
+
+  const [asked] = prompts(
+    await follow(session.id, (all) => prompts(all).length > 0),
+  );
+
+  await api(`/api/sessions/${session.id}/commands`, {
+    type: "answer",
+    id: asked?.id,
+    value: null,
+  });
+
+  expect(asked?.kind).toBe("questions");
 });
 
 test("stops a turn that waits on a confirm", async () => {

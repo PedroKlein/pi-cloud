@@ -83,6 +83,13 @@ export const projectsToolset: Toolset = {
       description: "Change a Project's settings. Only the fields given change.",
       parameters: object({ id: { type: "string" }, ...settingsFields }, ["id"]),
       annotations: { destructiveHint: true },
+      asks: {
+        lookup: (input) => `projects/${idOf(input)}`,
+        text: (_input, found) =>
+          found === undefined
+            ? "Change this Project's settings?"
+            : `Change the settings of “${(found as ProjectView).name}”?`,
+      },
       request: (input) => ({
         method: "POST",
         path: `projects/${idOf(input)}/settings`,

@@ -28,6 +28,7 @@ async function publisher(
   const cloud: SessionCloud = {
     publish: unused,
     askQuestions: unused,
+    askPermission: unused,
     checkouts: [],
     settings: { fileLimitMb: 1 },
     request: async (path, init) => {

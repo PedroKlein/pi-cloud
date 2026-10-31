@@ -4,7 +4,7 @@ import type {
   ExtensionUIContext,
   ExtensionUIDialogOptions,
 } from "@earendil-works/pi-coding-agent";
-import type { AskQuestions, Explain } from "@pipoca/plugins";
+import type { AskPermission, AskQuestions, Explain } from "@pipoca/plugins";
 import type { Answer, Command, LiveEvent, Prompt } from "@pipoca/protocol";
 
 export type RemoteUI = Pick<
@@ -28,6 +28,7 @@ type PromptRequest = Prompt extends infer P
 export function remoteUI(publish: (event: LiveEvent) => void): {
   readonly ui: RemoteUI;
   readonly questions: AskQuestions;
+  readonly permission: AskPermission;
   readonly secret: (
     title: string,
     placeholder: string | undefined,
@@ -136,6 +137,14 @@ export function remoteUI(publish: (event: LiveEvent) => void): {
       );
 
       return typeof value === "object" ? value : null;
+    },
+    permission: async (title, details, signal) => {
+      const value = await ask(
+        { kind: "permission", title, details },
+        signal ? { signal } : undefined,
+      );
+
+      return value === "once" || value === "session" ? value : "deny";
     },
     secret: async (title, placeholder, signal) =>
       text(

@@ -1,4 +1,9 @@
-import type { RouteTool, Toolset } from "@pipoca/plugins";
+import {
+  fieldsOf,
+  isObject,
+  type RouteTool,
+  type Toolset,
+} from "@pipoca/plugins";
 import {
   isolations,
   type PluginInfo,
@@ -183,6 +188,11 @@ export const kernelToolsets: readonly Toolset[] = [
           "Archive a Session. Its workspace is removed when nothing would lose work.",
         parameters: object({ id: { type: "string" } }, ["id"]),
         annotations: { destructiveHint: true },
+        asks: {
+          lookup: (input) => `/api/sessions/${idOf(input)}`,
+          text: (_input, found) =>
+            `Archive ${found === undefined ? "this Session" : titleOf(found as Session)}?`,
+        },
         request: (input) => ({
           method: "POST",
           path: `/api/sessions/${idOf(input)}/archive`,
@@ -244,6 +254,11 @@ export const kernelToolsets: readonly Toolset[] = [
           ["id"],
         ),
         annotations: { destructiveHint: true },
+        asks: {
+          lookup: () => "/api/environments",
+          text: (input, found) =>
+            `Change ${named(found, input, "the Environment", "this Environment")}?`,
+        },
         request: (input) => ({
           method: "PATCH",
           path: `/api/environments/${idOf(input)}`,
@@ -312,6 +327,11 @@ export const kernelToolsets: readonly Toolset[] = [
           ["id"],
         ),
         annotations: { destructiveHint: true },
+        asks: {
+          lookup: (input) => `/api/profiles/${idOf(input)}`,
+          text: (input, found) =>
+            `Change ${named(found, input, "the Profile", "this Profile")}?`,
+        },
         request: (input) => ({
           method: "PUT",
           path: `/api/profiles/${idOf(input)}`,
@@ -324,6 +344,11 @@ export const kernelToolsets: readonly Toolset[] = [
         description: "Make a Profile the one new Sessions use by default.",
         parameters: object({ id: { type: "string" } }, ["id"]),
         annotations: { destructiveHint: true },
+        asks: {
+          lookup: (input) => `/api/profiles/${idOf(input)}`,
+          text: (input, found) =>
+            `Make ${named(found, input, "the Profile", "this Profile")} the default for new Sessions?`,
+        },
         request: (input) => ({
           method: "POST",
           path: `/api/profiles/${idOf(input)}/default`,
@@ -487,6 +512,27 @@ function profileView(profile: Profile): Record<string, unknown> {
   return { ...rest, mcpServers: Object.keys(mcpServers) };
 }
 
+// The thing a call changes by its name, found by id in a list or as the
+// reply itself: the Environment “Dev”.
+function named(
+  found: unknown,
+  input: Readonly<Record<string, unknown>>,
+  kind: string,
+  unnamed: string,
+): string {
+  const one = Array.isArray(found)
+    ? (found as unknown[]).find(
+        (each) => isObject(each) && each["id"] === input["id"],
+      )
+    : found;
+
+  const name = isObject(one) ? one["name"] : undefined;
+
+  return typeof name === "string" && name !== ""
+    ? `${kind} “${name}”`
+    : unnamed;
+}
+
 function titleOf({ title }: Session): string {
   return title === null || title === "" ? "the Session" : `“${title}”`;
 }
@@ -502,7 +548,13 @@ export function toolsetTools(toolset: Toolset, plugin?: string): ToolsetTool[] {
   const namespace: ToolNamespace = toolset.namespace;
 
   return toolset.tools.map((tool) => {
-    const { request: _request, result: _result, opens: _opens, ...spec } = tool;
+    const {
+      request: _request,
+      result: _result,
+      opens: _opens,
+      asks: _asks,
+      ...spec
+    } = tool;
 
     return {
       plugin,
@@ -533,14 +585,8 @@ export async function runRouteTool(
   },
   open: (action: UiAction) => void,
 ): Promise<ToolResult> {
-  const { method, path, body } = found.tool.request(
-    typeof input === "object" && input !== null && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {},
-  );
-
-  const base =
-    found.plugin === undefined ? "/api/" : `/api/plugins/${found.plugin}/`;
+  const { method, path, body } = found.tool.request(fieldsOf(input));
+  const base = baseOf(found);
 
   const url = routeUrl(found.plugin === undefined ? path : base + path, base);
 
@@ -607,6 +653,46 @@ export async function runRouteTool(
   } catch {
     return { text: "Done, with a reply it couldn't show.", isError: false };
   }
+}
+
+export async function routeToolQuestion(
+  found: ToolsetTool,
+  input: unknown,
+  onBehalf: OnBehalf,
+  deps: {
+    readonly api: (onBehalf: OnBehalf, request: Request) => Promise<Response>;
+  },
+): Promise<string | undefined> {
+  const asks = found.tool.asks;
+
+  if (asks === undefined) {
+    return undefined;
+  }
+
+  const fields = fieldsOf(input);
+  const path = asks.lookup?.(fields);
+  const base = baseOf(found);
+
+  const url =
+    path === undefined
+      ? undefined
+      : routeUrl(found.plugin === undefined ? path : base + path, base);
+
+  let looked: unknown;
+  if (url !== undefined) {
+    try {
+      const response = await deps.api(onBehalf, new Request(url));
+      looked = response.ok ? await response.json() : undefined;
+    } catch {
+      looked = undefined;
+    }
+  }
+
+  return asks.text(fields, looked);
+}
+
+function baseOf(found: ToolsetTool): string {
+  return found.plugin === undefined ? "/api/" : `/api/plugins/${found.plugin}/`;
 }
 
 // A tool's path stays under its own routes: dot segments, plain or

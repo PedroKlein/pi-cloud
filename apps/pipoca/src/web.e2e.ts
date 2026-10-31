@@ -395,8 +395,17 @@ test("asks the assistant with the model picked last time", async () => {
 }, 30_000);
 
 test("goes where the assistant opens on a wide screen, and offers it on a phone", async () => {
-  const startOne = (): ReturnType<typeof fauxAssistantMessage> =>
-    fauxAssistantMessage(
+  // What a tool opens isn't replayed, so the model waits until the page
+  // follows the conversation.
+  let following = Promise.withResolvers<undefined>();
+
+  const startOne = async (): Promise<
+    ReturnType<typeof fauxAssistantMessage>
+  > => {
+    await following.promise;
+    following = Promise.withResolvers<undefined>();
+
+    return fauxAssistantMessage(
       [
         fauxToolCall("sessions_start", {
           workspace: { kind: "folder", path: root },
@@ -404,11 +413,12 @@ test("goes where the assistant opens on a wide screen, and offers it on a phone"
       ],
       { stopReason: "toolUse" },
     );
+  };
 
   faux.setResponses([
-    startOne(),
+    startOne,
     fauxAssistantMessage([fauxText("started one")]),
-    startOne(),
+    startOne,
     fauxAssistantMessage([fauxText("started another")]),
   ]);
 
@@ -417,7 +427,12 @@ test("goes where the assistant opens on a wide screen, and offers it on a phone"
     const composer = page.getByLabel("Ask the Pipoca assistant");
     await composer.fill(text);
     await composer.press("Enter");
-    await page.getByRole("button", { name: "Yes" }).click();
+
+    await page
+      .locator('#chat li[data-role="user"]', { hasText: text })
+      .waitFor();
+
+    following.resolve(undefined);
   };
 
   await ask("Start a session in my folder");
@@ -437,6 +452,59 @@ test("goes where the assistant opens on a wide screen, and offers it on a phone"
   await notice.getByRole("link", { name: "Open" }).click();
   await page.waitForURL(/#(?!plugin\/)[\w-]+$/);
   await page.setViewportSize({ width: 1280, height: 720 });
+}, 30_000);
+
+test("asks in words before the assistant changes an Environment, and can allow it for the session", async () => {
+  const [environment] = (await (
+    await fetch(new URL("/api/environments", server.url), {
+      headers: { cookie },
+    })
+  ).json()) as Environment[];
+
+  const rename = (name: string): ReturnType<typeof fauxAssistantMessage> =>
+    fauxAssistantMessage(
+      [
+        fauxToolCall("environments_update", {
+          id: environment?.id ?? "",
+          name,
+        }),
+      ],
+      { stopReason: "toolUse" },
+    );
+
+  faux.setResponses([
+    fauxAssistantMessage(
+      [fauxToolCall("tool_search", { query: "change an Environment" })],
+      { stopReason: "toolUse" },
+    ),
+    rename("lab"),
+    rename(environment?.name ?? ""),
+    fauxAssistantMessage([fauxText("renamed it twice")]),
+  ]);
+
+  await page.goto(server.url.href);
+  const composer = page.getByLabel("Ask the Pipoca assistant");
+  await composer.fill("Rename my Environment and back");
+  await composer.press("Enter");
+
+  const card = page.locator('[data-role="prompt"]');
+
+  await card
+    .getByRole("heading", {
+      name: `Change the Environment “${environment?.name ?? ""}”?`,
+    })
+    .waitFor();
+
+  expect(await card.locator("dt").allTextContents()).toEqual(["Name"]);
+  expect(await card.locator("dd").allTextContents()).toEqual(["lab"]);
+
+  await card.getByRole("button", { name: "Allow for this session" }).click();
+
+  await page
+    .locator('#chat li[data-role="assistant"]', { hasText: "renamed it twice" })
+    .waitFor();
+
+  expect(await card.count()).toBe(0);
 }, 30_000);
 
 test("infers the workspace from what the New session composer picks and remembers it", async () => {
